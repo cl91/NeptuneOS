@@ -42,6 +42,7 @@ NTSTATUS PortCreatePdo(_In_ PFDO_DEVICE_EXTENSION FdoDeviceExtension,
     DeviceExtension->Device = Pdo;
     DeviceExtension->FdoExtension = FdoDeviceExtension;
     DeviceExtension->PnpState = dsStopped;
+    KeInitializeEvent(&DeviceExtension->QueueUnfrozen, SynchronizationEvent, TRUE);
 
     /* Add the PDO to the PDO list*/
     InsertHeadList(&FdoDeviceExtension->PdoListHead, &DeviceExtension->PdoListEntry);
@@ -82,15 +83,141 @@ NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
     return STATUS_SUCCESS;
 }
 
+static VOID PortStartPacket(IN OUT PPDO_DEVICE_EXTENSION PdoExt,
+			    IN OUT PIRP Irp,
+			    IN OUT PSCSI_REQUEST_BLOCK Srb)
+{
+    BOOLEAN QueueFrozen = PdoExt->QueueFrozen;
+    if (Srb->SrbFlags & SRB_FLAGS_BYPASS_FROZEN_QUEUE) {
+	/* Start IO directly without waiting for the queue to be unfrozen. */
+	QueueFrozen = FALSE;
+    }
+    /* TODO: We need to use a device queue to save resources. Queuing on a KEVENT
+     * is resource intensive since each suspended IRP takes a full coroutine stack. */
+    if (QueueFrozen) {
+	KeWaitForSingleObject(&PdoExt->QueueUnfrozen, Executive, KernelMode, FALSE, NULL);
+    }
+    // TODO
+    assert(FALSE);
+}
+
+VOID PortPdoSetBusy(IN PPDO_DEVICE_EXTENSION PdoExt)
+{
+    PdoExt->QueueFrozen = TRUE;
+    KeClearEvent(&PdoExt->QueueUnfrozen);
+}
+
+VOID PortPdoSetReady(IN PPDO_DEVICE_EXTENSION PdoExt)
+{
+    PdoExt->QueueFrozen = FALSE;
+    KeSetEvent(&PdoExt->QueueUnfrozen);
+}
+
 NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 			   _In_ PIRP Irp)
 {
     DPRINT1("PortPdoScsi(%p %p)\n", DeviceObject, Irp);
-
     Irp->IoStatus.Information = 0;
-    Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
+
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    PSCSI_REQUEST_BLOCK Srb = Stack->Parameters.Scsi.Srb;
+    PPDO_DEVICE_EXTENSION PdoExt = DeviceObject->DeviceExtension;
+    ASSERT(PdoExt);
+    ASSERT(PdoExt->ExtensionType == PdoExtension);
+    PFDO_DEVICE_EXTENSION FdoExt = PdoExt->FdoExtension;
+    ASSERT(FdoExt);
+    ASSERT(FdoExt->ExtensionType == FdoExtension);
+
+    NTSTATUS Status = STATUS_SUCCESS;
+    if (!Srb) {
+        DPRINT1("PortPdoScsi() called with Srb = NULL!\n");
+        Status = STATUS_UNSUCCESSFUL;
+	goto done;
+    }
+
+    DPRINT("Srb: %p, Srb->Function: %u\n", Srb, Srb->Function);
+
+    if (Srb->PathId != PdoExt->Bus || Srb->TargetId != PdoExt->Target ||
+	Srb->Lun != PdoExt->Lun) {
+        DPRINT("SRB SCSI address %d:%d:%d does not match PDO %d:%d:%d\n",
+	       Srb->PathId, Srb->TargetId, Srb->Lun,
+	       PdoExt->Bus, PdoExt->Target, PdoExt->Lun);
+        Status = STATUS_NO_SUCH_DEVICE;
+        Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
+	goto done;
+    }
+
+    switch (Srb->Function) {
+    case SRB_FUNCTION_SHUTDOWN:
+	DPRINT("  SRB_FUNCTION_SHUTDOWN\n");
+	goto submit;
+    case SRB_FUNCTION_FLUSH:
+	DPRINT("  SRB_FUNCTION_FLUSH\n");
+	goto submit;
+    case SRB_FUNCTION_EXECUTE_SCSI:
+	DPRINT("  SRB_FUNCTION_EXECUTE_SCSI\n");
+	goto submit;
+    case SRB_FUNCTION_IO_CONTROL:
+	DPRINT("  SRB_FUNCTION_IO_CONTROL\n");
+    submit:
+	/* Mark IRP as pending and start IO */
+	IoMarkIrpPending(Irp);
+	PortStartPacket(PdoExt, Irp, Srb);
+	return STATUS_PENDING;
+
+    case SRB_FUNCTION_CLAIM_DEVICE:
+	DPRINT("  SRB_FUNCTION_CLAIM_DEVICE\n");
+	goto attach;
+    case SRB_FUNCTION_ATTACH_DEVICE:
+	DPRINT("  SRB_FUNCTION_ATTACH_DEVICE\n");
+    attach:
+	if (PdoExt->DeviceClaimed) {
+	    Srb->SrbStatus = SRB_STATUS_INTERNAL_ERROR;
+	    Srb->InternalStatus = STATUS_DEVICE_BUSY;
+	    Status = STATUS_DEVICE_BUSY;
+	} else {
+	    PdoExt->DeviceClaimed = TRUE;
+	    Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	    Status = STATUS_SUCCESS;
+	}
+	break;
+
+    case SRB_FUNCTION_RELEASE_DEVICE:
+	DPRINT("  SRB_FUNCTION_RELEASE_DEVICE\n");
+        PdoExt->DeviceClaimed = FALSE;
+        Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
+	break;
+
+    case SRB_FUNCTION_RELEASE_QUEUE:
+	DPRINT("  SRB_FUNCTION_RELEASE_QUEUE\n");
+	PortPdoSetReady(PdoExt);
+	Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	Status = STATUS_SUCCESS;
+	break;
+
+    case SRB_FUNCTION_FLUSH_QUEUE:
+	DPRINT("  SRB_FUNCTION_FLUSH_QUEUE\n");
+	if (!PdoExt->QueueFrozen) {
+	    DPRINT("Queue is not frozen really\n");
+	    Status = STATUS_INVALID_DEVICE_REQUEST;
+	    break;
+	}
+	PortPdoSetReady(PdoExt);
+	/* TODO: Check if we need to wait for the queue to become empty. */
+	Status = STATUS_SUCCESS;
+	break;
+
+    default:
+	DPRINT1("SRB function not implemented (Function %u)\n", Srb->Function);
+	Status = STATUS_NOT_IMPLEMENTED;
+	break;
+    }
+
+done:
+    Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 NTAPI NTSTATUS PortPdoPnp(_In_ PDEVICE_OBJECT DeviceObject,

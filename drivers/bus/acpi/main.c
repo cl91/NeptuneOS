@@ -220,7 +220,7 @@ static NTSTATUS AcpiRegQueryValue(IN HANDLE KeyHandle, IN LPWSTR ValueName,
 	BufferLength += FIELD_OFFSET(KEY_VALUE_PARTIAL_INFORMATION, Data);
 
 	/* Allocate memory for the value */
-	ValueInfo = ExAllocatePoolWithTag(BufferLength, 'MpcA');
+	ValueInfo = ExAllocatePoolWithTag(NonPagedPool, BufferLength, 'MpcA');
 	if (ValueInfo == NULL)
 	    return STATUS_NO_MEMORY;
     } else {
@@ -309,7 +309,7 @@ static NTSTATUS GetProcessorInformation(VOID)
 
     /* Allocate a buffer large enough to be zero terminated */
     Length += sizeof(UNICODE_NULL);
-    ProcessorIdentifier = ExAllocatePoolWithTag(Length, ACPI_TAG);
+    ProcessorIdentifier = ExAllocatePoolWithTag(NonPagedPool, Length, ACPI_TAG);
     if (ProcessorIdentifier == NULL) {
 	DPRINT1("Failed to allocate 0x%x bytes\n", Length);
 	Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -331,7 +331,7 @@ static NTSTATUS GetProcessorInformation(VOID)
     if (NT_SUCCESS(Status)) {
 	/* Allocate a buffer large enough to be zero terminated */
 	Length += sizeof(UNICODE_NULL);
-	ProcessorNameString = ExAllocatePoolWithTag(Length, ACPI_TAG);
+	ProcessorNameString = ExAllocatePoolWithTag(NonPagedPool, Length, ACPI_TAG);
 	if (ProcessorNameString == NULL) {
 	    DPRINT1("Failed to allocate 0x%x bytes\n", Length);
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -357,7 +357,7 @@ static NTSTATUS GetProcessorInformation(VOID)
 
     /* Allocate a buffer large enough to be zero terminated */
     Length += sizeof(UNICODE_NULL);
-    ProcessorVendorIdentifier = ExAllocatePoolWithTag(Length, ACPI_TAG);
+    ProcessorVendorIdentifier = ExAllocatePoolWithTag(NonPagedPool, Length, ACPI_TAG);
     if (ProcessorVendorIdentifier == NULL) {
 	DPRINT1("Failed to allocate 0x%x bytes\n", Length);
 	Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -408,7 +408,7 @@ static NTSTATUS GetProcessorInformation(VOID)
 			sizeof(WCHAR);
 
     /* Allocate a buffer to the data */
-    HardwareIdsBuffer = ExAllocatePoolWithTag(HardwareIdsLength, ACPI_TAG);
+    HardwareIdsBuffer = ExAllocatePoolWithTag(NonPagedPool, HardwareIdsLength, ACPI_TAG);
     if (HardwareIdsBuffer == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto done;
@@ -448,7 +448,7 @@ static NTSTATUS GetProcessorInformation(VOID)
     ProcessorHardwareIds.Buffer = HardwareIdsBuffer;
 
     Length = (5 + VendorIdentifierLength + 3 + Level1Length + 1) * sizeof(WCHAR);
-    ProcessorIdString = ExAllocatePoolWithTag(Length, ACPI_TAG);
+    ProcessorIdString = ExAllocatePoolWithTag(NonPagedPool, Length, ACPI_TAG);
     if (ProcessorIdString != NULL) {
 	Length = swprintf(ProcessorIdString, L"ACPI\\%s_-_%.*s",
 			  ProcessorVendorIdentifier, Level1Length, ProcessorIdentifier);

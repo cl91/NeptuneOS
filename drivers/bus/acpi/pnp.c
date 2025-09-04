@@ -281,7 +281,7 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
 	Length = sizeof(DEVICE_RELATIONS) +
 		 ((NumPdosPresent + PrevCount) * sizeof(PDEVICE_OBJECT));
 
-	Relations = ExAllocatePoolWithTag(Length, ACPI_TAG);
+	Relations = ExAllocatePoolWithTag(NonPagedPool, Length, ACPI_TAG);
 
 	if (NULL == Relations) {
 	    //

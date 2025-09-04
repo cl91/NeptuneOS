@@ -99,7 +99,8 @@ static NTSTATUS CompBattAddNewBattery(IN PUNICODE_STRING BatteryName,
     /* Is this a new battery? */
     if (!IsBatteryAlreadyOnList(BatteryName, DeviceExtension)) {
 	/* Allocate battery data */
-	BatteryData = ExAllocatePoolWithTag(sizeof(COMPBATT_BATTERY_DATA) + BatteryName->Length,
+	BatteryData = ExAllocatePoolWithTag(NonPagedPool,
+					    sizeof(COMPBATT_BATTERY_DATA) + BatteryName->Length,
 					    'CtaB');
 	if (BatteryData) {
 	    /* Initialize the data and write the battery name */

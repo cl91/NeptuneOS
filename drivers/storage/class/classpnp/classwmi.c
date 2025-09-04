@@ -882,7 +882,7 @@ NTAPI NTSTATUS ClassWmiFireEvent(IN PDEVICE_OBJECT DeviceObject,
 
     sizeNeeded = sizeof(WNODE_SINGLE_INSTANCE) + EventDataSize;
 
-    event = ExAllocatePoolWithTag(sizeNeeded, CLASS_TAG_WMI);
+    event = ExAllocatePoolWithTag(NonPagedPool, sizeNeeded, CLASS_TAG_WMI);
     if (event != NULL) {
 	RtlZeroMemory(event, sizeNeeded);
 	event->WnodeHeader.Guid = *Guid;

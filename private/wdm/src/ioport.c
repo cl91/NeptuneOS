@@ -12,7 +12,7 @@ static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
 	    return Entry;
 	}
     }
-    PX86_IOPORT IoPort = ExAllocatePool(sizeof(X86_IOPORT));
+    PX86_IOPORT IoPort = ExAllocatePool(NonPagedPool, sizeof(X86_IOPORT));
     if (!IoPort) {
 	return NULL;
     }

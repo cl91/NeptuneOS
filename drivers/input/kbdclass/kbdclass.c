@@ -299,7 +299,8 @@ static NTSTATUS ReadRegistryEntries(IN PUNICODE_STRING RegistryPath,
     ParametersRegistryKey.Length = 0;
     ParametersRegistryKey.MaximumLength = RegistryPath->Length
 	+ sizeof(L"\\Parameters") + sizeof(UNICODE_NULL);
-    ParametersRegistryKey.Buffer = ExAllocatePoolWithTag(ParametersRegistryKey.MaximumLength,
+    ParametersRegistryKey.Buffer = ExAllocatePoolWithTag(NonPagedPool,
+							 ParametersRegistryKey.MaximumLength,
 							 CLASS_TAG);
     if (!ParametersRegistryKey.Buffer) {
 	WARN_(CLASS_NAME, "ExAllocatePoolWithTag() failed\n");
@@ -380,7 +381,8 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
 	+ DriverExtension->DeviceBaseName.Length /* "KeyboardClass" */
 	+ 4 * sizeof(WCHAR)	/* Id between 0 and 9999 */
 	+ sizeof(UNICODE_NULL);	/* Final NULL char */
-    DeviceNameU.Buffer = ExAllocatePoolWithTag(DeviceNameU.MaximumLength, CLASS_TAG);
+    DeviceNameU.Buffer = ExAllocatePoolWithTag(NonPagedPool,
+					       DeviceNameU.MaximumLength, CLASS_TAG);
     if (!DeviceNameU.Buffer) {
 	WARN_(CLASS_NAME, "ExAllocatePoolWithTag() failed\n");
 	return STATUS_NO_MEMORY;
@@ -442,7 +444,8 @@ cleanup:
     InitializeListHead(&DeviceExtension->PortDeviceList);
     DeviceExtension->InputCount = 0;
     DeviceExtension->PortData =
-	ExAllocatePoolWithTag(DeviceExtension->DriverExtension->DataQueueSize * sizeof(KEYBOARD_INPUT_DATA),
+	ExAllocatePoolWithTag(NonPagedPool,
+			      DeviceExtension->DriverExtension->DataQueueSize * sizeof(KEYBOARD_INPUT_DATA),
 			      CLASS_TAG);
     if (!DeviceExtension->PortData) {
 	ExFreePoolWithTag(DeviceNameU.Buffer, CLASS_TAG);
@@ -744,7 +747,7 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 
     /* Allocate memory */
     Size = sizeof(KEY_VALUE_BASIC_INFORMATION) + MAX_PATH;
-    KeyValueInformation = ExAllocatePoolWithTag(Size, CLASS_TAG);
+    KeyValueInformation = ExAllocatePoolWithTag(NonPagedPool, Size, CLASS_TAG);
     if (!KeyValueInformation) {
 	WARN_(CLASS_NAME, "ExAllocatePoolWithTag() failed\n");
 	Status = STATUS_NO_MEMORY;

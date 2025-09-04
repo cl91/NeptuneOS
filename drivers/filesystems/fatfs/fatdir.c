@@ -50,7 +50,8 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
     NumSlots = (DirContext.LongNameU.Length / sizeof(WCHAR) + 12) / 13 + 1;
     DPRINT("NameLen = 0x%zx, NumSlots = %u\n",
 	   DirContext.LongNameU.Length / sizeof(WCHAR), NumSlots);
-    PUCHAR Buffer = ExAllocatePoolWithTag((NumSlots - 1) * sizeof(FAT_DIR_ENTRY),
+    PUCHAR Buffer = ExAllocatePoolWithTag(NonPagedPool,
+					  (NumSlots - 1) * sizeof(FAT_DIR_ENTRY),
 					  TAG_DIRENT);
     if (!Buffer) {
 	return STATUS_INSUFFICIENT_RESOURCES;

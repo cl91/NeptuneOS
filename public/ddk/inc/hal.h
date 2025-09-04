@@ -737,7 +737,7 @@ NTAPI NTSYSAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 
 NTAPI NTSYSAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
 							       IN PHYSICAL_ADDRESS HighestAddr,
-							       IN PHYSICAL_ADDRESS Alignment,
+							       IN PHYSICAL_ADDRESS BoundaryAddr,
 							       IN MEMORY_CACHING_TYPE CacheType,
 							       OUT PVOID *VirtBase,
 							       OUT PHYSICAL_ADDRESS *PhysBase);
@@ -745,6 +745,10 @@ NTAPI NTSYSAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberO
 NTAPI NTSYSAPI VOID MmFreeContiguousMemorySpecifyCache(IN PVOID BaseAddress,
 						       IN SIZE_T NumberOfBytes,
 						       IN MEMORY_CACHING_TYPE CacheType);
+
+NTAPI NTSYSAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(PVOID Address);
+
+NTAPI NTSYSAPI PVOID MmGetVirtualForPhysical(IN PHYSICAL_ADDRESS PhysicalAddress);
 
 /*
  * PC speaker access routine

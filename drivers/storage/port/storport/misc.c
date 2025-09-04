@@ -48,7 +48,8 @@ PCM_RESOURCE_LIST CopyResourceList(PCM_RESOURCE_LIST Source)
     ULONG Size = CmGetResourceListSize(Source);
 
     /* Allocate a new buffer */
-    PCM_RESOURCE_LIST Destination = ExAllocatePoolWithTag(Size, TAG_RESOURCE_LIST);
+    PCM_RESOURCE_LIST Destination = ExAllocatePoolWithTag(NonPagedPool,
+							  Size, TAG_RESOURCE_LIST);
     if (Destination == NULL)
 	return NULL;
 
@@ -161,11 +162,11 @@ NTSTATUS AllocateAddressMapping(PMAPPED_ADDRESS *MappedAddressList,
 				ULONG NumberOfBytes,
 				ULONG BusNumber)
 {
-    PMAPPED_ADDRESS Mapping;
-
     DPRINT1("AllocateAddressMapping()\n");
 
-    Mapping = ExAllocatePoolWithTag(sizeof(MAPPED_ADDRESS), TAG_ADDRESS_MAPPING);
+    PMAPPED_ADDRESS Mapping = ExAllocatePoolWithTag(NonPagedPool,
+						    sizeof(MAPPED_ADDRESS),
+						    TAG_ADDRESS_MAPPING);
     if (Mapping == NULL) {
 	DPRINT1("No memory!\n");
 	return STATUS_NO_MEMORY;

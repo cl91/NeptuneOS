@@ -1136,7 +1136,7 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    srbSize = sizeof(SCSI_REQUEST_BLOCK);
 	}
 
-	srb = ExAllocatePoolWithTag(srbSize, DISK_TAG_SRB);
+	srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
 	if (srb == NULL) {
 	    //
 	    // Set the status and complete the request.
@@ -1663,7 +1663,7 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo,
     // Allocate buffer for mode select header, block descriptor, and mode page.
     //
 
-    buffer = ExAllocatePoolWithTag(length2, DISK_TAG_MODE_DATA);
+    buffer = ExAllocatePoolWithTag(NonPagedPool, length2, DISK_TAG_MODE_DATA);
 
     if (buffer == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -2439,7 +2439,8 @@ VOID ResetBus(IN PDEVICE_OBJECT Fdo)
     // Allocate Srb from nonpaged pool.
     //
 
-    context = ExAllocatePoolWithTag(sizeof(COMPLETION_CONTEXT), DISK_TAG_CCONTEXT);
+    context = ExAllocatePoolWithTag(NonPagedPool,
+				    sizeof(COMPLETION_CONTEXT), DISK_TAG_CCONTEXT);
 
     if (context == NULL) {
 	return;
@@ -2586,7 +2587,8 @@ NTSTATUS DiskGetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExte
     // ReturnPageData is allocated by the caller
     //
 
-    modeData = ExAllocatePoolWithTag(MODE_DATA_SIZE, DISK_TAG_INFO_EXCEPTION);
+    modeData = ExAllocatePoolWithTag(NonPagedPool,
+				     MODE_DATA_SIZE, DISK_TAG_INFO_EXCEPTION);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_WMI,
@@ -2700,7 +2702,8 @@ NTAPI NTSTATUS DiskGetCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 
     ULONG length;
 
-    modeData = ExAllocatePoolWithTag(MODE_DATA_SIZE, DISK_TAG_DISABLE_CACHE);
+    modeData = ExAllocatePoolWithTag(NonPagedPool,
+				     MODE_DATA_SIZE, DISK_TAG_DISABLE_CACHE);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -2827,7 +2830,8 @@ NTAPI NTSTATUS DiskSetCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
     ULONG i;
     NTSTATUS status = STATUS_SUCCESS;
 
-    modeData = ExAllocatePoolWithTag(MODE_DATA_SIZE, DISK_TAG_DISABLE_CACHE);
+    modeData = ExAllocatePoolWithTag(NonPagedPool,
+				     MODE_DATA_SIZE, DISK_TAG_DISABLE_CACHE);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -3563,7 +3567,7 @@ NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	srbSize = SCSI_REQUEST_BLOCK_SIZE;
     }
 
-    srb = ExAllocatePoolWithTag(srbSize, DISK_TAG_SRB);
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
 
     if (srb == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -3651,7 +3655,7 @@ NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
     }
 
     modeLength = MODE_DATA_SIZE;
-    modeData = ExAllocatePoolWithTag(modeLength, DISK_TAG_MODE_DATA);
+    modeData = ExAllocatePoolWithTag(NonPagedPool, modeLength, DISK_TAG_MODE_DATA);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -3824,7 +3828,8 @@ NTSTATUS DiskIoctlPredictFailure(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp
 	//
 
 	readBufferSize = fdoExtension->DiskGeometry.BytesPerSector;
-	readBuffer = ExAllocatePoolWithTag(readBufferSize, DISK_TAG_SMART);
+	readBuffer = ExAllocatePoolWithTag(NonPagedPool,
+					   readBufferSize, DISK_TAG_SMART);
 
 	if (readBuffer != NULL) {
 	    LARGE_INTEGER offset;
@@ -3926,7 +3931,7 @@ NTSTATUS DiskIoctlVerify(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     } else {
 	srbSize = SCSI_REQUEST_BLOCK_SIZE;
     }
-    srb = ExAllocatePoolWithTag(srbSize, DISK_TAG_SRB);
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
 
     if (srb == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -3966,7 +3971,8 @@ NTSTATUS DiskIoctlVerify(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
 	}
     }
 
-    Context = ExAllocatePoolWithTag(sizeof(DISK_VERIFY_WORKITEM_CONTEXT),
+    Context = ExAllocatePoolWithTag(NonPagedPool,
+				    sizeof(DISK_VERIFY_WORKITEM_CONTEXT),
 				    DISK_TAG_WI_CONTEXT);
     if (Context) {
 	Context->Irp = Irp;
@@ -4066,7 +4072,7 @@ NTSTATUS DiskIoctlReassignBlocks(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp
     } else {
 	srbSize = SCSI_REQUEST_BLOCK_SIZE;
     }
-    srb = ExAllocatePoolWithTag(srbSize, DISK_TAG_SRB);
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
 
     if (srb == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4266,7 +4272,7 @@ NTSTATUS DiskIoctlReassignBlocksEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP I
     } else {
 	srbSize = SCSI_REQUEST_BLOCK_SIZE;
     }
-    srb = ExAllocatePoolWithTag(srbSize, DISK_TAG_SRB);
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
 
     if (srb == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4437,7 +4443,7 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     } else {
 	srbSize = SCSI_REQUEST_BLOCK_SIZE;
     }
-    srb = ExAllocatePoolWithTag(srbSize, DISK_TAG_SRB);
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
 
     if (srb == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4455,7 +4461,7 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     //
 
     modeLength = MODE_DATA_SIZE;
-    modeData = ExAllocatePoolWithTag(modeLength, DISK_TAG_MODE_DATA);
+    modeData = ExAllocatePoolWithTag(NonPagedPool, modeLength, DISK_TAG_MODE_DATA);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4837,8 +4843,8 @@ NTSTATUS DiskIoctlSmartGetVersion(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
-    srbControl = ExAllocatePoolWithTag(sizeof(SRB_IO_CONTROL) +
-					   sizeof(GETVERSIONINPARAMS),
+    srbControl = ExAllocatePoolWithTag(NonPagedPool,
+				       sizeof(SRB_IO_CONTROL) + sizeof(GETVERSIONINPARAMS),
 				       DISK_TAG_SMART);
 
     if (srbControl == NULL) {
@@ -5028,7 +5034,9 @@ NTSTATUS DiskIoctlSmartReceiveDriveData(IN PDEVICE_OBJECT DeviceObject, IN OUT P
 	return STATUS_INVALID_PARAMETER;
     }
 
-    srbControl = ExAllocatePoolWithTag(sizeof(SRB_IO_CONTROL) + length, DISK_TAG_SMART);
+    srbControl = ExAllocatePoolWithTag(NonPagedPool,
+				       sizeof(SRB_IO_CONTROL) + length,
+				       DISK_TAG_SMART);
 
     if (srbControl == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -5270,7 +5278,9 @@ NTSTATUS DiskIoctlSmartSendDriveCommand(IN PDEVICE_OBJECT DeviceObject, IN OUT P
     }
 
     length += max(sizeof(SENDCMDOUTPARAMS), sizeof(SENDCMDINPARAMS));
-    srbControl = ExAllocatePoolWithTag(sizeof(SRB_IO_CONTROL) + length, DISK_TAG_SMART);
+    srbControl = ExAllocatePoolWithTag(NonPagedPool,
+				       sizeof(SRB_IO_CONTROL) + length,
+				       DISK_TAG_SMART);
 
     if (srbControl == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,

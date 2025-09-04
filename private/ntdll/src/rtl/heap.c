@@ -27,6 +27,15 @@
 #undef DPRINT
 #define DPRINT(...)
 
+static inline VOID RtlpDbgDumpHeapEntry(PHEAP_ENTRY Entry)
+{
+    DPRINT("entry %p size 0x%x (actually 0x%x) previous size 0x%x (actually 0x%x)\n",
+	   Entry,
+	   Entry->CommonEntry.Size, Entry->CommonEntry.Size << HEAP_ENTRY_SHIFT,
+	   Entry->CommonEntry.PreviousSize,
+	   Entry->CommonEntry.PreviousSize << HEAP_ENTRY_SHIFT);
+}
+
 static RTL_CRITICAL_SECTION RtlpProcessHeapListLock;
 
 /*
@@ -200,7 +209,7 @@ NTSTATUS RtlpInitializeHeap(OUT PHEAP Heap,
     PHEAP_UCR_DESCRIPTOR UcrDescriptor;
     SIZE_T DeCommitFreeBlockThreshold;
 
-    /* Memory allocation is always 16-byte aligned, even on 32-bit architectures/ */
+    /* Memory allocation is always 16-byte aligned, even on 32-bit architectures */
     Flags |= HEAP_CREATE_ALIGN_16;
 
     /* Preconditions */
@@ -553,9 +562,8 @@ static VOID RtlpRemoveFreeBlock(PHEAP Heap,
 				       RealSize, ARENA_FREE_FILLER);
 
 	if (Result != RealSize) {
-	    DPRINT1
-		("Free heap block %p modified at %p after it was freed\n",
-		 FreeEntry, (PCHAR) (FreeEntry + 1) + Result);
+	    DPRINT1("Free heap block %p modified at %p after it was freed\n",
+		    FreeEntry, (PCHAR) (FreeEntry + 1) + Result);
 	}
     }
 }
@@ -758,7 +766,9 @@ static PHEAP_FREE_ENTRY RtlpFindAndCommitPages(PHEAP Heap,
     /* Go through UCRs in a segment */
     Current = Segment->UCRSegmentList.Flink;
     while (Current != &Segment->UCRSegmentList) {
-	PHEAP_UCR_DESCRIPTOR UcrDescriptor = CONTAINING_RECORD(Current, HEAP_UCR_DESCRIPTOR, SegmentEntry);
+	PHEAP_UCR_DESCRIPTOR UcrDescriptor = CONTAINING_RECORD(Current,
+							       HEAP_UCR_DESCRIPTOR,
+							       SegmentEntry);
 
 	/* Check if we can use that one right away */
 	if (UcrDescriptor->Size >= *Size &&
@@ -886,8 +896,6 @@ static PHEAP_FREE_ENTRY RtlpCoalesceFreeBlocks(PHEAP Heap,
     assert(Heap != NULL);
     assert(FreeEntry != NULL);
     assert(FreeSize != NULL);
-    DPRINT("Coalescing free blocks for heap %p free entry %p *FreeSize 0x%zx (actually 0x%zx) remove %s\n",
-	   Heap, FreeEntry, *FreeSize, *FreeSize << HEAP_ENTRY_SHIFT, Remove ? "TRUE" : "FALSE");
 
     /* Get the previous entry */
     PHEAP_FREE_ENTRY CurrentEntry = (PHEAP_FREE_ENTRY)((PHEAP_ENTRY)FreeEntry - FreeEntry->CommonEntry.PreviousSize);
@@ -1567,7 +1575,8 @@ NTSTATUS LdrpInitializeHeapManager(IN PNTDLL_PROCESS_INIT_INFO InitInfo,
     Peb->NumberOfHeaps = 0;
 
     /* Initialize the process heaps list protecting lock */
-    RtlpInitializeCriticalSection(&RtlpProcessHeapListLock, InitInfo->ProcessHeapListLockSemaphore, 0);
+    RtlpInitializeCriticalSection(&RtlpProcessHeapListLock,
+				  InitInfo->ProcessHeapListLockSemaphore, 0);
 
     DPRINT("Creating process heap\n");
     RET_ERR(LdrpCreateHeap((PVOID)InitInfo->ProcessHeapStart, ProcessHeapFlags,
@@ -1657,7 +1666,8 @@ NTAPI HANDLE RtlCreateHeap(ULONG Flags,
     if (Addr) {
 	if (Parameters->CommitRoutine) {
 	    /* There is a commit routine, so no problem here, check params */
-	    if ((Flags & HEAP_GROWABLE) || !Parameters->InitialCommit || !Parameters->InitialReserve ||
+	    if ((Flags & HEAP_GROWABLE) || !Parameters->InitialCommit ||
+		!Parameters->InitialReserve ||
 		(Parameters->InitialCommit > Parameters->InitialReserve)) {
 		/* Fail */
 		return NULL;
@@ -2387,8 +2397,7 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 
 	/* See if we should decommit this block */
 	if ((BlockSize >= Heap->DeCommitFreeBlockThreshold) ||
-	    (Heap->TotalFreeSize + BlockSize >=
-	     Heap->DeCommitTotalFreeThreshold)) {
+	    (Heap->TotalFreeSize + BlockSize >= Heap->DeCommitTotalFreeThreshold)) {
 	    RtlpDeCommitFreeBlock(Heap, (PHEAP_FREE_ENTRY) HeapEntry,
 				  BlockSize);
 	} else {
@@ -3265,7 +3274,7 @@ BOOLEAN RtlpValidateHeapEntry(PHEAP Heap, PHEAP_ENTRY HeapEntry)
     /* Return our result of finding entry in the segments */
     return EntryFound;
 
- invalid_entry:
+invalid_entry:
     DPRINT1("HEAP: Invalid heap entry %p in heap %p\n", HeapEntry, Heap);
     return FALSE;
 }
@@ -3526,12 +3535,15 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
 
 	    if (HintIndex == 0) {
 		if (FreeEntry->CommonEntry.Size <= Heap->DeCommitFreeBlockThreshold) {
-		    DPRINT1("There is an entry %p of size %u, smaller than the decommit threshold %zu in the non-dedicated free list hint.\n",
-			    FreeEntry, FreeEntry->CommonEntry.Size, Heap->DeCommitFreeBlockThreshold);
+		    DPRINT1("There is an entry %p of size %u, smaller than the decommit "
+			    "threshold %zu in the non-dedicated free list hint.\n",
+			    FreeEntry, FreeEntry->CommonEntry.Size,
+			    Heap->DeCommitFreeBlockThreshold);
 		}
 	    } else {
 		if (HintIndex != FreeEntry->CommonEntry.Size - 1) {
-		    DPRINT1("There is an entry %p of size %u at the position %u in the free entry hint array.\n",
+		    DPRINT1("There is an entry %p of size %u at the position %u in "
+			    "the free entry hint array.\n",
 			    FreeEntry, FreeEntry->CommonEntry.Size, HintIndex);
 		}
 
@@ -3540,7 +3552,8 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
 		    PHEAP_FREE_ENTRY PreviousFreeEntry = CONTAINING_RECORD(FreeEntry->FreeList.Blink,
 									   HEAP_FREE_ENTRY, FreeList);
 		    if (PreviousFreeEntry->CommonEntry.Size >= FreeEntry->CommonEntry.Size) {
-			DPRINT1("Free entry hint %p of size %u is larger than the entry before it %p, which is of size %u.\n",
+			DPRINT1("Free entry hint %p of size %u is larger than the entry "
+				"before it %p, which is of size %u.\n",
 				FreeEntry, FreeEntry->CommonEntry.Size, PreviousFreeEntry,
 				PreviousFreeEntry->CommonEntry.Size);
 		    }
@@ -3592,7 +3605,8 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
     }
 
     if (Heap->TotalFreeSize != TotalFreeSize) {
-	DPRINT1("HEAP: Total size of free blocks in arena (0x%zx) does not equal to the one in heap header (0x%zx)\n",
+	DPRINT1("HEAP: Total size of free blocks in arena (0x%zx) does not "
+		"equal to the one in heap header (0x%zx)\n",
 		TotalFreeSize, Heap->TotalFreeSize);
 	return FALSE;
     }

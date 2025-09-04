@@ -460,7 +460,8 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
 	if (!Ccb->SearchPattern.Buffer) {
 	    FirstQuery = TRUE;
 	    Ccb->SearchPattern.MaximumLength = SearchPattern->Length + sizeof(WCHAR);
-	    Ccb->SearchPattern.Buffer =	ExAllocatePoolWithTag(Ccb->SearchPattern.MaximumLength,
+	    Ccb->SearchPattern.Buffer =	ExAllocatePoolWithTag(NonPagedPool,
+							      Ccb->SearchPattern.MaximumLength,
 							      TAG_SEARCH);
 	    if (!Ccb->SearchPattern.Buffer) {
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -471,7 +472,8 @@ static NTSTATUS DoQuery(PFAT_IRP_CONTEXT IrpContext)
     } else if (!Ccb->SearchPattern.Buffer) {
 	FirstQuery = TRUE;
 	Ccb->SearchPattern.MaximumLength = 2 * sizeof(WCHAR);
-	Ccb->SearchPattern.Buffer = ExAllocatePoolWithTag(2 * sizeof(WCHAR), TAG_SEARCH);
+	Ccb->SearchPattern.Buffer = ExAllocatePoolWithTag(NonPagedPool,
+							  2 * sizeof(WCHAR), TAG_SEARCH);
 	if (!Ccb->SearchPattern.Buffer) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}

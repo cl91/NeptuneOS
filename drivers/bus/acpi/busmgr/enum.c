@@ -172,7 +172,7 @@ static NTSTATUS Bus_PlugInDevice(PACPI_DEVICE Device, PFDO_DEVICE_DATA FdoData)
     Temp[Index++] = UNICODE_NULL;
     Temp[Index++] = UNICODE_NULL;
 
-    PdoData->HardwareIDs = ExAllocatePoolWithTag(Index * sizeof(WCHAR),
+    PdoData->HardwareIDs = ExAllocatePoolWithTag(NonPagedPool, Index * sizeof(WCHAR),
 						 'DpcA');
 
     if (!PdoData->HardwareIDs) {

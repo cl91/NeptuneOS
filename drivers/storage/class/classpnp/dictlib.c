@@ -61,7 +61,7 @@ NTSTATUS AllocateDictionaryEntry(IN PDICTIONARY Dictionary,
 
     *Entry = NULL;
 
-    header = ExAllocatePoolWithTag(Size + sizeof(DICTIONARY_HEADER), Tag);
+    header = ExAllocatePoolWithTag(NonPagedPool, Size + sizeof(DICTIONARY_HEADER), Tag);
 
     if (header == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;

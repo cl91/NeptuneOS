@@ -220,13 +220,15 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
     DPRINT("PortSendInquirySrb(%p)\n", PdoExtension);
 
     if (PdoExtension->InquiryBuffer == NULL) {
-	PdoExtension->InquiryBuffer = ExAllocatePoolWithTag(INQUIRYDATABUFFERSIZE,
+	PdoExtension->InquiryBuffer = ExAllocatePoolWithTag(CachedDmaPool,
+							    INQUIRYDATABUFFERSIZE,
 							    TAG_INQUIRY_DATA);
 	if (PdoExtension->InquiryBuffer == NULL)
 	    return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    PSENSE_DATA SenseBuffer = ExAllocatePoolWithTag(SENSE_BUFFER_SIZE, TAG_SENSE_DATA);
+    PSENSE_DATA SenseBuffer = ExAllocatePoolWithTag(CachedDmaPool,
+						    SENSE_BUFFER_SIZE, TAG_SENSE_DATA);
     if (SenseBuffer == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -369,11 +371,12 @@ static NTSTATUS PortSendReportLunsSrb(IN PDEVICE_OBJECT Fdo,
     }
 
     ULONG LunListSize = sizeof(LUN_LIST) + MaxLuns * sizeof(((PLUN_LIST)NULL)->Lun[0]);
-    PLUN_LIST LunList = ExAllocatePoolWithTag(LunListSize, TAG_LUN_LIST);
+    PLUN_LIST LunList = ExAllocatePoolWithTag(CachedDmaPool, LunListSize, TAG_LUN_LIST);
     if (!LunList) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
-    PSENSE_DATA SenseBuffer = ExAllocatePoolWithTag(SENSE_BUFFER_SIZE, TAG_SENSE_DATA);
+    PSENSE_DATA SenseBuffer = ExAllocatePoolWithTag(CachedDmaPool,
+						    SENSE_BUFFER_SIZE, TAG_SENSE_DATA);
     if (SenseBuffer == NULL) {
 	ExFreePoolWithTag(LunList, TAG_LUN_LIST);
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -528,7 +531,7 @@ static NTSTATUS PortFdoQueryBusRelations(IN PFDO_DEVICE_EXTENSION DevExt,
 
     /* Build the device relations list based on the bus enumeration result. */
     ULONG Size = sizeof(DEVICE_RELATIONS) + (DevExt->PdoCount * sizeof(PDEVICE_OBJECT));
-    PDEVICE_RELATIONS DeviceRelations = ExAllocatePoolWithTag(Size,
+    PDEVICE_RELATIONS DeviceRelations = ExAllocatePoolWithTag(NonPagedPool, Size,
 							      TAG_DEV_RELATIONS);
     if (!DeviceRelations) {
         return STATUS_NO_MEMORY;

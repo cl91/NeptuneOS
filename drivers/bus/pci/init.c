@@ -51,7 +51,7 @@ PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
 
     /* Allocate the space required */
     Status = STATUS_INSUFFICIENT_RESOURCES;
-    FullInfo = ExAllocatePoolWithTag(NumberOfBytes, PCI_POOL_TAG);
+    FullInfo = ExAllocatePoolWithTag(NonPagedPool, NumberOfBytes, PCI_POOL_TAG);
     if (!FullInfo)
 	goto out;
 
@@ -64,12 +64,13 @@ PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
     /* Allocate enough space to hold the value information plus the name */
     Status = STATUS_INSUFFICIENT_RESOURCES;
     Length = FullInfo->MaxNameLen + 26;
-    KeyInfo = ExAllocatePoolWithTag(Length, PCI_POOL_TAG);
+    KeyInfo = ExAllocatePoolWithTag(NonPagedPool, Length, PCI_POOL_TAG);
     if (!KeyInfo)
 	goto out;
 
     /* Allocate the value information and name we expect to find */
-    ValueInfo = ExAllocatePoolWithTag(sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
+    ValueInfo = ExAllocatePoolWithTag(NonPagedPool,
+				      sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
 				      sizeof(L"PCI BIOS"),
 				      PCI_POOL_TAG);
     if (!ValueInfo)
@@ -136,7 +137,7 @@ PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
 
     /* Allocate space for the table */
     Status = STATUS_INSUFFICIENT_RESOURCES;
-    *PciRoutingTable = ExAllocatePoolWithTag(NumberOfBytes, PCI_POOL_TAG);
+    *PciRoutingTable = ExAllocatePoolWithTag(NonPagedPool, NumberOfBytes, PCI_POOL_TAG);
     if (!*PciRoutingTable)
 	goto out;
 
@@ -182,7 +183,7 @@ static NTSTATUS PciBuildHackTable(IN HANDLE KeyHandle)
 	/* Allocate the space required to hold the full key information */
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	ASSERT(ResultLength > 0);
-	FullInfo = ExAllocatePoolWithTag(ResultLength, PCI_POOL_TAG);
+	FullInfo = ExAllocatePoolWithTag(NonPagedPool, ResultLength, PCI_POOL_TAG);
 	if (!FullInfo)
 	    break;
 
@@ -202,13 +203,15 @@ static NTSTATUS PciBuildHackTable(IN HANDLE KeyHandle)
 	/* Allocate the hack table, now that the number of entries is known */
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	ResultLength = sizeof(PCI_HACK_ENTRY) * HackCount;
-	PciHackTable = ExAllocatePoolWithTag(ResultLength + sizeof(PCI_HACK_ENTRY),
+	PciHackTable = ExAllocatePoolWithTag(NonPagedPool,
+					     ResultLength + sizeof(PCI_HACK_ENTRY),
 					     PCI_POOL_TAG);
 	if (!PciHackTable)
 	    break;
 
 	/* Allocate the space needed to hold the full value information */
-	ValueInfo = ExAllocatePoolWithTag(sizeof(KEY_VALUE_FULL_INFORMATION) +
+	ValueInfo = ExAllocatePoolWithTag(NonPagedPool,
+					  sizeof(KEY_VALUE_FULL_INFORMATION) +
 					  PCI_HACK_ENTRY_FULL_SIZE,
 					  PCI_POOL_TAG);
 	if (!PciHackTable)

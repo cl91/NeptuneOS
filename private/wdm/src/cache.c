@@ -167,7 +167,7 @@ NTAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject)
 	assert(FALSE);
 	return STATUS_ALREADY_INITIALIZED;
     }
-    PCACHE_MAP CacheMap = ExAllocatePool(sizeof(CACHE_MAP));
+    PCACHE_MAP CacheMap = ExAllocatePool(NonPagedPool, sizeof(CACHE_MAP));
     if (!CacheMap) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -235,11 +235,12 @@ static NTSTATUS NTAPI CiReadCompleted(IN PDEVICE_OBJECT DeviceObject,
      * them after this BCB. */
     ULONG64 FileOffset = Req->Bcb->Node.Key + Req->Bcb->Length;
     while ((Mdl = Mdl->Next) != NULL) {
-	PREAD_REQUEST NewReq = ExAllocatePool(sizeof(READ_REQUEST));
+	PREAD_REQUEST NewReq = ExAllocatePool(NonPagedPool, sizeof(READ_REQUEST));
 	if (!NewReq) {
 	    break;
 	}
-	PBUFFER_CONTROL_BLOCK NewBcb = ExAllocatePool(sizeof(BUFFER_CONTROL_BLOCK));
+	PBUFFER_CONTROL_BLOCK NewBcb = ExAllocatePool(NonPagedPool,
+						      sizeof(BUFFER_CONTROL_BLOCK));
 	if (!NewBcb) {
 	    ExFreePool(NewReq);
 	    break;
@@ -381,13 +382,14 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	if (NextBcb && EndOffset > NextBcb->Node.Key) {
 	    CurrentLength = NextBcb->Node.Key - CurrentOffset;
 	}
-	PBUFFER_CONTROL_BLOCK NewBcb = ExAllocatePool(sizeof(BUFFER_CONTROL_BLOCK));
+	PBUFFER_CONTROL_BLOCK NewBcb = ExAllocatePool(NonPagedPool,
+						      sizeof(BUFFER_CONTROL_BLOCK));
 	if (!NewBcb) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto out;
 	}
 	CiInitializeBcb(NewBcb, CurrentOffset, NULL, 0, CacheMap);
-	PREAD_REQUEST Req = ExAllocatePool(sizeof(READ_REQUEST));
+	PREAD_REQUEST Req = ExAllocatePool(NonPagedPool, sizeof(READ_REQUEST));
 	if (!Req) {
 	    ExFreePool(NewBcb);
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -495,7 +497,7 @@ map:
     if (!Bcb || !AvlNodeContainsAddr(&Bcb->Node, Bcb->Length, AlignedOffset)) {
 	return NT_SUCCESS(Status) ? STATUS_NONE_MAPPED : Status;
     }
-    PPINNED_BUFFER PinnedBuf = ExAllocatePool(sizeof(PINNED_BUFFER));
+    PPINNED_BUFFER PinnedBuf = ExAllocatePool(NonPagedPool, sizeof(PINNED_BUFFER));
     if (!PinnedBuf) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto out;
@@ -777,7 +779,7 @@ NTAPI NTSTATUS CcMdlRead(IN PFILE_OBJECT FileObject,
     PBUFFER_CONTROL_BLOCK Bcb = PinnedBuf->Bcb;
     CcUnpinData(PinnedBuf);
     *MdlChain = NULL;
-    PMDL Mdl = ExAllocatePool(sizeof(MDL));
+    PMDL Mdl = ExAllocatePool(NonPagedPool, sizeof(MDL));
     if (!Mdl) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto out;
@@ -794,7 +796,7 @@ NTAPI NTSTATUS CcMdlRead(IN PFILE_OBJECT FileObject,
 	    Status = STATUS_SOME_NOT_MAPPED;
 	    goto out;
 	}
-	PMDL NextMdl = ExAllocatePool(sizeof(MDL));
+	PMDL NextMdl = ExAllocatePool(NonPagedPool, sizeof(MDL));
 	if (!NextMdl) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto out;
@@ -835,7 +837,8 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
     /* This routine should be called in a context where we are allowed to sleep. */
     assert(KiCurrentCoroutineStackTop);
 
-    PFLUSH_CACHE_REQUEST Req = ExAllocatePool(sizeof(FLUSH_CACHE_REQUEST));
+    PFLUSH_CACHE_REQUEST Req = ExAllocatePool(NonPagedPool,
+					      sizeof(FLUSH_CACHE_REQUEST));
     if (!Req) {
 	if (IoStatus) {
 	    IoStatus->Status = STATUS_INSUFFICIENT_RESOURCES;

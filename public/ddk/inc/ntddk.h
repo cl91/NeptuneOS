@@ -162,32 +162,32 @@ typedef enum _IO_COMPLETION_ROUTINE_RESULT {
 
 /*
  * Memory allocation and deallocation.
- *
- * PORTING GUIDE: Since we run drivers in their container process
- * there is no distinction between paged pool and non-paged pool.
- * To port Windows/ReactOS driver simply remove the first argument
- * in ExAllocatePoolWithTag(PoolType, NumberOfBytes, Tag).
  */
-FORCEINLINE NTAPI PVOID ExAllocatePoolWithTag(IN SIZE_T Size,
-					      IN ULONG Tag)
-{
-    return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
-}
 
-FORCEINLINE NTAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
-					 IN ULONG Tag)
-{
-    RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
-}
+typedef enum _POOL_TYPES {
+    NonPagedPool,
+    PagedPool = NonPagedPool,
+    CachedDmaPool,
+    UncachedDmaPool,
+    MaxPoolType
+} POOL_TYPE;
 
-FORCEINLINE NTAPI PVOID ExAllocatePool(IN SIZE_T Size)
+NTAPI NTSYSAPI PVOID ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
+					   IN SIZE_T Size,
+					   IN ULONG Tag);
+
+NTAPI NTSYSAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
+				      IN ULONG Tag);
+
+FORCEINLINE NTAPI PVOID ExAllocatePool(IN POOL_TYPE PoolType,
+				       IN SIZE_T Size)
 {
-    return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
+    return ExAllocatePoolWithTag(PoolType, Size, 0);
 }
 
 FORCEINLINE NTAPI VOID ExFreePool(IN PVOID Pointer)
 {
-    RtlFreeHeap(RtlGetProcessHeap(), 0, Pointer);
+    ExFreePoolWithTag(Pointer, 0);
 }
 
 /*
@@ -962,7 +962,7 @@ FORCEINLINE NTAPI VOID IoInitializeIrp(IN PIRP Irp,
 FORCEINLINE NTAPI PIRP IoAllocateIrp(IN CCHAR StackSize)
 {
     assert(StackSize > 0);
-    PIRP Irp = (PIRP)ExAllocatePool(IoSizeOfIrp(StackSize));
+    PIRP Irp = (PIRP)ExAllocatePool(NonPagedPool, IoSizeOfIrp(StackSize));
     if (!Irp) {
 	return NULL;
     }
@@ -1259,8 +1259,8 @@ FORCEINLINE NTAPI PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
     return (PVOID)(ULONG_PTR)Mdl->ByteOffset;
 }
 
-NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
-					       IN PVOID StartVa);
+NTAPI NTSYSAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
+							IN PVOID StartVa);
 
 NTAPI NTSYSAPI SIZE_T MmGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
 						       IN PVOID StartVa,
@@ -1695,7 +1695,8 @@ NTAPI NTSYSAPI NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
  * Look-aside list
  */
 #define LOOKASIDE_ALIGN DECLSPEC_CACHEALIGN
-typedef PVOID (NTAPI *PALLOCATE_FUNCTION)(IN SIZE_T NumberOfBytes,
+typedef PVOID (NTAPI *PALLOCATE_FUNCTION)(IN POOL_TYPE PoolType,
+					  IN SIZE_T NumberOfBytes,
 					  IN ULONG Tag);
 typedef VOID (NTAPI *PFREE_FUNCTION)(IN PVOID Buffer);
 
@@ -1752,7 +1753,7 @@ FORCEINLINE NTAPI PVOID ExAllocateFromLookasideList(IN OUT PLOOKASIDE_LIST Looka
     if (Entry == NULL) {
 	Lookaside->AllocateMisses += 1;
 	assert(Lookaside->Allocate != NULL);
-	Entry = Lookaside->Allocate(Lookaside->Size, Lookaside->Tag);
+	Entry = Lookaside->Allocate(NonPagedPool, Lookaside->Size, Lookaside->Tag);
     }
     return Entry;
 }

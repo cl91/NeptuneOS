@@ -177,7 +177,7 @@ NTAPI NTSTATUS FstubAllocateDiskInformation(IN PDEVICE_OBJECT DeviceObject,
     ASSERT(DiskBuffer);
 
     /* Allocate internal structure */
-    DiskInformation = ExAllocatePoolWithTag(sizeof(DISK_INFORMATION),
+    DiskInformation = ExAllocatePoolWithTag(NonPagedPool, sizeof(DISK_INFORMATION),
 					    TAG_FSTUB);
     if (!DiskInformation) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -209,7 +209,8 @@ NTAPI NTSTATUS FstubAllocateDiskInformation(IN PDEVICE_OBJECT DeviceObject,
 				   DiskInformation->SectorSize;
 
     /* Finally, allocate the buffer that will be used for different read */
-    DiskInformation->Buffer = ExAllocatePoolWithTag(DiskInformation->SectorSize,
+    DiskInformation->Buffer = ExAllocatePoolWithTag(NonPagedPool,
+						    DiskInformation->SectorSize,
 						    TAG_FSTUB);
     if (!DiskInformation->Buffer) {
 	ExFreePoolWithTag(DiskInformation, TAG_FSTUB);
@@ -240,10 +241,9 @@ FstubConvertExtendedToLayout(IN PDRIVE_LAYOUT_INFORMATION_EX LayoutEx)
     }
 
     /* Allocate needed buffer */
-    DriveLayout = ExAllocatePoolWithTag(FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION,
-						     PartitionEntry) +
-					    LayoutEx->PartitionCount *
-						sizeof(PARTITION_INFORMATION),
+    DriveLayout = ExAllocatePoolWithTag(NonPagedPool,
+					FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION, PartitionEntry) +
+					LayoutEx->PartitionCount * sizeof(PARTITION_INFORMATION),
 					TAG_FSTUB);
     if (!DriveLayout) {
 	return NULL;
@@ -637,21 +637,21 @@ static NTSTATUS FstubGetDiskGeometry(IN PDEVICE_OBJECT DeviceObject,
     ASSERT(Geometry);
 
     /* Allocate needed components */
-    DiskGeometry = ExAllocatePoolWithTag(sizeof(DISK_GEOMETRY_EX),
+    DiskGeometry = ExAllocatePoolWithTag(NonPagedPool, sizeof(DISK_GEOMETRY_EX),
 					 TAG_FSTUB);
     if (!DiskGeometry) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto Cleanup;
     }
 
-    IoStatusBlock = ExAllocatePoolWithTag(sizeof(IO_STATUS_BLOCK),
+    IoStatusBlock = ExAllocatePoolWithTag(NonPagedPool, sizeof(IO_STATUS_BLOCK),
 					  TAG_FSTUB);
     if (!IoStatusBlock) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto Cleanup;
     }
 
-    Event = ExAllocatePoolWithTag(sizeof(KEVENT), TAG_FSTUB);
+    Event = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), TAG_FSTUB);
     if (!Event) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto Cleanup;
@@ -767,7 +767,7 @@ NTAPI NTSTATUS FstubReadHeaderEFI(IN PDISK_INFORMATION Disk,
     }
 
     /* Allocate a buffer to read a sector on the disk */
-    Sector = ExAllocatePoolWithTag(Disk->SectorSize, TAG_FSTUB);
+    Sector = ExAllocatePoolWithTag(NonPagedPool, Disk->SectorSize, TAG_FSTUB);
     if (!Sector) {
 	DPRINT("EFI::Lacking resources!\n");
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -861,10 +861,11 @@ NTAPI NTSTATUS FstubReadPartitionTableEFI(IN PDISK_INFORMATION Disk,
     NumberOfEntries = EfiHeader->NumberOfEntries;
 
     /* Allocate a DRIVE_LAYOUT_INFORMATION_EX struct big enough */
-    DriveLayoutEx = ExAllocatePoolWithTag(FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION_EX,
+    DriveLayoutEx = ExAllocatePoolWithTag(NonPagedPool,
+					  FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION_EX,
 						       PartitionEntry) +
-					      EfiHeader->NumberOfEntries *
-						  sizeof(PARTITION_INFORMATION_EX),
+					  EfiHeader->NumberOfEntries *
+					  sizeof(PARTITION_INFORMATION_EX),
 					  TAG_FSTUB);
     if (!DriveLayoutEx) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -1001,10 +1002,11 @@ NTAPI NTSTATUS FstubReadPartitionTableMBR(IN PDISK_INFORMATION Disk,
     }
 
     /* Allocate a DRIVE_LAYOUT_INFORMATION_EX struct big enough */
-    DriveLayoutEx = ExAllocatePoolWithTag(FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION_EX,
+    DriveLayoutEx = ExAllocatePoolWithTag(NonPagedPool,
+					  FIELD_OFFSET(DRIVE_LAYOUT_INFORMATION_EX,
 						       PartitionEntry) +
-					      DriveLayout->PartitionCount *
-						  sizeof(PARTITION_INFORMATION_EX),
+					  DriveLayout->PartitionCount *
+					  sizeof(PARTITION_INFORMATION_EX),
 					  TAG_FSTUB);
     if (!DriveLayoutEx) {
 	/* Let's not leak memory as in Windows 2003 */
@@ -1146,7 +1148,7 @@ NTAPI NTSTATUS FstubVerifyPartitionTableEFI(IN PDISK_INFORMATION Disk,
 
     PAGED_CODE();
 
-    EFIHeader = ExAllocatePoolWithTag(sizeof(EFI_PARTITION_HEADER),
+    EFIHeader = ExAllocatePoolWithTag(NonPagedPool, sizeof(EFI_PARTITION_HEADER),
 				      TAG_FSTUB);
     if (!EFIHeader) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -1618,7 +1620,7 @@ NTAPI NTSTATUS IoReadDiskSignature(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* Allocate a buffer for reading operations */
-    Buffer = ExAllocatePoolWithTag(BytesPerSector, TAG_FSTUB);
+    Buffer = ExAllocatePoolWithTag(NonPagedPool, BytesPerSector, TAG_FSTUB);
     if (!Buffer) {
 	return STATUS_NO_MEMORY;
     }

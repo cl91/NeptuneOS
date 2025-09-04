@@ -241,7 +241,7 @@ static VOID PciGetHotPlugParameters(IN PPCI_FDO_EXTENSION FdoExtension)
     Length = sizeof(ACPI_EVAL_OUTPUT_BUFFER) + 4 * sizeof(ACPI_METHOD_ARGUMENT);
 
     /* Allocate the buffer to hold the parameters */
-    OutputBuffer = ExAllocatePoolWithTag(Length, PCI_POOL_TAG);
+    OutputBuffer = ExAllocatePoolWithTag(NonPagedPool, Length, PCI_POOL_TAG);
     if (!OutputBuffer)
 	return;
 

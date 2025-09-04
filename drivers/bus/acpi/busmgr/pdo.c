@@ -144,7 +144,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	NT_ASSERT(Length * sizeof(WCHAR) <= sizeof(Temp));
 
-	Buffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), ACPI_TAG);
+	Buffer = ExAllocatePoolWithTag(NonPagedPool, Length * sizeof(WCHAR), ACPI_TAG);
 
 	if (!Buffer) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -175,7 +175,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	NT_ASSERT(Length * sizeof(WCHAR) <= sizeof(Temp));
 
-	Buffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), ACPI_TAG);
+	Buffer = ExAllocatePoolWithTag(NonPagedPool, Length * sizeof(WCHAR), ACPI_TAG);
 	if (!Buffer) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    break;
@@ -227,7 +227,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	NT_ASSERT(Length * sizeof(WCHAR) <= sizeof(Temp));
 
-	Buffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), ACPI_TAG);
+	Buffer = ExAllocatePoolWithTag(NonPagedPool, Length * sizeof(WCHAR), ACPI_TAG);
 
 	if (!Buffer) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -286,7 +286,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	    NT_ASSERT(Length * sizeof(WCHAR) <= sizeof(Temp));
 
-	    Buffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), ACPI_TAG);
+	    Buffer = ExAllocatePoolWithTag(NonPagedPool, Length * sizeof(WCHAR), ACPI_TAG);
 	    if (!Buffer) {
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 		break;
@@ -389,7 +389,8 @@ static NTSTATUS Bus_PDO_QueryDeviceText(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	    else
 		Temp = L"Other ACPI device";
 
-	    Buffer = ExAllocatePoolWithTag((wcslen(Temp) + 1) * sizeof(WCHAR), ACPI_TAG);
+	    Buffer = ExAllocatePoolWithTag(NonPagedPool,
+					   (wcslen(Temp) + 1) * sizeof(WCHAR), ACPI_TAG);
 
 	    if (!Buffer) {
 		Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -471,7 +472,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	return STATUS_SUCCESS;
     }
 
-    Buffer.Pointer = ExAllocatePoolWithTag(Buffer.Length, 'BpcA');
+    Buffer.Pointer = ExAllocatePoolWithTag(NonPagedPool, Buffer.Length, 'BpcA');
     if (!Buffer.Pointer)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -544,7 +545,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
     /* Allocate memory */
     ResourceListSize = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
 		       sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * NumberOfResources;
-    ResourceList = ExAllocatePoolWithTag(ResourceListSize, 'RpcA');
+    ResourceList = ExAllocatePoolWithTag(NonPagedPool, ResourceListSize, 'RpcA');
 
     if (!ResourceList) {
 	ExFreePoolWithTag(Buffer.Pointer, 'BpcA');
@@ -953,7 +954,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	    break;
     }
 
-    Buffer.Pointer = ExAllocatePoolWithTag(Buffer.Length, 'BpcA');
+    Buffer.Pointer = ExAllocatePoolWithTag(NonPagedPool, Buffer.Length, 'BpcA');
     if (!Buffer.Pointer)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1035,7 +1036,7 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 
     RequirementsListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
 			   sizeof(IO_RESOURCE_DESCRIPTOR) * NumberOfResources;
-    RequirementsList = ExAllocatePoolWithTag(RequirementsListSize, 'RpcA');
+    RequirementsList = ExAllocatePoolWithTag(NonPagedPool, RequirementsListSize, 'RpcA');
 
     if (!RequirementsList) {
 	ExFreePoolWithTag(Buffer.Pointer, 'BpcA');
@@ -1545,7 +1546,8 @@ static NTSTATUS Bus_PDO_QueryDeviceRelations(PPDO_DEVICE_DATA DeviceData, PIRP I
 		      !DeviceRelations);
 	}
 
-	DeviceRelations = ExAllocatePoolWithTag(sizeof(DEVICE_RELATIONS), ACPI_TAG);
+	DeviceRelations = ExAllocatePoolWithTag(NonPagedPool,
+						sizeof(DEVICE_RELATIONS), ACPI_TAG);
 	if (!DeviceRelations) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    break;
@@ -1599,7 +1601,7 @@ static NTSTATUS Bus_PDO_QueryBusInformation(PPDO_DEVICE_DATA DeviceData, PIRP Ir
     PAGED_CODE();
     PPNP_BUS_INFORMATION BusInfo;
 
-    BusInfo = ExAllocatePoolWithTag(sizeof(PNP_BUS_INFORMATION), ACPI_TAG);
+    BusInfo = ExAllocatePoolWithTag(NonPagedPool, sizeof(PNP_BUS_INFORMATION), ACPI_TAG);
 
     if (BusInfo == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;

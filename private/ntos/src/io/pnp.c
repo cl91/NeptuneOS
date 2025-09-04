@@ -858,7 +858,6 @@ FORCEINLINE NTSTATUS IopAllocateResource(IN PRTL_RANGE_LIST RangeList,
 {
     assert(DevNode);
     BOOLEAN Shared = Desc->ShareDisposition == CmResourceShareShared;
-    RTL_RANGE_LIST_ITERATOR Iter;
     NTSTATUS Status = RtlFindRange(RangeList, Minimum, Maximum, Length,
 				   Alignment ? Alignment : 1,
 				   Shared ? RTL_RANGE_SHARED : 0, 0, NULL, NULL, Start);

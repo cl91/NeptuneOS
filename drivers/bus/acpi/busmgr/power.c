@@ -179,7 +179,8 @@ static INT AcpiPowerOn(ACPI_HANDLE Handle, PACPI_DEVICE Dev)
     }
 
     if (!Found) {
-	struct acpi_power_reference *Ref = ExAllocatePoolWithTag(sizeof(struct acpi_power_reference),
+	struct acpi_power_reference *Ref = ExAllocatePoolWithTag(NonPagedPool,
+								 sizeof(struct acpi_power_reference),
 								 ACPI_TAG);
 	if (!Ref) {
 	    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "kmalloc() failed\n"));
@@ -496,7 +497,7 @@ INT AcpiPowerAdd(PACPI_DEVICE Device)
     if (!Device)
 	return_VALUE(-1);
 
-    Resource = ExAllocatePoolWithTag(sizeof(struct acpi_power_resource),
+    Resource = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct acpi_power_resource),
 				     ACPI_TAG);
     if (!Resource)
 	return_VALUE(-4);

@@ -60,10 +60,10 @@ __inline BOOLEAN IsPortValid(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
 	    (AdapterExtension->PortExtension[PathId] != NULL));
 }
 
-__inline BOOLEAN IsPortStartCapable(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension)
 /*
     Indicates if a port can be started or port can process IO
 */
+__inline BOOLEAN IsPortStartCapable(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension)
 {
     return ((ChannelExtension != NULL) &&
 	    (ChannelExtension->AdapterExtension->StateFlags.StoppedState == 0) &&
@@ -151,11 +151,9 @@ __inline BOOLEAN IsMsnEnabled(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 
 __inline BOOLEAN IsRmfEnabled(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 {
-    return (
-	IsAtaDevice(&DeviceExtension->DeviceParameters) &&
-	(DeviceExtension->IdentifyDeviceData->CommandSetSupport.RemovableMediaFeature ==
-	 1) &&
-	(DeviceExtension->IdentifyDeviceData->GeneralConfiguration.RemovableMedia == 1));
+    return IsAtaDevice(&DeviceExtension->DeviceParameters) &&
+	(DeviceExtension->IdentifyDeviceData->CommandSetSupport.RemovableMediaFeature == 1) &&
+	(DeviceExtension->IdentifyDeviceData->GeneralConfiguration.RemovableMedia == 1);
 }
 
 __inline BOOLEAN NoFlushDevice(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
@@ -168,49 +166,45 @@ __inline BOOLEAN NoFlushDevice(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 
 __inline BOOLEAN IsTapeDevice(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 {
-    return (
-	(DeviceExtension->DeviceParameters.AtaDeviceType == DeviceIsAtapi) &&
-	(DeviceExtension->IdentifyPacketData->GeneralConfiguration.CommandPacketType ==
-	 1));
+    return (DeviceExtension->DeviceParameters.AtaDeviceType == DeviceIsAtapi) &&
+	(DeviceExtension->IdentifyPacketData->GeneralConfiguration.CommandPacketType == 1);
 }
 
 __inline BOOLEAN IsSmartFeatureSupported(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 {
-    return (IsAtaDevice(&DeviceExtension->DeviceParameters) &&
-	    (DeviceExtension->IdentifyDeviceData->CommandSetSupport.SmartCommands == 1));
+    return IsAtaDevice(&DeviceExtension->DeviceParameters) &&
+	(DeviceExtension->IdentifyDeviceData->CommandSetSupport.SmartCommands == 1);
 }
 
 __inline BOOLEAN IsSmartErrorLogSupported(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 {
-    return (IsSmartFeatureSupported(DeviceExtension) &&
-	    (DeviceExtension->IdentifyDeviceData->CommandSetSupport.SmartErrorLog == 1));
+    return IsSmartFeatureSupported(DeviceExtension) &&
+	(DeviceExtension->IdentifyDeviceData->CommandSetSupport.SmartErrorLog == 1);
 }
 
 __inline BOOLEAN IsSmartSelfTestSupported(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 {
-    return (IsSmartFeatureSupported(DeviceExtension) &&
-	    (DeviceExtension->IdentifyDeviceData->CommandSetSupport.SmartSelfTest == 1));
+    return IsSmartFeatureSupported(DeviceExtension) &&
+	(DeviceExtension->IdentifyDeviceData->CommandSetSupport.SmartSelfTest == 1);
 }
 
 __inline BOOLEAN
 IsExtendedPowerConditionsFeatureSupported(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 {
-    return (IsAtaDevice(&DeviceExtension->DeviceParameters) &&
-	    (DeviceExtension->IdentifyDeviceData->CommandSetSupportExt
-		 .ExtendedPowerConditions == 1));
+    return IsAtaDevice(&DeviceExtension->DeviceParameters) &&
+	(DeviceExtension->IdentifyDeviceData->CommandSetSupportExt.ExtendedPowerConditions == 1);
 }
 
 __inline BOOLEAN IsStreamingFeatureSupported(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 {
-    return (
-	IsAtaDevice(&DeviceExtension->DeviceParameters) &&
-	(DeviceExtension->IdentifyDeviceData->CommandSetSupport.StreamingFeature == 1));
+    return IsAtaDevice(&DeviceExtension->DeviceParameters) &&
+	(DeviceExtension->IdentifyDeviceData->CommandSetSupport.StreamingFeature == 1);
 }
 
 __inline BOOLEAN IsNcqFeatureSupported(_In_ PAHCI_DEVICE_EXTENSION DeviceExtension)
 {
-    return (IsAtaDevice(&DeviceExtension->DeviceParameters) &&
-	    (DeviceExtension->IdentifyDeviceData->SerialAtaCapabilities.NCQ == 1));
+    return IsAtaDevice(&DeviceExtension->DeviceParameters) &&
+	(DeviceExtension->IdentifyDeviceData->SerialAtaCapabilities.NCQ == 1);
 }
 
 /*++

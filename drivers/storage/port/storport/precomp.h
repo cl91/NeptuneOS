@@ -116,6 +116,9 @@ typedef struct _PDO_DEVICE_EXTENSION {
     ULONG Target;
     ULONG Lun;
     PINQUIRYDATA InquiryBuffer;
+    KEVENT QueueUnfrozen;
+    BOOLEAN DeviceClaimed;
+    BOOLEAN QueueFrozen;
 } PDO_DEVICE_EXTENSION, *PPDO_DEVICE_EXTENSION;
 
 
@@ -126,7 +129,6 @@ NTAPI NTSTATUS PortFdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 
 NTAPI NTSTATUS PortFdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
 			  _In_ PIRP Irp);
-
 
 /* miniport.c */
 
@@ -182,6 +184,10 @@ NTSTATUS PortCreatePdo(_In_ PFDO_DEVICE_EXTENSION FdoExtension,
 		       _Out_ PPDO_DEVICE_EXTENSION *PdoExtension);
 
 NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension);
+
+VOID PortPdoSetBusy(IN PPDO_DEVICE_EXTENSION PdoExt);
+
+VOID PortPdoSetReady(IN PPDO_DEVICE_EXTENSION PdoExt);
 
 NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 			   _In_ PIRP Irp);

@@ -40,7 +40,7 @@ Return Value:
 --*/
 PVOID DefaultStorageRequestBlockAllocateRoutine(IN CLONG ByteSize)
 {
-    return ExAllocatePoolWithTag(ByteSize, '+brs');
+    return ExAllocatePoolWithTag(NonPagedPool, ByteSize, '+brs');
 }
 
 /*++

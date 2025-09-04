@@ -261,7 +261,8 @@ NTSTATUS DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE Ha
 
     RtlInitUnicodeString(&unicodeString, L"Configuration Data");
 
-    keyData = ExAllocatePoolWithTag(VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
+    keyData = ExAllocatePoolWithTag(NonPagedPool,
+				    VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
 
     if (keyData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -323,7 +324,8 @@ NTSTATUS DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE Ha
     //
 
     length = sizeof(DISK_DETECT_INFO) * numberOfDrives;
-    DetectInfoList = ExAllocatePoolWithTag(length, DISK_TAG_UPDATE_GEOM);
+    DetectInfoList = ExAllocatePoolWithTag(NonPagedPool,
+					   length, DISK_TAG_UPDATE_GEOM);
 
     if (DetectInfoList == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -581,7 +583,8 @@ NTSTATUS DiskSaveBusDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE TargetK
 
     RtlInitUnicodeString(&unicodeString, L"Identifier");
 
-    keyData = ExAllocatePoolWithTag(VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
+    keyData = ExAllocatePoolWithTag(NonPagedPool,
+				    VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
 
     if (keyData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -1016,7 +1019,8 @@ BOOLEAN DiskIsNT4Geometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     PUSHORT readBuffer = NULL;
     BOOLEAN bFoundNT4 = FALSE;
 
-    readBuffer = ExAllocatePoolWithTag(FdoExtension->DiskGeometry.BytesPerSector,
+    readBuffer = ExAllocatePoolWithTag(NonPagedPool,
+				       FdoExtension->DiskGeometry.BytesPerSector,
 				       DISK_TAG_UPDATE_GEOM);
 
     if (readBuffer) {

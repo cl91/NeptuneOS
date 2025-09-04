@@ -61,7 +61,8 @@ static VOID FatInitFcb(PFATFCB Fcb, PUNICODE_STRING NameU)
     else
 	PathNameBufferLength = 0;
 
-    Fcb->PathNameBuffer = ExAllocatePoolWithTag(PathNameBufferLength, TAG_FCB);
+    Fcb->PathNameBuffer = ExAllocatePoolWithTag(NonPagedPool,
+						PathNameBufferLength, TAG_FCB);
     if (!Fcb->PathNameBuffer) {
 	/* FIXME: what to do if no more memory? */
 	DPRINT1("Unable to initialize FCB for filename '%wZ'\n", NameU);
@@ -161,7 +162,8 @@ static NTSTATUS FatMakeFullName(PFATFCB DirFcb,
     if (PathNameLength > LONGNAME_MAX_LENGTH * sizeof(WCHAR)) {
 	return STATUS_OBJECT_NAME_INVALID;
     }
-    PWCHAR PathNameBuffer = ExAllocatePoolWithTag(PathNameLength + sizeof(WCHAR),
+    PWCHAR PathNameBuffer = ExAllocatePoolWithTag(NonPagedPool,
+						  PathNameLength + sizeof(WCHAR),
 						  TAG_FCB);
     if (!PathNameBuffer) {
 	return STATUS_INSUFFICIENT_RESOURCES;

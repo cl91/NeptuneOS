@@ -316,7 +316,8 @@ NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
     }
 
     /* Now allocate the adapter object */
-    PADAPTER_OBJECT AdapterObject = ExAllocatePool(sizeof(ADAPTER_OBJECT));
+    PADAPTER_OBJECT AdapterObject = ExAllocatePool(NonPagedPool,
+						   sizeof(ADAPTER_OBJECT));
     if (AdapterObject == NULL) {
 	DPRINT("Unable to allocate adapter object.\n");
 	return NULL;
@@ -1173,7 +1174,8 @@ NTAPI IO_ALLOCATION_ACTION HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT Dev
     }
 
     PSCATTER_GATHER_LIST ScatterGatherList =
-	ExAllocatePoolWithTag(sizeof(SCATTER_GATHER_LIST) +
+	ExAllocatePoolWithTag(NonPagedPool,
+			      sizeof(SCATTER_GATHER_LIST) +
 			      sizeof(SCATTER_GATHER_ELEMENT) * ElementCount,
 			      TAG_DMA);
     ASSERT(ScatterGatherList);
@@ -1273,7 +1275,7 @@ NTAPI NTSTATUS HalpBuildScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
 	}
 	UsingUserBuffer = TRUE;
     } else {
-	ScatterGatherBuffer = ExAllocatePoolWithTag(SgSize, TAG_DMA);
+	ScatterGatherBuffer = ExAllocatePoolWithTag(NonPagedPool, SgSize, TAG_DMA);
 	if (!ScatterGatherBuffer) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}

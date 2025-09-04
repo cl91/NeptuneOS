@@ -643,7 +643,7 @@ static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
 	switch (Src->Request.MinorFunction) {
 	case IRP_MN_QUERY_DIRECTORY:
 	{
-	    PUNICODE_STRING FileName = ExAllocatePool(sizeof(UNICODE_STRING));
+	    PUNICODE_STRING FileName = ExAllocatePool(NonPagedPool, sizeof(UNICODE_STRING));
 	    if (!FileName) {
 		return STATUS_INSUFFICIENT_RESOURCES;
 	    }
@@ -811,7 +811,7 @@ static VOID IopPopulateLocalIrpFromServerIoResponse(OUT PIRP Irp,
 	PMDL PrevMdl = NULL;
 	PIO_RESPONSE_DATA Data = (PIO_RESPONSE_DATA)&Msg->ResponseData[0];
 	for (ULONG i = 0; i < Data->MdlChain.MdlCount; i++) {
-	    PMDL Mdl = ExAllocatePool(sizeof(MDL));
+	    PMDL Mdl = ExAllocatePool(NonPagedPool, sizeof(MDL));
 	    if (!Mdl) {
 		/* The partial MDL chain will be freed eventually when
 		 * the IRP is freed (by IoFreeIrp). */
@@ -1922,7 +1922,7 @@ static VOID IopProcessIrpQueue()
 	RemoveEntryList(&Irp->Private.Link);
 	/* Allocate an execution environment for this IRP. If we run out of
 	 * memory here, not much can be done, so we just stop. */
-	PIOP_EXEC_ENV Env = ExAllocatePool(sizeof(IOP_EXEC_ENV));
+	PIOP_EXEC_ENV Env = ExAllocatePool(NonPagedPool, sizeof(IOP_EXEC_ENV));
 	if (!Env) {
 	    break;
 	}
@@ -2433,217 +2433,4 @@ NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
     }
 
     return STATUS_PENDING;
-}
-
-static VOID IopStartNextPacketByKey(IN PDEVICE_OBJECT DeviceObject,
-				    IN BOOLEAN Cancelable,
-				    IN ULONG Key)
-{
-    /* Clear the current IRP */
-    DeviceObject->CurrentIrp = NULL;
-
-    /* Remove an entry from the queue */
-    PKDEVICE_QUEUE_ENTRY Entry = KeRemoveByKeyDeviceQueue(&DeviceObject->DeviceQueue, Key);
-    if (Entry) {
-	/* Get the IRP and set it */
-	PIRP Irp = CONTAINING_RECORD(Entry, IRP, Tail.DeviceQueueEntry);
-	DeviceObject->CurrentIrp = Irp;
-
-	/* Check if this is a cancelable packet */
-	if (Cancelable) {
-	    /* Check if the caller requested no cancellation */
-	    if (DeviceObject->StartIoFlags & DOE_SIO_NO_CANCEL) {
-		/* He did, so remove the cancel routine */
-		Irp->CancelRoutine = NULL;
-	    }
-	}
-	/* Call the Start I/O Routine */
-	DeviceObject->DriverObject->DriverStartIo(DeviceObject, Irp);
-    }
-}
-
-static VOID IopStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
-			       IN BOOLEAN Cancelable)
-{
-    /* Clear the current IRP */
-    DeviceObject->CurrentIrp = NULL;
-
-    /* Remove an entry from the queue */
-    PKDEVICE_QUEUE_ENTRY Entry = KeRemoveDeviceQueue(&DeviceObject->DeviceQueue);
-    if (Entry) {
-	/* Get the IRP and set it */
-	PIRP Irp = CONTAINING_RECORD(Entry, IRP, Tail.DeviceQueueEntry);
-	DeviceObject->CurrentIrp = Irp;
-
-	/* Check if this is a cancelable packet */
-	if (Cancelable) {
-	    /* Check if the caller requested no cancellation */
-	    if (DeviceObject->StartIoFlags & DOE_SIO_NO_CANCEL) {
-		/* He did, so remove the cancel routine */
-		Irp->CancelRoutine = NULL;
-	    }
-	}
-
-	/* Call the Start I/O Routine */
-	DeviceObject->DriverObject->DriverStartIo(DeviceObject, Irp);
-    }
-}
-
-static VOID IopStartNextPacketByKeyEx(IN PDEVICE_OBJECT DeviceObject,
-				      IN ULONG Key,
-				      IN ULONG Flags)
-{
-    ULONG CurrentKey = Key;
-    ULONG CurrentFlags = Flags;
-
-    while (TRUE) {
-	/* Increase the count */
-	if ((--DeviceObject->StartIoCount) > 1) {
-	    /*
-	     * We've already called the routine once...
-	     * All we have to do is save the key and add the new flags
-	     */
-	    DeviceObject->StartIoFlags |= CurrentFlags;
-	    DeviceObject->StartIoKey = CurrentKey;
-	} else {
-	    /* Mask out the current packet flags and key */
-	    DeviceObject->StartIoFlags &= ~(DOE_SIO_WITH_KEY |
-					    DOE_SIO_NO_KEY |
-					    DOE_SIO_CANCELABLE);
-	    DeviceObject->StartIoKey = 0;
-
-	    /* Check if this is a packet start with key */
-	    if (Flags & DOE_SIO_WITH_KEY) {
-		/* Start the packet with a key */
-		IopStartNextPacketByKey(DeviceObject,
-					(Flags & DOE_SIO_CANCELABLE) ? TRUE : FALSE,
-					CurrentKey);
-	    } else if (Flags & DOE_SIO_NO_KEY) {
-		/* Start the packet */
-		IopStartNextPacket(DeviceObject,
-				   (Flags & DOE_SIO_CANCELABLE) ? TRUE : FALSE);
-	    }
-	}
-
-	/* Decrease the Start I/O count and check if it's 0 now */
-	if (!(--DeviceObject->StartIoCount)) {
-	    /* Get the current active key and flags */
-	    CurrentKey = DeviceObject->StartIoKey;
-	    CurrentFlags = DeviceObject-> StartIoFlags &
-		(DOE_SIO_WITH_KEY | DOE_SIO_NO_KEY | DOE_SIO_CANCELABLE);
-
-	    /* Check if we should still loop */
-	    if (!(CurrentFlags & (DOE_SIO_WITH_KEY | DOE_SIO_NO_KEY)))
-		break;
-	} else {
-	    /* There are still Start I/Os active, so quit this loop */
-	    break;
-	}
-    }
-}
-
-/*
- * @implemented
- *
- * Starts the IO packet if the device queue is not busy. Otherwise, queue
- * the IRP to the device queue. Also set the supplied cancel function
- * as the cancel routine of the IRP. If the IRP has been canceled for some
- * reason, call the cancel routine.
- *
- * @remarks This routine can only be called at PASSIVE_LEVEL.
- */
-NTAPI VOID IoStartPacket(IN PDEVICE_OBJECT DeviceObject,
-			 IN PIRP Irp,
-			 IN PULONG Key,
-			 IN PDRIVER_CANCEL CancelFunction)
-{
-    PAGED_CODE();
-    if (CancelFunction) {
-        Irp->CancelRoutine = CancelFunction;
-    }
-
-    /* Check if we have a key */
-    BOOLEAN Inserted;
-    if (Key) {
-        /* Insert by key */
-        Inserted = KeInsertByKeyDeviceQueue(&DeviceObject->DeviceQueue,
-					    &Irp->Tail.DeviceQueueEntry,
-					    *Key);
-    } else {
-        /* Insert without a key */
-        Inserted = KeInsertDeviceQueue(&DeviceObject->DeviceQueue,
-				       &Irp->Tail.DeviceQueueEntry);
-    }
-
-    /* If Inserted is FALSE, it means that the device queue was
-     * empty and was in a Non-Busy state. In other words, this Irp
-     * should now be started now. Set the IRP to the current IRP and
-     * call the StartIo routine */
-    if (!Inserted) {
-        DeviceObject->CurrentIrp = Irp;
-
-        if (CancelFunction) {
-            /* Check if the caller requested no cancellation */
-            if (DeviceObject->StartIoFlags & DOE_SIO_NO_CANCEL) {
-                /* He did, so remove the cancel routine */
-                Irp->CancelRoutine = NULL;
-            }
-        }
-        /* Call the Start I/O function, which will handle cancellation. */
-        DeviceObject->DriverObject->DriverStartIo(DeviceObject, Irp);
-    } else {
-        /* The packet was inserted, which means that the device queue
-	 * is busy. Check if we have a cancel function */
-        if (CancelFunction) {
-            /* Check if the IRP got cancelled */
-            if (Irp->Cancel) {
-                /* Set the cancel IRQL, clear the currnet cancel routine and
-                 * call ours */
-                Irp->CancelRoutine = NULL;
-                CancelFunction(DeviceObject, Irp);
-            }
-        }
-    }
-}
-
-/*
- * @implemented
- *
- * @remarks This routine can only be called at PASSIVE_LEVEL.
- */
-NTAPI VOID IoStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
-			     IN BOOLEAN Cancelable)
-{
-    PAGED_CODE();
-    /* Check if deferred start was requested */
-    if (DeviceObject->StartIoFlags & DOE_SIO_DEFERRED) {
-        /* Call our internal function to handle the defered case */
-        IopStartNextPacketByKeyEx(DeviceObject,  0,
-                                  DOE_SIO_NO_KEY |
-                                  (Cancelable ? DOE_SIO_CANCELABLE : 0));
-    } else {
-        /* Call the normal routine */
-        IopStartNextPacket(DeviceObject, Cancelable);
-    }
-}
-
-/*
- * @implemented
- *
- * @remarks This routine can only be called at PASSIVE_LEVEL.
- */
-NTAPI VOID IoStartNextPacketByKey(IN PDEVICE_OBJECT DeviceObject,
-				  IN BOOLEAN Cancelable,
-				  IN ULONG Key)
-{
-    PAGED_CODE();
-    /* Check if deferred start was requested */
-    if (DeviceObject->StartIoFlags & DOE_SIO_DEFERRED) {
-        /* Call our internal function to handle the defered case */
-        IopStartNextPacketByKeyEx(DeviceObject, Key, DOE_SIO_WITH_KEY |
-                                  (Cancelable ? DOE_SIO_CANCELABLE : 0));
-    } else {
-        /* Call the normal routine */
-        IopStartNextPacketByKey(DeviceObject, Cancelable, Key);
-    }
 }

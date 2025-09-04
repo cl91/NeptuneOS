@@ -204,7 +204,8 @@ NTAPI NTSTATUS IoAllocateDriverObjectExtension(IN PDRIVER_OBJECT DriverObject,
     }
 
     /* Allocate the driver extension */
-    PIO_CLIENT_EXTENSION DrvExt = ExAllocatePoolWithTag(sizeof(IO_CLIENT_EXTENSION)
+    PIO_CLIENT_EXTENSION DrvExt = ExAllocatePoolWithTag(NonPagedPool,
+							sizeof(IO_CLIENT_EXTENSION)
 							+ DriverExtensionSize,
 							TAG_DRIVER_EXTENSION);
     if (!DrvExt) {
@@ -256,7 +257,8 @@ NTAPI VOID IoRegisterDriverReinitialization(IN PDRIVER_OBJECT DriverObject,
 {
     PAGED_CODE();
     /* Allocate the entry */
-    PDRIVER_REINIT_ITEM ReinitItem = ExAllocatePoolWithTag(sizeof(DRIVER_REINIT_ITEM),
+    PDRIVER_REINIT_ITEM ReinitItem = ExAllocatePoolWithTag(NonPagedPool,
+							   sizeof(DRIVER_REINIT_ITEM),
 							   TAG_REINIT);
     if (!ReinitItem) {
 	return;
@@ -339,7 +341,7 @@ static PIO_MEMORY_WINDOW MiGetIoMemoryWindow(IN ULONG64 PhysicalAddress,
 	    return Ptr;
 	}
     }
-    PIO_MEMORY_WINDOW Ptr = ExAllocatePool(sizeof(IO_MEMORY_WINDOW));
+    PIO_MEMORY_WINDOW Ptr = ExAllocatePool(NonPagedPool, sizeof(IO_MEMORY_WINDOW));
     if (!Ptr) {
 	return NULL;
     }
@@ -367,7 +369,8 @@ FORCEINLINE ULONG MiGetIoMappingTableIndex(IN ULONG64 Offset,
 #define ALLOCATE_TABLE_OR_RETURN(Tbl, Ptr)			\
     Tbl = Ptr;							\
     if (!(Tbl) && Allocate) {					\
-	Ptr = Tbl = ExAllocatePool(sizeof(IO_MAPPING_TABLE));	\
+	Ptr = Tbl = ExAllocatePool(NonPagedPool,		\
+				   sizeof(IO_MAPPING_TABLE));	\
     }								\
     if (!(Tbl)) {						\
 	return NULL;						\
@@ -396,11 +399,12 @@ static PRTL_BITMAP MiGetIoMappingStatus(IN PIO_MEMORY_WINDOW Window,
     }
     PRTL_BITMAP Bitmap = Table->Entries[Index];
     if (!Bitmap && Allocate) {
-	Bitmap = ExAllocatePool(sizeof(RTL_BITMAP));
+	Bitmap = ExAllocatePool(NonPagedPool, sizeof(RTL_BITMAP));
 	if (!Bitmap) {
 	    return NULL;
 	}
-	PULONG BitmapBuffer = ExAllocatePool(IO_MAPPING_TABLE_SIZE / 8);
+	PULONG BitmapBuffer = ExAllocatePool(NonPagedPool,
+					     IO_MAPPING_TABLE_SIZE / 8);
 	if (!BitmapBuffer) {
 	    ExFreePool(Bitmap);
 	    return NULL;
@@ -502,24 +506,4 @@ NTAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 			  IN SIZE_T NumberOfBytes)
 {
     PAGED_CODE();
-}
-
-NTAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
-						      IN PHYSICAL_ADDRESS HighestAddr,
-						      IN PHYSICAL_ADDRESS Alignment,
-						      IN MEMORY_CACHING_TYPE CacheType,
-						      OUT PVOID *VirtBase,
-						      OUT PHYSICAL_ADDRESS *PhysBase)
-{
-    ULONG BoundaryAddressBits = RtlFindLeastSignificantBit(Alignment.QuadPart) + 1;
-    return WdmHalAllocateDmaBuffer(NumberOfBytes, &HighestAddr,
-				   BoundaryAddressBits, CacheType,
-				   VirtBase, PhysBase);
-}
-
-NTAPI VOID MmFreeContiguousMemorySpecifyCache(IN PVOID BaseAddress,
-					      IN SIZE_T NumberOfBytes,
-					      IN MEMORY_CACHING_TYPE CacheType)
-{
-    UNIMPLEMENTED;
 }

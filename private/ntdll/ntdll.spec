@@ -162,6 +162,7 @@
 @ stdcall RtlCreateUserThread(long ptr long ptr long long ptr ptr ptr ptr)
 @ stdcall RtlCreateHeap(long ptr long long ptr ptr)
 @ stdcall RtlDestroyHeap(long)
+@ stdcall RtlValidateHeap(long long ptr)
 @ stdcall RtlQueryRegistryValues(long ptr ptr ptr ptr)
 @ stdcall RtlWriteRegistryValue(long ptr ptr long ptr long)
 @ stdcall RtlDeleteRegistryValue(long ptr ptr)

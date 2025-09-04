@@ -223,7 +223,9 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
     // Allocate request sense buffer.
     //
 
-    fdoExtension->SenseData = ExAllocatePoolWithTag(SENSE_BUFFER_SIZE_EX, DISK_TAG_START);
+    fdoExtension->SenseData = ExAllocatePoolWithTag(NonPagedPool,
+						    SENSE_BUFFER_SIZE_EX,
+						    DISK_TAG_START);
 
     if (fdoExtension->SenseData == NULL) {
 	//
@@ -538,7 +540,7 @@ NTSTATUS DiskGenerateDeviceName(IN ULONG DeviceNumber, OUT PCCHAR *RawName)
 	return status;
     }
 
-    *RawName = ExAllocatePoolWithTag(strlen(rawName) + 1, DISK_TAG_NAME);
+    *RawName = ExAllocatePoolWithTag(NonPagedPool, strlen(rawName) + 1, DISK_TAG_NAME);
 
     if (*RawName == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;

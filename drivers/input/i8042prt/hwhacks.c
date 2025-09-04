@@ -187,7 +187,7 @@ NTAPI VOID i8042InitializeHwHacks(VOID)
 	return;
     }
 
-    AllData = ExAllocatePoolWithTag(BufferSize, 'BTMS');
+    AllData = ExAllocatePoolWithTag(NonPagedPool, BufferSize, 'BTMS');
     if (AllData == NULL) {
 	DPRINT1("Failed to allocate %lu bytes for SMBIOS tables\n",
 		BufferSize);

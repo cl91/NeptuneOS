@@ -138,7 +138,7 @@ static NTSTATUS IopGetSubKeyCount(IN UNICODE_STRING Key,
     assert(LenFullInfo != 0);
 
     /* Allocate the key information buffer */
-    FullInfo = ExAllocatePoolWithTag(LenFullInfo, TAG_IO_RESOURCE);
+    FullInfo = ExAllocatePoolWithTag(NonPagedPool, LenFullInfo, TAG_IO_RESOURCE);
     if (FullInfo == NULL) {
 	Status = STATUS_NO_MEMORY;
 	goto out;
@@ -238,7 +238,7 @@ static NTSTATUS IopGetConfigurationInformation(IN UNICODE_STRING RegKey,
 	assert(BufferSize != 0);
 
 	/* Allocate the required buffer space */
-	Information[i] = ExAllocatePoolWithTag(BufferSize,
+	Information[i] = ExAllocatePoolWithTag(NonPagedPool, BufferSize,
 					       TAG_IO_RESOURCE);
 	if (Information[i] == NULL) {
 	    Status = STATUS_NO_MEMORY;
@@ -429,7 +429,7 @@ static NTSTATUS IopGetSubKeyInfo(IN UNICODE_STRING Key,
     assert(LenFullInfo != 0);
 
     /* Allocate the buffer */
-    PKEY_FULL_INFORMATION FullInfo = ExAllocatePoolWithTag(LenFullInfo,
+    PKEY_FULL_INFORMATION FullInfo = ExAllocatePoolWithTag(NonPagedPool, LenFullInfo,
 							   TAG_IO_RESOURCE);
 
     if (!FullInfo) {
@@ -484,7 +484,8 @@ static NTSTATUS IopQueryBusDescription(IN PIO_QUERY Query,
     if (SubKeyCount == 0) {
 	return STATUS_NO_MORE_ENTRIES;
     }
-    PKEY_BASIC_INFORMATION BasicInfo = ExAllocatePoolWithTag(SubKeyBufferSize,
+    PKEY_BASIC_INFORMATION BasicInfo = ExAllocatePoolWithTag(NonPagedPool,
+							     SubKeyBufferSize,
 							     TAG_IO_RESOURCE);
     NTSTATUS Status = STATUS_SUCCESS;
     if (BasicInfo == NULL) {
@@ -704,7 +705,7 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
     };
     HANDLE RootKeyHandle = NULL;
 
-    RootKey.Buffer = ExAllocatePoolWithTag(RootKey.MaximumLength,
+    RootKey.Buffer = ExAllocatePoolWithTag(NonPagedPool, RootKey.MaximumLength,
 					   TAG_IO_RESOURCE);
     if (RootKey.Buffer == NULL) {
 	return STATUS_NO_MEMORY;
@@ -722,7 +723,7 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
     IF_ERR_GOTO(out, Status,
 		IopGetSubKeyInfo(RootKey, &RootKeyHandle,
 				 &SubKeyCount, &SubKeyBufferSize));
-    BasicInfo = ExAllocatePoolWithTag(SubKeyBufferSize,
+    BasicInfo = ExAllocatePoolWithTag(NonPagedPool, SubKeyBufferSize,
 				      TAG_IO_RESOURCE);
     if (BasicInfo == NULL) {
 	Status = STATUS_NO_MEMORY;

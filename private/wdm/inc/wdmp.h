@@ -71,7 +71,7 @@ static inline NTSTATUS IopQueryValueKey(IN HANDLE KeyHandle,
 	return Status;
     }
 
-    *PartialInfo = ExAllocatePool(BufferSize);
+    *PartialInfo = ExAllocatePool(NonPagedPool, BufferSize);
     if (!*PartialInfo) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -240,6 +240,9 @@ extern LIST_ENTRY IopX86PortList;
 extern LIST_ENTRY IopPendingTimerList;
 extern ULONG KiStallScaleFactor;
 VOID IopProcessTimerList();
+
+/* util.c */
+extern LIST_ENTRY IopDmaPoolList;
 
 /* workitem.c */
 extern LIST_ENTRY IopWorkItemQueue;

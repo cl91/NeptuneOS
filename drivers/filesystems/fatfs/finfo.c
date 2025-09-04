@@ -467,7 +467,7 @@ static NTSTATUS FatSetRenameInformation(PFILE_OBJECT FileObject,
     NewName.Length = 0;
     NewName.MaximumLength = TargetFileObject->FileName.Length +
 	((PFATFCB)TargetFileObject->FsContext)->PathNameU.Length + sizeof(WCHAR);
-    NewName.Buffer = ExAllocatePoolWithTag(NewName.MaximumLength, TAG_NAME);
+    NewName.Buffer = ExAllocatePoolWithTag(NonPagedPool, NewName.MaximumLength, TAG_NAME);
     if (NewName.Buffer == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto Cleanup;

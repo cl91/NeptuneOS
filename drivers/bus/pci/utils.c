@@ -189,7 +189,7 @@ NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
     /* Allocate an appropriate buffer for the size that was returned */
     ASSERT(NeededLength != 0);
     Status = STATUS_INSUFFICIENT_RESOURCES;
-    PartialInfo = ExAllocatePoolWithTag(NeededLength, PCI_POOL_TAG);
+    PartialInfo = ExAllocatePoolWithTag(NonPagedPool, NeededLength, PCI_POOL_TAG);
     if (!PartialInfo)
 	goto out;
 
@@ -210,7 +210,7 @@ NTSTATUS PciGetRegistryValue(IN PWCHAR ValueName, IN PWCHAR KeyName,
 
     /* Allocate a buffer to hold the data and return it to the caller */
     Status = STATUS_INSUFFICIENT_RESOURCES;
-    *OutputBuffer = ExAllocatePoolWithTag(NeededLength, PCI_POOL_TAG);
+    *OutputBuffer = ExAllocatePoolWithTag(NonPagedPool, NeededLength, PCI_POOL_TAG);
     if (!*OutputBuffer)
 	goto out;
 
@@ -764,7 +764,7 @@ BOOLEAN PciIsSlotPresentInParentMethod(IN PPCI_PDO_EXTENSION PdoExtension,
 
     /* Allocate a 2KB buffer for the method return parameters */
     Length = sizeof(ACPI_EVAL_OUTPUT_BUFFER) + 2048;
-    OutputBuffer = ExAllocatePoolWithTag(Length, 'BicP');
+    OutputBuffer = ExAllocatePoolWithTag(NonPagedPool, Length, 'BicP');
     if (OutputBuffer) {
 	/* Clear out the output buffer */
 	RtlZeroMemory((PVOID)OutputBuffer, Length);
@@ -944,7 +944,7 @@ NTSTATUS PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
     PPNP_BUS_INFORMATION BusInfo;
 
     /* Allocate a structure for the bus information */
-    BusInfo = ExAllocatePoolWithTag(sizeof(PNP_BUS_INFORMATION), 'BicP');
+    BusInfo = ExAllocatePoolWithTag(NonPagedPool, sizeof(PNP_BUS_INFORMATION), 'BicP');
     if (!BusInfo)
 	return STATUS_INSUFFICIENT_RESOURCES;
 

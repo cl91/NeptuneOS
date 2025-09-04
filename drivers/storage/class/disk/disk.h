@@ -113,17 +113,11 @@ typedef struct _DISK_GROUP_CONTEXT {
     //
     // The srb associated with this group
     //
-#if (NTDDI_VERSION >= NTDDI_WIN8)
-
     union {
 	SCSI_REQUEST_BLOCK Srb;
 	STORAGE_REQUEST_BLOCK SrbEx;
 	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
     } Srb;
-
-#else
-    SCSI_REQUEST_BLOCK Srb;
-#endif
 
     //
     // This event will allow for the requests to be sent down synchronously
@@ -523,14 +517,12 @@ NTSTATUS DiskGetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExte
 NTSTATUS DiskSetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 					 IN PMODE_INFO_EXCEPTIONS PageData);
 
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
 NTSTATUS DiskGetModePage(IN PDEVICE_OBJECT Fdo, IN UCHAR PageMode,
 			 IN UCHAR PageControl, IN PMODE_PARAMETER_HEADER ModeData,
 			 _Inout_ PULONG ModeDataSize, _Out_ PVOID *PageData);
 
 NTSTATUS DiskEnableInfoExceptions(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				  IN BOOLEAN Enable);
-#endif // (NTDDI_VERSION >= NTDDI_WINBLUE)
 
 NTSTATUS DiskDetectFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				     PFAILURE_PREDICTION_METHOD FailurePredictCapability,

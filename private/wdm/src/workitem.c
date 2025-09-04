@@ -10,7 +10,7 @@ KMUTEX IopWorkItemMutex;
  */
 NTAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
 {
-    PIO_WORKITEM IoWorkItem = ExAllocatePool(sizeof(IO_WORKITEM));
+    PIO_WORKITEM IoWorkItem = ExAllocatePool(NonPagedPool, sizeof(IO_WORKITEM));
     if (IoWorkItem == NULL) {
 	return NULL;
     }
@@ -128,7 +128,7 @@ check:
 
     /* Allocate an execution environment for this IO work item. If we run out of
      * memory here, not much can be done, so we just stop. */
-    PIOP_EXEC_ENV Env = ExAllocatePool(sizeof(IOP_EXEC_ENV));
+    PIOP_EXEC_ENV Env = ExAllocatePool(NonPagedPool, sizeof(IOP_EXEC_ENV));
     if (!Env) {
 	goto done;
     }

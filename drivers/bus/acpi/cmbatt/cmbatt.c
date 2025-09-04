@@ -1088,7 +1088,8 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     /* Allocate registry path */
     GlobalRegistryPath.MaximumLength = RegistryPath->Length + sizeof(UNICODE_NULL);
     GlobalRegistryPath.Length = RegistryPath->Length;
-    GlobalRegistryPath.Buffer = ExAllocatePoolWithTag(GlobalRegistryPath.MaximumLength,
+    GlobalRegistryPath.Buffer = ExAllocatePoolWithTag(NonPagedPool,
+						      GlobalRegistryPath.MaximumLength,
 						      'MtaB');
     if (!GlobalRegistryPath.Buffer) {
 	/* Fail if we're out of memory this early */

@@ -82,7 +82,8 @@ NTSTATUS FindFile(PDEVICE_EXTENSION DeviceExt,
     DPRINT("FindFile: Path %wZ\n", &Parent->PathNameU);
 
     USHORT PathNameBufferLength = LONGNAME_MAX_LENGTH * sizeof(WCHAR);
-    PWCHAR PathNameBuffer = ExAllocatePoolWithTag(PathNameBufferLength + sizeof(WCHAR),
+    PWCHAR PathNameBuffer = ExAllocatePoolWithTag(NonPagedPool,
+						  PathNameBufferLength + sizeof(WCHAR),
 						  TAG_NAME);
     if (!PathNameBuffer) {
 	return STATUS_INSUFFICIENT_RESOURCES;

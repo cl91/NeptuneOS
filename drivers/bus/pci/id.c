@@ -58,7 +58,7 @@ static PWCHAR PciGetDescriptionMessage(IN ULONG Identifier, OUT PULONG Length)
 	}
 
 	/* Allocate the buffer to hold the message string */
-	Buffer = ExAllocatePoolWithTag(TextLength + 1, 'BicP');
+	Buffer = ExAllocatePoolWithTag(NonPagedPool, TextLength + 1, 'BicP');
 	if (!Buffer)
 	    return NULL;
 
@@ -101,7 +101,7 @@ PWCHAR PciGetDeviceDescriptionMessage(IN UCHAR BaseClass, IN UCHAR SubClass)
     Message = PciGetDescriptionMessage(Identifier, NULL);
     if (!Message) {
 	/* It wasn't found, allocate a buffer for a generic description */
-	Message = ExAllocatePoolWithTag(sizeof(L"PCI Device"), 'bicP');
+	Message = ExAllocatePoolWithTag(NonPagedPool, sizeof(L"PCI Device"), 'bicP');
 	if (Message)
 	    RtlCopyMemory(Message, L"PCI Device", sizeof(L"PCI Device"));
     }
@@ -258,7 +258,8 @@ NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
     }
 
     /* Allocate the final string buffer to hold the ID */
-    PWCHAR StringBuffer = ExAllocatePoolWithTag(IdBuffer.TotalWchars * sizeof(WCHAR),
+    PWCHAR StringBuffer = ExAllocatePoolWithTag(NonPagedPool,
+						IdBuffer.TotalWchars * sizeof(WCHAR),
 						'BicP');
     if (!StringBuffer)
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -300,7 +301,8 @@ NTSTATUS PciQueryDeviceText(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	/* Add space for a null-terminator, and allocate the buffer */
 	Length += 2 * sizeof(UNICODE_NULL);
-	LocationBuffer = ExAllocatePoolWithTag(Length * sizeof(WCHAR), 'BicP');
+	LocationBuffer = ExAllocatePoolWithTag(NonPagedPool,
+					       Length * sizeof(WCHAR), 'BicP');
 	*Buffer = LocationBuffer;
 
 	/* Check if the allocation succeeded */

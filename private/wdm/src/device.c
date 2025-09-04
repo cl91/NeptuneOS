@@ -69,7 +69,8 @@ PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 {
     PDEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandle);
     if (DeviceObject == NULL) {
-	DeviceObject = (PDEVICE_OBJECT)ExAllocatePool(sizeof(DEVICE_OBJECT));
+	DeviceObject = (PDEVICE_OBJECT)ExAllocatePool(NonPagedPool,
+						      sizeof(DEVICE_OBJECT));
 	if (DeviceObject == NULL) {
 	    return NULL;
 	}
@@ -191,7 +192,8 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
 	assert(FALSE);
 	return NULL;
     }
-    PDEVICE_OBJECT OldTopDevice = (PDEVICE_OBJECT) ExAllocatePool(sizeof(DEVICE_OBJECT));
+    PDEVICE_OBJECT OldTopDevice = (PDEVICE_OBJECT)ExAllocatePool(NonPagedPool,
+								 sizeof(DEVICE_OBJECT));
     if (OldTopDevice == NULL) {
 	return NULL;
     }
@@ -352,7 +354,7 @@ static NTSTATUS IopGetDeviceInstancePath(IN PDEVICE_OBJECT DeviceObject,
     if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
 	return Status;
     }
-    PWCHAR Path = ExAllocatePool(BufferSize);
+    PWCHAR Path = ExAllocatePool(NonPagedPool, BufferSize);
     if (!Path) {
 	return STATUS_NO_MEMORY;
     }
@@ -399,7 +401,7 @@ static NTSTATUS IopOpenInterfaceKey(IN CONST GUID *InterfaceClassGuid,
 	((USHORT)wcslen(REGSTR_PATH_DEVICE_CLASSES) + 1) *
 	sizeof(WCHAR) +
 	GuidString.Length;
-    KeyName.Buffer = ExAllocatePool(KeyName.MaximumLength);
+    KeyName.Buffer = ExAllocatePool(NonPagedPool, KeyName.MaximumLength);
     if (!KeyName.Buffer) {
 	DPRINT("ExAllocatePool() failed\n");
 	Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -564,7 +566,7 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 	    goto cleanup;
 	}
 
-	DeviceBasicInfo = ExAllocatePool(Size);
+	DeviceBasicInfo = ExAllocatePool(NonPagedPool, Size);
 	if (!DeviceBasicInfo) {
 	    DPRINT("ExAllocatePool() failed\n");
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -619,7 +621,7 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 		goto cleanup;
 	    }
 
-	    RefBasicInfo = ExAllocatePool(Size);
+	    RefBasicInfo = ExAllocatePool(NonPagedPool, Size);
 	    if (!RefBasicInfo) {
 		DPRINT("ExAllocatePool() failed\n");
 		Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -707,7 +709,7 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 		ReturnBuffer.MaximumLength = (USHORT)max(
 		    2 * ReturnBuffer.MaximumLength,
 		    (USHORT)(ReturnBuffer.Length + KeyName.Length + 2 * sizeof(WCHAR)));
-		NewBuffer = ExAllocatePool(ReturnBuffer.MaximumLength);
+		NewBuffer = ExAllocatePool(NonPagedPool, ReturnBuffer.MaximumLength);
 		if (!NewBuffer) {
 		    DPRINT("ExAllocatePool() failed\n");
 		    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -763,7 +765,7 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
     if (ReturnBuffer.Length >= ReturnBuffer.MaximumLength) {
 	PWSTR NewBuffer;
 	ReturnBuffer.MaximumLength += sizeof(WCHAR);
-	NewBuffer = ExAllocatePool(ReturnBuffer.MaximumLength);
+	NewBuffer = ExAllocatePool(NonPagedPool, ReturnBuffer.MaximumLength);
 	if (!NewBuffer) {
 	    DPRINT("ExAllocatePool() failed\n");
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
@@ -925,7 +927,7 @@ NTAPI NTSTATUS IoOpenDeviceRegistryKey(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* Allocate the buffer for the key name */
-    KeyNameBuffer = ExAllocatePool(KeyNameLength);
+    KeyNameBuffer = ExAllocatePool(NonPagedPool, KeyNameLength);
     if (KeyNameBuffer == NULL)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1085,14 +1087,15 @@ NTAPI NTSTATUS IoGetDevicePropertyData(IN PDEVICE_OBJECT Pdo,
  * On the other hand, if the device queue is busy, the entry is inserted
  * at the end of the queue. The return value indicates whether the insertion
  * has been performed.
+ *
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
 				  IN PKDEVICE_QUEUE_ENTRY Entry)
 {
-    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
+    PAGED_CODE();
     assert(Queue != NULL);
     assert(Entry != NULL);
-    IopAcquireDpcMutex();
     if (!Queue->Busy) {
         Entry->Inserted = FALSE;
         Queue->Busy = TRUE;
@@ -1100,7 +1103,6 @@ NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
         Entry->Inserted = TRUE;
         InsertTailList(&Queue->DeviceListHead, &Entry->DeviceListEntry);
     }
-    IopReleaseDpcMutex();
     return Entry->Inserted;
 }
 
@@ -1113,18 +1115,17 @@ NTAPI BOOLEAN KeInsertDeviceQueue(IN PKDEVICE_QUEUE Queue,
  * NOTE: Queue must be already sorted (or empty). Otherwise the function
  * behaves unpredictably.
  *
- * This routine must be called at DISPATCH_LEVEL and below.
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
 				       IN PKDEVICE_QUEUE_ENTRY Entry,
 				       IN ULONG SortKey)
 {
-    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
+    PAGED_CODE();
     assert(Queue != NULL);
     assert(Entry != NULL);
     Entry->SortKey = SortKey;
 
-    IopAcquireDpcMutex();
     if (!Queue->Busy) {
         Entry->Inserted = FALSE;
         Queue->Busy = TRUE;
@@ -1153,7 +1154,6 @@ NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
         InsertTailList(NextEntry, &Entry->DeviceListEntry);
         Entry->Inserted = TRUE;
     }
-    IopReleaseDpcMutex();
     return Entry->Inserted;
 }
 
@@ -1162,16 +1162,15 @@ NTAPI BOOLEAN KeInsertByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
  * is empty, return NULL. This function should only be called when the queue
  * is set to busy state, otherwise it asserts.
  *
- * This routine must be called at DISPATCH_LEVEL and below.
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
 {
-    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
+    PAGED_CODE();
     PKDEVICE_QUEUE_ENTRY Entry = NULL;
 
     assert(Queue != NULL);
     assert(Queue->Busy);
-    IopAcquireDpcMutex();
 
     /* Check if this is an empty queue */
     if (IsListEmpty(&Queue->DeviceListHead)) {
@@ -1183,7 +1182,6 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
         Entry = CONTAINING_RECORD(ListEntry, KDEVICE_QUEUE_ENTRY, DeviceListEntry);
         Entry->Inserted = FALSE;
     }
-    IopReleaseDpcMutex();
     return Entry;
 }
 
@@ -1197,17 +1195,16 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveDeviceQueue(IN PKDEVICE_QUEUE Queue)
  *
  * NOTE: Queue must be already sorted. Otherwise the function behaves unpredictably.
  *
- * This routine must be called at DISPATCH_LEVEL and below.
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
 						    IN ULONG SortKey)
 {
-    assert(!NtCurrentTeb()->Wdm.IsIsrThread);
+    PAGED_CODE();
     PKDEVICE_QUEUE_ENTRY Entry = NULL;
 
     assert(Queue != NULL);
     assert(Queue->Busy);
-    IopAcquireDpcMutex();
 
     /* Check if this is an empty queue */
     if (IsListEmpty(&Queue->DeviceListHead)) {
@@ -1237,26 +1234,241 @@ NTAPI PKDEVICE_QUEUE_ENTRY KeRemoveByKeyDeviceQueue(IN PKDEVICE_QUEUE Queue,
         RemoveEntryList(&Entry->DeviceListEntry);
         Entry->Inserted = FALSE;
     }
-    IopReleaseDpcMutex();
     return Entry;
 }
 
 /*
  * Removes the specified entry from the queue, returning TRUE.
  * If the entry is not inserted, nothing is done and we return FALSE.
+ *
+ * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI BOOLEAN KeRemoveEntryDeviceQueue(IN PKDEVICE_QUEUE Queue,
 				       IN PKDEVICE_QUEUE_ENTRY Entry)
 {
+    PAGED_CODE();
     assert(Queue != NULL);
     assert(Queue->Busy);
-    IopAcquireDpcMutex();
     if (Entry->Inserted) {
         Entry->Inserted = FALSE;
         RemoveEntryList(&Entry->DeviceListEntry);
-	IopReleaseDpcMutex();
 	return TRUE;
     }
-    IopReleaseDpcMutex();
     return FALSE;
+}
+
+static VOID IopStartNextPacketByKey(IN PDEVICE_OBJECT DeviceObject,
+				    IN BOOLEAN Cancelable,
+				    IN ULONG Key)
+{
+    PAGED_CODE();
+    /* Clear the current IRP */
+    DeviceObject->CurrentIrp = NULL;
+
+    /* Remove an entry from the queue */
+    PKDEVICE_QUEUE_ENTRY Entry = KeRemoveByKeyDeviceQueue(&DeviceObject->DeviceQueue, Key);
+    if (Entry) {
+	/* Get the IRP and set it */
+	PIRP Irp = CONTAINING_RECORD(Entry, IRP, Tail.DeviceQueueEntry);
+	DeviceObject->CurrentIrp = Irp;
+
+	/* Check if this is a cancelable packet */
+	if (Cancelable) {
+	    /* Check if the caller requested no cancellation */
+	    if (DeviceObject->StartIoFlags & DOE_SIO_NO_CANCEL) {
+		/* He did, so remove the cancel routine */
+		Irp->CancelRoutine = NULL;
+	    }
+	}
+	/* Call the Start I/O Routine */
+	DeviceObject->DriverObject->DriverStartIo(DeviceObject, Irp);
+    }
+}
+
+static VOID IopStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
+			       IN BOOLEAN Cancelable)
+{
+    PAGED_CODE();
+    /* Clear the current IRP */
+    DeviceObject->CurrentIrp = NULL;
+
+    /* Remove an entry from the queue */
+    PKDEVICE_QUEUE_ENTRY Entry = KeRemoveDeviceQueue(&DeviceObject->DeviceQueue);
+    if (Entry) {
+	/* Get the IRP and set it */
+	PIRP Irp = CONTAINING_RECORD(Entry, IRP, Tail.DeviceQueueEntry);
+	DeviceObject->CurrentIrp = Irp;
+
+	/* Check if this is a cancelable packet */
+	if (Cancelable) {
+	    /* Check if the caller requested no cancellation */
+	    if (DeviceObject->StartIoFlags & DOE_SIO_NO_CANCEL) {
+		/* He did, so remove the cancel routine */
+		Irp->CancelRoutine = NULL;
+	    }
+	}
+
+	/* Call the Start I/O Routine */
+	DeviceObject->DriverObject->DriverStartIo(DeviceObject, Irp);
+    }
+}
+
+static VOID IopStartNextPacketByKeyEx(IN PDEVICE_OBJECT DeviceObject,
+				      IN ULONG Key,
+				      IN ULONG Flags)
+{
+    PAGED_CODE();
+    ULONG CurrentKey = Key;
+    ULONG CurrentFlags = Flags;
+
+    while (TRUE) {
+	/* Increase the count */
+	if ((--DeviceObject->StartIoCount) > 1) {
+	    /*
+	     * We've already called the routine once...
+	     * All we have to do is save the key and add the new flags
+	     */
+	    DeviceObject->StartIoFlags |= CurrentFlags;
+	    DeviceObject->StartIoKey = CurrentKey;
+	} else {
+	    /* Mask out the current packet flags and key */
+	    DeviceObject->StartIoFlags &= ~(DOE_SIO_WITH_KEY |
+					    DOE_SIO_NO_KEY |
+					    DOE_SIO_CANCELABLE);
+	    DeviceObject->StartIoKey = 0;
+
+	    /* Check if this is a packet start with key */
+	    if (Flags & DOE_SIO_WITH_KEY) {
+		/* Start the packet with a key */
+		IopStartNextPacketByKey(DeviceObject,
+					(Flags & DOE_SIO_CANCELABLE) ? TRUE : FALSE,
+					CurrentKey);
+	    } else if (Flags & DOE_SIO_NO_KEY) {
+		/* Start the packet */
+		IopStartNextPacket(DeviceObject,
+				   (Flags & DOE_SIO_CANCELABLE) ? TRUE : FALSE);
+	    }
+	}
+
+	/* Decrease the Start I/O count and check if it's 0 now */
+	if (!(--DeviceObject->StartIoCount)) {
+	    /* Get the current active key and flags */
+	    CurrentKey = DeviceObject->StartIoKey;
+	    CurrentFlags = DeviceObject-> StartIoFlags &
+		(DOE_SIO_WITH_KEY | DOE_SIO_NO_KEY | DOE_SIO_CANCELABLE);
+
+	    /* Check if we should still loop */
+	    if (!(CurrentFlags & (DOE_SIO_WITH_KEY | DOE_SIO_NO_KEY)))
+		break;
+	} else {
+	    /* There are still Start I/Os active, so quit this loop */
+	    break;
+	}
+    }
+}
+
+/*
+ * @implemented
+ *
+ * Starts the IO packet if the device queue is not busy. Otherwise, queue
+ * the IRP to the device queue. Also set the supplied cancel function
+ * as the cancel routine of the IRP. If the IRP has been canceled for some
+ * reason, call the cancel routine.
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
+ */
+NTAPI VOID IoStartPacket(IN PDEVICE_OBJECT DeviceObject,
+			 IN PIRP Irp,
+			 IN PULONG Key,
+			 IN PDRIVER_CANCEL CancelFunction)
+{
+    PAGED_CODE();
+    if (CancelFunction) {
+        Irp->CancelRoutine = CancelFunction;
+    }
+
+    /* Check if we have a key */
+    BOOLEAN Inserted;
+    if (Key) {
+        /* Insert by key */
+        Inserted = KeInsertByKeyDeviceQueue(&DeviceObject->DeviceQueue,
+					    &Irp->Tail.DeviceQueueEntry,
+					    *Key);
+    } else {
+        /* Insert without a key */
+        Inserted = KeInsertDeviceQueue(&DeviceObject->DeviceQueue,
+				       &Irp->Tail.DeviceQueueEntry);
+    }
+
+    /* If Inserted is FALSE, it means that the device queue was
+     * empty and was in a Non-Busy state. In other words, this Irp
+     * should now be started now. Set the IRP to the current IRP and
+     * call the StartIo routine */
+    if (!Inserted) {
+        DeviceObject->CurrentIrp = Irp;
+
+        if (CancelFunction) {
+            /* Check if the caller requested no cancellation */
+            if (DeviceObject->StartIoFlags & DOE_SIO_NO_CANCEL) {
+                /* He did, so remove the cancel routine */
+                Irp->CancelRoutine = NULL;
+            }
+        }
+        /* Call the Start I/O function, which will handle cancellation. */
+        DeviceObject->DriverObject->DriverStartIo(DeviceObject, Irp);
+    } else {
+        /* The packet was inserted, which means that the device queue
+	 * is busy. Check if we have a cancel function */
+        if (CancelFunction) {
+            /* Check if the IRP got cancelled */
+            if (Irp->Cancel) {
+                /* Set the cancel IRQL, clear the currnet cancel routine and
+                 * call ours */
+                Irp->CancelRoutine = NULL;
+                CancelFunction(DeviceObject, Irp);
+            }
+        }
+    }
+}
+
+/*
+ * @implemented
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
+ */
+NTAPI VOID IoStartNextPacket(IN PDEVICE_OBJECT DeviceObject,
+			     IN BOOLEAN Cancelable)
+{
+    PAGED_CODE();
+    /* Check if deferred start was requested */
+    if (DeviceObject->StartIoFlags & DOE_SIO_DEFERRED) {
+        /* Call our internal function to handle the defered case */
+        IopStartNextPacketByKeyEx(DeviceObject,  0,
+                                  DOE_SIO_NO_KEY |
+                                  (Cancelable ? DOE_SIO_CANCELABLE : 0));
+    } else {
+        /* Call the normal routine */
+        IopStartNextPacket(DeviceObject, Cancelable);
+    }
+}
+
+/*
+ * @implemented
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
+ */
+NTAPI VOID IoStartNextPacketByKey(IN PDEVICE_OBJECT DeviceObject,
+				  IN BOOLEAN Cancelable,
+				  IN ULONG Key)
+{
+    PAGED_CODE();
+    /* Check if deferred start was requested */
+    if (DeviceObject->StartIoFlags & DOE_SIO_DEFERRED) {
+        /* Call our internal function to handle the defered case */
+        IopStartNextPacketByKeyEx(DeviceObject, Key, DOE_SIO_WITH_KEY |
+                                  (Cancelable ? DOE_SIO_CANCELABLE : 0));
+    } else {
+        /* Call the normal routine */
+        IopStartNextPacketByKey(DeviceObject, Cancelable, Key);
+    }
 }

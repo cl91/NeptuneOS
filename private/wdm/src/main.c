@@ -35,6 +35,7 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     IopIncomingIoPacketBuffer = (PIO_PACKET)InitInfo->IncomingIoPacketBuffer;
     IopOutgoingIoPacketBuffer = (PIO_PACKET)InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;
+    InitializeListHead(&IopDmaPoolList);
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
     InitializeListHead(&IopSignaledObjectList);

@@ -176,7 +176,7 @@ static NTSTATUS FatReadWriteDisk(IN PFAT_IRP_CONTEXT IrpContext,
 	    DPRINT("Building associated IRP bo,len == 0x%llx 0x%x buffer %p\n",
 		   VolumeOffset.QuadPart, ClusterCount * BytesPerCluster, Buffer);
 	    ASSERT(IS_ALIGNED64(VolumeOffset.QuadPart, BytesPerCluster));
-	    PDISK_IO_REQUEST Req = ExAllocatePool(sizeof(DISK_IO_REQUEST));
+	    PDISK_IO_REQUEST Req = ExAllocatePool(NonPagedPool, sizeof(DISK_IO_REQUEST));
 	    if (!Req) {
 		Status = STATUS_INSUFFICIENT_RESOURCES;
 		goto ByeBye;

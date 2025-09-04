@@ -312,9 +312,11 @@ static BOOLEAN FsRtlIsNameInExpressionPrivate(IN PUNICODE_STRING Expression,
 
 		    /* Allocate memory for both back-tracking buffers */
 		    AllocatedBuffer =
-			ExAllocatePoolWithTag(2 * BackTrackingBufferSize * sizeof(USHORT), 'nrSF');
+			ExAllocatePoolWithTag(NonPagedPool,
+					      2 * BackTrackingBufferSize * sizeof(USHORT),
+					      'nrSF');
 		    if (AllocatedBuffer == NULL) {
-			DPRINT1("Failed to allocate BackTracking buffer. BackTrackingBufferSize = =x%x\n",
+			DPRINT1("Failed to allocate BackTracking buffer. Size = 0x%x\n",
 				BackTrackingBufferSize);
 			Result = FALSE;
 			goto Exit;

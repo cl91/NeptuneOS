@@ -164,7 +164,7 @@ static NTSTATUS IsaPnpSetupFdcControllerKey(IN PCONFIGURATION_COMPONENT_DATA Bus
     /* We need to build the configuration manager partial resource list first
      * becasue the PnpDevices array has the IO manager version. */
     ULONG Size = sizeof(CM_PARTIAL_RESOURCE_LIST) + ARRAYSIZE(FdcResourceDescriptors) * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
-    PCM_PARTIAL_RESOURCE_LIST PartialResourceList = ExAllocatePool(Size);
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList = ExAllocatePool(NonPagedPool, Size);
     if (PartialResourceList == NULL) {
         ERR_(ISAPNP, "Failed to allocate resource list\n");
         return STATUS_NO_MEMORY;
@@ -222,7 +222,7 @@ static NTSTATUS IsaPnpSetupFdcPeripheralKey(IN PCONFIGURATION_COMPONENT_DATA Bus
 					    IN PCONFIGURATION_COMPONENT_DATA ControllerKey)
 {
     ULONG Size = sizeof(CM_PARTIAL_RESOURCE_LIST) + sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) + sizeof(CM_FLOPPY_DEVICE_DATA);
-    PCM_PARTIAL_RESOURCE_LIST PartialResourceList = ExAllocatePool(Size);
+    PCM_PARTIAL_RESOURCE_LIST PartialResourceList = ExAllocatePool(NonPagedPool, Size);
     if (PartialResourceList == NULL) {
         ERR_(ISAPNP, "Failed to allocate resource list\n");
         return STATUS_NO_MEMORY;
@@ -461,7 +461,7 @@ static NTSTATUS PnpInitHardwareDatabase()
     /* Set 'Configuration Data' value */
     ULONG Size = sizeof(CM_PARTIAL_RESOURCE_LIST);
     PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
-    PartialResourceList = ExAllocatePool(Size);
+    PartialResourceList = ExAllocatePool(NonPagedPool, Size);
     if (PartialResourceList == NULL) {
         ERR_(ISAPNP, "Failed to allocate resource descriptor\n");
         Status = STATUS_NO_MEMORY;
@@ -561,7 +561,7 @@ static NTSTATUS PnpRootQueryDeviceRelations(IN PDEVICE_OBJECT DeviceObject,
 	NumDevices++;
     }
     ULONG Size = sizeof(DEVICE_RELATIONS) + NumDevices * sizeof(PDEVICE_OBJECT);
-    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)ExAllocatePool(Size);
+    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)ExAllocatePool(NonPagedPool, Size);
     NTSTATUS Status = STATUS_SUCCESS;
     if (!Relations) {
 	DPRINT("ExAllocatePool() failed\n");
@@ -617,7 +617,7 @@ static NTSTATUS PnpDeviceQueryDeviceRelations(IN PDEVICE_OBJECT DeviceObject,
 
     DPRINT("IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS / TargetDeviceRelation\n");
     ULONG Size = sizeof(DEVICE_RELATIONS) + sizeof(PDEVICE_OBJECT);
-    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)ExAllocatePool(Size);
+    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)ExAllocatePool(NonPagedPool, Size);
     if (!Relations) {
 	DPRINT("ExAllocatePoolWithTag() failed\n");
 	return STATUS_NO_MEMORY;
@@ -664,7 +664,7 @@ static NTSTATUS PnpDeviceQueryResourceRequirements(IN PDEVICE_OBJECT DeviceObjec
 
     if (ResList) {
 	/* Copy existing resource requirement list */
-	PIO_RESOURCE_REQUIREMENTS_LIST Dest =  ExAllocatePool(ResList->ListSize);
+	PIO_RESOURCE_REQUIREMENTS_LIST Dest =  ExAllocatePool(NonPagedPool, ResList->ListSize);
 	if (!Dest)
 	    return STATUS_NO_MEMORY;
 	RtlCopyMemory(Dest, ResList, ResList->ListSize);
@@ -752,7 +752,7 @@ static NTSTATUS PnpDeviceQueryDeviceUsageNotification(IN PDEVICE_OBJECT DeviceOb
 static NTSTATUS PnpBuildDeviceRequirementLists(IN PPNP_DEVICE PnpDevice)
 {
     ULONG Size = MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE + PnpDevice->ResourceDescriptorSize;
-    PIO_RESOURCE_REQUIREMENTS_LIST ResList = (PIO_RESOURCE_REQUIREMENTS_LIST)ExAllocatePool(Size);
+    PIO_RESOURCE_REQUIREMENTS_LIST ResList = ExAllocatePool(NonPagedPool, Size);
     if (ResList == NULL) {
 	return STATUS_NO_MEMORY;
     }
@@ -785,7 +785,7 @@ static NTSTATUS PnpRootQueryResourceRequirements(IN PDEVICE_OBJECT DeviceObject,
     }
     ULONG ListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
 	sizeof(IO_RESOURCE_DESCRIPTOR);
-    PIO_RESOURCE_REQUIREMENTS_LIST Dest =  ExAllocatePool(ListSize);
+    PIO_RESOURCE_REQUIREMENTS_LIST Dest =  ExAllocatePool(NonPagedPool, ListSize);
     if (!Dest) {
 	return STATUS_NO_MEMORY;
     }

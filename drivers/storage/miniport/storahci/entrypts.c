@@ -261,10 +261,6 @@ VOID GetInterruptMode(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension)
     return;
 }
 
-BOOLEAN
-AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
-			    _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
-			    _In_range_(1, AHCI_MAX_PORT_COUNT) ULONG PortCount)
 /*
     Internal function to allocate required memory for Ports
 
@@ -291,6 +287,9 @@ AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
    boundary. Therefore the number of Command Headers must be 256/32 = 8. Round cap.NCS to
    the next multiple of 8
 */
+BOOLEAN AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
+				    _In_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+				    _In_range_(1, AHCI_MAX_PORT_COUNT) ULONG PortCount)
 {
     ULONG alignment = 0x400; // 1K
     BOOLEAN dumpMode = IsDumpMode(AdapterExtension);
@@ -426,31 +425,24 @@ AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
 	    }
 
 	    AdapterExtension->PortExtension[i]->ReceivedFIS =
-		(PAHCI_RECEIVED_FIS)((PCHAR)AdapterExtension->PortExtension[i]
-					 ->CommandList +
-				     sizeof(AHCI_COMMAND_HEADER) * paddedNCS);
+		(PAHCI_RECEIVED_FIS)((PCHAR)AdapterExtension->PortExtension[i]->CommandList
+				     + sizeof(AHCI_COMMAND_HEADER) * paddedNCS);
 	    AdapterExtension->PortExtension[i]->Local.SrbExtension =
-		(PAHCI_SRB_EXTENSION)((PCHAR)AdapterExtension->PortExtension[i]
-					  ->ReceivedFIS +
-				      sizeof(AHCI_RECEIVED_FIS));
+		(PAHCI_SRB_EXTENSION)((PCHAR)AdapterExtension->PortExtension[i]->ReceivedFIS
+				      + sizeof(AHCI_RECEIVED_FIS));
 	    AdapterExtension->PortExtension[i]->Sense.SrbExtension =
 		(PAHCI_SRB_EXTENSION)((PCHAR)AdapterExtension->PortExtension[i]
-					  ->Local.SrbExtension +
-				      paddedSrbExtensionSize);
+				      ->Local.SrbExtension + paddedSrbExtensionSize);
 	    AdapterExtension->PortExtension[i]->DeviceExtension[0].IdentifyDeviceData =
 		(PIDENTIFY_DEVICE_DATA)((PCHAR)AdapterExtension->PortExtension[i]
-					    ->Sense.SrbExtension +
-					paddedSrbExtensionSize);
+					->Sense.SrbExtension + paddedSrbExtensionSize);
 	    AdapterExtension->PortExtension[i]->DeviceExtension[0].ReadLogExtPageData =
 		(PUSHORT)((PCHAR)AdapterExtension->PortExtension[i]
-			      ->DeviceExtension[0]
-			      .IdentifyDeviceData +
+			  ->DeviceExtension[0].IdentifyDeviceData +
 			  sizeof(IDENTIFY_DEVICE_DATA));
 	    AdapterExtension->PortExtension[i]->DeviceExtension[0].InquiryData =
 		(PUCHAR)((PCHAR)AdapterExtension->PortExtension[i]
-			     ->DeviceExtension[0]
-			     .ReadLogExtPageData +
-			 ATA_BLOCK_SIZE);
+			 ->DeviceExtension[0].ReadLogExtPageData + ATA_BLOCK_SIZE);
 	    //
 	    j++;
 	}
@@ -459,10 +451,6 @@ AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension,
     return TRUE;
 }
 
-ULONG AhciHwFindAdapter(_In_ PVOID AdapterExtension, _In_ PVOID HwContext,
-			_In_ PVOID BusInformation, _In_z_ PCHAR ArgumentString,
-			_Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
-			_In_ PBOOLEAN Reserved3)
 /*++
     This function is called by the Storport driver indirectly when handling an IRP_MJ_PnP,
     IRP_MN_START_DEVICE. The adapter is being started. This function is called at PASSIVE
@@ -532,6 +520,10 @@ Note:
     always fully specify all adapter resources that are required to start the adapter.
 
 --*/
+ULONG AhciHwFindAdapter(_In_ PVOID AdapterExtension, _In_ PVOID HwContext,
+			_In_ PVOID BusInformation, _In_z_ PCHAR ArgumentString,
+			_Inout_ PPORT_CONFIGURATION_INFORMATION ConfigInfo,
+			_In_ PBOOLEAN Reserved3)
 {
     ULONG storStatus = STOR_STATUS_UNSUCCESSFUL;
     PAHCI_ADAPTER_EXTENSION adapterExtension = NULL;
@@ -1005,8 +997,7 @@ BOOLEAN AhciHwInitialize(_In_ PVOID AdapterExtension)
     return TRUE;
 }
 
-BOOLEAN
-AhciHwPassiveInitialize(_In_ PVOID AdapterExtension)
+BOOLEAN AhciHwPassiveInitialize(_In_ PVOID AdapterExtension)
 {
     ULONG i;
     ULONG status = STOR_STATUS_SUCCESS;
@@ -1601,17 +1592,18 @@ BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 	//
 	if (IsAdapterRemovable(adapterExtension) && IsAdapterRemoved(adapterExtension)) {
 	    Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
-	    StorPortEtwChannelEvent2(
-		adapterExtension,
-		(channelExtension != NULL) ?
-		    ((PSTOR_ADDRESS) &
-		     (channelExtension->DeviceExtension->DeviceAddress)) :
-		    (NULL),
-		StorportEtwEventOperational, AhciEtwEventBuildIO,
-		L"Adapter removed during BuildIo",
-		STORPORT_ETW_EVENT_KEYWORD_COMMAND_TRACE, StorportEtwLevelError,
-		StorportEtwEventOpcodeInfo, Srb, L"function", function, L"srbFlags",
-		srbFlags);
+	    StorPortEtwChannelEvent2(adapterExtension,
+				     (channelExtension != NULL) ?
+				     ((PSTOR_ADDRESS)&
+				      (channelExtension->DeviceExtension->DeviceAddress)) :
+				     (NULL),
+				     StorportEtwEventOperational, AhciEtwEventBuildIO,
+				     L"Adapter removed during BuildIo",
+				     STORPORT_ETW_EVENT_KEYWORD_COMMAND_TRACE,
+				     StorportEtwLevelError,
+				     StorportEtwEventOpcodeInfo,
+				     Srb, L"function", function, L"srbFlags",
+				     srbFlags);
 	    goto exit;
 	}
     }
@@ -1636,8 +1628,7 @@ BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 
     case SRB_FUNCTION_IO_CONTROL: {
 	if ((srbFlags & SRB_IOCTL_FLAGS_ADAPTER_REQUEST) == 0) {
-	    IOCTLtoATA(adapterExtension->PortExtension[pathId],
-		       (PSTORAGE_REQUEST_BLOCK)Srb);
+	    IOCTLtoATA(adapterExtension->PortExtension[pathId], (PSTORAGE_REQUEST_BLOCK)Srb);
 
 	    if (srbExtension->AtaFunction != 0) {
 		if ((srbExtension->Sgl == NULL) &&
@@ -1648,9 +1639,8 @@ BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 		if (srbExtension->Sgl != NULL) {
 		    // Zero PRDT according to SGL elements number to avoid unnecessary CPU
 		    // usage.
-		    AhciZeroMemory((PCHAR)(srbExtension->CommandTable.PRDT),
-				   (srbExtension->Sgl->NumberOfElements *
-				    sizeof(AHCI_PRDT)));
+		    AhciZeroMemory((PCHAR)srbExtension->CommandTable.PRDT,
+				   srbExtension->Sgl->NumberOfElements * sizeof(AHCI_PRDT));
 		}
 	    }
 	}
@@ -1670,8 +1660,8 @@ BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 	    if (srbExtension->Sgl != NULL) {
 		// Zero PRDT according to SGL elements number to avoid unnecessary CPU
 		// usage.
-		AhciZeroMemory((PCHAR)(srbExtension->CommandTable.PRDT),
-			       (srbExtension->Sgl->NumberOfElements * sizeof(AHCI_PRDT)));
+		AhciZeroMemory((PCHAR)srbExtension->CommandTable.PRDT,
+			       srbExtension->Sgl->NumberOfElements * sizeof(AHCI_PRDT));
 	    }
 	}
 

@@ -750,9 +750,8 @@ static NTSTATUS FdcFdoQueryBusRelations(IN PDEVICE_OBJECT DeviceObject,
 
     PFDO_DEVICE_EXTENSION FdoDevExt = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
 
-    ULONG Size = sizeof(DEVICE_RELATIONS) + sizeof(PDEVICE_OBJECT) *
-	FdoDevExt->ControllerInfo.NumberOfDrives;
-    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)ExAllocatePool(Size);
+    ULONG Size = sizeof(DEVICE_RELATIONS) + sizeof(PDEVICE_OBJECT) * FdoDevExt->ControllerInfo.NumberOfDrives;
+    PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)ExAllocatePool(NonPagedPool, Size);
     if (Relations == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }

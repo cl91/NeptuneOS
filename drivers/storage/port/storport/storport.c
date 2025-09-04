@@ -10,9 +10,14 @@
 #include "precomp.h"
 #include <stdio.h>
 #include <pci.h>
+#include <srbhelper.h>
 
 #define GET_VA_ARG(ArgList, Type, Name)		\
     Type Name = (Type)va_arg(ArgList, Type)
+
+#define POINTER_IS_IN_REGION(Ptr, Start, Size)			\
+    ((ULONG_PTR)(Ptr) >= (ULONG_PTR)(Start) &&			\
+     (ULONG_PTR)(Ptr) < (ULONG_PTR)(Start) + (ULONG_PTR)(Size))	\
 
 /* GLOBALS ********************************************************************/
 
@@ -27,7 +32,8 @@ static NTSTATUS PortAddDriverInitData(PDRIVER_OBJECT_EXTENSION DriverExtension,
 
     DPRINT1("PortAddDriverInitData()\n");
 
-    InitData = ExAllocatePoolWithTag(sizeof(DRIVER_INIT_DATA), TAG_INIT_DATA);
+    InitData = ExAllocatePoolWithTag(NonPagedPool,
+				     sizeof(DRIVER_INIT_DATA), TAG_INIT_DATA);
     if (InitData == NULL)
 	return STATUS_NO_MEMORY;
 
@@ -247,8 +253,9 @@ static NTAPI NTSTATUS PortDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 {
     DPRINT1("PortDispatchDeviceControl(%p %p)\n", DeviceObject, Irp);
 
-    Irp->IoStatus.Status = STATUS_SUCCESS;
+    Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
     Irp->IoStatus.Information = 0;
+    UNIMPLEMENTED_DBGBREAK();
 
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
 
@@ -296,11 +303,9 @@ static NTAPI NTSTATUS PortDispatchSystemControl(IN PDEVICE_OBJECT DeviceObject,
 static NTAPI NTSTATUS PortDispatchPnp(IN PDEVICE_OBJECT DeviceObject,
 				      IN PIRP Irp)
 {
-    PFDO_DEVICE_EXTENSION DeviceExtension;
-
     DPRINT1("PortDispatchPnp(%p %p)\n", DeviceObject, Irp);
 
-    DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PFDO_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
     DPRINT1("ExtensionType: %u\n", DeviceExtension->ExtensionType);
 
     switch (DeviceExtension->ExtensionType) {
@@ -344,23 +349,154 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
-NTAPI PUCHAR StorPortAllocateRegistryBuffer(IN PVOID HwDeviceExtension,
-					    IN PULONG Length)
+NTAPI BOOLEAN StorPortDeviceBusy(IN PVOID HwDeviceExtension,
+				 IN UCHAR PathId,
+				 IN UCHAR TargetId,
+				 IN UCHAR Lun,
+				 IN ULONG RequestsToComplete)
 {
-    DPRINT1("StorPortAllocateRegistryBuffer()\n");
-    UNIMPLEMENTED;
-    return NULL;
+    DPRINT1("StorPortDeviceBusy()\n");
+    if (!HwDeviceExtension) {
+	return FALSE;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
+    for (PLIST_ENTRY Entry = DevExt->PdoListHead.Flink;
+	 Entry != &DevExt->PdoListHead; Entry = Entry->Flink) {
+        PPDO_DEVICE_EXTENSION PdoExt = CONTAINING_RECORD(Entry,
+							 PDO_DEVICE_EXTENSION,
+							 PdoListEntry);
+	if (PdoExt->Bus == PathId && PdoExt->Target == TargetId && PdoExt->Lun == Lun) {
+	    PortPdoSetBusy(PdoExt);
+	    return TRUE;
+	}
+    }
+    return FALSE;
+}
+
+/*
+ * @implemented
+ */
+NTAPI BOOLEAN StorPortDeviceReady(IN PVOID HwDeviceExtension,
+				  IN UCHAR PathId,
+				  IN UCHAR TargetId,
+				  IN UCHAR Lun)
+{
+    DPRINT1("StorPortDeviceReady()\n");
+    if (!HwDeviceExtension) {
+	return FALSE;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
+    for (PLIST_ENTRY Entry = DevExt->PdoListHead.Flink;
+	 Entry != &DevExt->PdoListHead; Entry = Entry->Flink) {
+        PPDO_DEVICE_EXTENSION PdoExt = CONTAINING_RECORD(Entry,
+							 PDO_DEVICE_EXTENSION,
+							 PdoListEntry);
+	if (PdoExt->Bus == PathId && PdoExt->Target == TargetId && PdoExt->Lun == Lun) {
+	    PortPdoSetReady(PdoExt);
+	    return TRUE;
+	}
+    }
+    return FALSE;
+}
+
+/*
+ * @implemented
+ */
+NTAPI BOOLEAN StorPortBusy(IN PVOID HwDeviceExtension,
+			   IN ULONG RequestsToComplete)
+{
+    if (!HwDeviceExtension) {
+	return FALSE;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
+    for (PLIST_ENTRY Entry = DevExt->PdoListHead.Flink;
+	 Entry != &DevExt->PdoListHead; Entry = Entry->Flink) {
+        PPDO_DEVICE_EXTENSION PdoDevExt = CONTAINING_RECORD(Entry,
+							    PDO_DEVICE_EXTENSION,
+							    PdoListEntry);
+	PortPdoSetBusy(PdoDevExt);
+    }
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+NTAPI BOOLEAN StorPortReady(IN PVOID HwDeviceExtension)
+{
+    DPRINT1("StorPortReady()\n");
+    if (!HwDeviceExtension) {
+	return FALSE;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
+    for (PLIST_ENTRY Entry = DevExt->PdoListHead.Flink;
+	 Entry != &DevExt->PdoListHead; Entry = Entry->Flink) {
+        PPDO_DEVICE_EXTENSION PdoDevExt = CONTAINING_RECORD(Entry,
+							    PDO_DEVICE_EXTENSION,
+							    PdoListEntry);
+	PortPdoSetReady(PdoDevExt);
+    }
+    return TRUE;
 }
 
 /*
  * @unimplemented
  */
-NTAPI BOOLEAN StorPortBusy(IN PVOID HwDeviceExtension,
-			   IN ULONG RequestsToComplete)
+NTAPI BOOLEAN StorPortPause(IN PVOID HwDeviceExtension,
+			    IN ULONG TimeOut)
 {
-    DPRINT1("StorPortBuzy()\n");
+    DPRINT1("StorPortPause()\n");
+    UNIMPLEMENTED;
+    return FALSE;
+}
+
+/*
+ * @unimplemented
+ */
+NTAPI BOOLEAN StorPortResume(IN PVOID HwDeviceExtension)
+{
+    DPRINT1("StorPortResume()\n");
+    UNIMPLEMENTED;
+    return FALSE;
+}
+
+/*
+ * @unimplemented
+ */
+NTAPI BOOLEAN StorPortPauseDevice(IN PVOID HwDeviceExtension,
+				  IN UCHAR PathId,
+				  IN UCHAR TargetId,
+				  IN UCHAR Lun,
+				  IN ULONG TimeOut)
+{
+    DPRINT1("StorPortPauseDevice()\n");
+    UNIMPLEMENTED;
+    return FALSE;
+}
+
+/*
+ * @unimplemented
+ */
+NTAPI BOOLEAN StorPortResumeDevice(IN PVOID HwDeviceExtension,
+				   IN UCHAR PathId,
+				   IN UCHAR TargetId,
+				   IN UCHAR Lun)
+{
+    DPRINT1("StorPortResumeDevice()\n");
     UNIMPLEMENTED;
     return FALSE;
 }
@@ -376,6 +512,20 @@ NTAPI VOID StorPortCompleteRequest(IN PVOID HwDeviceExtension,
 {
     DPRINT1("StorPortCompleteRequest()\n");
     UNIMPLEMENTED;
+}
+
+/*
+ * @unimplemented
+ */
+NTAPI BOOLEAN StorPortSetDeviceQueueDepth(IN PVOID HwDeviceExtension,
+					  IN UCHAR PathId,
+					  IN UCHAR TargetId,
+					  IN UCHAR Lun,
+					  IN ULONG Depth)
+{
+    DPRINT1("StorPortSetDeviceQueueDepth()\n");
+    UNIMPLEMENTED;
+    return FALSE;
 }
 
 /*
@@ -409,33 +559,6 @@ VOID StorPortDebugPrint(IN ULONG DebugPrintLevel,
     va_end(ap);
 }
 
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortDeviceBusy(IN PVOID HwDeviceExtension,
-				 IN UCHAR PathId,
-				 IN UCHAR TargetId,
-				 IN UCHAR Lun,
-				 IN ULONG RequestsToComplete)
-{
-    DPRINT1("StorPortDeviceBusy()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortDeviceReady(IN PVOID HwDeviceExtension,
-				  IN UCHAR PathId,
-				  IN UCHAR TargetId,
-				  IN UCHAR Lun)
-{
-    DPRINT1("StorPortDeviceReady()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
 static ULONG StorExtAllocatePool(IN PVOID HwDeviceExtension,
 				 IN ULONG NumberOfBytes,
 				 IN ULONG Tag,
@@ -446,7 +569,7 @@ static ULONG StorExtAllocatePool(IN PVOID HwDeviceExtension,
     if (!BufferPointer) {
 	return STOR_STATUS_INVALID_PARAMETER;
     }
-    *BufferPointer = ExAllocatePoolWithTag(NumberOfBytes, 0);
+    *BufferPointer = ExAllocatePool(NonPagedPool, NumberOfBytes);
     if (*BufferPointer == NULL) {
 	return STOR_STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -532,7 +655,7 @@ static ULONG StorExtInitializeTimer(IN PVOID HwDeviceExtension,
 							       HwDeviceExtension);
     PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
 
-    PSTORPORT_TIMER Timer = ExAllocatePool(sizeof(STORPORT_TIMER));
+    PSTORPORT_TIMER Timer = ExAllocatePool(NonPagedPool, sizeof(STORPORT_TIMER));
     if (!Timer) {
 	return STOR_STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -707,25 +830,6 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
 /*
  * @implemented
  */
-NTAPI VOID StorPortFreeDeviceBase(IN PVOID HwDeviceExtension,
-				  IN PVOID MappedAddress)
-{
-    DPRINT1("StorPortFreeDeviceBase(%p %p)\n", HwDeviceExtension, MappedAddress);
-}
-
-/*
- * @unimplemented
- */
-NTAPI VOID StorPortFreeRegistryBuffer(IN PVOID HwDeviceExtension,
-				      IN PUCHAR Buffer)
-{
-    DPRINT1("StorPortFreeRegistryBuffer()\n");
-    UNIMPLEMENTED;
-}
-
-/*
- * @implemented
- */
 NTAPI PVOID StorPortGetDeviceBase(IN PVOID HwDeviceExtension,
 				  IN INTERFACE_TYPE BusType,
 				  IN ULONG SystemIoBusNumber,
@@ -750,7 +854,7 @@ NTAPI PVOID StorPortGetDeviceBase(IN PVOID HwDeviceExtension,
     if (!TranslateResourceListAddress(MiniportExtension->Miniport->DeviceExtension,
 				      BusType, SystemIoBusNumber, IoAddress,
 				      NumberOfBytes, InIoSpace, &TranslatedAddress)) {
-	DPRINT1("Checkpoint!\n");
+	assert(FALSE);
 	return NULL;
     }
 
@@ -770,7 +874,7 @@ NTAPI PVOID StorPortGetDeviceBase(IN PVOID HwDeviceExtension,
 	&MiniportExtension->Miniport->DeviceExtension->MappedAddressList, IoAddress,
 	MappedAddress, NumberOfBytes, SystemIoBusNumber);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("Checkpoint!\n");
+	assert(FALSE);
 	MappedAddress = NULL;
     }
 
@@ -779,25 +883,109 @@ NTAPI PVOID StorPortGetDeviceBase(IN PVOID HwDeviceExtension,
 }
 
 /*
+ * @implemented
+ */
+NTAPI VOID StorPortFreeDeviceBase(IN PVOID HwDeviceExtension,
+				  IN PVOID MappedAddress)
+{
+    DPRINT1("StorPortFreeDeviceBase(%p %p)\n", HwDeviceExtension, MappedAddress);
+}
+
+/*
  * @unimplemented
  */
-NTAPI PVOID StorPortGetLogicalUnit(IN PVOID HwDeviceExtension,
-				   IN UCHAR PathId,
-				   IN UCHAR TargetId,
-				   IN UCHAR Lun)
+NTAPI PUCHAR StorPortAllocateRegistryBuffer(IN PVOID HwDeviceExtension,
+					    IN PULONG Length)
 {
-    DPRINT1("StorPortGetLogicalUnit()\n");
+    DPRINT1("StorPortAllocateRegistryBuffer()\n");
     UNIMPLEMENTED;
     return NULL;
 }
 
 /*
+ * @unimplemented
+ */
+NTAPI VOID StorPortFreeRegistryBuffer(IN PVOID HwDeviceExtension,
+				      IN PUCHAR Buffer)
+{
+    DPRINT1("StorPortFreeRegistryBuffer()\n");
+    UNIMPLEMENTED;
+}
+
+/*
+ * @unimplemented
+ */
+NTAPI BOOLEAN StorPortRegistryRead(IN PVOID HwDeviceExtension,
+				   IN PUCHAR ValueName,
+				   IN ULONG Global,
+				   IN ULONG Type,
+				   IN PUCHAR Buffer,
+				   IN PULONG BufferLength)
+{
+    DPRINT1("StorPortRegistryRead()\n");
+    UNIMPLEMENTED;
+    return FALSE;
+}
+
+/*
+ * @unimplemented
+ */
+NTAPI BOOLEAN StorPortRegistryWrite(IN PVOID HwDeviceExtension,
+				    IN PUCHAR ValueName,
+				    IN ULONG Global,
+				    IN ULONG Type,
+				    IN PUCHAR Buffer,
+				    IN ULONG BufferLength)
+{
+    DPRINT1("StorPortRegistryWrite()\n");
+    UNIMPLEMENTED;
+    return FALSE;
+}
+
+/*
+ * @implemented
+ */
+NTAPI BOOLEAN StorPortValidateRange(IN PVOID HwDeviceExtension,
+				    IN INTERFACE_TYPE BusType,
+				    IN ULONG SystemIoBusNumber,
+				    IN STOR_PHYSICAL_ADDRESS IoAddress,
+				    IN ULONG NumberOfBytes,
+				    IN BOOLEAN InIoSpace)
+{
+    DPRINT1("StorPortValidateRange()\n");
+    return TRUE;
+}
+
+NTAPI ULONG StorPortAllocateDmaMemory(IN PVOID HwDeviceExtension,
+				      IN SIZE_T NumberOfBytes,
+				      IN PHYSICAL_ADDRESS LowestAddress,
+				      IN PHYSICAL_ADDRESS HighestAddress,
+				      IN OPTIONAL PHYSICAL_ADDRESS AddressMultiple,
+				      IN MEMORY_CACHING_TYPE CacheType,
+				      IN NODE_REQUIREMENT PreferredNode,
+				      OUT PVOID *BufferPointer,
+				      OUT PPHYSICAL_ADDRESS PhysicalAddress)
+{
+    return STOR_STATUS_NOT_IMPLEMENTED;
+}
+
+NTAPI ULONG StorPortFreeDmaMemory(IN PVOID HwDeviceExtension,
+				  IN PVOID BaseAddress,
+				  IN SIZE_T NumberOfBytes,
+				  IN MEMORY_CACHING_TYPE CacheType,
+				  IN OPTIONAL PHYSICAL_ADDRESS PhysicalAddress)
+{
+    return STOR_STATUS_NOT_IMPLEMENTED;
+}
+
+/*
  * Returns the corresponding physical address if the virtual address is within
- * the uncached extension. Otherwise, return zero.
- *
- * The Srb argument is needed when IOMMU is used, in order to translate system
- * physical address into a device address. Since we do not support IOMMU yet,
- * this parameter is ignored.
+ * the uncached extension and the remaining length till the end of the uncached
+ * extension. If that is not the case, check if the virtual address is within
+ * the the data buffer or the sense info buffer of the SRB, or within the SRB
+ * extension. If so, return its physical address and the remaining length till
+ * the end of the buffer or SRB extension. If none of the above is applicable,
+ * returns zero.
  *
  * @implemented
  */
@@ -808,6 +996,7 @@ NTAPI STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtensio
 {
     DPRINT1("StorPortGetPhysicalAddress(%p %p %p %p)\n", HwDeviceExtension, Srb,
 	    VirtualAddress, Length);
+    *Length = 0;
 
     /* Get the miniport extension */
     PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(
@@ -831,15 +1020,43 @@ NTAPI STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtensio
 	PhysicalAddress.QuadPart =
 	    DeviceExtension->UncachedExtensionPhysicalBase.QuadPart + Offset;
 	*Length = DeviceExtension->UncachedExtensionSize - Offset;
+    } else if (!Srb) {
+	assert(FALSE);
+    } else if (SrbGetDataBuffer(Srb) &&
+	       POINTER_IS_IN_REGION(VirtualAddress, SrbGetDataBuffer(Srb),
+				    SrbGetDataTransferLength(Srb))) {
+	/* Get the physical address from the scatter-gather list */
+	UNIMPLEMENTED_DBGBREAK();
     } else {
-	*Length = 0;
+	PVOID Buffer = NULL;
+	ULONG BufferLength = 0;
+	ULONG SrbExtensionSize = MiniportExtension->Miniport->InitData->SrbExtensionSize;
+	if (SrbGetSenseInfoBuffer(Srb) &&
+	    POINTER_IS_IN_REGION(VirtualAddress, SrbGetSenseInfoBuffer(Srb),
+				 SrbGetSenseInfoBufferLength(Srb))) {
+	    Buffer = SrbGetSenseInfoBuffer(Srb);
+	    BufferLength = SrbGetSenseInfoBufferLength(Srb);
+	} else if (SrbGetMiniportContext(Srb) &&
+		   POINTER_IS_IN_REGION(VirtualAddress, SrbGetMiniportContext(Srb),
+					SrbExtensionSize)) {
+	    Buffer = SrbGetMiniportContext(Srb);
+	    BufferLength = SrbExtensionSize;
+	} else {
+	    assert(FALSE);
+	}
+	if (Buffer && BufferLength) {
+	    PhysicalAddress = MmGetPhysicalAddress(VirtualAddress);
+	    assert((ULONG_PTR)Buffer + BufferLength > (ULONG_PTR)VirtualAddress);
+	    *Length = (ULONG_PTR)Buffer + BufferLength - (ULONG_PTR)VirtualAddress;
+	}
     }
     return PhysicalAddress;
 }
 
 /*
- * Return the correspoinding virtual address if the physical address falls
- * within the uncached extension. Otherwise, return NULL.
+ * Return the correspoinding virtual address if the physical address falls within
+ * the uncached extension or if it was obtained via StorPortGetPhysicalAddress.
+ * Otherwise, return NULL.
  *
  * @implemented
  */
@@ -849,8 +1066,9 @@ NTAPI PVOID StorPortGetVirtualAddress(IN PVOID HwDeviceExtension,
     DPRINT1("StorPortGetVirtualAddress(%p %llx)\n", HwDeviceExtension,
 	    PhysicalAddress.QuadPart);
     /* Get the miniport extension */
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(
-	HwDeviceExtension, MINIPORT_DEVICE_EXTENSION, HwDeviceExtension);
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(HwDeviceExtension,
+								     MINIPORT_DEVICE_EXTENSION,
+								     HwDeviceExtension);
     DPRINT1("HwDeviceExtension %p  MiniportExtension %p\n", HwDeviceExtension,
 	    MiniportExtension);
 
@@ -863,7 +1081,7 @@ NTAPI PVOID StorPortGetVirtualAddress(IN PVOID HwDeviceExtension,
 	ULONG Offset = PhysicalAddress.QuadPart - PhysicalBase;
 	return (PCHAR)DeviceExtension->UncachedExtensionVirtualBase + Offset;
     }
-    return NULL;
+    return MmGetVirtualForPhysical(PhysicalAddress);
 }
 
 /*
@@ -895,10 +1113,10 @@ NTAPI PVOID StorPortGetUncachedExtension(IN PVOID HwDeviceExtension,
 
     /* Allocate the uncached extension */
     PHYSICAL_ADDRESS HighestAddress = { .QuadPart = 0x00000000FFFFFFFF };
-    PHYSICAL_ADDRESS Alignment = {}, PhysicalBase = {};
+    PHYSICAL_ADDRESS BoundaryAddressMultiple = {}, PhysicalBase = {};
     PVOID VirtualBase = NULL;
     if (!NT_SUCCESS(MmAllocateContiguousMemorySpecifyCache(NumberOfBytes, HighestAddress,
-							   Alignment, MmCached,
+							   BoundaryAddressMultiple, MmCached,
 							   &VirtualBase,
 							   &PhysicalBase))) {
 	return NULL;
@@ -920,19 +1138,6 @@ NTAPI PSTOR_SCATTER_GATHER_LIST StorPortGetScatterGatherList(IN PVOID DeviceExte
 {
     DPRINT1("StorPortGetScatterGatherList()\n");
     UNIMPLEMENTED;
-    return NULL;
-}
-
-/*
- * @implemented
- */
-NTAPI PSCSI_REQUEST_BLOCK StorPortGetSrb(IN PVOID DeviceExtension,
-					 IN UCHAR PathId,
-					 IN UCHAR TargetId,
-					 IN UCHAR Lun,
-					 IN LONG QueueTag)
-{
-    DPRINT("StorPortGetSrb()\n");
     return NULL;
 }
 
@@ -1097,7 +1302,6 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
 
 	/* Set handlers */
 	DriverObject->AddDevice = PortAddDevice;
-	//        DriverObject->DriverStartIo = PortStartIo;
 	DriverObject->DriverUnload = PortUnload;
 	DriverObject->MajorFunction[IRP_MJ_CREATE] = PortDispatchCreate;
 	DriverObject->MajorFunction[IRP_MJ_CLOSE] = PortDispatchClose;
@@ -1106,6 +1310,9 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
 	DriverObject->MajorFunction[IRP_MJ_POWER] = PortDispatchPower;
 	DriverObject->MajorFunction[IRP_MJ_SYSTEM_CONTROL] = PortDispatchSystemControl;
 	DriverObject->MajorFunction[IRP_MJ_PNP] = PortDispatchPnp;
+
+	/* We use our own device queues so driver StartIo should be set to NULL. */
+	DriverObject->DriverStartIo = NULL;
     }
 
     /* Add the initialzation data to the driver extension */
@@ -1128,8 +1335,7 @@ NTAPI VOID StorPortLogError(IN PVOID HwDeviceExtension,
 			    IN ULONG UniqueId)
 {
     DPRINT1("PathId: 0x%02x  TargetId: 0x%02x  Lun: 0x%02x  ErrorCode: 0x%08x  UniqueId: "
-	    "0x%08x\n",
-	    PathId, TargetId, Lun, ErrorCode, UniqueId);
+	    "0x%08x\n", PathId, TargetId, Lun, ErrorCode, UniqueId);
 }
 
 /*
@@ -1140,6 +1346,32 @@ NTAPI VOID StorPortMoveMemory(OUT PVOID Destination,
 			      IN ULONG Length)
 {
     RtlMoveMemory(Destination, Source, Length);
+}
+
+/*
+ * @unimplemented
+ */
+NTAPI PVOID StorPortGetLogicalUnit(IN PVOID HwDeviceExtension,
+				   IN UCHAR PathId,
+				   IN UCHAR TargetId,
+				   IN UCHAR Lun)
+{
+    DPRINT1("StorPortGetLogicalUnit()\n");
+    UNIMPLEMENTED;
+    return NULL;
+}
+
+/*
+ * @implemented
+ */
+NTAPI PSCSI_REQUEST_BLOCK StorPortGetSrb(IN PVOID DeviceExtension,
+					 IN UCHAR PathId,
+					 IN UCHAR TargetId,
+					 IN UCHAR Lun,
+					 IN LONG QueueTag)
+{
+    DPRINT("StorPortGetSrb()\n");
+    return NULL;
 }
 
 static NTAPI VOID StorPortDpcWorkerRoutine(IN PDEVICE_OBJECT DeviceObject,
@@ -1262,117 +1494,13 @@ VOID StorPortNotification(IN SCSI_NOTIFICATION_TYPE NotificationType,
 }
 
 /*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortPause(IN PVOID HwDeviceExtension,
-			    IN ULONG TimeOut)
-{
-    DPRINT1("StorPortPause()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortPauseDevice(IN PVOID HwDeviceExtension,
-				  IN UCHAR PathId,
-				  IN UCHAR TargetId,
-				  IN UCHAR Lun,
-				  IN ULONG TimeOut)
-{
-    DPRINT1("StorPortPauseDevice()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-/*
  * @implemented
  */
-/* KeQuerySystemTime is an inline function,
-   so we cannot forward the export to ntoskrnl */
 NTAPI VOID StorPortQuerySystemTime(OUT PLARGE_INTEGER CurrentTime)
 {
     DPRINT1("StorPortQuerySystemTime(%p)\n", CurrentTime);
 
     KeQuerySystemTime(CurrentTime);
-}
-
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortReady(IN PVOID HwDeviceExtension)
-{
-    DPRINT1("StorPortReady()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortRegistryRead(IN PVOID HwDeviceExtension,
-				   IN PUCHAR ValueName,
-				   IN ULONG Global,
-				   IN ULONG Type,
-				   IN PUCHAR Buffer,
-				   IN PULONG BufferLength)
-{
-    DPRINT1("StorPortRegistryRead()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortRegistryWrite(IN PVOID HwDeviceExtension,
-				    IN PUCHAR ValueName,
-				    IN ULONG Global,
-				    IN ULONG Type,
-				    IN PUCHAR Buffer,
-				    IN ULONG BufferLength)
-{
-    DPRINT1("StorPortRegistryWrite()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortResume(IN PVOID HwDeviceExtension)
-{
-    DPRINT1("StorPortResume()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortResumeDevice(IN PVOID HwDeviceExtension,
-				   IN UCHAR PathId,
-				   IN UCHAR TargetId,
-				   IN UCHAR Lun)
-{
-    DPRINT1("StorPortResumeDevice()\n");
-    UNIMPLEMENTED;
-    return FALSE;
-}
-
-/*
- * @unimplemented
- */
-NTAPI BOOLEAN StorPortSetDeviceQueueDepth(IN PVOID HwDeviceExtension,
-					  IN UCHAR PathId,
-					  IN UCHAR TargetId,
-					  IN UCHAR Lun,
-					  IN ULONG Depth)
-{
-    DPRINT1("StorPortSetDeviceQueueDepth()\n");
-    UNIMPLEMENTED;
-    return FALSE;
 }
 
 /*
@@ -1392,40 +1520,4 @@ NTAPI VOID StorPortSynchronizeAccess(IN PVOID HwDeviceExtension,
 {
     DPRINT1("StorPortSynchronizeAccess()\n");
     UNIMPLEMENTED;
-}
-
-/*
- * @implemented
- */
-NTAPI BOOLEAN StorPortValidateRange(IN PVOID HwDeviceExtension,
-				    IN INTERFACE_TYPE BusType,
-				    IN ULONG SystemIoBusNumber,
-				    IN STOR_PHYSICAL_ADDRESS IoAddress,
-				    IN ULONG NumberOfBytes,
-				    IN BOOLEAN InIoSpace)
-{
-    DPRINT1("StorPortValidateRange()\n");
-    return TRUE;
-}
-
-NTAPI ULONG StorPortAllocateDmaMemory(IN PVOID HwDeviceExtension,
-				      IN SIZE_T NumberOfBytes,
-				      IN PHYSICAL_ADDRESS LowestAddress,
-				      IN PHYSICAL_ADDRESS HighestAddress,
-				      IN OPTIONAL PHYSICAL_ADDRESS AddressMultiple,
-				      IN MEMORY_CACHING_TYPE CacheType,
-				      IN NODE_REQUIREMENT PreferredNode,
-				      OUT PVOID *BufferPointer,
-				      OUT PPHYSICAL_ADDRESS PhysicalAddress)
-{
-    return STOR_STATUS_NOT_IMPLEMENTED;
-}
-
-NTAPI ULONG StorPortFreeDmaMemory(IN PVOID HwDeviceExtension,
-				  IN PVOID BaseAddress,
-				  IN SIZE_T NumberOfBytes,
-				  IN MEMORY_CACHING_TYPE CacheType,
-				  IN OPTIONAL PHYSICAL_ADDRESS PhysicalAddress)
-{
-    return STOR_STATUS_NOT_IMPLEMENTED;
 }

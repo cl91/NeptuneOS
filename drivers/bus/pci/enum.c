@@ -209,7 +209,8 @@ static PIO_RESOURCE_REQUIREMENTS_LIST PciAllocateIoRequirementsList(IN ULONG Cou
 	sizeof(IO_RESOURCE_DESCRIPTOR) * Count;
 
     /* Allocate the list */
-    PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList = ExAllocatePoolWithTag(Size, 'BicP');
+    PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList = ExAllocatePoolWithTag(NonPagedPool,
+									    Size, 'BicP');
     if (!RequirementsList)
 	return NULL;
 
@@ -235,7 +236,7 @@ static PCM_RESOURCE_LIST PciAllocateCmResourceList(IN ULONG Count, IN ULONG BusN
 	sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR) * Count;
 
     /* Allocate the list */
-    PCM_RESOURCE_LIST ResourceList = ExAllocatePoolWithTag(Size, 'BicP');
+    PCM_RESOURCE_LIST ResourceList = ExAllocatePoolWithTag(NonPagedPool, Size, 'BicP');
     if (!ResourceList)
 	return NULL;
 
@@ -408,7 +409,7 @@ NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
 	ExFreePoolWithTag(*pDeviceRelations, 0);
 
     /* Allocate a new structure for the relations */
-    DeviceRelations = ExAllocatePoolWithTag(sizeof(DEVICE_RELATIONS),
+    DeviceRelations = ExAllocatePoolWithTag(NonPagedPool, sizeof(DEVICE_RELATIONS),
 					    'BicP');
     if (!DeviceRelations)
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -1357,7 +1358,8 @@ static NTSTATUS PcipGetFunctionLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     ASSERT(PdoExtension->Resources == NULL);
 
     /* Allocate the structure that will hold the discovered resources and limits */
-    PdoExtension->Resources = ExAllocatePoolWithTag(sizeof(PCI_FUNCTION_RESOURCES),
+    PdoExtension->Resources = ExAllocatePoolWithTag(NonPagedPool,
+						    sizeof(PCI_FUNCTION_RESOURCES),
 						    'BicP');
     if (!PdoExtension->Resources)
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -1406,7 +1408,8 @@ static NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 
     /* Allocate a buffer to hold two PCI configuration headers */
-    PPCI_COMMON_HEADER PciData = ExAllocatePoolWithTag(2 * PCI_COMMON_HDR_LENGTH, 'BicP');
+    PPCI_COMMON_HEADER PciData = ExAllocatePoolWithTag(NonPagedPool,
+						       2 * PCI_COMMON_HDR_LENGTH, 'BicP');
     if (!PciData)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1823,7 +1826,7 @@ NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
 	Size += sizeof(PDEVICE_OBJECT) * DeviceRelations->Count;
 
     /* Allocate the device relations */
-    NewRelations = (PDEVICE_RELATIONS)ExAllocatePoolWithTag(Size, 'BicP');
+    NewRelations = (PDEVICE_RELATIONS)ExAllocatePoolWithTag(NonPagedPool, Size, 'BicP');
     if (!NewRelations) {
 	/* Out of space, cancel the operation */
 	PciCancelStateTransition(DeviceExtension, PciSynchronizedOperation);

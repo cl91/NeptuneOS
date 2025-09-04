@@ -405,7 +405,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto cleanup;
 	}
-	WorkItemData = ExAllocatePoolWithTag(sizeof(I8042_HOOK_WORKITEM),
+	WorkItemData = ExAllocatePoolWithTag(NonPagedPool, sizeof(I8042_HOOK_WORKITEM),
 					     I8042PRT_TAG);
 	if (!WorkItemData) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
@@ -418,7 +418,7 @@ NTAPI NTSTATUS i8042KbdInternalDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 	/* Initialize extension */
 	DeviceExtension->Common.Type = Keyboard;
 	Size = DeviceExtension->Common.PortDeviceExtension->Settings.KeyboardDataQueueSize * sizeof(KEYBOARD_INPUT_DATA);
-	DeviceExtension->Common.Buffer = ExAllocatePoolWithTag(Size, I8042PRT_TAG);
+	DeviceExtension->Common.Buffer = ExAllocatePoolWithTag(NonPagedPool, Size, I8042PRT_TAG);
 	if (!DeviceExtension->Common.Buffer) {
 	    WARN_(I8042PRT, "ExAllocatePoolWithTag() failed\n");
 	    Status = STATUS_NO_MEMORY;

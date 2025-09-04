@@ -139,7 +139,7 @@ VOID AcpiOsUnmapMemory(PVOID Virt, ACPI_SIZE Length)
 
 PVOID AcpiOsAllocate(ACPI_SIZE Size)
 {
-    return ExAllocatePoolWithTag(Size, ACPI_TAG);
+    return ExAllocatePoolWithTag(NonPagedPool, Size, ACPI_TAG);
 }
 
 VOID AcpiOsFree(PVOID Ptr)
@@ -205,7 +205,8 @@ ACPI_STATUS AcpiOsExecute(ACPI_EXECUTE_TYPE Type,
 			  PVOID Context)
 {
     DPRINT("AcpiOsExecute\n");
-    PACPI_WORK_ITEM_CONTEXT Ctx = ExAllocatePoolWithTag(sizeof(ACPI_WORK_ITEM_CONTEXT),
+    PACPI_WORK_ITEM_CONTEXT Ctx = ExAllocatePoolWithTag(NonPagedPool,
+							sizeof(ACPI_WORK_ITEM_CONTEXT),
 							ACPI_TAG);
     if (!Ctx) {
 	return AE_NO_MEMORY;

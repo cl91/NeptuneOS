@@ -207,7 +207,7 @@ NTSTATUS DiskReadSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     bufferSize = sizeof(SRB_IO_CONTROL) +
 		 max(sizeof(SENDCMDINPARAMS), sizeof(SENDCMDOUTPARAMS) - 1 + logSize);
 
-    srbControl = ExAllocatePoolWithTag(bufferSize, DISK_TAG_SMART);
+    srbControl = ExAllocatePoolWithTag(NonPagedPool, bufferSize, DISK_TAG_SMART);
 
     if (srbControl != NULL) {
 	status = DiskPerformSmartCommand(FdoExtension, IOCTL_SCSI_MINIPORT_READ_SMART_LOG,
@@ -238,7 +238,7 @@ NTSTATUS DiskWriteSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     logSize = SectorCount * SMART_LOG_SECTOR_SIZE;
     bufferSize = sizeof(SRB_IO_CONTROL) + sizeof(SENDCMDINPARAMS) - 1 + logSize;
 
-    srbControl = ExAllocatePoolWithTag(bufferSize, DISK_TAG_SMART);
+    srbControl = ExAllocatePoolWithTag(NonPagedPool, bufferSize, DISK_TAG_SMART);
 
     if (srbControl != NULL) {
 	sendCmdInParams = (PSENDCMDINPARAMS)((PUCHAR)srbControl + sizeof(SRB_IO_CONTROL));
@@ -636,8 +636,6 @@ NTSTATUS DiskSendFailurePredictIoctl(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     return status;
 }
 
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
-
 NTSTATUS DiskGetModePage(IN PDEVICE_OBJECT Fdo, IN UCHAR PageMode, IN UCHAR PageControl,
 			 IN PMODE_PARAMETER_HEADER ModeData, IN OUT PULONG ModeDataSize,
 			 OUT PVOID *PageData)
@@ -707,7 +705,8 @@ NTSTATUS DiskEnableInfoExceptions(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 
     modeDataSize = MODE_DATA_SIZE;
 
-    modeData = ExAllocatePoolWithTag(modeDataSize, DISK_TAG_INFO_EXCEPTION);
+    modeData = ExAllocatePoolWithTag(NonPagedPool,
+				     modeDataSize, DISK_TAG_INFO_EXCEPTION);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_WMI,
@@ -826,7 +825,6 @@ NTSTATUS DiskEnableInfoExceptions(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 
     return status;
 }
-#endif
 
 //
 // FP type independent routines
@@ -1037,7 +1035,7 @@ NTSTATUS DiskReadFailurePredictData(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 			max(sizeof(SENDCMDINPARAMS),
 			    sizeof(SENDCMDOUTPARAMS) - 1 + READ_ATTRIBUTE_BUFFER_SIZE);
 
-	outBuffer = ExAllocatePoolWithTag(outBufferSize, DISK_TAG_SMART);
+	outBuffer = ExAllocatePoolWithTag(NonPagedPool, outBufferSize, DISK_TAG_SMART);
 
 	if (outBuffer != NULL) {
 	    status = DiskReadSmartData(FdoExtension, (PSRB_IO_CONTROL)outBuffer,
@@ -1114,7 +1112,7 @@ NTSTATUS DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 			max(sizeof(SENDCMDINPARAMS),
 			    sizeof(SENDCMDOUTPARAMS) - 1 + READ_THRESHOLD_BUFFER_SIZE);
 
-	outBuffer = ExAllocatePoolWithTag(outBufferSize, DISK_TAG_SMART);
+	outBuffer = ExAllocatePoolWithTag(NonPagedPool, outBufferSize, DISK_TAG_SMART);
 
 	if (outBuffer != NULL) {
 	    status = DiskReadSmartThresholds(FdoExtension, (PSRB_IO_CONTROL)outBuffer,
@@ -1213,7 +1211,8 @@ NTSTATUS DiskPostReregisterRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    reregRequest = ExAllocatePoolWithTag(sizeof(DISKREREGREQUEST), DISK_TAG_SMART);
+    reregRequest = ExAllocatePoolWithTag(NonPagedPool,
+					 sizeof(DISKREREGREQUEST), DISK_TAG_SMART);
     if (reregRequest != NULL) {
 	//
 	// add the disk that needs reregistration to the stack of disks
@@ -1519,7 +1518,8 @@ NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     PSTOR_ADDR_BTL8 storAddrBtl8 = NULL;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16 = NULL;
 
-    modeData = ExAllocatePoolWithTag(MODE_DATA_SIZE, DISK_TAG_INFO_EXCEPTION);
+    modeData = ExAllocatePoolWithTag(NonPagedPool,
+				     MODE_DATA_SIZE, DISK_TAG_INFO_EXCEPTION);
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_WMI,
 		    "DiskInfoExceptionCheck: Can't allocate mode data "
@@ -1532,7 +1532,7 @@ NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     } else {
 	srbSize = SCSI_REQUEST_BLOCK_SIZE;
     }
-    srb = ExAllocatePoolWithTag(srbSize, DISK_TAG_SRB);
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
     if (srb == NULL) {
 	FREE_POOL(modeData);
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_WMI,
@@ -1546,7 +1546,8 @@ NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     // Sense buffer is in aligned nonpaged pool.
     //
 
-    senseInfoBuffer = ExAllocatePoolWithTag(SENSE_BUFFER_SIZE_EX, '7CcS');
+    senseInfoBuffer = ExAllocatePoolWithTag(NonPagedPool,
+					    SENSE_BUFFER_SIZE_EX, '7CcS');
 
     if (senseInfoBuffer == NULL) {
 	FREE_POOL(srb);

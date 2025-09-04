@@ -393,7 +393,7 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	if (PdoExtension->Dependent.Type1.SubtractiveDecode) {
 	    /* We're going to need a copy of the configuration for later use */
 	    DPRINT1("apply config save hack to ICH subtractive decode\n");
-	    SavedConfig = ExAllocatePoolWithTag(PCI_COMMON_HDR_LENGTH, 'PciP');
+	    SavedConfig = ExAllocatePoolWithTag(NonPagedPool, PCI_COMMON_HDR_LENGTH, 'PciP');
 	    PdoExtension->ParentFdoExtension->PreservedConfig = SavedConfig;
 	    if (SavedConfig)
 		RtlCopyMemory(SavedConfig, Current, PCI_COMMON_HDR_LENGTH);

@@ -1,6 +1,8 @@
 #include <wdmp.h>
 #include <pci.h>
 
+LIST_ENTRY IopDmaPoolList;
+
 NTAPI VOID ObReferenceObject(IN PVOID Obj)
 {
     POBJECT_HEADER Header = Obj;
@@ -23,11 +25,183 @@ NTAPI VOID ObDereferenceObject(IN PVOID Obj)
     }
 }
 
+NTAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
+						      IN PHYSICAL_ADDRESS HighestAddr,
+						      IN PHYSICAL_ADDRESS BoundaryAddressMultiple,
+						      IN MEMORY_CACHING_TYPE CacheType,
+						      OUT PVOID *VirtBase,
+						      OUT PHYSICAL_ADDRESS *PhysBase)
+{
+    ULONG BoundaryAddressBits = RtlFindLeastSignificantBit(BoundaryAddressMultiple.QuadPart) + 1;
+    return WdmHalAllocateDmaBuffer(NumberOfBytes, &HighestAddr,
+				   BoundaryAddressBits, CacheType,
+				   VirtBase, PhysBase);
+}
+
+NTAPI VOID MmFreeContiguousMemorySpecifyCache(IN PVOID BaseAddress,
+					      IN SIZE_T NumberOfBytes,
+					      IN MEMORY_CACHING_TYPE CacheType)
+{
+    UNIMPLEMENTED;
+}
+
+/*
+ * A physically contiguous region of memory which driver can request if
+ * it wants to know the physical address of the memory it has allocated.
+ */
+typedef struct _DMA_POOL {
+    PVOID VirtualAddress;
+    SIZE_T Size;
+    PHYSICAL_ADDRESS PhysicalAddress;
+    HANDLE Heap;
+    LIST_ENTRY Link;
+    MEMORY_CACHING_TYPE CacheType;
+} DMA_POOL, *PDMA_POOL;
+
+#define DMA_POOL_ALLOCATION_GRANULARITY	(64 * 1024)
+
+static NTAPI NTSTATUS IopDmaPoolCommitRoutine(IN PVOID Base,
+					      IN OUT PVOID *CommitAddress,
+					      IN OUT PSIZE_T CommitSize)
+{
+    /* This routine should never be called. We need to supply one so RtlCreateHeap
+     * will not try to query the allocated region size. */
+    assert(FALSE);
+    return STATUS_UNSUCCESSFUL;
+}
+
+static PVOID IopAllocateDmaPool(IN MEMORY_CACHING_TYPE CacheType,
+				IN SIZE_T Size)
+{
+    /* Try allocating from existing DMA pool with the matching cache type. */
+    LoopOverList(DmaPool, &IopDmaPoolList, DMA_POOL, Link) {
+	if (CacheType != DmaPool->CacheType) {
+	    continue;
+	}
+	assert(DmaPool->Heap);
+	PVOID Ptr = RtlAllocateHeap(DmaPool->Heap, HEAP_ZERO_MEMORY, Size);
+	if (Ptr) {
+	    return Ptr;
+	}
+    }
+    /* There isn't one available, so try allocating a new pool. */
+    PDMA_POOL DmaPool = ExAllocatePool(NonPagedPool, sizeof(DMA_POOL));
+    if (!DmaPool) {
+	return NULL;
+    }
+    SIZE_T AllocationSize = ALIGN_UP_BY(Size, DMA_POOL_ALLOCATION_GRANULARITY);
+    PHYSICAL_ADDRESS HighestAddr = { .QuadPart = ULONG_PTR_MAX };
+    PHYSICAL_ADDRESS BoundaryAddressMultiple = {};
+    NTSTATUS Status = MmAllocateContiguousMemorySpecifyCache(AllocationSize,
+							     HighestAddr,
+							     BoundaryAddressMultiple,
+							     CacheType,
+							     &DmaPool->VirtualAddress,
+							     &DmaPool->PhysicalAddress);
+    if (!NT_SUCCESS(Status)) {
+	ExFreePool(DmaPool);
+	return NULL;
+    }
+    assert(DmaPool->VirtualAddress);
+    assert(DmaPool->PhysicalAddress.QuadPart);
+    DmaPool->Size = AllocationSize;
+    DmaPool->CacheType = CacheType;
+    InsertTailList(&IopDmaPoolList, &DmaPool->Link);
+    RTL_HEAP_PARAMETERS Parameters = {
+	.Length = sizeof(RTL_HEAP_PARAMETERS),
+	.SegmentReserve = AllocationSize,
+	.SegmentCommit = AllocationSize,
+	.DeCommitFreeBlockThreshold = PAGE_SIZE,
+	.DeCommitTotalFreeThreshold = AllocationSize * 2,
+	.MaximumAllocationSize = AllocationSize,
+	.VirtualMemoryThreshold = SIZE_T_MAX,
+	.InitialCommit = AllocationSize,
+	.InitialReserve = AllocationSize,
+	.CommitRoutine = IopDmaPoolCommitRoutine
+    };
+    DmaPool->Heap = RtlCreateHeap(HEAP_NO_SERIALIZE, DmaPool->VirtualAddress,
+				  AllocationSize, AllocationSize, NULL, &Parameters);
+    if (!DmaPool->Heap) {
+	MmFreeContiguousMemorySpecifyCache(DmaPool->VirtualAddress, DmaPool->Size,
+					   DmaPool->CacheType);
+	ExFreePool(DmaPool);
+	/* This shouldn't fail. */
+	assert(FALSE);
+	return NULL;
+    }
+    return RtlAllocateHeap(DmaPool->Heap, HEAP_ZERO_MEMORY, Size);
+}
+
+static PDMA_POOL IopPtrToDmaPool(IN PVOID Ptr)
+{
+    LoopOverList(DmaPool, &IopDmaPoolList, DMA_POOL, Link) {
+	if ((ULONG_PTR)Ptr >= (ULONG_PTR)DmaPool->VirtualAddress &&
+	    (ULONG_PTR)Ptr < ((ULONG_PTR)DmaPool->VirtualAddress + DmaPool->Size)) {
+	    return DmaPool;
+	}
+    }
+    return NULL;
+}
+
+NTAPI PVOID ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
+				  IN SIZE_T Size,
+				  IN ULONG Tag)
+{
+    assert(PoolType < MaxPoolType);
+    if (PoolType == CachedDmaPool) {
+	return IopAllocateDmaPool(MmCached, Size);
+    } else if (PoolType == UncachedDmaPool) {
+	return IopAllocateDmaPool(MmNonCached, Size);
+    }
+    return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
+}
+
+NTAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
+			     IN ULONG Tag)
+{
+    PDMA_POOL DmaPool = IopPtrToDmaPool(Pointer);
+    PVOID Heap = DmaPool ? DmaPool->VirtualAddress : RtlGetProcessHeap();
+    assert(Heap);
+    assert(RtlValidateHeap(Heap, 0, Pointer));
+    RtlFreeHeap(Heap, 0, Pointer);
+}
+
+NTAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(PVOID Address)
+{
+    PHYSICAL_ADDRESS PhyAddr = {};
+    PDMA_POOL DmaPool = IopPtrToDmaPool(Address);
+    assert(DmaPool);
+    if (DmaPool) {
+	PhyAddr.QuadPart = DmaPool->PhysicalAddress.QuadPart + (ULONG_PTR)Address -
+	    (ULONG_PTR)DmaPool->VirtualAddress;
+    }
+    return PhyAddr;
+}
+
+NTAPI PVOID MmGetVirtualForPhysical(IN PHYSICAL_ADDRESS PhysicalAddress)
+{
+    LoopOverList(DmaPool, &IopDmaPoolList, DMA_POOL, Link) {
+	if (PhysicalAddress.QuadPart >= DmaPool->PhysicalAddress.QuadPart &&
+	    PhysicalAddress.QuadPart < (DmaPool->PhysicalAddress.QuadPart + DmaPool->Size)) {
+	    return (PCHAR)DmaPool->VirtualAddress + DmaPool->PhysicalAddress.QuadPart +
+		DmaPool->Size - PhysicalAddress.QuadPart;
+	}
+    }
+    return NULL;
+}
+
+/*
+ * Build a partial MDL that covers the specified virtual address range.
+ * Note the virtual address of the MDL is obtained from MmGetMdlVirtualAddress.
+ */
 NTAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,
 			     IN PVOID VirtualAddress,
 			     IN ULONG Length)
 {
-    UNIMPLEMENTED;
+    if (!SourceMdl) {
+	return NULL;
+    }
+    UNIMPLEMENTED_DBGBREAK();
     return NULL;
 }
 

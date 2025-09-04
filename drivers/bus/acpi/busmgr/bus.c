@@ -896,7 +896,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
     if (!Child)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    Device = ExAllocatePoolWithTag(sizeof(ACPI_DEVICE), 'DpcA');
+    Device = ExAllocatePoolWithTag(NonPagedPool, sizeof(ACPI_DEVICE), 'DpcA');
     if (!Device) {
 	DPRINT1("Memory allocation error\n");
 	return_VALUE(AE_NO_MEMORY);
@@ -1003,7 +1003,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
 	    Uid = Info->UniqueId.String;
 	if (Info->Valid & ACPI_VALID_CID) {
 	    CidList = &Info->CompatibleIdList;
-	    Device->Pnp.CidList = ExAllocatePoolWithTag(CidList->ListSize,
+	    Device->Pnp.CidList = ExAllocatePoolWithTag(NonPagedPool, CidList->ListSize,
 							'DpcA');
 	    if (Device->Pnp.CidList) {
 		PCHAR P = (PCHAR )&Device->Pnp.CidList->Ids[CidList->Count];
@@ -1077,7 +1077,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
     }
 
     if (Hid) {
-	Device->Pnp.HardwareId = ExAllocatePoolWithTag(strlen(Hid) + 1,
+	Device->Pnp.HardwareId = ExAllocatePoolWithTag(NonPagedPool, strlen(Hid) + 1,
 						       'DpcA');
 	if (Device->Pnp.HardwareId) {
 	    snprintf(Device->Pnp.HardwareId, strlen(Hid) + 1, "%s", Hid);

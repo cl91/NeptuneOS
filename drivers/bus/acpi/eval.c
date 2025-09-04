@@ -315,7 +315,7 @@ static NTSTATUS EvalConvertParameterObjects(_Out_ ACPI_OBJECT *Arg, _In_ ULONG D
 	    return STATUS_ACPI_INCORRECT_ARGUMENT_COUNT;
 	}
 
-	Arg->Package.Elements = ExAllocatePoolWithTag(PackageSize,
+	Arg->Package.Elements = ExAllocatePoolWithTag(NonPagedPool, PackageSize,
 						      TAG_ACPI_PACKAGE_LIST);
 	if (!Arg->Package.Elements)
 	    return STATUS_INSUFFICIENT_RESOURCES;
@@ -377,7 +377,7 @@ static NTSTATUS EvalCreateParametersList(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION 
 	    return STATUS_INFO_LENGTH_MISMATCH;
 	}
 
-	Arg = ExAllocatePoolWithTag(sizeof(*Arg), TAG_ACPI_PARAMETERS_LIST);
+	Arg = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Arg), TAG_ACPI_PARAMETERS_LIST);
 	if (!Arg)
 	    return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -399,7 +399,7 @@ static NTSTATUS EvalCreateParametersList(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION 
 	    return STATUS_INFO_LENGTH_MISMATCH;
 	}
 
-	Arg = ExAllocatePoolWithTag(sizeof(*Arg), TAG_ACPI_PARAMETERS_LIST);
+	Arg = ExAllocatePoolWithTag(NonPagedPool, sizeof(*Arg), TAG_ACPI_PARAMETERS_LIST);
 	if (!Arg)
 	    return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -439,7 +439,7 @@ static NTSTATUS EvalCreateParametersList(_In_ PIRP Irp, _In_ PIO_STACK_LOCATION 
 	    return STATUS_ACPI_INCORRECT_ARGUMENT_COUNT;
 	}
 
-	Arg = ExAllocatePoolWithTag(ArgumentsSize, TAG_ACPI_PARAMETERS_LIST);
+	Arg = ExAllocatePoolWithTag(NonPagedPool, ArgumentsSize, TAG_ACPI_PARAMETERS_LIST);
 	if (!Arg)
 	    return STATUS_INSUFFICIENT_RESOURCES;
 

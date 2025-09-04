@@ -100,7 +100,8 @@ NTAPI NTSTATUS BatteryClassStatusNotify(IN PVOID ClassData)
 NTAPI NTSTATUS BatteryClassInitializeDevice(IN PBATTERY_MINIPORT_INFO MiniportInfo,
 					    IN PVOID *ClassData)
 {
-    PBATTERY_CLASS_DATA BattClass = ExAllocatePoolWithTag(sizeof(BATTERY_CLASS_DATA),
+    PBATTERY_CLASS_DATA BattClass = ExAllocatePoolWithTag(NonPagedPool,
+							  sizeof(BATTERY_CLASS_DATA),
 							  BATTERY_CLASS_DATA_TAG);
     if (BattClass == NULL)
 	return STATUS_INSUFFICIENT_RESOURCES;

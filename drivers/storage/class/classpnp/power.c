@@ -2438,7 +2438,7 @@ NTSTATUS ClasspEnableIdlePower(_In_ PDEVICE_OBJECT DeviceObject)
 	//
 	// Put this FDO on the list of devices that are idle power managed.
 	//
-	fdoEntry = ExAllocatePoolWithTag(sizeof(IDLE_POWER_FDO_LIST_ENTRY),
+	fdoEntry = ExAllocatePoolWithTag(NonPagedPool, sizeof(IDLE_POWER_FDO_LIST_ENTRY),
 					 CLASS_TAG_POWER);
 	if (fdoEntry) {
 	    fdoExtension->FunctionSupportInfo->IdlePower.IdlePowerEnabled = TRUE;

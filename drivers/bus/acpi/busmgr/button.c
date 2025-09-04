@@ -159,7 +159,7 @@ static INT AcpiButtonAdd(PACPI_DEVICE Device)
     if (!Device)
 	return_VALUE(-1);
 
-    Button = ExAllocatePoolWithTag(sizeof(ACPI_BUTTON), ACPI_TAG);
+    Button = ExAllocatePoolWithTag(NonPagedPool, sizeof(ACPI_BUTTON), ACPI_TAG);
     if (!Button)
 	return_VALUE(-4);
     memset(Button, 0, sizeof(ACPI_BUTTON));

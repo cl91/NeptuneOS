@@ -1087,7 +1087,8 @@ NTSTATUS ClasspWriteCacheProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
 	status = STATUS_SUCCESS;
     }
 
-    modeData = ExAllocatePoolWithTag(MODE_PAGE_DATA_SIZE, CLASS_TAG_MODE_DATA);
+    modeData = ExAllocatePoolWithTag(NonPagedPool, MODE_PAGE_DATA_SIZE,
+				     CLASS_TAG_MODE_DATA);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_IOCTL,
@@ -1374,15 +1375,18 @@ NTSTATUS ClassReadCapacity16(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 
 #if defined(_ARM_) || defined(_ARM64_)
     //
-    // ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-    // based platforms. We are taking the conservative approach here.
+    // ARM has specific alignment requirements, although this will not have a
+    // functional impact on x86 or amd64-based platforms. We are taking the
+    // conservative approach here.
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
-    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(allocationBufferLength,
+    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(NonPagedPool,
+							      allocationBufferLength,
 							      '4CcS');
 #else
-    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(bufferLength, '4CcS');
+    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(NonPagedPool,
+							      bufferLength, '4CcS');
 #endif
 
     if (dataBuffer == NULL) {
@@ -1723,7 +1727,7 @@ NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
 	// are handled, always return success for PropertyExistsQuery.
 	//
 	status = STATUS_SUCCESS;
-	goto __ClasspDeviceMediaTypeProperty_Exit;
+	goto Exit;
 
     } else if (query->QueryType != PropertyStandardQuery) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -1732,7 +1736,7 @@ NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject, query->QueryType));
 
 	status = STATUS_NOT_SUPPORTED;
-	goto __ClasspDeviceMediaTypeProperty_Exit;
+	goto Exit;
     }
 
     //
@@ -1748,12 +1752,12 @@ NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
 	pDesc->Size = sizeof(STORAGE_MEDIUM_PRODUCT_TYPE_DESCRIPTOR);
     } else {
 	status = STATUS_BUFFER_TOO_SMALL;
-	goto __ClasspDeviceMediaTypeProperty_Exit;
+	goto Exit;
     }
 
     if (length < sizeof(STORAGE_MEDIUM_PRODUCT_TYPE_DESCRIPTOR)) {
 	status = STATUS_SUCCESS;
-	goto __ClasspDeviceMediaTypeProperty_Exit;
+	goto Exit;
     }
 
     //
@@ -1767,7 +1771,7 @@ NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
 	// Otherwise device was previously found lacking support for this VPD page. Fail the request.
 	//
 	status = STATUS_INVALID_DEVICE_REQUEST;
-	goto __ClasspDeviceMediaTypeProperty_Exit;
+	goto Exit;
     }
 
     if (!NT_SUCCESS(status)) {
@@ -1780,7 +1784,7 @@ NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
 		    "retrieval fails with %x.\n",
 		    DeviceObject, status));
 
-	goto __ClasspDeviceMediaTypeProperty_Exit;
+	goto Exit;
     }
 
     //
@@ -1791,7 +1795,7 @@ NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
 	fdoExtension->FunctionSupportInfo->DeviceCharacteristicsData.MediumProductType;
     status = STATUS_SUCCESS;
 
-__ClasspDeviceMediaTypeProperty_Exit:
+Exit:
 
     //
     // Set the size and status in IRP
@@ -1840,17 +1844,18 @@ NTSTATUS ClasspDeviceGetBlockDeviceCharacteristicsVPDPage(IN PFUNCTIONAL_DEVICE_
 
 #if defined(_ARM_) || defined(_ARM64_)
     //
-    // ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-    // based platforms. We are taking the conservative approach here.
+    // ARM has specific alignment requirements, although this will not have a
+    // functional impact on x86 or amd64-based platforms. We are taking the
+    // conservative approach here.
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
     dataBuffer = (PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE)
-	ExAllocatePoolWithTag(allocationBufferLength, '5CcS');
+	ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength, '5CcS');
 #else
 
     dataBuffer = (PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE)
-	ExAllocatePoolWithTag(bufferLength, '5CcS');
+	ExAllocatePoolWithTag(NonPagedPool, bufferLength, '5CcS');
 #endif
     if (dataBuffer == NULL) {
 	status = STATUS_INSUFFICIENT_RESOURCES;
@@ -2126,19 +2131,23 @@ NTSTATUS ClasspDeviceGetLBProvisioningVPDPage(IN PDEVICE_OBJECT DeviceObject,
 	Srb != NULL) {
 #if defined(_ARM_) || defined(_ARM64_)
 	//
-	// ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-	// based platforms. We are taking the conservative approach here.
+	// ARM has specific alignment requirements, although this will not have a
+	// functional impact on x86 or amd64-based platforms. We are taking the
+	// conservative approach here.
 	//
 	//
 	allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					     KeGetRecommendedSharedDataAlignment());
-	dataBuffer = ExAllocatePoolWithTag(allocationBufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(NonPagedPool,
+					   allocationBufferLength, '0CcS');
 #else
-	dataBuffer = ExAllocatePoolWithTag(bufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(NonPagedPool, bufferLength, '0CcS');
 #endif
 	if (dataBuffer == NULL) {
-	    // return without updating FdoExtension->FunctionSupportInfo->LBProvisioningData.CommandStatus
-	    // the field will remain value as "-1", so that the command will be attempted next time this function is called.
+	    // return without updating FdoExtension->FunctionSupportInfo
+	    // ->LBProvisioningData.CommandStatus
+	    // the field will remain value as "-1", so that the command will be
+	    // attempted next time this function is called.
 	    status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto Exit;
 	}
@@ -2301,18 +2310,21 @@ NTSTATUS ClasspDeviceGetBlockLimitsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION FdoEx
     if (FdoExtension->FunctionSupportInfo->ValidInquiryPages.BlockLimits == TRUE) {
 #if defined(_ARM_) || defined(_ARM64_)
 	//
-	// ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-	// based platforms. We are taking the conservative approach here.
+	// ARM has specific alignment requirements, although this will not have a
+	// functional impact on x86 or amd64-based platforms. We are taking the
+	// conservative approach here.
 	//
 	allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					     KeGetRecommendedSharedDataAlignment());
-	dataBuffer = ExAllocatePoolWithTag(allocationBufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength, '0CcS');
 #else
-	dataBuffer = ExAllocatePoolWithTag(bufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(NonPagedPool, bufferLength, '0CcS');
 #endif
 	if (dataBuffer == NULL) {
-	    // return without updating FdoExtension->FunctionSupportInfo->BlockLimitsData.CommandStatus
-	    // the field will remain value as "-1", so that the command will be attempted next time this function is called.
+	    // return without updating FdoExtension->FunctionSupportInfo
+	    // ->BlockLimitsData.CommandStatus
+	    // the field will remain value as "-1", so that the command will
+	    // be attempted next time this function is called.
 	    status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto Exit;
 	}
@@ -3017,16 +3029,15 @@ NTSTATUS DeviceProcessDsmTrimRequest(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 
 #if defined(_ARM_) || defined(_ARM64_)
     //
-    // ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-    // based platforms. We are taking the conservative approach here.
+    // ARM has specific alignment requirements, although this will not have a
+    // functional impact on x86 or amd64-based platforms. We are taking the
+    // conservative approach here.
     //
     bufferLength = ALIGN_UP_BY(bufferLength, KeGetRecommendedSharedDataAlignment());
-    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(bufferLength,
-						       CLASS_TAG_LB_PROVISIONING);
-#else
-    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(bufferLength,
-						       CLASS_TAG_LB_PROVISIONING);
 #endif
+
+    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(NonPagedPool, bufferLength,
+						       CLASS_TAG_LB_PROVISIONING);
 
     if (buffer == NULL) {
 	status = STATUS_INSUFFICIENT_RESOURCES;
@@ -3999,16 +4010,16 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
 			    (slabsPerCommand * sizeof(LBA_STATUS_DESCRIPTOR)));
 #if defined(_ARM_) || defined(_ARM64_)
     //
-    // ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-    // based platforms. We are taking the conservative approach here.
+    // ARM has specific alignment requirements, although this will not have a
+    // functional impact on x86 or amd64-based platforms. We are taking the
+    // conservative approach here.
     //
     lbaStatusSize = ALIGN_UP_BY(lbaStatusSize, KeGetRecommendedSharedDataAlignment());
-    lbaStatusListHeader = (PLBA_STATUS_LIST_HEADER)ExAllocatePoolWithTag(lbaStatusSize,
-									 CLASS_TAG_LB_PROVISIONING);
-#else
-    lbaStatusListHeader = (PLBA_STATUS_LIST_HEADER)
-	ExAllocatePoolWithTag(lbaStatusSize, CLASS_TAG_LB_PROVISIONING);
 #endif
+
+    lbaStatusListHeader = (PLBA_STATUS_LIST_HEADER)ExAllocatePoolWithTag(NonPagedPool,
+									 lbaStatusSize,
+									 CLASS_TAG_LB_PROVISIONING);
 
     if (lbaStatusListHeader == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4624,16 +4635,16 @@ NTSTATUS ClassGetLBProvisioningResources(IN PDEVICE_OBJECT DeviceObject,
 
 #if defined(_ARM_) || defined(_ARM64_)
     //
-    // ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-    // based platforms. We are taking the conservative approach here.
+    // ARM has specific alignment requirements, although this will not have a
+    // functional impact on x86 or amd64-based platforms. We are taking the
+    // conservative approach here.
     //
     logPageSize = ALIGN_UP_BY(logPageSize, KeGetRecommendedSharedDataAlignment());
-    logPage = (PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING)ExAllocatePoolWithTag(logPageSize,
-									  CLASS_TAG_LB_PROVISIONING);
-#else
-    logPage = (PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING)
-	ExAllocatePoolWithTag(logPageSize, CLASS_TAG_LB_PROVISIONING);
 #endif
+
+    logPage = (PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING)ExAllocatePoolWithTag(NonPagedPool,
+									  logPageSize,
+									  CLASS_TAG_LB_PROVISIONING);
     if (logPage != NULL) {
 	//
 	// Get the LBP log page from the device.
@@ -4747,7 +4758,7 @@ NTAPI VOID ClassLogThresholdEvent(IN PDEVICE_OBJECT DeviceObject,
 	srbSize = sizeof(SCSI_REQUEST_BLOCK);
     }
 
-    srb = ExAllocatePoolWithTag(srbSize, 'ACcS');
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, 'ACcS');
     if (srb != NULL) {
 	//
 	// Try to get the LBP resources from the device so we can report them in
@@ -5577,11 +5588,11 @@ VOID ClasspQueueLogIOEventWithContextWorker(IN PDEVICE_OBJECT DeviceObject,
 
     workItem = IoAllocateWorkItem(DeviceObject);
     if (!workItem) {
-	goto __ClasspQueueLogIOEventWithContextWorker_ExitWithMessage;
+	goto ExitWithMessage;
     }
 
     if (SenseBufferSize) {
-	senseData = ExAllocatePoolWithTag(SenseBufferSize,
+	senseData = ExAllocatePoolWithTag(NonPagedPool, SenseBufferSize,
 					  CLASSPNP_POOL_TAG_LOG_MESSAGE);
 	if (senseData) {
 	    senseBufferSize = SenseBufferSize;
@@ -5605,11 +5616,11 @@ VOID ClasspQueueLogIOEventWithContextWorker(IN PDEVICE_OBJECT DeviceObject,
     case IO_WARNING_IO_OPERATION_RETRIED: {
 	PIO_RETRIED_LOG_MESSAGE_CONTEXT ioLogMessageContext = NULL;
 
-	ioLogMessageContext =
-	    ExAllocatePoolWithTag(sizeof(IO_RETRIED_LOG_MESSAGE_CONTEXT),
-				  CLASSPNP_POOL_TAG_LOG_MESSAGE);
+	ioLogMessageContext = ExAllocatePoolWithTag(NonPagedPool,
+						    sizeof(IO_RETRIED_LOG_MESSAGE_CONTEXT),
+						    CLASSPNP_POOL_TAG_LOG_MESSAGE);
 	if (!ioLogMessageContext) {
-	    goto __ClasspQueueLogIOEventWithContextWorker_ExitWithMessage;
+	    goto ExitWithMessage;
 	}
 
 	ioLogMessageContext->Lba.QuadPart = lba.QuadPart;
@@ -5622,7 +5633,7 @@ VOID ClasspQueueLogIOEventWithContextWorker(IN PDEVICE_OBJECT DeviceObject,
     }
 
     default:
-	goto __ClasspQueueLogIOEventWithContextWorker_Exit;
+	goto Exit;
     }
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
@@ -5652,14 +5663,14 @@ VOID ClasspQueueLogIOEventWithContextWorker(IN PDEVICE_OBJECT DeviceObject,
 
     return;
 
-__ClasspQueueLogIOEventWithContextWorker_ExitWithMessage:
+ExitWithMessage:
 
     TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
 		"ClasspQueueLogIOEventWithContextWorker: DO (%p), Failed to allocate "
 		"memory for the log message.\n",
 		DeviceObject));
 
-__ClasspQueueLogIOEventWithContextWorker_Exit:
+Exit:
     if (senseData) {
 	ExFreePool(senseData);
     }
@@ -6418,7 +6429,7 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 	// are handled, we shall always return success for PropertyExistsQuery.
 	//
 	status = STATUS_SUCCESS;
-	goto __ClasspDeviceCopyOffloadProperty_Exit;
+	goto Exit;
 
     } else if (query->QueryType != PropertyStandardQuery) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -6427,7 +6438,7 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject, query->QueryType));
 
 	status = STATUS_NOT_SUPPORTED;
-	goto __ClasspDeviceCopyOffloadProperty_Exit;
+	goto Exit;
     }
 
     //
@@ -6449,7 +6460,7 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 	    copyOffloadDescr->Size = sizeof(DEVICE_COPY_OFFLOAD_DESCRIPTOR);
 
 	    status = STATUS_SUCCESS;
-	    goto __ClasspDeviceCopyOffloadProperty_Exit;
+	    goto Exit;
 	}
 
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -6458,7 +6469,7 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject, length));
 
 	status = STATUS_BUFFER_TOO_SMALL;
-	goto __ClasspDeviceCopyOffloadProperty_Exit;
+	goto Exit;
     }
 
     if (!fdoExtension->FunctionSupportInfo->ValidInquiryPages.BlockDeviceRODLimits) {
@@ -6468,7 +6479,7 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject));
 
 	status = STATUS_DEVICE_FEATURE_NOT_SUPPORTED;
-	goto __ClasspDeviceCopyOffloadProperty_Exit;
+	goto Exit;
     }
 
     if (!NT_SUCCESS(
@@ -6480,7 +6491,7 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 		    "%x.\n",
 		    DeviceObject, status));
 
-	goto __ClasspDeviceCopyOffloadProperty_Exit;
+	goto Exit;
     }
 
     //
@@ -6516,7 +6527,7 @@ NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
     information = sizeof(DEVICE_COPY_OFFLOAD_DESCRIPTOR);
     status = STATUS_SUCCESS;
 
-__ClasspDeviceCopyOffloadProperty_Exit:
+Exit:
 
     //
     // Set the size and status in IRP
@@ -6578,7 +6589,7 @@ NTSTATUS ClasspValidateOffloadSupported(IN PDEVICE_OBJECT DeviceObject,
 			DeviceObject));
 
 	    status = STATUS_DEVICE_FEATURE_NOT_SUPPORTED;
-	    goto __ClasspValidateOffloadSupported_Exit;
+	    goto Exit;
 	}
 
 	if (!NT_SUCCESS(
@@ -6590,7 +6601,7 @@ NTSTATUS ClasspValidateOffloadSupported(IN PDEVICE_OBJECT DeviceObject,
 			"%x.\n",
 			DeviceObject, status));
 
-	    goto __ClasspValidateOffloadSupported_Exit;
+	    goto Exit;
 	}
     } else {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_IOCTL,
@@ -6599,10 +6610,10 @@ NTSTATUS ClasspValidateOffloadSupported(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject));
 
 	status = STATUS_DEVICE_FEATURE_NOT_SUPPORTED;
-	goto __ClasspValidateOffloadSupported_Exit;
+	goto Exit;
     }
 
-__ClasspValidateOffloadSupported_Exit:
+Exit:
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspValidateOffloadSupported (%p): Exiting function Irp %p with "
 		"status %x.\n",
@@ -6656,7 +6667,7 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClasspValidateOffloadInputParameters_Exit;
+	goto Exit;
     }
 
     if ((irpStack->Parameters.DeviceIoControl.InputBufferLength <
@@ -6671,7 +6682,7 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 		    irpStack->Parameters.DeviceIoControl.InputBufferLength));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClasspValidateOffloadInputParameters_Exit;
+	goto Exit;
     }
 
     if ((dsmAttributes->DataSetRangesOffset == 0) ||
@@ -6683,7 +6694,7 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 		    dsmAttributes->DataSetRangesLength));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClasspValidateOffloadInputParameters_Exit;
+	goto Exit;
     }
 
     dataSetRanges = Add2Ptr(dsmAttributes, dsmAttributes->DataSetRangesOffset);
@@ -6697,7 +6708,7 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClasspValidateOffloadInputParameters_Exit;
+	goto Exit;
     }
 
     //
@@ -6714,7 +6725,7 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 			DeviceObject, status, fdoExtension->DiskGeometry.BytesPerSector));
 
 	    status = STATUS_INVALID_PARAMETER;
-	    goto __ClasspValidateOffloadInputParameters_Exit;
+	    goto Exit;
 	}
     }
 
@@ -6736,7 +6747,7 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 			dataSetRanges[i].LengthInBytes));
 
 	    status = STATUS_INVALID_PARAMETER;
-	    goto __ClasspValidateOffloadInputParameters_Exit;
+	    goto Exit;
 	}
 
 	if ((ULONGLONG)dataSetRanges[i].StartingOffset + dataSetRanges[i].LengthInBytes >
@@ -6750,11 +6761,11 @@ NTSTATUS ClasspValidateOffloadInputParameters(IN PDEVICE_OBJECT DeviceObject,
 			fdoExtension->CommonExtension.PartitionLength.QuadPart));
 
 	    status = STATUS_NONEXISTENT_SECTOR;
-	    goto __ClasspValidateOffloadInputParameters_Exit;
+	    goto Exit;
 	}
     }
 
-__ClasspValidateOffloadInputParameters_Exit:
+Exit:
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspValidateOffloadInputParameters (%p): Exiting function Irp %p with "
 		"status %x.\n",
@@ -7143,7 +7154,7 @@ PUCHAR ClasspBinaryToAscii(IN PUCHAR HexBuffer,
 
     if (!HexBuffer || Length == 0) {
 	*UpdateLength = 0;
-	goto __ClasspBinaryToAscii_Exit;
+	goto Exit;
     }
 
     //
@@ -7158,7 +7169,7 @@ PUCHAR ClasspBinaryToAscii(IN PUCHAR HexBuffer,
     //
     // Allocate the buffer.
     //
-    buffer = ExAllocatePoolWithTag(actualLength,
+    buffer = ExAllocatePoolWithTag(NonPagedPool, actualLength,
 				   CLASSPNP_POOL_TAG_TOKEN_OPERATION);
     if (!buffer) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -7167,7 +7178,7 @@ PUCHAR ClasspBinaryToAscii(IN PUCHAR HexBuffer,
 		    HexBuffer));
 
 	*UpdateLength = 0;
-	goto __ClasspBinaryToAscii_Exit;
+	goto Exit;
     }
 
     RtlZeroMemory(buffer, actualLength);
@@ -7192,7 +7203,7 @@ PUCHAR ClasspBinaryToAscii(IN PUCHAR HexBuffer,
     //
     *UpdateLength = actualLength;
 
-__ClasspBinaryToAscii_Exit:
+Exit:
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspBinaryToAscii (HexBuff %p): Exiting function with buffer %s.\n",
@@ -7242,7 +7253,7 @@ NTSTATUS ClasspStorageEventNotification(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClasspStorageEventNotification_Exit;
+	goto Exit;
     }
 
     if (irpStack->Parameters.DeviceIoControl.InputBufferLength <
@@ -7254,7 +7265,7 @@ NTSTATUS ClasspStorageEventNotification(IN PDEVICE_OBJECT DeviceObject,
 		    irpStack->Parameters.DeviceIoControl.InputBufferLength));
 
 	status = STATUS_INFO_LENGTH_MISMATCH;
-	goto __ClasspStorageEventNotification_Exit;
+	goto Exit;
     }
 
     if ((storageEvents->Version != STORAGE_EVENT_NOTIFICATION_VERSION_V1) ||
@@ -7265,7 +7276,7 @@ NTSTATUS ClasspStorageEventNotification(IN PDEVICE_OBJECT DeviceObject,
 		    DeviceObject, storageEvents->Version, storageEvents->Size));
 
 	status = STATUS_INVALID_PARAMETER;
-	goto __ClasspStorageEventNotification_Exit;
+	goto Exit;
     }
 
     //
@@ -7284,7 +7295,7 @@ NTSTATUS ClasspStorageEventNotification(IN PDEVICE_OBJECT DeviceObject,
 	}
     }
 
-__ClasspStorageEventNotification_Exit:
+Exit:
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspStorageEventNotification (%p): Exiting function Irp %p with "
 		"status %x.\n",
@@ -7320,7 +7331,7 @@ VOID ClasspZeroQERR(IN PDEVICE_OBJECT DeviceObject)
     PMODE_CONTROL_PAGE pageData = NULL;
     ULONG size = 0;
 
-    modeData = ExAllocatePoolWithTag(MODE_PAGE_DATA_SIZE,
+    modeData = ExAllocatePoolWithTag(NonPagedPool, MODE_PAGE_DATA_SIZE,
 				     CLASS_TAG_MODE_DATA);
 
     if (modeData == NULL) {

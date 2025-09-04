@@ -52,10 +52,8 @@
 #include <ntintsafe.h>
 #include <wdmguid.h>
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
 #include <ntpoapi.h>
 #include <srbhelper.h>
-#endif
 
 //
 // Include header file and setup GUID for tracing
@@ -292,15 +290,11 @@ typedef struct _MEDIA_CHANGE_DETECTION_INFO {
     // protected by Interlocked MediaChangeIrpInUse
     //
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
     union {
 	SCSI_REQUEST_BLOCK Srb;
 	STORAGE_REQUEST_BLOCK SrbEx;
 	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
     } MediaChangeSrb;
-#else
-    SCSI_REQUEST_BLOCK MediaChangeSrb;
-#endif
     PUCHAR SenseBuffer;
     ULONG SrbFlags;
 
@@ -325,15 +319,13 @@ typedef struct _MEDIA_CHANGE_DETECTION_INFO {
     // Buffer size of SenseBuffer
     //
     UCHAR SenseBufferLength;
-
 } MEDIA_CHANGE_DETECTION_INFO, *PMEDIA_CHANGE_DETECTION_INFO;
 
 typedef enum {
     SimpleMediaLock,
     SecureMediaLock,
     InternalMediaLock
-} MEDIA_LOCK_TYPE,
-    *PMEDIA_LOCK_TYPE;
+} MEDIA_LOCK_TYPE, *PMEDIA_LOCK_TYPE;
 
 typedef struct _FAILURE_PREDICTION_INFO {
     FAILURE_PREDICTION_METHOD Method;
@@ -348,7 +340,6 @@ typedef struct _FAILURE_PREDICTION_INFO {
     // Timestamp of last time the failure prediction info was queried.
     //
     LARGE_INTEGER LastFailurePredictionQueryTime;
-
 } FAILURE_PREDICTION_INFO, *PFAILURE_PREDICTION_INFO;
 
 //
@@ -437,9 +428,7 @@ typedef struct _CLASS_ERROR_LOG_DATA {
 #define NUM_ERROR_LOG_ENTRIES 16
 #define DBG_NUM_PACKET_LOG_ENTRIES (64 * 2) // 64 send&receive's
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
 typedef VOID (*PCONTINUATION_ROUTINE)(IN PVOID Context);
-#endif
 
 typedef struct _TRANSFER_PACKET {
     LIST_ENTRY AllPktsListEntry; // entry in fdoData's static AllTransferPacketsList
@@ -513,12 +502,7 @@ typedef struct _TRANSFER_PACKET {
      *  device object and ioctl code; so these must
      *  immediately follow the SRB block.
      */
-
-#if (NTDDI_VERSION >= NTDDI_WIN8)
     PSTORAGE_REQUEST_BLOCK_HEADER Srb;
-#else
-    SCSI_REQUEST_BLOCK Srb;
-#endif
     // ULONG SrbIoctlDevObj;        // not handling ioctls yet
     // ULONG SrbIoctlCode;
 
@@ -537,7 +521,6 @@ typedef struct _TRANSFER_PACKET {
     // The time at which this request was sent to port driver.
     ULONGLONG RequestStartTime;
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
     // ActivityId that is associated with the IRP that this transfer packet services.
     GUID ActivityId;
 
@@ -546,7 +529,6 @@ typedef struct _TRANSFER_PACKET {
     PVOID ContinuationContext;
     ULONGLONG TransferCount;
     ULONG AllocateNode;
-#endif
 } TRANSFER_PACKET, *PTRANSFER_PACKET;
 
 /*
@@ -708,12 +690,7 @@ struct _CLASS_PRIVATE_FDO_DATA {
      *  SCSI_REQUEST_BLOCK template preconfigured with the constant values.
      *  This is slapped into the SRB in the TRANSFER_PACKET for each transfer.
      */
-
-#if (NTDDI_VERSION >= NTDDI_WIN8)
     PSTORAGE_REQUEST_BLOCK_HEADER SrbTemplate;
-#else
-    SCSI_REQUEST_BLOCK SrbTemplate;
-#endif
 
     /*
      *  For non-removable media, we read the drive capacity at start time and cache it.
@@ -807,8 +784,6 @@ struct _CLASS_PRIVATE_FDO_DATA {
     //
     PIO_WORKITEM IdleWorkItem;
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
-
     //
     // Time (ms) since the completion of the last non-idle request before the
     // first idle request should be issued. Due to the coarseness of the idle
@@ -821,8 +796,6 @@ struct _CLASS_PRIVATE_FDO_DATA {
     // Max number of active idle requests.
     //
     USHORT IdleActiveIoMax;
-
-#endif
 
     //
     // Idle duration required to process idle request
@@ -1740,8 +1713,6 @@ RTL_GENERIC_ALLOCATE_ROUTINE RemoveTrackingAllocateRoutine;
 
 RTL_GENERIC_FREE_ROUTINE RemoveTrackingFreeRoutine;
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
-
 typedef PVOID (*PSRB_ALLOCATE_ROUTINE)(IN CLONG ByteSize);
 
 PVOID DefaultStorageRequestBlockAllocateRoutine(IN CLONG ByteSize);
@@ -1848,8 +1819,6 @@ FORCEINLINE VOID FREE_PORT_ALLOCATED_SENSE_BUFFER_EX(IN PFUNCTIONAL_DEVICE_EXTEN
     return;
 }
 
-#endif //NTDDI_WIN8
-
 BOOLEAN ClasspFailurePredictionPeriodMissed(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
 
 /*++
@@ -1893,7 +1862,7 @@ FORCEINLINE ULONG ClasspGetMaxUsableBufferLengthFromOffset(IN PVOID BaseAddress,
     return BaseStructureSizeInBytes - OffsetInBytes;
 }
 
-BOOLEAN ClasspIsThinProvisioningError(IN PSCSI_REQUEST_BLOCK _Srb);
+BOOLEAN ClasspIsThinProvisioningError(IN PSCSI_REQUEST_BLOCK Srb);
 
 FORCEINLINE BOOLEAN ClasspLowerLayerNotSupport(IN NTSTATUS Status)
 {

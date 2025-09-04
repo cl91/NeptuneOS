@@ -188,7 +188,8 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
     /* Even if PartitionInfoIsValid is FALSE, we will still check if
      * the boot sector is a FAT boot sector. This mostly applies to floppy
      * and ZIP disks formatted using the FAT file system. */
-    PBOOT_SECTOR Boot = ExAllocatePoolWithTag(DiskGeometry.BytesPerSector,
+    PBOOT_SECTOR Boot = ExAllocatePoolWithTag(NonPagedPool,
+					      DiskGeometry.BytesPerSector,
 					      TAG_BUFFER);
     if (Boot == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -276,7 +277,8 @@ CheckFatX:
 	return STATUS_UNRECOGNIZED_VOLUME;
     }
 
-    PBOOT_SECTOR_FATX BootFatX = ExAllocatePoolWithTag(sizeof(BOOT_SECTOR_FATX),
+    PBOOT_SECTOR_FATX BootFatX = ExAllocatePoolWithTag(NonPagedPool,
+						       sizeof(BOOT_SECTOR_FATX),
 						       TAG_BUFFER);
     if (BootFatX == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -376,7 +378,7 @@ static NTSTATUS ReadVolumeLabel(IN PVOID Device,
 	/* FIXME: Check we really have a VCB */
 	pFcb = FatOpenRootFcb((PDEVICE_EXTENSION)Device);
     } else {
-	Buffer = ExAllocatePoolWithTag(ClusterSize, TAG_DIRENT);
+	Buffer = ExAllocatePoolWithTag(NonPagedPool, ClusterSize, TAG_DIRENT);
 	if (Buffer == NULL) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
@@ -570,7 +572,7 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     /* Record the VPB in the device object, and create a spare VPB.
      * Both are used by the dismount logic. */
     DeviceExt->IoVPB = DeviceObject->Vpb;
-    DeviceExt->SpareVPB = ExAllocatePoolWithTag(sizeof(VPB), TAG_VPB);
+    DeviceExt->SpareVPB = ExAllocatePoolWithTag(NonPagedPool, sizeof(VPB), TAG_VPB);
     PFATFCB FatFcb = NULL, VolumeFcb = NULL;
     PFILE_OBJECT VolumeFileObject = NULL;
     if (DeviceExt->SpareVPB == NULL) {
@@ -579,7 +581,8 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     }
 
     ULONG StatisticsSize = sizeof(STATISTICS) * FatGlobalData->NumberProcessors;
-    DeviceExt->Statistics = ExAllocatePoolWithTag(StatisticsSize, TAG_STATS);
+    DeviceExt->Statistics = ExAllocatePoolWithTag(NonPagedPool,
+						  StatisticsSize, TAG_STATS);
     if (DeviceExt->Statistics == NULL) {
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto ByeBye;

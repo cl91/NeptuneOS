@@ -277,8 +277,9 @@ NTAPI ULONG ClassInitialize(IN PVOID Argument1,
 	driverExtension->RegistryPath.Length = RegistryPath->Length;
 	driverExtension->RegistryPath.MaximumLength = RegistryPath->MaximumLength;
 
-	driverExtension->RegistryPath.Buffer =
-	    ExAllocatePoolWithTag(RegistryPath->MaximumLength, '1CcS');
+	driverExtension->RegistryPath.Buffer = ExAllocatePoolWithTag(NonPagedPool,
+								     RegistryPath->MaximumLength,
+								     '1CcS');
 
 	if (driverExtension->RegistryPath.Buffer == NULL) {
 	    status = STATUS_INSUFFICIENT_RESOURCES;
@@ -459,7 +460,7 @@ NTAPI ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 	    // incorrect size -- client programming error
 	    status = STATUS_INVALID_PARAMETER;
 	} else {
-	    info = ExAllocatePoolWithTag(sizeof(CLASS_WORKING_SET),
+	    info = ExAllocatePoolWithTag(NonPagedPool, sizeof(CLASS_WORKING_SET),
 					 CLASS_TAG_WORKING_SET);
 	    if (info == NULL) {
 		status = STATUS_INSUFFICIENT_RESOURCES;
@@ -507,7 +508,8 @@ NTAPI ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 	    // incorrect size -- client programming error
 	    status = STATUS_INVALID_PARAMETER;
 	} else {
-	    info = ExAllocatePoolWithTag(sizeof(CLASS_INTERPRET_SENSE_INFO2),
+	    info = ExAllocatePoolWithTag(NonPagedPool,
+					 sizeof(CLASS_INTERPRET_SENSE_INFO2),
 					 CLASS_TAG_SENSE2);
 	    if (info == NULL) {
 		status = STATUS_INSUFFICIENT_RESOURCES;
@@ -782,7 +784,8 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
 		    status = STATUS_INSUFFICIENT_RESOURCES;
 
-		    deviceRelations = ExAllocatePoolWithTag(sizeof(DEVICE_RELATIONS),
+		    deviceRelations = ExAllocatePoolWithTag(NonPagedPool,
+							    sizeof(DEVICE_RELATIONS),
 							    '2CcS');
 
 		    if (deviceRelations != NULL) {
@@ -1593,7 +1596,7 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 
 	    if (fdoExtension->PrivateFdoData == NULL) {
 		fdoExtension->PrivateFdoData =
-		    ExAllocatePoolWithTag(sizeof(CLASS_PRIVATE_FDO_DATA),
+		    ExAllocatePoolWithTag(NonPagedPool, sizeof(CLASS_PRIVATE_FDO_DATA),
 					  CLASS_TAG_PRIVATE_DATA);
 	    }
 
@@ -1619,7 +1622,8 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 
 	    if (fdoExtension->FunctionSupportInfo == NULL) {
 		fdoExtension->FunctionSupportInfo = (PCLASS_FUNCTION_SUPPORT_INFO)
-		    ExAllocatePoolWithTag(sizeof(CLASS_FUNCTION_SUPPORT_INFO), '3BcS');
+		    ExAllocatePoolWithTag(NonPagedPool,
+					  sizeof(CLASS_FUNCTION_SUPPORT_INFO), '3BcS');
 	    }
 
 	    if (fdoExtension->FunctionSupportInfo == NULL) {
@@ -2728,7 +2732,7 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
     // Allocate Srb from nonpaged pool.
     //
 
-    context = ExAllocatePoolWithTag(sizeof(COMPLETION_CONTEXT), '6CcS');
+    context = ExAllocatePoolWithTag(NonPagedPool, sizeof(COMPLETION_CONTEXT), '6CcS');
 
     if (context == NULL) {
 	//
@@ -3587,15 +3591,16 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo,
 #if defined(_ARM_) || defined(_ARM64_)
 
     //
-    // ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-    // based platforms. We are taking the conservative approach here.
+    // ARM has specific alignment requirements, although this will not have a
+    // functional impact on x86 or amd64-based platforms. We are taking the
+    // conservative approach here.
     //
     senseInfoBufferLength = ALIGN_UP_BY(senseInfoBufferLength,
 					KeGetRecommendedSharedDataAlignment());
 
 #endif
 
-    senseInfoBuffer = ExAllocatePoolWithTag(senseInfoBufferLength, '7CcS');
+    senseInfoBuffer = ExAllocatePoolWithTag(NonPagedPool, senseInfoBufferLength, '7CcS');
 
     if (senseInfoBuffer == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -5967,16 +5972,7 @@ NTAPI ULONG ClassModeSenseEx(IN PDEVICE_OBJECT Fdo,
 			     IN UCHAR PageMode,
 			     IN UCHAR PageControl)
 {
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
     return ClasspModeSense(Fdo, ModeSenseBuffer, Length, PageMode, PageControl);
-#else
-    UNREFERENCED_PARAMETER(Fdo);
-    UNREFERENCED_PARAMETER(ModeSenseBuffer);
-    UNREFERENCED_PARAMETER(Length);
-    UNREFERENCED_PARAMETER(PageMode);
-    UNREFERENCED_PARAMETER(PageControl);
-    return 0;
-#endif
 }
 
 /*
@@ -6158,15 +6154,7 @@ NTAPI NTSTATUS ClassModeSelect(IN PDEVICE_OBJECT Fdo,
 			       IN ULONG Length,
 			       IN BOOLEAN SavePages)
 {
-#if (NTDDI_VERSION >= NTDDI_WINBLUE)
     return ClasspModeSelect(Fdo, ModeSelectBuffer, Length, SavePages);
-#else
-    UNREFERENCED_PARAMETER(Fdo);
-    UNREFERENCED_PARAMETER(ModeSelectBuffer);
-    UNREFERENCED_PARAMETER(Length);
-    UNREFERENCED_PARAMETER(SavePages);
-    return STATUS_NOT_SUPPORTED;
-#endif
 }
 
 /*++
@@ -6549,6 +6537,11 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	(controlCode == IOCTL_SCSI_PASS_THROUGH_DIRECT) ||
 	(controlCode == IOCTL_SCSI_PASS_THROUGH_EX) ||
 	(controlCode == IOCTL_SCSI_PASS_THROUGH_DIRECT_EX)) {
+	/* This is not going to work. We need to modify the server to map the
+	 * client buffers (data buffer and sense info buffer) into the driver space.
+	 * We also need to build the new STORAGE_REQUEST_BLOCK since we intend to
+	 * remove SCSI_REQUEST_BLOCK. */
+	assert(FALSE);
 	//
 	// Validiate the user buffer for SCSI pass through.
 	// For pass through EX: as the handler will validate the size anyway,
@@ -6659,7 +6652,8 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    break;
 	}
 
-	valueName = ExAllocatePoolWithTag(commonExtension->DeviceName.Length + sizeof(WCHAR),
+	valueName = ExAllocatePoolWithTag(NonPagedPool,
+					  commonExtension->DeviceName.Length + sizeof(WCHAR),
 					  '8CcS');
 
 	if (!valueName) {
@@ -6768,7 +6762,8 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    sizeNeeded = sizeof(SCSI_REQUEST_BLOCK);
 	}
 
-	srb = ExAllocatePoolWithTag(sizeNeeded + (sizeof(ULONG_PTR) * 2),
+	srb = ExAllocatePoolWithTag(NonPagedPool,
+				    sizeNeeded + (sizeof(ULONG_PTR) * 2),
 				    '9CcS');
 
 	if (srb == NULL) {
@@ -7717,7 +7712,6 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	break;
     }
 
-#if (NTDDI_VERSION >= NTDDI_WINTRHESHOLD)
     case IOCTL_STORAGE_FIRMWARE_GET_INFO: {
 	FREE_POOL(srb);
 
@@ -7750,7 +7744,6 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	status = ClassDeviceHwFirmwareActivateProcess(DeviceObject, Irp, srb);
 	break;
     }
-#endif
 
     default: {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -8302,7 +8295,6 @@ NTAPI NTSTATUS ClassClaimDevice(IN PDEVICE_OBJECT LowerDeviceObject,
 	return status;
     }
 
-    NT_ASSERT(srb.DataBuffer != NULL);
     NT_ASSERT(!TEST_FLAG(srb.SrbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
 
     return status;
@@ -8425,14 +8417,15 @@ NTAPI ULONG ClassQueryTimeOutRegistryValue(IN PDEVICE_OBJECT DeviceObject)
 	return 0;
     }
 
-    parameters = ExAllocatePoolWithTag(sizeof(RTL_QUERY_REGISTRY_TABLE) * 2, '1BcS');
+    parameters = ExAllocatePoolWithTag(NonPagedPool,
+				       sizeof(RTL_QUERY_REGISTRY_TABLE) * 2, '1BcS');
 
     if (!parameters) {
 	return 0;
     }
 
     size = registryPath->MaximumLength + sizeof(WCHAR);
-    path = ExAllocatePoolWithTag(size, '2BcS');
+    path = ExAllocatePoolWithTag(NonPagedPool, size, '2BcS');
 
     if (!path) {
 	FREE_POOL(parameters);
@@ -8620,7 +8613,7 @@ NTAPI NTSTATUS ClassGetDescriptor(IN PDEVICE_OBJECT DeviceObject,
     NT_ASSERT(length >= sizeof(STORAGE_PROPERTY_QUERY));
     length = max(length, sizeof(STORAGE_PROPERTY_QUERY));
 
-    descriptor = ExAllocatePoolWithTag(length, '4BcS');
+    descriptor = ExAllocatePoolWithTag(NonPagedPool, length, '4BcS');
 
     if (descriptor == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_INIT,
@@ -8922,7 +8915,7 @@ NTSTATUS ClassRetrieveDeviceRelations(IN PDEVICE_OBJECT Fdo,
 
     relationsSize = (sizeof(DEVICE_RELATIONS) + (count * sizeof(PDEVICE_OBJECT)));
 
-    deviceRelations = ExAllocatePoolWithTag(relationsSize, '5BcS');
+    deviceRelations = ExAllocatePoolWithTag(NonPagedPool, relationsSize, '5BcS');
 
     if (deviceRelations == NULL) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_ENUM,
@@ -10094,7 +10087,8 @@ NTSTATUS ClasspAllocateReleaseQueueIrp(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
     NT_ASSERT(!(FdoExtension->ReleaseQueueInProgress));
 
     FdoExtension->PrivateFdoData->ReleaseQueueIrp =
-	ExAllocatePoolWithTag(IoSizeOfIrp(lowerStackSize), CLASS_TAG_RELEASE_QUEUE);
+	ExAllocatePoolWithTag(NonPagedPool,
+			      IoSizeOfIrp(lowerStackSize), CLASS_TAG_RELEASE_QUEUE);
 
     if (FdoExtension->PrivateFdoData->ReleaseQueueIrp == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
@@ -10136,7 +10130,7 @@ NTSTATUS ClasspAllocatePowerProcessIrp(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension
     stackSize = FdoExtension->CommonExtension.LowerDeviceObject->StackSize + 1;
 
     FdoExtension->PrivateFdoData->PowerProcessIrp =
-	ExAllocatePoolWithTag(IoSizeOfIrp(stackSize), CLASS_TAG_POWER);
+	ExAllocatePoolWithTag(NonPagedPool, IoSizeOfIrp(stackSize), CLASS_TAG_POWER);
 
     if (FdoExtension->PrivateFdoData->PowerProcessIrp == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -11196,10 +11190,10 @@ VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExten
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
-    supportedPages = ExAllocatePoolWithTag(allocationBufferLength, '3CcS');
+    supportedPages = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength, '3CcS');
 
 #else
-    supportedPages = ExAllocatePoolWithTag(bufferLength, '3CcS');
+    supportedPages = ExAllocatePoolWithTag(NonPagedPool, bufferLength, '3CcS');
 #endif
 
     if (supportedPages == NULL) {
@@ -11366,7 +11360,7 @@ NTSTATUS ClasspGetLBProvisioningInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExte
 	    srbSize = sizeof(SCSI_REQUEST_BLOCK);
 	}
 
-	srb = ExAllocatePoolWithTag(srbSize, '0DcS');
+	srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, '0DcS');
 
 	if (srb == NULL) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
@@ -11497,7 +11491,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 	srbSize = sizeof(SCSI_REQUEST_BLOCK);
     }
 
-    srb = ExAllocatePoolWithTag(srbSize, CLASSPNP_POOL_TAG_SRB);
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, CLASSPNP_POOL_TAG_SRB);
 
     if (!srb) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
@@ -11505,7 +11499,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 		    DeviceObject));
 
 	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspGetBlockDeviceTokenLimitsInfo_Exit;
+	goto Exit;
     }
 
 #if defined(_ARM_) || defined(_ARM64_)
@@ -11515,10 +11509,10 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
-    dataBuffer = ExAllocatePoolWithTag(allocationBufferLength,
+    dataBuffer = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength,
 				       CLASSPNP_POOL_TAG_VPD);
 #else
-    dataBuffer = ExAllocatePoolWithTag(bufferLength,
+    dataBuffer = ExAllocatePoolWithTag(NonPagedPool, bufferLength,
 				       CLASSPNP_POOL_TAG_VPD);
 #endif
 
@@ -11529,7 +11523,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 		    DeviceObject));
 
 	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspGetBlockDeviceTokenLimitsInfo_Exit;
+	goto Exit;
     }
 
     operatingParameters = (PVPD_THIRD_PARTY_COPY_PAGE)dataBuffer;
@@ -11680,7 +11674,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 	status = STATUS_DEVICE_FEATURE_NOT_SUPPORTED;
     }
 
-__ClasspGetBlockDeviceTokenLimitsInfo_Exit:
+Exit:
 
     FREE_POOL(dataBuffer);
     FREE_POOL(srb);
@@ -12046,7 +12040,7 @@ static NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 
     allocationSize = sizeof(OFFLOAD_READ_CONTEXT) + bufferLength;
 
-    offloadReadContext = ExAllocatePoolWithTag(allocationSize,
+    offloadReadContext = ExAllocatePoolWithTag(NonPagedPool, allocationSize,
 					       CLASSPNP_POOL_TAG_TOKEN_OPERATION);
 
     if (!offloadReadContext) {
@@ -12649,7 +12643,7 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 		    "ClasspReceivePopulateTokenInformationTransferPacketDone (%p): Token "
 		    "retrieval failed for list Id %x with %x.\n",
 		    fdo, listIdentifier, status));
-	goto __ClasspReceivePopulateTokenInformationTransferPacketDone_Exit;
+	goto Exit;
     }
 
     REVERSE_BYTES(&availableData, &tokenInformationResults->AvailableData);
@@ -12874,7 +12868,7 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 	//
 
 	NT_ASSERT(status != STATUS_PENDING);
-	goto __ClasspReceivePopulateTokenInformationTransferPacketDone_Exit;
+	goto Exit;
 
     } else {
 	status = STATUS_UNSUCCESSFUL;
@@ -12885,10 +12879,10 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 		    fdo, listIdentifier, status));
 
 	NT_ASSERT(*totalSectorsProcessed == 0);
-	goto __ClasspReceivePopulateTokenInformationTransferPacketDone_Exit;
+	goto Exit;
     }
 
-__ClasspReceivePopulateTokenInformationTransferPacketDone_Exit:
+Exit:
 
     if (status != STATUS_PENDING) {
 	//
@@ -13019,7 +13013,7 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 
     allocationSize = sizeof(OFFLOAD_WRITE_CONTEXT) + bufferLength;
 
-    offloadWriteContext = ExAllocatePoolWithTag(allocationSize,
+    offloadWriteContext = ExAllocatePoolWithTag(NonPagedPool, allocationSize,
 						CLASSPNP_POOL_TAG_TOKEN_OPERATION);
 
     if (!offloadWriteContext) {
@@ -13268,7 +13262,7 @@ VOID ClasspContinueOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 		    fdo));
 
 	status = STATUS_INSUFFICIENT_RESOURCES;
-	goto __ClasspContinueOffloadWrite_ErrorExit;
+	goto ErrorExit;
     }
 
     OffloadWriteContext->Pkt = pkt;
@@ -13426,7 +13420,7 @@ VOID ClasspContinueOffloadWrite(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
     // Error cleaup label only - not used in success case:
     //
 
-__ClasspContinueOffloadWrite_ErrorExit:
+ErrorExit:
 
     NT_ASSERT(!NT_SUCCESS(status));
 
@@ -13586,7 +13580,7 @@ VOID ClasspWriteUsingTokenTransferPacketDone(IN PVOID Context)
 	}
 
 	NT_ASSERT(status != STATUS_PENDING && !NT_SUCCESS(status));
-	goto __ClasspWriteUsingTokenTransferPacketDone_Exit;
+	goto Exit;
 
     } else if ((NT_SUCCESS(status)) &&
 	       (pkt->Srb->SrbStatus == SRB_STATUS_SUCCESS || pkt->TransferCount != 0)) {
@@ -13638,7 +13632,7 @@ VOID ClasspWriteUsingTokenTransferPacketDone(IN PVOID Context)
 	ClasspReceiveWriteUsingTokenInformationDone(offloadWriteContext, status);
 	status = STATUS_PENDING;
 
-	goto __ClasspWriteUsingTokenTransferPacketDone_Exit;
+	goto Exit;
 
     } else {
 	//
@@ -13653,10 +13647,10 @@ VOID ClasspWriteUsingTokenTransferPacketDone(IN PVOID Context)
 	ClasspReceiveWriteUsingTokenInformation(offloadWriteContext);
 
 	status = STATUS_PENDING;
-	goto __ClasspWriteUsingTokenTransferPacketDone_Exit;
+	goto Exit;
     }
 
-__ClasspWriteUsingTokenTransferPacketDone_Exit:
+Exit:
 
     if (status != STATUS_PENDING) {
 	ClasspCompleteOffloadWrite(offloadWriteContext, status);
@@ -13712,7 +13706,7 @@ VOID ClasspReceiveWriteUsingTokenInformationDone(IN POFFLOAD_WRITE_CONTEXT Offlo
 	OffloadWriteContext->TotalRequestSizeSectors) {
 	ClasspCompleteOffloadWrite(OffloadWriteContext, CompletionCausingStatus);
 
-	goto __ClasspReceiveWriteUsingTokenInformationDone_Exit;
+	goto Exit;
     }
 
     //
@@ -13732,7 +13726,7 @@ VOID ClasspReceiveWriteUsingTokenInformationDone(IN POFFLOAD_WRITE_CONTEXT Offlo
 	//
 	ClasspCompleteOffloadWrite(OffloadWriteContext, STATUS_UNSUCCESSFUL);
 
-	goto __ClasspReceiveWriteUsingTokenInformationDone_Exit;
+	goto Exit;
     }
 
     NT_ASSERT(OffloadWriteContext->TotalSectorsProcessedSuccessfully <
@@ -13744,7 +13738,7 @@ VOID ClasspReceiveWriteUsingTokenInformationDone(IN POFFLOAD_WRITE_CONTEXT Offlo
 
     ClasspContinueOffloadWrite(OffloadWriteContext);
 
-__ClasspReceiveWriteUsingTokenInformationDone_Exit:
+Exit:
 
     return;
 }
@@ -13949,7 +13943,7 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
 
 	status = STATUS_INSUFFICIENT_RESOURCES;
 
-	goto __ClasspReceiveWriteUsingTokenInformation_ErrorExit;
+	goto ErrorExit;
     }
 
     RtlZeroMemory(buffer, bufferLength);
@@ -13988,7 +13982,7 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
     // Error label only - not used by success cases:
     //
 
-__ClasspReceiveWriteUsingTokenInformation_ErrorExit:
+ErrorExit:
 
     NT_ASSERT(!NT_SUCCESS(status));
 
@@ -14096,7 +14090,7 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 
 	NT_ASSERT((*totalSectorsProcessed) == 0);
 
-	goto __ClasspReceiveWriteUsingTokenInformationTransferPacketDone_ErrorExit;
+	goto ErrorExit;
     }
 
     REVERSE_BYTES(&availableData, &tokenInformationResults->AvailableData);
@@ -14195,10 +14189,10 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 		    (*totalSectorsProcessed) * fdoExt->DiskGeometry.BytesPerSector));
 
 	//
-	// Operation that completes with success can have sense data (for target to pass on some extra info)
-	// but we don't care about such sense info.
-	// Operation that complete but not with success, may not have sense data associated, but may
-	// have valid CompletionStatus.
+	// Operation that completes with success can have sense data (for target
+	// to pass on some extra info) but we don't care about such sense info.
+	// Operation that complete but not with success, may not have sense data
+	// associated, but may have valid CompletionStatus.
 	//
 	// The "status" may be overriden by ClassInterpretSenseInfo().  Final
 	// status is determined a bit later - this is just the default status
@@ -14274,30 +14268,30 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 	NT_ASSERT(status != STATUS_PENDING);
 
 	if (!NT_SUCCESS(status)) {
-	    goto __ClasspReceiveWriteUsingTokenInformationTransferPacketDone_ErrorExit;
+	    goto ErrorExit;
 	}
 
 	ClasspReceiveWriteUsingTokenInformationDone(OffloadWriteContext, status);
 	status = STATUS_PENDING;
-	goto __ClasspReceiveWriteUsingTokenInformationTransferPacketDone_Exit;
+	goto Exit;
 
     } else {
 	status = STATUS_UNSUCCESSFUL;
 
-	goto __ClasspReceiveWriteUsingTokenInformationTransferPacketDone_ErrorExit;
+	goto ErrorExit;
     }
 
     //
     // Error label only - not used in success case:
     //
 
-__ClasspReceiveWriteUsingTokenInformationTransferPacketDone_ErrorExit:
+ErrorExit:
 
     NT_ASSERT(!NT_SUCCESS(status));
 
     ClasspCompleteOffloadWrite(OffloadWriteContext, status);
 
-__ClasspReceiveWriteUsingTokenInformationTransferPacketDone_Exit:
+Exit:
 
     //
     // Due to tracing a potentially freed pointer value "Irp", this trace could
@@ -14371,7 +14365,7 @@ NTSTATUS ClasspRefreshFunctionSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION Fd
 	srbSize = sizeof(SCSI_REQUEST_BLOCK);
     }
 
-    srb = ExAllocatePoolWithTag(srbSize, '1DcS');
+    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, '1DcS');
     if (srb == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }

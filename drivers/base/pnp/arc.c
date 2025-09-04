@@ -81,7 +81,7 @@ static NTSTATUS ArcSetIdentifier(IN PCONFIGURATION_COMPONENT_DATA ComponentData,
 
     /* Allocate memory for the identifier */
     SIZE_T IdentifierLength = strlen(IdentifierString) + 1;
-    PCHAR Identifier = ExAllocatePool(IdentifierLength);
+    PCHAR Identifier = ExAllocatePool(NonPagedPool, IdentifierLength);
     if (Identifier == NULL) {
 	return STATUS_NO_MEMORY;
     }
@@ -107,7 +107,8 @@ static VOID ArcSetConfigurationData(IN PCONFIGURATION_COMPONENT_DATA ComponentDa
 NTSTATUS ArcCreateSystemKey(OUT PCONFIGURATION_COMPONENT_DATA *SystemNode)
 {
     /* Allocate the root */
-    PCONFIGURATION_COMPONENT_DATA ArcHwTreeRoot = ExAllocatePool(sizeof(CONFIGURATION_COMPONENT_DATA));
+    PCONFIGURATION_COMPONENT_DATA ArcHwTreeRoot = ExAllocatePool(NonPagedPool,
+								 sizeof(CONFIGURATION_COMPONENT_DATA));
     if (ArcHwTreeRoot == NULL) {
 	return STATUS_NO_MEMORY;
     }
@@ -167,7 +168,8 @@ NTSTATUS ArcCreateComponentKey(IN PCONFIGURATION_COMPONENT_DATA SystemNode,
 			       OUT PCONFIGURATION_COMPONENT_DATA *ComponentKey)
 {
     /* Allocate the node for this component */
-    PCONFIGURATION_COMPONENT_DATA ComponentData = ExAllocatePool(sizeof(CONFIGURATION_COMPONENT_DATA));
+    PCONFIGURATION_COMPONENT_DATA ComponentData = ExAllocatePool(NonPagedPool,
+								 sizeof(CONFIGURATION_COMPONENT_DATA));
     if (ComponentData == NULL) {
 	return STATUS_NO_MEMORY;
     }
@@ -354,7 +356,7 @@ static NTSTATUS ArcSetupRegistryNode(IN PCONFIGURATION_COMPONENT_DATA CurrentEnt
     ULONG ConfigDataSize = FIELD_OFFSET(CM_FULL_RESOURCE_DESCRIPTOR, PartialResourceList) +
 	(CurrentEntry->ConfigurationData ? Component->ConfigurationDataLength :
 	 FIELD_OFFSET(CM_PARTIAL_RESOURCE_LIST, PartialDescriptors));
-    ConfigurationData = ExAllocatePool(ConfigDataSize);
+    ConfigurationData = ExAllocatePool(NonPagedPool, ConfigDataSize);
     if (ConfigurationData == NULL) {
 	Status = STATUS_NO_MEMORY;
 	goto out;

@@ -54,7 +54,7 @@ static NTSTATUS HalpGetFullGeometry(IN PDEVICE_OBJECT DeviceObject,
     PAGED_CODE();
 
     /* Allocate a non-paged event */
-    Event = ExAllocatePoolWithTag(sizeof(KEVENT), TAG_FILE_SYSTEM);
+    Event = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), TAG_FILE_SYSTEM);
     if (!Event)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -206,19 +206,19 @@ static VOID HalpGetPartialGeometry(IN PDEVICE_OBJECT DeviceObject,
     *DiskSize = 0;
 
     /* Allocate the structure in nonpaged pool */
-    DiskGeometry = ExAllocatePoolWithTag(sizeof(DISK_GEOMETRY),
+    DiskGeometry = ExAllocatePoolWithTag(NonPagedPool, sizeof(DISK_GEOMETRY),
 					 TAG_FILE_SYSTEM);
     if (!DiskGeometry)
 	goto Cleanup;
 
     /* Allocate the status block in nonpaged pool */
-    IoStatusBlock = ExAllocatePoolWithTag(sizeof(IO_STATUS_BLOCK),
+    IoStatusBlock = ExAllocatePoolWithTag(NonPagedPool, sizeof(IO_STATUS_BLOCK),
 					  TAG_FILE_SYSTEM);
     if (!IoStatusBlock)
 	goto Cleanup;
 
     /* Allocate the event in nonpaged pool too */
-    Event = ExAllocatePoolWithTag(sizeof(KEVENT), TAG_FILE_SYSTEM);
+    Event = ExAllocatePoolWithTag(NonPagedPool, sizeof(KEVENT), TAG_FILE_SYSTEM);
     if (!Event)
 	goto Cleanup;
 
@@ -291,7 +291,7 @@ NTAPI VOID HalExamineMBR(IN PDEVICE_OBJECT DeviceObject,
     BufferSize = max(512, SectorSize);
 
     /* Allocate the buffer */
-    Buffer = ExAllocatePoolWithTag(max(PAGE_SIZE, BufferSize),
+    Buffer = ExAllocatePoolWithTag(NonPagedPool, max(PAGE_SIZE, BufferSize),
 				   TAG_FILE_SYSTEM);
     if (!Buffer)
 	return;
@@ -403,7 +403,7 @@ NTAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
     VolumeOffset.QuadPart = Offset.QuadPart = 0;
 
     /* Allocate the buffer */
-    *PartitionBuffer = ExAllocatePoolWithTag(BufferSize, TAG_FILE_SYSTEM);
+    *PartitionBuffer = ExAllocatePoolWithTag(NonPagedPool, BufferSize, TAG_FILE_SYSTEM);
     if (!(*PartitionBuffer))
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -434,7 +434,7 @@ NTAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
 	   DiskGeometryEx.DiskSize.QuadPart, MaxSector);
 
     /* Allocate our buffer */
-    Buffer = ExAllocatePoolWithTag(InputSize, TAG_FILE_SYSTEM);
+    Buffer = ExAllocatePoolWithTag(NonPagedPool, InputSize, TAG_FILE_SYSTEM);
     if (!Buffer) {
 	/* Fail, free the input buffer */
 	ExFreePoolWithTag(*PartitionBuffer, TAG_FILE_SYSTEM);
@@ -572,7 +572,7 @@ NTAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
 	    if ((sizeof(DRIVE_LAYOUT_INFORMATION) +
 		 (++i * sizeof(PARTITION_INFORMATION))) > BufferSize) {
 		/* Allocate a new buffer that's twice as big */
-		DriveLayoutInfo = ExAllocatePoolWithTag(BufferSize << 1,
+		DriveLayoutInfo = ExAllocatePoolWithTag(NonPagedPool, BufferSize << 1,
 							TAG_FILE_SYSTEM);
 		if (!DriveLayoutInfo) {
 		    /* Out of memory, undo this extra structure */
@@ -802,7 +802,7 @@ NTAPI NTSTATUS IoSetPartitionInformation(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* Allocate our partition buffer */
-    Buffer = ExAllocatePoolWithTag(PAGE_SIZE, TAG_FILE_SYSTEM);
+    Buffer = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, TAG_FILE_SYSTEM);
     if (!Buffer)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1017,7 +1017,7 @@ NTAPI NTSTATUS IoWritePartitionTable(IN PDEVICE_OBJECT DeviceObject,
 			     NUM_PARTITION_TABLE_ENTRIES;
 
     /* Allocate our partition buffer */
-    Buffer = ExAllocatePoolWithTag(PAGE_SIZE, TAG_FILE_SYSTEM);
+    Buffer = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, TAG_FILE_SYSTEM);
     if (!Buffer)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
