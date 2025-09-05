@@ -200,7 +200,7 @@ NTSTATUS RtlpInitializeHeap(OUT PHEAP Heap,
     PHEAP_UCR_DESCRIPTOR UcrDescriptor;
     SIZE_T DeCommitFreeBlockThreshold;
 
-    /* Memory allocation is always 16-byte aligned, even on 32-bit architectures/ */
+    /* Memory allocation is always 16-byte aligned, even on 32-bit architectures */
     Flags |= HEAP_CREATE_ALIGN_16;
 
     /* Preconditions */

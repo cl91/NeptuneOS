@@ -430,11 +430,11 @@ BOOLEAN AllocateResourcesForAdapter(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtensio
 				     sizeof(AHCI_COMMAND_HEADER) * paddedNCS);
 	    AdapterExtension->PortExtension[i]->Local.SrbExtension =
 		(PAHCI_SRB_EXTENSION)((PCHAR)AdapterExtension->PortExtension[i]
-					  ->ReceivedFIS +
+				      ->ReceivedFIS +
 				      sizeof(AHCI_RECEIVED_FIS));
 	    AdapterExtension->PortExtension[i]->Sense.SrbExtension =
 		(PAHCI_SRB_EXTENSION)((PCHAR)AdapterExtension->PortExtension[i]
-					  ->Local.SrbExtension +
+				      ->Local.SrbExtension +
 				      paddedSrbExtensionSize);
 	    AdapterExtension->PortExtension[i]->DeviceExtension[0].IdentifyDeviceData =
 		(PIDENTIFY_DEVICE_DATA)((PCHAR)AdapterExtension->PortExtension[i]
@@ -1599,17 +1599,18 @@ BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 	//
 	if (IsAdapterRemovable(adapterExtension) && IsAdapterRemoved(adapterExtension)) {
 	    Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
-	    StorPortEtwChannelEvent2(
-		adapterExtension,
-		(channelExtension != NULL) ?
-		    ((PSTOR_ADDRESS) &
-		     (channelExtension->DeviceExtension->DeviceAddress)) :
-		    (NULL),
-		StorportEtwEventOperational, AhciEtwEventBuildIO,
-		L"Adapter removed during BuildIo",
-		STORPORT_ETW_EVENT_KEYWORD_COMMAND_TRACE, StorportEtwLevelError,
-		StorportEtwEventOpcodeInfo, Srb, L"function", function, L"srbFlags",
-		srbFlags);
+	    StorPortEtwChannelEvent2(adapterExtension,
+				     (channelExtension != NULL) ?
+				     ((PSTOR_ADDRESS)&
+				      (channelExtension->DeviceExtension->DeviceAddress)) :
+				     (NULL),
+				     StorportEtwEventOperational, AhciEtwEventBuildIO,
+				     L"Adapter removed during BuildIo",
+				     STORPORT_ETW_EVENT_KEYWORD_COMMAND_TRACE,
+				     StorportEtwLevelError,
+				     StorportEtwEventOpcodeInfo,
+				     Srb, L"function", function, L"srbFlags",
+				     srbFlags);
 	    goto exit;
 	}
     }

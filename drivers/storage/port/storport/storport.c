@@ -849,8 +849,9 @@ NTAPI PVOID StorPortGetVirtualAddress(IN PVOID HwDeviceExtension,
     DPRINT1("StorPortGetVirtualAddress(%p %llx)\n", HwDeviceExtension,
 	    PhysicalAddress.QuadPart);
     /* Get the miniport extension */
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(
-	HwDeviceExtension, MINIPORT_DEVICE_EXTENSION, HwDeviceExtension);
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension = CONTAINING_RECORD(HwDeviceExtension,
+								     MINIPORT_DEVICE_EXTENSION,
+								     HwDeviceExtension);
     DPRINT1("HwDeviceExtension %p  MiniportExtension %p\n", HwDeviceExtension,
 	    MiniportExtension);
 

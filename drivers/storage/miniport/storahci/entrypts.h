@@ -327,15 +327,13 @@ typedef struct _LOCAL_SCATTER_GATHER_LIST {
 
 //
 // Note: When adding new members to AHCI SRB extension, make sure the uncached extension
-// allocation
-//       is successful in dump mode because there is MAX size limitation.
+// allocation is successful in dump mode because there is MAX size limitation.
 //
 typedef struct _AHCI_SRB_EXTENSION {
-    AHCI_COMMAND_TABLE
-    CommandTable; // this field MUST to be the first one as it's asked to be 128 aligned
-    USHORT
-    AtaFunction; // if this field is 0, it means the command does not need to be sent to
-		 // device
+    AHCI_COMMAND_TABLE CommandTable; // this field MUST to be the first one as
+				     // it's asked to be 128 aligned
+    USHORT AtaFunction; // if this field is 0, it means the command does not
+			// need to be sent to device
     UCHAR AtaStatus;
     UCHAR AtaError;
     ULONG Flags;
