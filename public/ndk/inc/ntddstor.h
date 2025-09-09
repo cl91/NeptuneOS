@@ -586,6 +586,10 @@ typedef struct _STORAGE_DEVICE_DESCRIPTOR {
     UCHAR RawDeviceProperties[1];
 } STORAGE_DEVICE_DESCRIPTOR, *PSTORAGE_DEVICE_DESCRIPTOR;
 
+/*
+ * Note: the SrbType member has been removed since we do not support SCSI_REQUEST_BLOCK
+ * and only support STORAGE_REQUEST_BLOCK.
+ */
 typedef struct _STORAGE_ADAPTER_DESCRIPTOR {
     ULONG Version;
     ULONG Size;
@@ -596,11 +600,10 @@ typedef struct _STORAGE_ADAPTER_DESCRIPTOR {
     BOOLEAN AdapterScansDown;
     BOOLEAN CommandQueueing;
     BOOLEAN AcceleratedTransfer;
+    UCHAR AddressType;
     UCHAR BusType;
     USHORT BusMajorVersion;
     USHORT BusMinorVersion;
-    UCHAR SrbType;
-    UCHAR AddressType;
 } STORAGE_ADAPTER_DESCRIPTOR, *PSTORAGE_ADAPTER_DESCRIPTOR;
 
 typedef struct _STORAGE_ACCESS_ALIGNMENT_DESCRIPTOR {

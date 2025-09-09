@@ -5,6 +5,7 @@
 
 #include <ntddk.h>
 #include <srb.h>
+#include <srbhelper.h>
 #include <ntdddisk.h>
 #include <ntddcdrm.h>
 #include <ntddtape.h>
@@ -66,7 +67,6 @@
 #undef ExAllocatePool
 #undef ExAllocatePoolWithQuota
 #define ExAllocatePool(a, b) ExAllocatePoolWithTag(a, b, 'nUcS')
-//#define ExAllocatePool(a,b) #assert(0)
 #define ExAllocatePoolWithQuota(a, b) ExAllocatePoolWithQuotaTag(a, b, 'nUcS')
 #endif
 
@@ -326,7 +326,7 @@ typedef struct _CLASSPNP_SCAN_FOR_SPECIAL_INFO {
 } CLASSPNP_SCAN_FOR_SPECIAL_INFO, *PCLASSPNP_SCAN_FOR_SPECIAL_INFO;
 
 typedef VOID (NTAPI *PCLASS_ERROR)(IN PDEVICE_OBJECT DeviceObject,
-				   IN PSCSI_REQUEST_BLOCK Srb,
+				   IN PSTORAGE_REQUEST_BLOCK Srb,
 				   OUT NTSTATUS *Status, IN OUT BOOLEAN *Retry);
 
 typedef NTSTATUS (NTAPI *PCLASS_ADD_DEVICE)(IN PDRIVER_OBJECT DriverObject,
@@ -430,7 +430,7 @@ typedef struct _SRB_HISTORY {
 
 typedef BOOLEAN (NTAPI *PCLASS_INTERPRET_SENSE_INFO)(IN PDEVICE_OBJECT Fdo,
 						     IN OPTIONAL PIRP OriginalRequest,
-						     IN PSCSI_REQUEST_BLOCK Srb,
+						     IN PSTORAGE_REQUEST_BLOCK Srb,
 						     IN UCHAR MajorFunctionCode,
 						     IN ULONG IoDeviceCode,
 						     IN ULONG PreviousRetryCount,
@@ -511,8 +511,8 @@ typedef struct _CLASS_INTERPRET_SENSE_INFO2 {
 
 C_ASSERT((MAXULONG - sizeof(SRB_HISTORY)) / 30000 >= sizeof(SRB_HISTORY_ITEM));
 
-// for SrbSupport
-#define CLASS_SRB_SCSI_REQUEST_BLOCK 0x1
+// Valid data for SrbSupport. Windows/ReactOS had defined
+// CLASS_SRB_SCSI_REQUEST_BLOCK as 0x1 which we do not support.
 #define CLASS_SRB_STORAGE_REQUEST_BLOCK 0x2
 
 typedef struct _CLASS_DRIVER_EXTENSION {
@@ -526,7 +526,6 @@ typedef struct _CLASS_DRIVER_EXTENSION {
     PDRIVER_DISPATCH MpDeviceMajorFunctionTable[IRP_MJ_MAXIMUM_FUNCTION + 1];
     PCLASS_INTERPRET_SENSE_INFO2 InterpretSenseInfo;
     PCLASS_WORKING_SET WorkingSet;
-    ULONG SrbSupport;
 } CLASS_DRIVER_EXTENSION, *PCLASS_DRIVER_EXTENSION;
 
 typedef struct _COMMON_DEVICE_EXTENSION {
@@ -592,6 +591,9 @@ typedef struct _CLASS_POWER_OPTIONS {
     ULONG Reserved : 27;
 } CLASS_POWER_OPTIONS, *PCLASS_POWER_OPTIONS;
 
+#define CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE	(SRBEX_SCSI_CDB16_BUFFER_SIZE)
+#define CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE	(SRBEX_NO_SRBEX_DATA_BUFFER_SIZE)
+
 typedef struct _CLASS_POWER_CONTEXT {
     union {
 	CLASS_POWER_DOWN_STATE PowerDown;
@@ -608,28 +610,18 @@ typedef struct _CLASS_POWER_CONTEXT {
     PIO_COMPLETION_ROUTINE CompletionRoutine;
     PDEVICE_OBJECT DeviceObject;
     PIRP Irp;
-    SCSI_REQUEST_BLOCK Srb;
+    union {
+	STORAGE_REQUEST_BLOCK Srb;
+	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
+    };
 } CLASS_POWER_CONTEXT, *PCLASS_POWER_CONTEXT;
-
-#if (NTDDI_VERSION >= NTDDI_WIN8)
-#define CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE			\
-    (sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8) +	\
-     sizeof(SRBEX_DATA_SCSI_CDB16))
-#define CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE			\
-    (sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8))
-#endif
 
 typedef struct _COMPLETION_CONTEXT {
     PDEVICE_OBJECT DeviceObject;
-#if (NTDDI_VERSION >= NTDDI_WIN8)
     union {
-	SCSI_REQUEST_BLOCK Srb;
 	STORAGE_REQUEST_BLOCK SrbEx;
 	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
     } Srb;
-#else
-    SCSI_REQUEST_BLOCK Srb;
-#endif
 } COMPLETION_CONTEXT, *PCOMPLETION_CONTEXT;
 
 #ifdef _CLASSPNP_
@@ -728,12 +720,8 @@ typedef struct _CLASS_FUNCTION_SUPPORT_INFO {
     } LowerLayerSupport;
     BOOLEAN RegAccessAlignmentQueryNotSupported;
     BOOLEAN AsynchronousNotificationSupported;
-#if (NTDDI_VERSION >= NTDDI_WIN10_RS2)
     BOOLEAN UseModeSense10;
     UCHAR Reserved;
-#else
-    UCHAR Reserved[2];
-#endif
     CLASS_VPD_B0_DATA BlockLimitsData;
     CLASS_VPD_B1_DATA DeviceCharacteristicsData;
     CLASS_VPD_B2_DATA LBProvisioningData;
@@ -749,9 +737,7 @@ typedef struct _CLASS_FUNCTION_SUPPORT_INFO {
 	ULONG D3IdleTimeout;
     } IdlePower;
 
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
     CLASS_FUNCTION_SUPPORT HwFirmwareGetInfoSupport;
-#endif
 } CLASS_FUNCTION_SUPPORT_INFO, *PCLASS_FUNCTION_SUPPORT_INFO;
 
 typedef struct _FUNCTIONAL_DEVICE_EXTENSION {
@@ -769,11 +755,7 @@ typedef struct _FUNCTIONAL_DEVICE_EXTENSION {
     ULONG DMByteSkew;
     ULONG DMSkew;
     BOOLEAN DMActive;
-#if (NTDDI_VERSION >= NTDDI_WIN8)
     UCHAR SenseDataLength;
-#else
-    UCHAR Reserved;
-#endif
     UCHAR Reserved0[2];
     DISK_GEOMETRY DiskGeometry;
     PSENSE_DATA SenseData;
@@ -787,11 +769,7 @@ typedef struct _FUNCTIONAL_DEVICE_EXTENSION {
     KEVENT EjectSynchronizationEvent;
     USHORT DeviceFlags;
     UCHAR SectorShift;
-#if (NTDDI_VERSION >= NTDDI_VISTA)
     UCHAR CdbForceUnitAccess;
-#else
-    UCHAR ReservedByte;
-#endif
     PMEDIA_CHANGE_DETECTION_INFO MediaChangeDetectionInfo;
     PKEVENT Unused1;
     HANDLE Unused2;
@@ -799,7 +777,6 @@ typedef struct _FUNCTIONAL_DEVICE_EXTENSION {
     ULONG MediaChangeCount;
     HANDLE DeviceDirectory;
     PIRP ReleaseQueueIrp;
-    SCSI_REQUEST_BLOCK ReleaseQueueSrb;
     BOOLEAN ReleaseQueueNeeded;
     BOOLEAN ReleaseQueueInProgress;
     BOOLEAN ReleaseQueueIrpFromPool;
@@ -850,7 +827,7 @@ NTAPI CLASSPNP_API NTSTATUS ClassIoCompleteAssociated(PDEVICE_OBJECT DeviceObjec
 						      PVOID Context);
 
 NTAPI CLASSPNP_API BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT DeviceObject,
-						   IN PSCSI_REQUEST_BLOCK Srb,
+						   IN PSTORAGE_REQUEST_BLOCK Srb,
 						   IN UCHAR MajorFunctionCode,
 						   IN ULONG IoDeviceCode,
 						   IN ULONG RetryCount,
@@ -872,13 +849,13 @@ NTAPI CLASSPNP_API NTSTATUS ClassForwardIrpSynchronous(IN PCOMMON_DEVICE_EXTENSI
 						       IN PIRP Irp);
 
 NTAPI CLASSPNP_API NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT DeviceObject,
-						    IN OUT PSCSI_REQUEST_BLOCK Srb,
+						    IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 						    IN OPTIONAL PVOID BufferAddress,
 						    IN ULONG BufferLength,
 						    IN BOOLEAN WriteToDevice);
 
 NTAPI CLASSPNP_API NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT DeviceObject,
-						     IN OUT PSCSI_REQUEST_BLOCK Srb,
+						     IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 						     IN PIRP Irp,
 						     IN PVOID BufferAddress,
 						     IN ULONG BufferLength,
@@ -1036,52 +1013,46 @@ NTAPI NTSTATUS ClassSetDeviceParameter(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 				       IN PWSTR ParameterName,
 				       IN ULONG ParameterValue);
 
-#if (NTDDI_VERSION >= NTDDI_VISTA)
 NTAPI PFILE_OBJECT_EXTENSION ClassGetFsContext(IN PCOMMON_DEVICE_EXTENSION CommonExtension,
 					       IN PFILE_OBJECT FileObject);
 NTAPI VOID ClassSendNotification(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				 IN const GUID *Guid, IN ULONG ExtraDataSize,
 				 IN OPTIONAL PVOID ExtraData);
-#endif /* (NTDDI_VERSION >= NTDDI_VISTA) */
 
 FORCEINLINE UCHAR GET_FDO_EXTENSON_SENSE_DATA_LENGTH(IN PFUNCTIONAL_DEVICE_EXTENSION Ext)
 {
     UCHAR SenseDataLength = 0;
 
     if (Ext->SenseData != NULL) {
-#if (NTDDI_VERSION >= NTDDI_WIN8)
 	if (Ext->SenseDataLength > 0) {
 	    SenseDataLength = Ext->SenseDataLength;
 	} else {
 	    // For backward compatibility with Windows 7 and earlier
 	    SenseDataLength = SENSE_BUFFER_SIZE;
 	}
-#else
-	SenseDataLength = SENSE_BUFFER_SIZE;
-#endif
     }
 
     return SenseDataLength;
 }
 
 FORCEINLINE BOOLEAN PORT_ALLOCATED_SENSE(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
-					 IN PSCSI_REQUEST_BLOCK Srb)
+					 IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     return ((BOOLEAN)((TEST_FLAG(Srb->SrbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE) &&
 		       TEST_FLAG(Srb->SrbFlags, SRB_FLAGS_FREE_SENSE_BUFFER)) &&
-		      (Srb->SenseInfoBuffer != Ext->SenseData)));
+		      (SrbGetSenseInfoBuffer(Srb) != Ext->SenseData)));
 }
 
 FORCEINLINE VOID FREE_PORT_ALLOCATED_SENSE_BUFFER(IN PFUNCTIONAL_DEVICE_EXTENSION Ext,
-						  IN PSCSI_REQUEST_BLOCK Srb)
+						  IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     ASSERT(TEST_FLAG(Srb->SrbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
     ASSERT(TEST_FLAG(Srb->SrbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
-    ASSERT(Srb->SenseInfoBuffer != Ext->SenseData);
+    ASSERT(SrbGetSenseInfoBuffer(Srb) != Ext->SenseData);
 
-    ExFreePool(Srb->SenseInfoBuffer);
-    Srb->SenseInfoBuffer = Ext->SenseData;
-    Srb->SenseInfoBufferLength = SENSE_BUFFER_SIZE;
+    ExFreePool(SrbGetSenseInfoBuffer(Srb));
+    SrbSetSenseInfoBuffer(Srb, Ext->SenseData);
+    SrbSetSenseInfoBufferLength(Srb, SENSE_BUFFER_SIZE);
     CLEAR_FLAG(Srb->SrbFlags, SRB_FLAGS_FREE_SENSE_BUFFER);
     return;
 }

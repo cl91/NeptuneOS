@@ -1110,6 +1110,8 @@ BOOLEAN AhciProcessIo(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     UCHAR lun = 0;
     STOR_LOCK_HANDLE lockHandle = { InterruptLock };
 
+    // Note if this Srb is a miniport internal srb (Local SRB or Sense SRB), then
+    // the SCSI address is not used.
     SrbGetPathTargetLun(Srb, &pathId, &targetId, &lun);
 
     // 1.0 complete Srb if no command should be sent to device.
@@ -1416,9 +1418,9 @@ BOOLEAN AhciFormIo(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 
     // 4.1. Get the Command Table's physical address to verify the alignment and program
     // cmdHeader->CTBA
-    if ((PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Local.Srb == Srb) {
+    if (&ChannelExtension->Local.Srb == Srb) {
 	cmdTablePhysicalAddress = ChannelExtension->Local.SrbExtensionPhysicalAddress;
-    } else if ((PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Sense.Srb == Srb) {
+    } else if (&ChannelExtension->Sense.Srb == Srb) {
 	cmdTablePhysicalAddress = ChannelExtension->Sense.SrbExtensionPhysicalAddress;
     } else {
 	ULONG length;
@@ -1426,7 +1428,7 @@ BOOLEAN AhciFormIo(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 	// DMAR is enabled.
 	cmdTablePhysicalAddress =
 	    StorPortGetPhysicalAddress(ChannelExtension->AdapterExtension,
-				       (PSCSI_REQUEST_BLOCK)Srb, srbExtension, &length);
+				       Srb, srbExtension, &length);
     }
 
     if ((cmdTablePhysicalAddress.LowPart % 128) == 0) {
@@ -1469,13 +1471,12 @@ BOOLEAN AhciFormIo(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     return TRUE;
 }
 
-PSCSI_REQUEST_BLOCK BuildRequestSenseSrb(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
-					 _In_ PSTORAGE_REQUEST_BLOCK FailingSrb)
+PSTORAGE_REQUEST_BLOCK BuildRequestSenseSrb(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
+					    _In_ PSTORAGE_REQUEST_BLOCK FailingSrb)
 {
     STOR_PHYSICAL_ADDRESS dataBufferPhysicalAddress;
     ULONG length;
-    PCDB cdb;
-    PSCSI_REQUEST_BLOCK senseSrb = &ChannelExtension->Sense.Srb;
+    PSTORAGE_REQUEST_BLOCK senseSrb = &ChannelExtension->Sense.Srb;
     PAHCI_SRB_EXTENSION srbExtension = ChannelExtension->Sense.SrbExtension;
     PVOID srbSenseBuffer = NULL;
     UCHAR srbSenseBufferLength = 0;
@@ -1496,22 +1497,30 @@ PSCSI_REQUEST_BLOCK BuildRequestSenseSrb(_In_ PAHCI_CHANNEL_EXTENSION ChannelExt
     }
 
     // 2. Initialize Srb and SrbExtension structures.
-    AhciZeroMemory((PCHAR)senseSrb, sizeof(SCSI_REQUEST_BLOCK));
+    AhciZeroMemory((PCHAR)senseSrb, SRBEX_SCSI_CDB16_BUFFER_SIZE);
     AhciZeroMemory((PCHAR)srbExtension, sizeof(AHCI_SRB_EXTENSION));
 
-    // 3. Setup Srb and CDB. Note that Sense Srb uses SCSI_REQUEST_BLOCK type.
-    senseSrb->Length = sizeof(SCSI_REQUEST_BLOCK);
-    senseSrb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-    senseSrb->PathId = (UCHAR)ChannelExtension->PortNumber;
+    // 3. Setup Srb and CDB.
+    senseSrb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+    senseSrb->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    PSTOR_ADDR_BTL8 storAddrBtl8 = (PVOID)((PUCHAR)senseSrb + senseSrb->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    SrbSetPathId(senseSrb, ChannelExtension->PortNumber);
     senseSrb->SrbFlags = SRB_FLAGS_DATA_IN;
     senseSrb->DataBuffer = srbSenseBuffer;
     senseSrb->DataTransferLength = srbSenseBufferLength;
-    senseSrb->SrbExtension = (PVOID)srbExtension;
+    senseSrb->MiniportContext = (PVOID)srbExtension;
     senseSrb->OriginalRequest = (PVOID)FailingSrb;
     senseSrb->TimeOutValue = 1;
-    senseSrb->CdbLength = 6;
+    senseSrb->NumSrbExData = 1;
+    senseSrb->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8);
+    PSRBEX_DATA_SCSI_CDB16 DataCdb16 = (PVOID)((PUCHAR)senseSrb + senseSrb->SrbExDataOffset[0]);
+    DataCdb16->Type = SrbExDataTypeScsiCdb16;
+    DataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+    SrbSetCdbLength(senseSrb, 6);
 
-    cdb = (PCDB)&senseSrb->Cdb;
+    PCDB cdb = SrbGetCdb(senseSrb);
 
     cdb->CDB6INQUIRY.OperationCode = SCSIOP_REQUEST_SENSE;
     cdb->CDB6INQUIRY.AllocationLength = (UCHAR)senseSrb->DataTransferLength;
@@ -1523,7 +1532,7 @@ PSCSI_REQUEST_BLOCK BuildRequestSenseSrb(_In_ PAHCI_CHANNEL_EXTENSION ChannelExt
     // SRB is needed for StorPortGetPhysicalAddress to calculate logical address when DMAR
     // is enabled.
     dataBufferPhysicalAddress = StorPortGetPhysicalAddress(
-	ChannelExtension->AdapterExtension, (PSCSI_REQUEST_BLOCK)FailingSrb,
+	ChannelExtension->AdapterExtension, FailingSrb,
 	srbSenseBuffer, &length);
     if (dataBufferPhysicalAddress.QuadPart == 0) {
 	NT_ASSERT(FALSE); // Shall Not Pass
@@ -1626,7 +1635,7 @@ VOID AhciPortSrbCompletionDpcRoutine(_In_ PSTOR_DPC Dpc, _In_ PVOID AdapterExten
 		    completeSrb = FALSE;
 		    sendCommand = TRUE;
 
-		    if (srb == (PSTORAGE_REQUEST_BLOCK)&channelExtension->Local.Srb) {
+		    if (srb == &channelExtension->Local.Srb) {
 			sendCommandForLocalSrb = TRUE;
 		    }
 
@@ -1639,7 +1648,7 @@ VOID AhciPortSrbCompletionDpcRoutine(_In_ PSTOR_DPC Dpc, _In_ PVOID AdapterExten
 		// An Srb without completion routine should be completed.
 	    }
 
-	    if ((srb == (PSTORAGE_REQUEST_BLOCK)&channelExtension->Local.Srb) &&
+	    if ((srb == &channelExtension->Local.Srb) &&
 		reservedSlotInUse && channelExtension->StateFlags.ReservedSlotInUse &&
 		(!sendCommandForLocalSrb)) {
 		//

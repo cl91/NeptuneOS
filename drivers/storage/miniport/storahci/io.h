@@ -58,8 +58,8 @@ BOOLEAN AhciFormIo(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 		   _In_ PSTORAGE_REQUEST_BLOCK Srb,
 		   _In_ BOOLEAN AtDIRQL);
 
-PSCSI_REQUEST_BLOCK BuildRequestSenseSrb(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
-					 _In_ PSTORAGE_REQUEST_BLOCK FailingSrb);
+PSTORAGE_REQUEST_BLOCK BuildRequestSenseSrb(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
+					    _In_ PSTORAGE_REQUEST_BLOCK FailingSrb);
 
 VOID AhciPortFailAllIos(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			_In_ UCHAR SrbStatus, _In_ BOOLEAN AtDIRQL);

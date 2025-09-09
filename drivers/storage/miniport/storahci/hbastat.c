@@ -1531,7 +1531,7 @@ VOID AhciNonQueuedErrorRecovery(PAHCI_CHANNEL_EXTENSION ChannelExtension)
 
     AHCI_COMMAND cmd;
     AHCI_TASK_FILE_DATA tfd;
-    PSCSI_REQUEST_BLOCK senseSrb;
+    PSTORAGE_REQUEST_BLOCK senseSrb;
     PAHCI_SRB_EXTENSION srbExtension;
 
     // 1.1 Initialize variables
@@ -1642,7 +1642,7 @@ VOID AhciNonQueuedErrorRecovery(PAHCI_CHANNEL_EXTENSION ChannelExtension)
 	// indicate storport to retry it.
 	storStatus = StorPortGetRequestInfo(
 	    ChannelExtension,
-	    (PSCSI_REQUEST_BLOCK)ChannelExtension->Slot[failingCommand].Srb,
+	    ChannelExtension->Slot[failingCommand].Srb,
 	    &requestInfo);
 	if ((storStatus == STOR_STATUS_SUCCESS) &&
 	    (requestInfo.Flags & REQUEST_INFO_PAGING_IO_FLAG)) {
@@ -1667,8 +1667,7 @@ VOID AhciNonQueuedErrorRecovery(PAHCI_CHANNEL_EXTENSION ChannelExtension)
 		ChannelExtension->Slot[failingCommand].Srb = NULL;
 		// Do not complete this command normally, it will be completed when it's
 		// request sense is completed
-		ChannelExtension->SlotManager.CommandsToComplete &= ~(1
-								      << failingCommand);
+		ChannelExtension->SlotManager.CommandsToComplete &= ~(1 << failingCommand);
 		RecordExecutionHistory(ChannelExtension,
 				       0x10730013); // NonNCQ Error Received RequestSense
 	    }
@@ -1719,7 +1718,7 @@ VOID AhciNonQueuedErrorRecovery(PAHCI_CHANNEL_EXTENSION ChannelExtension)
     // 3.1 If a request sense SRB was created due to this error
     if (senseSrb != NULL) {
 	ChannelExtension->StateFlags.QueuePaused = FALSE;
-	AhciProcessIo(ChannelExtension, (PSTORAGE_REQUEST_BLOCK)senseSrb,
+	AhciProcessIo(ChannelExtension, senseSrb,
 		      TRUE); // program Sense Srb into Slot
     }
 
@@ -1982,12 +1981,14 @@ commands are issued is as follows:
 
     • Reads PxSACT to see which commands have not yet completed
     • Clears PxCMD.ST to ‘0’ to reset the PxCI and PxSACT registers, waits for PxCMD.CR to
-    clear to ‘0’ • Clears any error bits in PxSERR to enable capturing new errors. • Clears
-    status bits in PxIS as appropriate • If PxTFD.STS.BSY or PxTFD.STS.DRQ is set to ‘1’,
-    issue a COMRESET to the device to put it in an idle state • Sets PxCMD.ST to ‘1’ to enable
-    issuing new commands • Issue READ LOG EXT to determine the cause of the error condition if
-    software did not have to perform a reset (COMRESET or software reset) as part of the error
-    recovery
+      clear to ‘0’
+    • Clears any error bits in PxSERR to enable capturing new errors.
+    • Clears status bits in PxIS as appropriate
+    • If PxTFD.STS.BSY or PxTFD.STS.DRQ is set to ‘1’, issue a COMRESET to the device to
+      put it in an idle state
+    • Sets PxCMD.ST to ‘1’ to enable issuing new commands
+    • Issue READ LOG EXT to determine the cause of the error condition if software did not
+      have to perform a reset (COMRESET or software reset) as part of the error recovery
 
     Software then either completes commands that did not finish with error to higher level
     software, or reissues them to the device.
@@ -2026,7 +2027,7 @@ VOID AhciNcqErrorRecovery(PAHCI_CHANNEL_EXTENSION ChannelExtension)
 
     AhciTelemetryLogResetErrorRecovery(
 	ChannelExtension,
-	(PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
+	(PSTOR_ADDRESS)&(ChannelExtension->DeviceExtension->DeviceAddress),
 	AhciTelemetryEventIdNCQErrorRecovery, "AhciNcqErrorRecovery Enter", 0, NULL, 0);
 
     //
@@ -2136,11 +2137,11 @@ VOID AhciNcqErrorRecovery(PAHCI_CHANNEL_EXTENSION ChannelExtension)
     //
     NT_ASSERT(IsAtaDevice(&ChannelExtension->DeviceExtension->DeviceParameters));
 
-    AhciZeroMemory((PCHAR)&ChannelExtension->Sense.Srb, sizeof(SCSI_REQUEST_BLOCK));
+    AhciZeroMemory(ChannelExtension->Sense.SrbBuffer, SRBEX_SCSI_CDB16_BUFFER_SIZE);
     AhciZeroMemory((PCHAR)ChannelExtension->Sense.SrbExtension,
 		   sizeof(AHCI_SRB_EXTENSION));
 
-    ChannelExtension->Sense.Srb.SrbExtension = (PVOID)ChannelExtension->Sense.SrbExtension;
+    ChannelExtension->Sense.Srb.MiniportContext = ChannelExtension->Sense.SrbExtension;
     ChannelExtension->Sense.Srb.OriginalRequest = &ChannelExtension->Sense.Srb;
 
     NT_ASSERT(((ci | sact) & ~ChannelExtension->SlotManager.CommandsIssued) == 0);
@@ -2156,7 +2157,7 @@ VOID AhciNcqErrorRecovery(PAHCI_CHANNEL_EXTENSION ChannelExtension)
     ChannelExtension->SlotManager.NCQueueSliceIssued = 0;
 
     IssueReadLogExtCommand(
-	ChannelExtension, (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Sense.Srb,
+	ChannelExtension, &ChannelExtension->Sense.Srb,
 	IDE_GP_LOG_NCQ_COMMAND_ERROR_ADDRESS, 0, 1,
 	0, // feature field
 	&ChannelExtension->DeviceExtension->ReadLogExtPageDataPhysicalAddress,
@@ -2164,7 +2165,7 @@ VOID AhciNcqErrorRecovery(PAHCI_CHANNEL_EXTENSION ChannelExtension)
 	NcqErrorRecoveryCompletion);
 
     ChannelExtension->StateFlags.QueuePaused = FALSE;
-    AhciProcessIo(ChannelExtension, (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Sense.Srb,
+    AhciProcessIo(ChannelExtension, &ChannelExtension->Sense.Srb,
 		  TRUE); // program Sense Srb into Slot
 
     //
@@ -2500,18 +2501,14 @@ BOOLEAN AhciPortReset(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 
     if (((ChannelExtension->SlotManager.SingleIoSliceIssued & 0x1) != 0) &&
 	(ChannelExtension->Slot[0].Srb != NULL) &&
-	((PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Local.Srb ==
-	 ChannelExtension->Slot[0].Srb)) {
+	(&ChannelExtension->Local.Srb == ChannelExtension->Slot[0].Srb)) {
 	if ((ChannelExtension->Local.SrbExtension != NULL) &&
 	    ((ChannelExtension->Local.SrbExtension->CompletionRoutine ==
 	      IssuePreservedSettingCommands) ||
 	     (ChannelExtension->Local.SrbExtension->CompletionRoutine ==
 	      IssueInitCommands))) {
-	    BOOLEAN isInitCommand =
-		(ChannelExtension->Local.SrbExtension->CompletionRoutine ==
-		 IssueInitCommands) ?
-		    (TRUE) :
-		    (FALSE);
+	    BOOLEAN isInitCommand = (ChannelExtension->Local.SrbExtension->CompletionRoutine ==
+				     IssueInitCommands);
 
 	    NT_ASSERT(FALSE);
 

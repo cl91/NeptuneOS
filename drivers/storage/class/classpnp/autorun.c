@@ -365,11 +365,11 @@ static NTSTATUS ClasspInterpretGesnData(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExten
     *ResendImmediately = TRUE;
 
     /*
-    ClassSendNotification(FdoExtension,
-                           &GUID_IO_GENERIC_GESN_EVENT,
-                           sizeof(NOTIFICATION_EVENT_STATUS_HEADER) + dataLength,
-                           Header)
-*/
+      ClassSendNotification(FdoExtension,
+      &GUID_IO_GENERIC_GESN_EVENT,
+      sizeof(NOTIFICATION_EVENT_STATUS_HEADER) + dataLength,
+      Header)
+    */
 
     switch (Header->NotificationClass) {
     case NOTIFICATION_OPERATIONAL_CHANGE_CLASS_EVENTS: { // 0x01
@@ -465,10 +465,8 @@ static NTSTATUS ClasspInterpretGesnData(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExten
 	    //
 
 	    if (FdoExtension->CommonExtension.DevInfo->ClassError != NULL) {
-		SCSI_REQUEST_BLOCK srb = { 0 };
 		UCHAR srbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE] = { 0 };
 		PSTORAGE_REQUEST_BLOCK srbEx = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
-		PSCSI_REQUEST_BLOCK srbPtr;
 
 		SENSE_DATA sense = { 0 };
 		NTSTATUS tempStatus;
@@ -479,8 +477,7 @@ static NTSTATUS ClasspInterpretGesnData(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExten
 
 		sense.ErrorCode = SCSI_SENSE_ERRORCODE_FIXED_CURRENT;
 
-		sense.AdditionalSenseLength =
-		    sizeof(SENSE_DATA) -
+		sense.AdditionalSenseLength = sizeof(SENSE_DATA) -
 		    RTL_SIZEOF_THROUGH_FIELD(SENSE_DATA, AdditionalSenseLength);
 
 		sense.SenseKey = SCSI_SENSE_UNIT_ATTENTION;
@@ -489,38 +486,22 @@ static NTSTATUS ClasspInterpretGesnData(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExten
 		//
 		// Send the right type of SRB to the class driver
 		//
-		if ((FdoExtension->CommonExtension.DriverExtension->SrbSupport &
-		     CLASS_SRB_STORAGE_REQUEST_BLOCK) != 0) {
-		    status = InitializeStorageRequestBlock(
-			srbEx, STORAGE_ADDRESS_TYPE_BTL8,
-			CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1, SrbExDataTypeScsiCdb16);
-		    if (NT_SUCCESS(status)) {
-			SrbSetCdbLength(srbEx, 6);
-			srbEx->SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
-			SrbSetSenseInfoBuffer(srbEx, &sense);
-			SrbSetSenseInfoBufferLength(srbEx, sizeof(sense));
-			srbPtr = (PSCSI_REQUEST_BLOCK)srbEx;
-		    } else {
-			// should not happen. Revert to legacy SRB.
-			NT_ASSERT(FALSE);
-			srb.CdbLength = 6;
-			srb.Length = sizeof(SCSI_REQUEST_BLOCK);
-			srb.SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
-			srb.SenseInfoBuffer = &sense;
-			srb.SenseInfoBufferLength = sizeof(SENSE_DATA);
-			srbPtr = &srb;
-		    }
+		status = InitializeStorageRequestBlock(srbEx, STORAGE_ADDRESS_TYPE_BTL8,
+						       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
+						       1, SrbExDataTypeScsiCdb16);
+		if (NT_SUCCESS(status)) {
+		    SrbSetCdbLength(srbEx, 6);
+		    srbEx->SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
+		    SrbSetSenseInfoBuffer(srbEx, &sense);
+		    SrbSetSenseInfoBufferLength(srbEx, sizeof(sense));
 		} else {
-		    srb.CdbLength = 6;
-		    srb.Length = sizeof(SCSI_REQUEST_BLOCK);
-		    srb.SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
-		    srb.SenseInfoBuffer = &sense;
-		    srb.SenseInfoBufferLength = sizeof(SENSE_DATA);
-		    srbPtr = &srb;
+		    // should not happen.
+		    NT_ASSERT(FALSE);
+		    return status;
 		}
 
-		FdoExtension->CommonExtension.DevInfo->ClassError(
-		    FdoExtension->DeviceObject, srbPtr, &tempStatus, &retry);
+		FdoExtension->CommonExtension.DevInfo->ClassError(FdoExtension->DeviceObject,
+								  srbEx, &tempStatus, &retry);
 
 	    } // end class error handler
 	}
@@ -885,7 +866,7 @@ static NTAPI NTSTATUS ClasspMediaChangeDetectionCompletion(PDEVICE_OBJECT Device
     PMEDIA_CHANGE_DETECTION_INFO info;
     NTSTATUS status;
     BOOLEAN retryImmediately = FALSE;
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)Context;
+    PSTORAGE_REQUEST_BLOCK Srb = Context;
 
     _Analysis_assume_(Srb != NULL);
 
@@ -910,13 +891,14 @@ static NTAPI NTSTATUS ClasspMediaChangeDetectionCompletion(PDEVICE_OBJECT Device
      *  HACK for IoMega 2GB Jaz drive:
      *  This drive spins down on its own to preserve the media.
      *  When spun down, TUR fails with 2/4/0 (SCSI_SENSE_NOT_READY/SCSI_ADSENSE_LUN_NOT_READY/?).
-     *  InterpretSenseInfo routine would then call ClassSendStartUnit to spin the media up, which defeats the
-     *  purpose of the spindown.
+     *  InterpretSenseInfo routine would then call ClassSendStartUnit to spin the media up,
+     *  which defeats the purpose of the spindown.
      *  So in this case, make this into a successful TUR.
      *  This allows the drive to stay spun down until it is actually accessed again.
      *  (If the media were actually removed, TUR would fail with 2/3a/0 ).
      *  This hack only applies to drives with the CAUSE_NOT_REPORTABLE_HACK bit set; this
-     *  is set by disk.sys when HackCauseNotReportableHack is set for the drive in its BadControllers list.
+     *  is set by disk.sys when HackCauseNotReportableHack is set for the drive in its
+     *  BadControllers list.
      */
 
     if ((SRB_STATUS(Srb->SrbStatus) != SRB_STATUS_SUCCESS) &&
@@ -954,7 +936,7 @@ static NTAPI NTSTATUS ClasspMediaChangeDetectionCompletion(PDEVICE_OBJECT Device
 		    DBGGETSRBSTATUSSTR(Srb), DBGGETSENSECODESTR(Srb),
 		    DBGGETADSENSECODESTR(Srb), DBGGETADSENSEQUALIFIERSTR(Srb)));
 
-	InterpretSenseInfoWithoutHistory(DeviceObject, Irp, (PSCSI_REQUEST_BLOCK)Srb,
+	InterpretSenseInfoWithoutHistory(DeviceObject, Irp, Srb,
 					 IRP_MJ_SCSI, 0, 0, &status, NULL);
     } else {
 	fdoData->LoggedTURFailureSinceLastIO = FALSE;
@@ -1017,7 +999,7 @@ static NTAPI NTSTATUS ClasspMediaChangeDetectionCompletion(PDEVICE_OBJECT Device
     //
 
     NT_ASSERT(IoGetNextIrpStackLocation(Irp));
-    IoGetNextIrpStackLocation(Irp)->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)Srb;
+    IoGetNextIrpStackLocation(Irp)->Parameters.Scsi.Srb = Srb;
 
     //
     // Reset the MCN timer.
@@ -1132,26 +1114,11 @@ static PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				IN PMEDIA_CHANGE_DETECTION_INFO Info,
 				IN BOOLEAN UseGesn)
 {
-    PSCSI_REQUEST_BLOCK srb;
-    PSTORAGE_REQUEST_BLOCK srbEx;
-    PIO_STACK_LOCATION irpStack;
-    PIO_STACK_LOCATION nextIrpStack;
-    NTSTATUS status;
-    PCDB cdb;
-    PIRP irp;
-    PVOID buffer;
-    UCHAR bufferLength;
-    ULONG srbFlags;
-    ULONG timeOutValue;
-    UCHAR cdbLength;
-    PVOID dataBuffer;
-    ULONG dataTransferLength;
-
     //
     // Setup the IRP to perform a test unit ready.
     //
 
-    irp = Info->MediaChangeIrp;
+    PIRP irp = Info->MediaChangeIrp;
 
     if (irp == NULL) {
 	NT_ASSERT(irp);
@@ -1162,7 +1129,7 @@ static PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     // don't keep sending this if the device is being removed.
     //
 
-    status = ClassAcquireRemoveLock(FdoExtension->DeviceObject, irp);
+    NTSTATUS status = ClassAcquireRemoveLock(FdoExtension->DeviceObject, irp);
     if (status == REMOVE_COMPLETE) {
 	NT_ASSERT(status != REMOVE_COMPLETE);
 	return NULL;
@@ -1186,7 +1153,7 @@ static PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
      *  Cache our device object in the extra top IRP stack location
      *  so we have it in our completion routine.
      */
-    irpStack = IoGetCurrentIrpStackLocation(irp);
+    PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(irp);
     irpStack->DeviceObject = FdoExtension->DeviceObject;
 
     //
@@ -1199,24 +1166,24 @@ static PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 
     irpStack->Flags |= SL_OVERRIDE_VERIFY_VOLUME;
 
-    nextIrpStack = IoGetNextIrpStackLocation(irp);
+    PIO_STACK_LOCATION nextIrpStack = IoGetNextIrpStackLocation(irp);
     nextIrpStack->MajorFunction = IRP_MJ_INTERNAL_DEVICE_CONTROL;
-    nextIrpStack->Parameters.Scsi.Srb = &(Info->MediaChangeSrb.Srb);
+    nextIrpStack->Parameters.Scsi.Srb = &Info->MediaChangeSrb.SrbEx;
 
     //
     // Prepare the SRB for execution.
     //
 
-    buffer = Info->SenseBuffer;
-    bufferLength = Info->SenseBufferLength;
+    PVOID buffer = Info->SenseBuffer;
+    UCHAR bufferLength = Info->SenseBufferLength;
 
     NT_ASSERT(bufferLength > 0);
     RtlZeroMemory(buffer, bufferLength);
 
-    srbFlags = FdoExtension->SrbFlags;
+    ULONG srbFlags = FdoExtension->SrbFlags;
     SET_FLAG(srbFlags, Info->SrbFlags);
 
-    timeOutValue = FdoExtension->TimeOutValue * 2;
+    ULONG timeOutValue = FdoExtension->TimeOutValue * 2;
     if (timeOutValue == 0) {
 	if (FdoExtension->TimeOutValue == 0) {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_MCN,
@@ -1233,6 +1200,9 @@ static PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 	}
     }
 
+    UCHAR cdbLength;
+    PVOID dataBuffer;
+    ULONG dataTransferLength;
     irp->MdlAddress = NULL;
     if (!UseGesn) {
 	nextIrpStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_SCSI_EXECUTE_NONE;
@@ -1267,74 +1237,48 @@ static PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     //
     // SRB used here is the MediaChangeSrb in _MEDIA_CHANGE_DETECTION_INFO.
     //
-    srb = nextIrpStack->Parameters.Scsi.Srb;
-    if (FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx = (PSTORAGE_REQUEST_BLOCK)nextIrpStack->Parameters.Scsi.Srb;
+    PSTORAGE_REQUEST_BLOCK srbEx = nextIrpStack->Parameters.Scsi.Srb;
 
-	status = InitializeStorageRequestBlock(srbEx, STORAGE_ADDRESS_TYPE_BTL8,
-					       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
-					       SrbExDataTypeScsiCdb16);
-	if (!NT_SUCCESS(status)) {
-	    // should not happen
-	    NT_ASSERT(FALSE);
-	    return NULL;
-	}
+    status = InitializeStorageRequestBlock(srbEx, STORAGE_ADDRESS_TYPE_BTL8,
+					   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
+					   SrbExDataTypeScsiCdb16);
+    if (!NT_SUCCESS(status)) {
+	// should not happen
+	NT_ASSERT(FALSE);
+	return NULL;
+    }
 
-	srbEx->RequestTag = SP_UNTAGGED;
-	srbEx->RequestAttribute = SRB_SIMPLE_TAG_REQUEST;
-	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	srbEx->SrbStatus = 0;
-	srbEx->OriginalRequest = irp;
-	srbEx->SrbFlags = srbFlags;
-	srbEx->TimeOutValue = timeOutValue;
-	srbEx->DataBuffer = dataBuffer;
-	srbEx->DataTransferLength = dataTransferLength;
+    srbEx->RequestTag = SP_UNTAGGED;
+    srbEx->RequestAttribute = SRB_SIMPLE_TAG_REQUEST;
+    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+    srbEx->SrbStatus = 0;
+    srbEx->OriginalRequest = irp;
+    srbEx->SrbFlags = srbFlags;
+    srbEx->TimeOutValue = timeOutValue;
+    srbEx->DataBuffer = dataBuffer;
+    srbEx->DataTransferLength = dataTransferLength;
 
-	SrbSetScsiStatus(srbEx, 0);
-	SrbSetSenseInfoBuffer(srbEx, buffer);
-	SrbSetSenseInfoBufferLength(srbEx, bufferLength);
-	SrbSetCdbLength(srbEx, cdbLength);
+    SrbSetScsiStatus(srbEx, 0);
+    SrbSetSenseInfoBuffer(srbEx, buffer);
+    SrbSetSenseInfoBufferLength(srbEx, bufferLength);
+    SrbSetCdbLength(srbEx, cdbLength);
 
-	cdb = SrbGetCdb(srbEx);
-
+    PCDB cdb = SrbGetCdb(srbEx);
+    assert(cdb);
+    if (!UseGesn) {
+	cdb->CDB6GENERIC.OperationCode = SCSIOP_TEST_UNIT_READY;
     } else {
-	RtlZeroMemory(srb, sizeof(SCSI_REQUEST_BLOCK));
-
-	srb->QueueTag = SP_UNTAGGED;
-	srb->QueueAction = SRB_SIMPLE_TAG_REQUEST;
-	srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	srb->SenseInfoBuffer = buffer;
-	srb->SenseInfoBufferLength = bufferLength;
-	srb->SrbStatus = 0;
-	srb->ScsiStatus = 0;
-	srb->OriginalRequest = irp;
-
-	srb->SrbFlags = srbFlags;
-	srb->TimeOutValue = timeOutValue;
-	srb->CdbLength = cdbLength;
-	srb->DataBuffer = dataBuffer;
-	srb->DataTransferLength = dataTransferLength;
-
-	cdb = (PCDB)&srb->Cdb[0];
+	cdb->GET_EVENT_STATUS_NOTIFICATION.OperationCode = SCSIOP_GET_EVENT_STATUS;
+	cdb->GET_EVENT_STATUS_NOTIFICATION.Immediate = 1;
+	cdb->GET_EVENT_STATUS_NOTIFICATION.EventListLength[0] =
+	    (UCHAR)((Info->Gesn.BufferSize) >> 8);
+	cdb->GET_EVENT_STATUS_NOTIFICATION.EventListLength[1] =
+	    (UCHAR)((Info->Gesn.BufferSize) & 0xff);
+	cdb->GET_EVENT_STATUS_NOTIFICATION.NotificationClassRequest =
+	    Info->Gesn.EventMask;
     }
 
-    if (cdb) {
-	if (!UseGesn) {
-	    cdb->CDB6GENERIC.OperationCode = SCSIOP_TEST_UNIT_READY;
-	} else {
-	    cdb->GET_EVENT_STATUS_NOTIFICATION.OperationCode = SCSIOP_GET_EVENT_STATUS;
-	    cdb->GET_EVENT_STATUS_NOTIFICATION.Immediate = 1;
-	    cdb->GET_EVENT_STATUS_NOTIFICATION.EventListLength[0] =
-		(UCHAR)((Info->Gesn.BufferSize) >> 8);
-	    cdb->GET_EVENT_STATUS_NOTIFICATION.EventListLength[1] =
-		(UCHAR)((Info->Gesn.BufferSize) & 0xff);
-	    cdb->GET_EVENT_STATUS_NOTIFICATION.NotificationClassRequest =
-		Info->Gesn.EventMask;
-	}
-    }
-
-    IoSetCompletionRoutine(irp, ClasspMediaChangeDetectionCompletion, srb, TRUE, TRUE,
+    IoSetCompletionRoutine(irp, ClasspMediaChangeDetectionCompletion, srbEx, TRUE, TRUE,
 			   TRUE);
 
     return irp;
@@ -1755,16 +1699,8 @@ static NTSTATUS ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExten
 static NTSTATUS ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				     IN PMEDIA_CHANGE_DETECTION_INFO Info)
 {
-    PNOTIFICATION_EVENT_STATUS_HEADER header;
     CLASS_DETECTION_STATE detectionState = ClassDetectionUnknown;
-    PSTORAGE_DEVICE_DESCRIPTOR deviceDescriptor;
     NTSTATUS status = STATUS_NOT_SUPPORTED;
-    PIRP irp;
-    KEVENT event;
-    BOOLEAN retryImmediately;
-    ULONG i;
-    ULONG atapiResets;
-    ULONG srbFlags;
 
     NT_ASSERT(Info == FdoExtension->MediaChangeDetectionInfo);
 
@@ -1818,28 +1754,25 @@ static NTSTATUS ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
     // using a drive list is cumbersome, so this might fix the problem.
     //
 
-    deviceDescriptor = FdoExtension->DeviceDescriptor;
-    atapiResets = 0;
-    retryImmediately = TRUE;
-    for (i = 0; i < 16 && retryImmediately == TRUE; i++) {
-	irp = ClasspPrepareMcnIrp(FdoExtension, Info, TRUE);
+    KEVENT event;
+    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+    PSTORAGE_DEVICE_DESCRIPTOR deviceDescriptor = FdoExtension->DeviceDescriptor;
+    ULONG atapiResets = 0;
+    BOOLEAN retryImmediately = TRUE;
+    for (ULONG i = 0; i < 16 && retryImmediately == TRUE; i++) {
+	PIRP irp = ClasspPrepareMcnIrp(FdoExtension, Info, TRUE);
 	if (irp == NULL) {
 	    status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto ExitWithError;
 	}
 
-	if (Info->MediaChangeSrb.Srb.Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	    srbFlags = Info->MediaChangeSrb.SrbEx.SrbFlags;
-	} else {
-	    srbFlags = Info->MediaChangeSrb.Srb.SrbFlags;
-	}
+	ULONG srbFlags = Info->MediaChangeSrb.SrbEx.SrbFlags;
 	NT_ASSERT(TEST_FLAG(srbFlags, SRB_FLAGS_NO_QUEUE_FREEZE));
 
 	//
 	// replace the completion routine with a different one this time...
 	//
 
-	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 	IoSetCompletionRoutine(irp, ClassSignalCompletion, &event, TRUE, TRUE, TRUE);
 
 	status = IoCallDriver(FdoExtension->CommonExtension.LowerDeviceObject, irp);
@@ -1850,14 +1783,14 @@ static NTSTATUS ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 	}
 	ClassReleaseRemoveLock(FdoExtension->DeviceObject, irp);
 
-	if (SRB_STATUS(Info->MediaChangeSrb.Srb.SrbStatus) != SRB_STATUS_SUCCESS) {
+	if (SRB_STATUS(Info->MediaChangeSrb.SrbEx.SrbStatus) != SRB_STATUS_SUCCESS) {
 	    InterpretSenseInfoWithoutHistory(FdoExtension->DeviceObject, irp,
-					     &(Info->MediaChangeSrb.Srb), IRP_MJ_SCSI, 0,
+					     &Info->MediaChangeSrb.SrbEx, IRP_MJ_SCSI, 0,
 					     0, &status, NULL);
 	}
 
 	if ((deviceDescriptor->BusType == BusTypeAtapi) &&
-	    (Info->MediaChangeSrb.Srb.SrbStatus == SRB_STATUS_BUS_RESET)) {
+	    (Info->MediaChangeSrb.SrbEx.SrbStatus == SRB_STATUS_BUS_RESET)) {
 	    //
 	    // ATAPI unfortunately returns SRB_STATUS_BUS_RESET instead
 	    // of SRB_STATUS_TIMEOUT, so we cannot differentiate between
@@ -1913,7 +1846,8 @@ static NTSTATUS ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 	    // available bits.  use this to mask future requests.
 	    //
 
-	    header = (PNOTIFICATION_EVENT_STATUS_HEADER)(Info->Gesn.Buffer);
+	    PNOTIFICATION_EVENT_STATUS_HEADER header =
+		(PNOTIFICATION_EVENT_STATUS_HEADER)(Info->Gesn.Buffer);
 
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_MCN,
 			"Classpnp => Fdo %p supports event mask %x\n",
@@ -2821,7 +2755,7 @@ Return Value:
 --*/
 NTSTATUS ClasspMcnControl(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 			  IN PIRP Irp,
-			  IN PSCSI_REQUEST_BLOCK Srb)
+			  IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
 

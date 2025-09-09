@@ -129,29 +129,22 @@ BOOLEAN NVMeAdapterControlPowerDown(IN PNVME_DEVICE_EXTENSION pAE)
  *     TRUE - command was processed successfully
  *     FALSE - If anything goes wrong
  ******************************************************************************/
-BOOLEAN NVMePowerControl(IN PNVME_DEVICE_EXTENSION pAE, IN PSCSI_REQUEST_BLOCK Srb)
+BOOLEAN NVMePowerControl(IN PNVME_DEVICE_EXTENSION pAE,
+			 IN PSTORAGE_REQUEST_BLOCK pPowerSrb)
 {
     BOOLEAN status = FALSE;
     BOOLEAN powerActionValid = FALSE;
     NVME_PWR_ACTION nvmePwrAction = NVME_PWR_NONE;
-    PSCSI_POWER_REQUEST_BLOCK pPowerSrb = (PSCSI_POWER_REQUEST_BLOCK)Srb;
-    PSRBEX_DATA_POWER pSrbExPower = NULL;
 
-    ULONG PowerAction = 0;
-    UCHAR SrbPowerFlags = 0;
-    ULONG DevicePowerState = 0;
-
-    pSrbExPower = (PSRBEX_DATA_POWER)SrbGetSrbExDataByType((PSTORAGE_REQUEST_BLOCK)Srb,
-							   SrbExDataTypePower);
-    if (pSrbExPower != NULL) {
-	PowerAction = pSrbExPower->PowerAction;
-	SrbPowerFlags = pSrbExPower->SrbPowerFlags;
-	DevicePowerState = pSrbExPower->DevicePowerState;
-    } else {
-	PowerAction = pPowerSrb->PowerAction;
-	SrbPowerFlags = pPowerSrb->SrbPowerFlags;
-	DevicePowerState = pPowerSrb->DevicePowerState;
+    PSRBEX_DATA_POWER pSrbExPower = (PSRBEX_DATA_POWER)SrbGetSrbExDataByType(pPowerSrb,
+									     SrbExDataTypePower);
+    assert(pSrbExPower);
+    if (!pSrbExPower) {
+	return FALSE;
     }
+    ULONG PowerAction = pSrbExPower->PowerAction;
+    UCHAR SrbPowerFlags = pSrbExPower->SrbPowerFlags;
+    ULONG DevicePowerState = pSrbExPower->DevicePowerState;
 
     if ((SrbPowerFlags & SRB_POWER_FLAGS_ADAPTER_REQUEST) == FALSE) {
 	/*
@@ -159,7 +152,7 @@ BOOLEAN NVMePowerControl(IN PNVME_DEVICE_EXTENSION pAE, IN PSCSI_REQUEST_BLOCK S
 	 * TargetId, LUNID) but in case if it does then ignore it and return
 	 * success.
 	 */
-	Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	pPowerSrb->SrbStatus = SRB_STATUS_SUCCESS;
 	return FALSE;
     }
 
@@ -234,13 +227,13 @@ BOOLEAN NVMePowerControl(IN PNVME_DEVICE_EXTENSION pAE, IN PSCSI_REQUEST_BLOCK S
 		       nvmePwrAction, pAE->HMBenabled);
     switch (nvmePwrAction) {
     case NVME_PWR_ADAPTER_OFF:
-	/*First,free allocated host memory buffer*/
+	/* First,free allocated host memory buffer*/
 	if (pAE->HMBenabled == TRUE)
 	    NVMeFreeHostMemoryBuffer(pAE);
 	status = NVMeNormalShutdown(pAE);
 	break;
     case NVME_PWR_ADAPTER_ENTER_S3_S4:
-	/*First, set host memory buffer temporary disable, not free host allocated memory
+	/* First, set host memory buffer temporary disable, not free host allocated memory
 	 * for hmb.*/
 	if (pAE->HMBenabled == TRUE) {
 	    pAE->HMBenabled = FALSE;
@@ -254,7 +247,7 @@ BOOLEAN NVMePowerControl(IN PNVME_DEVICE_EXTENSION pAE, IN PSCSI_REQUEST_BLOCK S
     case NVME_PWR_NONE:
     default:
 	/* Do nothing, just complete */
-	Srb->SrbStatus = SRB_STATUS_SUCCESS;
+	pPowerSrb->SrbStatus = SRB_STATUS_SUCCESS;
 	return FALSE;
 	break;
     } /* end switch */

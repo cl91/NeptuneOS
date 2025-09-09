@@ -73,19 +73,12 @@ __inline BOOLEAN IsPortStartCapable(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
 
 __inline PAHCI_SRB_EXTENSION GetSrbExtension(_In_ PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PCHAR tempBuffer;
-    ULONG_PTR leftBytes;
-
-    if (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	tempBuffer = (PCHAR)Srb->MiniportContext;
-    } else {
-	tempBuffer = (PCHAR)((PSCSI_REQUEST_BLOCK)Srb)->SrbExtension;
-    }
+    PCHAR tempBuffer = (PCHAR)Srb->MiniportContext;
 
     //
     // Use lower 32bit is good enough for this calculation.
     //
-    leftBytes = ((ULONG_PTR)tempBuffer) % 128;
+    ULONG_PTR leftBytes = ((ULONG_PTR)tempBuffer) % 128;
 
     if (leftBytes == 0) {
 	//
@@ -591,7 +584,7 @@ __inline BOOLEAN PortAcquireActiveReference(_In_ PAHCI_CHANNEL_EXTENSION Channel
 	status = StorPortPoFxActivateComponent(
 	    ChannelExtension->AdapterExtension,
 	    (PSTOR_ADDRESS)&ChannelExtension->DeviceExtension[0].DeviceAddress,
-	    (PSCSI_REQUEST_BLOCK)Srb, 0, 0);
+	    Srb, 0, 0);
 	// STOR_STATUS_BUSY indicates that ActivateComponent is not completed yet.
 	idle = (status == STOR_STATUS_BUSY);
 
@@ -627,7 +620,7 @@ __inline VOID PortReleaseActiveReference(_In_ PAHCI_CHANNEL_EXTENSION ChannelExt
 	StorPortPoFxIdleComponent(
 	    ChannelExtension->AdapterExtension,
 	    (PSTOR_ADDRESS)&ChannelExtension->DeviceExtension[0].DeviceAddress,
-	    (PSCSI_REQUEST_BLOCK)Srb, 0, 0);
+	    Srb, 0, 0);
     } else {
 	UNREFERENCED_PARAMETER(Srb);
     }

@@ -81,7 +81,6 @@ static NTSTATUS InitializeStorageRequestBlockVaList(IN OUT PSTORAGE_REQUEST_BLOC
     SRBEXDATATYPE type;
     ULONG srbExDataLength = (ULONG)-1;
     ULONG varLength;
-    ULONG i;
 
     if (ByteSize < sizeof(STORAGE_REQUEST_BLOCK)) {
 	return STATUS_BUFFER_OVERFLOW;
@@ -89,8 +88,6 @@ static NTSTATUS InitializeStorageRequestBlockVaList(IN OUT PSTORAGE_REQUEST_BLOC
 
     RtlZeroMemory(Srb, ByteSize);
 
-    Srb->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-    Srb->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
     Srb->Signature = SRB_SIGNATURE;
     Srb->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
     Srb->SrbLength = ByteSize;
@@ -119,7 +116,7 @@ static NTSTATUS InitializeStorageRequestBlockVaList(IN OUT PSTORAGE_REQUEST_BLOC
 	status = STATUS_INVALID_PARAMETER;
     }
 
-    for (i = 0; i < NumSrbExData && status == STATUS_SUCCESS; i++) {
+    for (ULONG i = 0; i < NumSrbExData && status == STATUS_SUCCESS; i++) {
 	if (ByteSize <= offset) {
 	    status = STATUS_BUFFER_OVERFLOW;
 	    break;
@@ -219,7 +216,8 @@ NTSTATUS InitializeStorageRequestBlock(IN OUT PSTORAGE_REQUEST_BLOCK Srb,
     NTSTATUS status;
     va_list ap;
     va_start(ap, NumSrbExData);
-    status = InitializeStorageRequestBlockVaList(Srb, AddressType, ByteSize, NumSrbExData, ap);
+    status = InitializeStorageRequestBlockVaList(Srb, AddressType,
+						 ByteSize, NumSrbExData, ap);
     va_end(ap);
     return status;
 }

@@ -799,7 +799,7 @@ VOID ReleaseSlottedCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     srbExtension = GetSrbExtension(slotContent->Srb);
     isSenseSrb = IsRequestSenseSrb(srbExtension->AtaFunction);
 
-    if ((slotContent->Srb == (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Sense.Srb) &&
+    if ((slotContent->Srb == &ChannelExtension->Sense.Srb) &&
 	(ChannelExtension->StateFlags.NcqErrorRecoveryInProcess == 1)) {
 	isReadLogExtSrbIssuedInNCQErrorRecovery = TRUE;
     }
@@ -861,7 +861,7 @@ VOID ReleaseSlottedCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     // 2. Then complete the command
     if (isSenseSrb) {
 	// 2.1 Handle Request Sense marshaling
-	srbToRelease = (PSTORAGE_REQUEST_BLOCK)SrbGetOriginalRequest(slotContent->Srb);
+	srbToRelease = SrbGetOriginalRequest(slotContent->Srb);
 
 	// that original SRB must have SRB_STATUS_AUTOSENSE_VALID set appropriately
 	if (slotContent->Srb->SrbStatus == SRB_STATUS_SUCCESS) {
@@ -968,7 +968,7 @@ VOID ReleaseSlottedCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 }
 
 /*
-    This routine is to complete a request that occupies a slot but has not been issued to
+   This routine is to complete a request that occupies a slot but has not been issued to
    adapter yet. Srb status should be set before calling this routine.
 */
 VOID AhciCompleteJustSlottedRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
@@ -990,7 +990,7 @@ VOID AhciCompleteJustSlottedRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
 
     if (isSenseSrb) {
 	// Handle Request Sense marshaling
-	srbToComplete = (PSTORAGE_REQUEST_BLOCK)SrbGetOriginalRequest(Srb);
+	srbToComplete = SrbGetOriginalRequest(Srb);
 
 	// Sense Srb doesn't have chance to run yet, clear Sense Valid flag from original
 	// SRB.
@@ -1020,22 +1020,19 @@ VOID AhciCompleteJustSlottedRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
 	ChannelExtension->SlotManager.HighPriorityAttribute &= ~(
 	    1 << srbExtension->QueueTag);
     }
-    if ((ChannelExtension->SlotManager.NCQueueSlice & (1 << srbExtension->QueueTag)) !=
-	0) {
+    if ((ChannelExtension->SlotManager.NCQueueSlice & (1 << srbExtension->QueueTag)) != 0) {
 	ChannelExtension->SlotManager.NCQueueSlice &= ~(1 << srbExtension->QueueTag);
     }
     if ((ChannelExtension->SlotManager.NormalQueueSlice &
 	 (1 << srbExtension->QueueTag)) != 0) {
 	ChannelExtension->SlotManager.NormalQueueSlice &= ~(1 << srbExtension->QueueTag);
     }
-    if ((ChannelExtension->SlotManager.SingleIoSlice & (1 << srbExtension->QueueTag)) !=
-	0) {
+    if ((ChannelExtension->SlotManager.SingleIoSlice & (1 << srbExtension->QueueTag)) != 0) {
 	ChannelExtension->SlotManager.SingleIoSlice &= ~(1 << srbExtension->QueueTag);
     }
     if ((ChannelExtension->SlotManager.CommandsToComplete &
 	 (1 << srbExtension->QueueTag)) != 0) {
-	ChannelExtension->SlotManager.CommandsToComplete &= ~(1
-							      << srbExtension->QueueTag);
+	ChannelExtension->SlotManager.CommandsToComplete &= ~(1 << srbExtension->QueueTag);
     }
 
     if (!AtDIRQL) {
@@ -1051,8 +1048,10 @@ VOID AhciCompleteJustSlottedRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
 
 /*++
     Wrapper for ComleteRequest to protect against completing the local SRB back to port
-driver who doesn't know anything about local SRB It assumes: SRB is completely ready to be
-completed back to the SRB generator It performs:
+    driver who doesn't know anything about local SRB
+It assumes:
+    SRB is completely ready to be completed back to the SRB generator
+It performs:
     1. If Srb has completion routine, put it in completion queue.
     2. Complete the command back to the owner. Do not complete the Local Srb.
 Called by:
@@ -1107,7 +1106,7 @@ VOID AhciCompleteRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     } else {
 	// 2. Complete the command back to the owner
 	if (IsMiniportInternalSrb(ChannelExtension, Srb)) {
-	    NT_ASSERT(((PSCSI_REQUEST_BLOCK)Srb == &ChannelExtension->Sense.Srb) ||
+	    NT_ASSERT((Srb == &ChannelExtension->Sense.Srb) ||
 		      (ChannelExtension->StateFlags.ReservedSlotInUse == 0));
 	    RecordExecutionHistory(ChannelExtension,
 				   0x20000045); // Exit AhciCompleteRequest,  Local SRB
@@ -1124,8 +1123,6 @@ VOID AhciCompleteRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 	    }
 	}
     }
-
-    return;
 }
 
 /*++
@@ -1152,9 +1149,7 @@ VOID GetAvailableSlot(PAHCI_CHANNEL_EXTENSION ChannelExtension,
     ULONG allocated;
     UCHAR limit;
     UCHAR i;
-    PAHCI_SRB_EXTENSION srbExtension;
-
-    srbExtension = GetSrbExtension(Srb);
+    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(Srb);
 
     // 1.1 Initialize variables
     srbExtension->QueueTag = 0xFF;
@@ -1163,7 +1158,7 @@ VOID GetAvailableSlot(PAHCI_CHANNEL_EXTENSION ChannelExtension,
     allocated = GetOccupiedSlots(ChannelExtension);
 
     // 2.1 Use slot 0 for internal commands, don't increment CCS
-    if (Srb == (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Local.Srb) {
+    if (Srb == &ChannelExtension->Local.Srb) {
 	if ((allocated & (1 << 0)) > 0) {
 	    srbExtension->QueueTag = 0xFF;
 	} else {
@@ -1173,7 +1168,7 @@ VOID GetAvailableSlot(PAHCI_CHANNEL_EXTENSION ChannelExtension,
     }
 
     // case of Sense.Srb used for NCQ error recovery.
-    if ((Srb == (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Sense.Srb) &&
+    if ((Srb == &ChannelExtension->Sense.Srb) &&
 	IsAtaCommand(srbExtension->AtaFunction)) {
 	if ((allocated & (1 << 0)) == 0) {
 	    srbExtension->QueueTag = 0;
@@ -1285,7 +1280,10 @@ BOOLEAN UpdateSetFeatureCommands(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 
 /*++
     Send each of the commands in the PersistentSettings structure one at a time using the
-local SRB It assumes: The local SRB is not currently in use Called by:
+    local SRB
+It assumes:
+    The local SRB is not currently in use
+Called by:
     AhciPortIssueInitCommands
     AhciPortReset
     AhciNonQueuedErrorRecovery
@@ -1368,16 +1366,11 @@ VOID RestorePreservedSettings(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 
     // 3 Starts processing the command. Only need to do the first command if it exists.
     // all others will be done by processing completion routine.
-    if (ChannelExtension->Local.Srb.SrbExtension != NULL) {
-	PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(
-	    (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Local.Srb);
-	if (srbExtension->AtaFunction != 0) {
-	    AhciProcessIo(ChannelExtension,
-			  (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Local.Srb, AtDIRQL);
-	}
+    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(&ChannelExtension->Local.Srb);
+    if (srbExtension && srbExtension->AtaFunction) {
+	AhciProcessIo(ChannelExtension,
+		      &ChannelExtension->Local.Srb, AtDIRQL);
     }
-
-    return;
 }
 
 /*++
@@ -1422,16 +1415,10 @@ VOID AhciPortIssueInitCommands(PAHCI_CHANNEL_EXTENSION ChannelExtension)
 
     // 3 Starts processing the command. Only need to do the first command if it exists.
     // all others will be done by processing completion routine.
-    if (ChannelExtension->Local.Srb.SrbExtension != NULL) {
-	PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(
-	    (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Local.Srb);
-	if (srbExtension->AtaFunction != 0) {
-	    AhciProcessIo(ChannelExtension,
-			  (PSTORAGE_REQUEST_BLOCK)&ChannelExtension->Local.Srb, FALSE);
-	}
+    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(&ChannelExtension->Local.Srb);
+    if (srbExtension && srbExtension->AtaFunction) {
+	AhciProcessIo(ChannelExtension, &ChannelExtension->Local.Srb, FALSE);
     }
-
-    return;
 }
 
 /*++

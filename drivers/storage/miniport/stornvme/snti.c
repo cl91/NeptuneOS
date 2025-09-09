@@ -2409,7 +2409,7 @@ SNTI_TRANSLATION_STATUS SntiTranslateWrite(PSTORAGE_REQUEST_BLOCK pSrb)
 	return SNTI_FAILURE_CHECK_RESPONSE_DATA;
     }
 
-    pSgl = StorPortGetScatterGatherList(pSrbExt->pNvmeDevExt, (PSCSI_REQUEST_BLOCK)pSrb);
+    pSgl = StorPortGetScatterGatherList(pSrbExt->pNvmeDevExt, pSrb);
 
     /* Set the SRB status to pending - controller communication necessary */
     pSrb->SrbStatus = SRB_STATUS_PENDING;
@@ -2699,7 +2699,7 @@ SNTI_TRANSLATION_STATUS SntiTranslateRead(PSTORAGE_REQUEST_BLOCK pSrb)
 	return SNTI_FAILURE_CHECK_RESPONSE_DATA;
     }
 
-    pSgl = StorPortGetScatterGatherList(pSrbExt->pNvmeDevExt, (PSCSI_REQUEST_BLOCK)pSrb);
+    pSgl = StorPortGetScatterGatherList(pSrbExt->pNvmeDevExt, pSrb);
 
     /* Set the SRB status to pending - controller communication necessary */
     pSrb->SrbStatus = SRB_STATUS_PENDING;
@@ -6426,7 +6426,7 @@ VOID SntiBuildGetFeaturesCmd(PNVME_SRB_EXTENSION pSrbExt, UINT8 featureIdentifie
 	pSrbExt->nvmeSqeUnit.PRP2 = 0;
     } else {
 	/* PRP Entry/List - Use the SGL from the original command */
-	pSgl = StorPortGetScatterGatherList(pDevExt, (PSCSI_REQUEST_BLOCK)pSrbExt->pSrb);
+	pSgl = StorPortGetScatterGatherList(pDevExt, pSrbExt->pSrb);
 	ASSERT(pSgl != NULL);
 
 	SntiTranslateSglToPrp(pSrbExt, pSgl);
@@ -6483,7 +6483,7 @@ VOID SntiBuildSetFeaturesCmd(PNVME_SRB_EXTENSION pSrbExt, UINT8 featureIdentifie
 	pSrbExt->nvmeSqeUnit.PRP2 = 0;
     } else {
 	/* PRP Entry/List - Use the SGL from the original command */
-	pSgl = StorPortGetScatterGatherList(pDevExt, (PSCSI_REQUEST_BLOCK)pSrbExt->pSrb);
+	pSgl = StorPortGetScatterGatherList(pDevExt, pSrbExt->pSrb);
 	ASSERT(pSgl != NULL);
 
 	SntiTranslateSglToPrp(pSrbExt, pSgl);
@@ -6593,7 +6593,7 @@ VOID SntiBuildGetLogPageCmd(PNVME_SRB_EXTENSION pSrbExt, UINT8 logIdentifier)
 	}
     } else {
 	/* Use the SGL from the original command for PRP Entries/List */
-	pSgl = StorPortGetScatterGatherList(pDevExt, (PSCSI_REQUEST_BLOCK)pSrbExt->pSrb);
+	pSgl = StorPortGetScatterGatherList(pDevExt, pSrbExt->pSrb);
 
 	if (pSgl != NULL) {
 #ifdef DEBUG_CHECK
@@ -6658,7 +6658,7 @@ VOID SntiBuildFirmwareImageDownloadCmd(PNVME_SRB_EXTENSION pSrbExt, UINT32 dword
     pSrbExt->nvmeSqeUnit.CDW11 = dword11;
 
     /* PRP Entry/List - Use the SGL from the original command */
-    pSgl = StorPortGetScatterGatherList(pDevExt, (PSCSI_REQUEST_BLOCK)pSrbExt->pSrb);
+    pSgl = StorPortGetScatterGatherList(pDevExt, pSrbExt->pSrb);
     ASSERT(pSgl != NULL);
 
 #define DEBUG_CHECK
@@ -6816,7 +6816,7 @@ VOID SntiBuildSecuritySendReceiveCmd(PNVME_SRB_EXTENSION pSrbExt,
 
     /* PRP Entry/List */
     pSgl = StorPortGetScatterGatherList(pSrbExt->pNvmeDevExt,
-					(PSCSI_REQUEST_BLOCK)pSrbExt->pSrb);
+					pSrbExt->pSrb);
     ASSERT(pSgl != NULL);
 
     SntiTranslateSglToPrp(pSrbExt, pSgl);
@@ -7681,7 +7681,7 @@ BOOLEAN SntiMapCompletionStatus(PNVME_SRB_EXTENSION pSrbExt)
 	    break;
 	}
 
-	if (pSrb->Function == SRB_FUNCTION_ABORT_COMMAND) {
+	if (pSrb->SrbFunction == SRB_FUNCTION_ABORT_COMMAND) {
 	    if ((pSrb->SrbStatus & SRB_STATUS_SUCCESS) != SRB_STATUS_SUCCESS) {
 		pSrbExt->failedAbortCmdCnt++;
 	    }

@@ -539,7 +539,7 @@ char *DbgGetIoctlStr(ULONG ioctl)
     return ioctlStr;
 }
 
-char *DbgGetScsiOpStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
+char *DbgGetScsiOpStr(PSTORAGE_REQUEST_BLOCK Srb)
 {
     PCDB pCdb = SrbGetCdb(Srb);
     char *scsiOpStr = "?";
@@ -652,7 +652,7 @@ char *DbgGetScsiOpStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
     return scsiOpStr;
 }
 
-char *DbgGetSrbStatusStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
+char *DbgGetSrbStatusStr(PSTORAGE_REQUEST_BLOCK Srb)
 {
     char *srbStatStr = "?";
 
@@ -705,7 +705,7 @@ char *DbgGetSrbStatusStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
     return srbStatStr;
 }
 
-char *DbgGetSenseCodeStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
+char *DbgGetSenseCodeStr(PSTORAGE_REQUEST_BLOCK Srb)
 {
     char *senseCodeStr = "?";
 
@@ -752,7 +752,7 @@ char *DbgGetSenseCodeStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
     return senseCodeStr;
 }
 
-char *DbgGetAdditionalSenseCodeStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
+char *DbgGetAdditionalSenseCodeStr(PSTORAGE_REQUEST_BLOCK Srb)
 {
     char *adSenseCodeStr = "?";
 
@@ -807,7 +807,7 @@ char *DbgGetAdditionalSenseCodeStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
     return adSenseCodeStr;
 }
 
-char *DbgGetAdditionalSenseCodeQualifierStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb)
+char *DbgGetAdditionalSenseCodeQualifierStr(PSTORAGE_REQUEST_BLOCK Srb)
 {
     char *adSenseCodeQualStr = "?";
 

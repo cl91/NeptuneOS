@@ -269,43 +269,28 @@ VOID ClasspCleanupProtectedLocks(IN PFILE_OBJECT_EXTENSION FsContext)
 		    fdoExtension->ProtectedLockCount, fdoExtension->LockCount));
 
 	if ((newDeviceLockCount == 0) && (fdoExtension->LockCount == 0)) {
-	    SCSI_REQUEST_BLOCK srb = { 0 };
 	    UCHAR srbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE] = { 0 };
 	    PSTORAGE_REQUEST_BLOCK srbEx = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
 	    PCDB cdb = NULL;
 	    NTSTATUS status;
-	    PSCSI_REQUEST_BLOCK srbPtr;
 
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
 			"ClasspCleanupProtectedLocks: FDO lock count dropped "
 			"to zero\n"));
 
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		status = InitializeStorageRequestBlock(srbEx, STORAGE_ADDRESS_TYPE_BTL8,
-						       sizeof(srbExBuffer), 1,
-						       SrbExDataTypeScsiCdb16);
-		if (NT_SUCCESS(status)) {
-		    srbEx->TimeOutValue = fdoExtension->TimeOutValue;
-		    SrbSetCdbLength(srbEx, 6);
-		    cdb = SrbGetCdb(srbEx);
-		    srbPtr = (PSCSI_REQUEST_BLOCK)srbEx;
-		} else {
-		    //
-		    // Should not happen. Revert to legacy SRB.
-		    //
-		    NT_ASSERT(FALSE);
-		    srb.TimeOutValue = fdoExtension->TimeOutValue;
-		    srb.CdbLength = 6;
-		    cdb = (PCDB) & (srb.Cdb);
-		    srbPtr = &srb;
-		}
-
+	    status = InitializeStorageRequestBlock(srbEx, STORAGE_ADDRESS_TYPE_BTL8,
+						   sizeof(srbExBuffer), 1,
+						   SrbExDataTypeScsiCdb16);
+	    if (NT_SUCCESS(status)) {
+		srbEx->TimeOutValue = fdoExtension->TimeOutValue;
+		SrbSetCdbLength(srbEx, 6);
+		cdb = SrbGetCdb(srbEx);
 	    } else {
-		srb.TimeOutValue = fdoExtension->TimeOutValue;
-		srb.CdbLength = 6;
-		cdb = (PCDB) & (srb.Cdb);
-		srbPtr = &srb;
+		//
+		// Should not happen.
+		//
+		NT_ASSERT(FALSE);
+		return;
 	    }
 
 	    cdb->MEDIA_REMOVAL.OperationCode = SCSIOP_MEDIUM_REMOVAL;
@@ -317,7 +302,7 @@ VOID ClasspCleanupProtectedLocks(IN PFILE_OBJECT_EXTENSION FsContext)
 
 	    cdb->MEDIA_REMOVAL.Prevent = FALSE;
 
-	    status = ClassSendSrbSynchronous(fdoExtension->DeviceObject, srbPtr, NULL, 0,
+	    status = ClassSendSrbSynchronous(fdoExtension->DeviceObject, srbEx, NULL, 0,
 					     FALSE);
 
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
@@ -373,7 +358,7 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 
     PFILE_OBJECT_EXTENSION fsContext = NULL;
     NTSTATUS status;
-    PSCSI_REQUEST_BLOCK srb = NULL;
+    PSTORAGE_REQUEST_BLOCK srb = NULL;
     BOOLEAN countChanged = FALSE;
 
     status = KeWaitForSingleObject(&(FdoExtension->EjectSynchronizationEvent),
@@ -497,30 +482,23 @@ NTSTATUS ClasspEjectionControl(IN PDEVICE_OBJECT Fdo,
 
 	status = STATUS_SUCCESS;
 	if (TEST_FLAG(Fdo->Flags, FILE_REMOVABLE_MEDIA)) {
-	    srb = (PSCSI_REQUEST_BLOCK)ClasspAllocateSrb(FdoExtension);
+	    srb = ClasspAllocateSrb(FdoExtension);
 
 	    if (srb == NULL) {
 		status = STATUS_INSUFFICIENT_RESOURCES;
 		__leave;
 	    }
 
-	    if (FdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		//
-		// NOTE - this is based on size used in ClasspAllocateSrb
-		//
-
-		status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srb,
-						       STORAGE_ADDRESS_TYPE_BTL8,
-						       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
-						       1, SrbExDataTypeScsiCdb16);
-		if (!NT_SUCCESS(status)) {
-		    NT_ASSERT(FALSE);
-		    __leave;
-		}
-
-	    } else {
-		RtlZeroMemory(srb, sizeof(SCSI_REQUEST_BLOCK));
+	    //
+	    // NOTE - this is based on size used in ClasspAllocateSrb
+	    //
+	    status = InitializeStorageRequestBlock(srb,
+						   STORAGE_ADDRESS_TYPE_BTL8,
+						   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
+						   1, SrbExDataTypeScsiCdb16);
+	    if (!NT_SUCCESS(status)) {
+		NT_ASSERT(FALSE);
+		__leave;
 	    }
 
 	    SrbSetCdbLength(srb, 6);

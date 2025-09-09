@@ -849,7 +849,7 @@ typedef struct _IO_STACK_LOCATION {
 	    PDEVICE_OBJECT DeviceObject;
 	} VerifyVolume;
 	struct {
-	    struct _SCSI_REQUEST_BLOCK *Srb;
+	    struct _STORAGE_REQUEST_BLOCK *Srb;
 	} Scsi;
 	struct {
 	    ULONG Length;

@@ -847,7 +847,7 @@ ULONG SrbConvertToATACommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 	    (PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
 	    AhciEtwEventBuildIO, L"SrbConvertToATACommand finished",
 	    STORPORT_ETW_EVENT_KEYWORD_COMMAND_TRACE, StorportEtwLevelInformational,
-	    StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb, L"AtaFunction",
+	    StorportEtwEventOpcodeInfo, Srb, L"AtaFunction",
 	    srbExtension->AtaFunction, L"Cfis 0-7",
 	    ((ULONGLONG)cfisAsUlong[0] << 32) + cfisAsUlong[1], L"Cfis 8-15",
 	    ((ULONGLONG)cfisAsUlong[2] << 32) + cfisAsUlong[3], L"Cfis 16-20",
@@ -3471,7 +3471,7 @@ VOID AtaFirmwareDownloadCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension
 			  AhciEtwEventUnitFirmwareDownloadComplete,
 			  L"Firmware Download Completion", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelError, StorportEtwEventOpcodeInfo,
-			  (PSCSI_REQUEST_BLOCK)Srb, L"SrbStatus", Srb->SrbStatus,
+			  Srb, L"SrbStatus", Srb->SrbStatus,
 			  L"ReturnCode",
 			  (srbControl != NULL) ? (srbControl->ReturnCode) : (0),
 			  L"FeaturesReg", srbExtension->TaskFile.Current.bFeaturesReg,
@@ -3588,7 +3588,7 @@ exit:
 	    (PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
 	    AhciEtwEventUnitFirmwareDownload, L"Firmware Download",
 	    STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelError,
-	    StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb, L"BufferOffset",
+	    StorportEtwEventOpcodeInfo, Srb, L"BufferOffset",
 	    bufferOffset, L"DataLength", dataLength, L"MaxTransBlocks",
 	    ChannelExtension->DeviceExtension->FirmwareUpdate.DmMaxTransferBlocks,
 	    L"MinTransBlocks",
@@ -3623,7 +3623,7 @@ VOID AtaFirmwareActivateCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension
 			  AhciEtwEventUnitFirmwareActivateComplete,
 			  L"Firmware Activate Completion", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelError, StorportEtwEventOpcodeInfo,
-			  (PSCSI_REQUEST_BLOCK)Srb, L"SrbStatus", Srb->SrbStatus,
+			  Srb, L"SrbStatus", Srb->SrbStatus,
 			  L"ReturnCode",
 			  (srbControl != NULL) ? (srbControl->ReturnCode) : (0),
 			  L"FeaturesReg", srbExtension->TaskFile.Current.bFeaturesReg,
@@ -3663,7 +3663,7 @@ VOID AtaWriteBufferFirmwareActivate(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
 			      (ChannelExtension->DeviceExtension->DeviceAddress),
 			  AhciEtwEventUnitFirmwareActivate, L"Firmware Activate",
 			  STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelError,
-			  StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb,
+			  StorportEtwEventOpcodeInfo, Srb,
 			  L"Operation Code", Cdb->WRITE_BUFFER.ModeSpecific, L"Buffer ID",
 			  Cdb->WRITE_BUFFER.BufferID, L"Buffer Offset0",
 			  Cdb->WRITE_BUFFER.BufferOffset[0], L"Buffer Offset1",
@@ -3807,7 +3807,7 @@ Exit:
 			  AhciEtwEventUnitGetPhysicalElementStatusComplete,
 			  L"Get Physical Element status", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelError, StorportEtwEventOpcodeInfo,
-			  (PSCSI_REQUEST_BLOCK)Srb, L"SrbStatus", Srb->SrbStatus,
+			  Srb, L"SrbStatus", Srb->SrbStatus,
 			  L"ErrorReg",
 			  ChannelExtension->ReceivedFIS->D2hRegisterFis.Error,
 			  L"StatusReg",
@@ -3951,7 +3951,7 @@ VOID AtaRemoveElementAndTruncateCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelE
 			  AhciEtwEventUnitRemoveElementAndTruncateComplete,
 			  L"Remove Element And Truncate", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelError, StorportEtwEventOpcodeInfo,
-			  (PSCSI_REQUEST_BLOCK)Srb, L"SrbStatus", Srb->SrbStatus,
+			  Srb, L"SrbStatus", Srb->SrbStatus,
 			  L"ErrorReg",
 			  ChannelExtension->ReceivedFIS->D2hRegisterFis.Error,
 			  L"StatusReg",
@@ -4110,7 +4110,7 @@ VOID AtaGetDeviceCurrentInternalStatusDataHeaderCompletion(
 			  AhciEtwEventUnitGetInternalStatusDataHeaderComplete,
 			  L"Internal Status Data Header", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelError, StorportEtwEventOpcodeInfo,
-			  (PSCSI_REQUEST_BLOCK)Srb, L"SrbStatus", Srb->SrbStatus,
+			  Srb, L"SrbStatus", Srb->SrbStatus,
 			  L"ErrorReg", srbExtension->TaskFile.Current.bFeaturesReg,
 			  L"StatusReg", srbExtension->TaskFile.Current.bCommandReg, NULL,
 			  0, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
@@ -4306,7 +4306,7 @@ Exit:
 			  AhciEtwEventUnitGetInternalStatusDataComplete,
 			  L"Internal Status Data", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelError, StorportEtwEventOpcodeInfo,
-			  (PSCSI_REQUEST_BLOCK)Srb, L"SrbStatus", Srb->SrbStatus,
+			  Srb, L"SrbStatus", Srb->SrbStatus,
 			  L"ErrorReg", srbExtension->TaskFile.Current.bFeaturesReg,
 			  L"StatusReg", srbExtension->TaskFile.Current.bCommandReg, NULL,
 			  0, NULL, 0, NULL, 0, NULL, 0, NULL, 0);
@@ -5202,7 +5202,7 @@ ULONG IOCTLtoATA(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 		      AhciEtwEventBuildIO, L"IOCTLtoATA finished",
 		      STORPORT_ETW_EVENT_KEYWORD_COMMAND_TRACE,
 		      StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-		      (PSCSI_REQUEST_BLOCK)Srb, L"SrbStatus", Srb->SrbStatus,
+		      Srb, L"SrbStatus", Srb->SrbStatus,
 		      L"SrbControl", srbControl->ControlCode);
 
     return status;
@@ -5390,7 +5390,7 @@ ULONG SmartIdentifyData(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     srbExtension->TaskFile.Current.bCommandReg = IDE_COMMAND_IDENTIFY;
 
     if (!FillClippedSGL(StorPortGetScatterGatherList(ChannelExtension->AdapterExtension,
-						     (PSCSI_REQUEST_BLOCK)Srb),
+						     Srb),
 			(PSTOR_SCATTER_GATHER_LIST)&srbExtension->LocalSgl,
 			sizeof(SRB_IO_CONTROL) + (sizeof(SENDCMDOUTPARAMS) - 1),
 			sizeof(IDENTIFY_DEVICE_DATA))) {
@@ -5456,7 +5456,7 @@ ULONG SmartGeneric(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 	    // Create the SGL to use to set up the PRDT
 	    if (!FillClippedSGL(
 		    StorPortGetScatterGatherList(ChannelExtension->AdapterExtension,
-						 (PSCSI_REQUEST_BLOCK)Srb),
+						 Srb),
 		    (PSTOR_SCATTER_GATHER_LIST)&srbExtension->LocalSgl,
 		    sizeof(SRB_IO_CONTROL) + (sizeof(SENDCMDOUTPARAMS) - 1),
 		    srbDataBufferLength - sizeof(SRB_IO_CONTROL) -
@@ -5480,7 +5480,7 @@ ULONG SmartGeneric(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 	    // Create the SGL to use to set up the PRDT
 	    if (!FillClippedSGL(
 		    StorPortGetScatterGatherList(ChannelExtension->AdapterExtension,
-						 (PSCSI_REQUEST_BLOCK)Srb),
+						 Srb),
 		    (PSTOR_SCATTER_GATHER_LIST)&srbExtension->LocalSgl,
 		    sizeof(SRB_IO_CONTROL) + (sizeof(SENDCMDINPARAMS) - 1),
 		    srbDataBufferLength - sizeof(SRB_IO_CONTROL) -
@@ -5665,7 +5665,7 @@ ULONG NVCacheGeneric(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 
 	if (!FillClippedSGL(
 		StorPortGetScatterGatherList(ChannelExtension->AdapterExtension,
-					     (PSCSI_REQUEST_BLOCK)Srb),
+					     Srb),
 		(PSTOR_SCATTER_GATHER_LIST)&srbExtension->LocalSgl,
 		sizeof(SRB_IO_CONTROL) + sizeof(NVCACHE_REQUEST_BLOCK),
 		srbDataBufferLength - sizeof(SRB_IO_CONTROL) -
@@ -5789,7 +5789,7 @@ VOID HybridInfoCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			      AhciEtwEventUnitHybridGetInfo, L"Hybrid Get Info",
 			      STORPORT_ETW_EVENT_KEYWORD_IO,
 			      StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-			      (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status", Srb->SrbStatus,
+			      Srb, L"Srb Status", Srb->SrbStatus,
 			      L"Hybrid Disk", TRUE, L"NvCache Size", 0, L"NvCache Levels",
 			      0, L"NvCache Status", 0, L"MaxLevelBehavior", 0,
 			      L"D_ThresholdLow", 0, L"D_ThresholdHigh", 0);
@@ -5922,7 +5922,7 @@ VOID HybridInfoCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			      (ChannelExtension->DeviceExtension->DeviceAddress),
 			  AhciEtwEventUnitHybridGetInfo, L"Hybrid Get Info",
 			  STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelInformational,
-			  StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb,
+			  StorportEtwEventOpcodeInfo, Srb,
 			  L"Srb Status", Srb->SrbStatus, L"Hybrid Disk", TRUE,
 			  L"NvCache Size", hybridInfo->CacheSize, L"NvCache Levels",
 			  hybridInfo->Priorities.PriorityLevelCount, L"NvCache Status",
@@ -6062,7 +6062,7 @@ Exit:
 			      (ChannelExtension->DeviceExtension->DeviceAddress),
 			  AhciEtwEventUnitHybridGetInfo, L"Hybrid Get Info",
 			  STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelInformational,
-			  StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb,
+			  StorportEtwEventOpcodeInfo, Srb,
 			  L"Srb Status", Srb->SrbStatus, L"Hybrid Disk",
 			  IsDeviceHybridInfoSupported(ChannelExtension) ? TRUE : FALSE,
 			  L"NvCache Size", 0, L"NvCache Levels", 0, L"NvCache Status", 0,
@@ -6101,7 +6101,7 @@ VOID HybridControlCachingMediumCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelEx
 		AhciEtwEventUnitHybridCachingMediumEnable,
 		L"Hybrid Caching Medium Enable", STORPORT_ETW_EVENT_KEYWORD_IO,
 		StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-		(PSCSI_REQUEST_BLOCK)Srb, L"Srb Status", Srb->SrbStatus,
+		Srb, L"Srb Status", Srb->SrbStatus,
 		L"Device CMD Sent", TRUE, L"Post-RefCount",
 		ChannelExtension->DeviceExtension->HybridCachingMediumEnableRefs, NULL,
 		0);
@@ -6112,7 +6112,7 @@ VOID HybridControlCachingMediumCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelEx
 		AhciEtwEventUnitHybridCachingMediumDisable,
 		L"Hybrid Caching Medium Disable", STORPORT_ETW_EVENT_KEYWORD_IO,
 		StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-		(PSCSI_REQUEST_BLOCK)Srb, L"Srb Status", Srb->SrbStatus,
+		Srb, L"Srb Status", Srb->SrbStatus,
 		L"Device CMD Sent", TRUE, L"Post-RefCount",
 		ChannelExtension->DeviceExtension->HybridCachingMediumEnableRefs, NULL,
 		0);
@@ -6292,7 +6292,7 @@ Exit:
 	    (PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
 	    AhciEtwEventUnitHybridCachingMediumDisable, L"Hybrid Caching Medium Disable",
 	    STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelInformational,
-	    StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status",
+	    StorportEtwEventOpcodeInfo, Srb, L"Srb Status",
 	    Srb->SrbStatus, L"Device CMD Sent", FALSE, L"Post-RefCount",
 	    ChannelExtension->DeviceExtension->HybridCachingMediumEnableRefs, NULL, 0);
     }
@@ -6409,7 +6409,7 @@ Exit:
 	    (PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
 	    AhciEtwEventUnitHybridCachingMediumEnable, L"Hybrid Caching Medium Enable",
 	    STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelInformational,
-	    StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status",
+	    StorportEtwEventOpcodeInfo, Srb, L"Srb Status",
 	    Srb->SrbStatus, L"Device CMD Sent", FALSE, L"Post-RefCount",
 	    ChannelExtension->DeviceExtension->HybridCachingMediumEnableRefs, NULL, 0);
     }
@@ -6446,7 +6446,7 @@ VOID HybridSetThresholdCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			  AhciEtwEventUnitHybridSetDirtyThreshold,
 			  L"Hybrid Set Dirty Threshold", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-			  (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status", Srb->SrbStatus,
+			  Srb, L"Srb Status", Srb->SrbStatus,
 			  L"Device CMD Sent", TRUE, L"D_ThresholdLow", dirtyLowThreshold,
 			  L"D_ThresholdHigh", dirtyHighThreshold);
     }
@@ -6616,7 +6616,7 @@ Exit:
 			  AhciEtwEventUnitHybridSetDirtyThreshold,
 			  L"Hybrid Set Dirty Threshold", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-			  (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status", Srb->SrbStatus,
+			  Srb, L"Srb Status", Srb->SrbStatus,
 			  L"Device CMD Sent", FALSE, L"D_ThresholdLow", dirtyLowThreshold,
 			  L"D_ThresholdHigh", dirtyHighThreshold);
     }
@@ -6654,7 +6654,7 @@ VOID HybridDemoteBySizeCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			      (ChannelExtension->DeviceExtension->DeviceAddress),
 			  AhciEtwEventUnitHybridDemoteBySize, L"Hybrid Demote By Size",
 			  STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelInformational,
-			  StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb,
+			  StorportEtwEventOpcodeInfo, Srb,
 			  L"Srb Status", Srb->SrbStatus, L"Device CMD Sent", TRUE,
 			  L"Source Priority", sourcePriority, L"Target Priority",
 			  targetPriority, L"LBA Count", lbaCount, NULL, 0, NULL, 0, NULL,
@@ -6843,7 +6843,7 @@ Exit:
 			      (ChannelExtension->DeviceExtension->DeviceAddress),
 			  AhciEtwEventUnitHybridDemoteBySize, L"Hybrid Demote By Size",
 			  STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelInformational,
-			  StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb,
+			  StorportEtwEventOpcodeInfo, Srb,
 			  L"Srb Status", Srb->SrbStatus, L"Device CMD Sent", FALSE,
 			  L"Source Priority", sourcePriority, L"Target Priority",
 			  targetPriority, L"LBA Count", lbaCount, NULL, 0, NULL, 0, NULL,
@@ -7133,7 +7133,7 @@ VOID HybridChangeByLbaCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			      AhciEtwEventUnitHybridChangePriorityByLBA,
 			      L"Hybrid Change By LBA", STORPORT_ETW_EVENT_KEYWORD_IO,
 			      StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-			      (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status", Srb->SrbStatus,
+			      Srb, L"Srb Status", Srb->SrbStatus,
 			      L"Device CMD Sent", TRUE, L"Target Priority",
 			      lbaRangeContext->TargetPriority, L"LBA Range Count",
 			      lbaRangeContext->DataSetRangeCount);
@@ -7352,7 +7352,7 @@ Exit:
 	    (PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
 	    AhciEtwEventUnitHybridChangePriorityByLBA, L"Hybrid Change By LBA",
 	    STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelInformational,
-	    StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status",
+	    StorportEtwEventOpcodeInfo, Srb, L"Srb Status",
 	    Srb->SrbStatus, L"Device CMD Sent", FALSE, L"Target Priority",
 	    changePriorty->TargetPriority, L"LBA Range Count",
 	    dsmAttributes->DataSetRangesLength / sizeof(DEVICE_DATA_SET_RANGE));
@@ -7514,7 +7514,7 @@ VOID HybridEvictCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			      AhciEtwEventUnitHybridEvict, L"Hybrid Evict",
 			      STORPORT_ETW_EVENT_KEYWORD_IO,
 			      StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-			      (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status", Srb->SrbStatus,
+			      Srb, L"Srb Status", Srb->SrbStatus,
 			      L"Device CMD Sent", TRUE, L"Evict All", FALSE,
 			      L"LBA Range Count", evictContext->DataSetRangeCount);
 	}
@@ -7747,7 +7747,7 @@ Exit:
 	    (PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
 	    AhciEtwEventUnitHybridEvict, L"Hybrid Evict", STORPORT_ETW_EVENT_KEYWORD_IO,
 	    StorportEtwLevelInformational, StorportEtwEventOpcodeInfo,
-	    (PSCSI_REQUEST_BLOCK)Srb, L"Srb Status", Srb->SrbStatus, L"Device CMD Sent",
+	    Srb, L"Srb Status", Srb->SrbStatus, L"Device CMD Sent",
 	    FALSE, L"Evict All",
 	    ((dsmAttributes->Flags & DEVICE_DSM_FLAG_ENTIRE_DATA_SET_RANGE) != 0) ? TRUE :
 										    FALSE,
@@ -7879,7 +7879,7 @@ Exit:
 	    (PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
 	    AhciEtwEventUnitFirmwareInfo, L"Get Firmware Info",
 	    STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelError,
-	    StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb, L"SrbStatus",
+	    StorportEtwEventOpcodeInfo, Srb, L"SrbStatus",
 	    Srb->SrbStatus, L"Status", status, L"DataBufferLen",
 	    firmwareRequest->DataBufferLength, L"ReturnCode", srbControl->ReturnCode,
 	    L"Version", (firmwareInfo == NULL) ? (0) : (firmwareInfo->Version), L"Size",
@@ -7979,7 +7979,7 @@ Exit:
 	    (PSTOR_ADDRESS) & (ChannelExtension->DeviceExtension->DeviceAddress),
 	    AhciEtwEventUnitFirmwareIoctl, L"Firmware Ioctl",
 	    STORPORT_ETW_EVENT_KEYWORD_IO, StorportEtwLevelError,
-	    StorportEtwEventOpcodeInfo, (PSCSI_REQUEST_BLOCK)Srb, L"SrbDataBufLen",
+	    StorportEtwEventOpcodeInfo, Srb, L"SrbDataBufLen",
 	    srbDataBufferLength, L"SrbStatus", Srb->SrbStatus, L"ReturnCode",
 	    srbControl->ReturnCode, L"FWReqVersion",
 	    (firmwareRequest == NULL) ? (0) : (firmwareRequest->Version),
@@ -8220,7 +8220,7 @@ ULONG QueryProtocolInfoIdentifyData(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
     srbExtension->TaskFile.Current.bCommandReg = IDE_COMMAND_IDENTIFY;
 
     if (!FillClippedSGL(StorPortGetScatterGatherList(ChannelExtension->AdapterExtension,
-						     (PSCSI_REQUEST_BLOCK)Srb),
+						     Srb),
 			(PSTOR_SCATTER_GATHER_LIST)&srbExtension->LocalSgl,
 			sizeof(SRB_IO_CONTROL) +
 			    FIELD_OFFSET(STORAGE_PROTOCOL_DATA_DESCRIPTOR,
@@ -8457,7 +8457,7 @@ ULONG QueryProtocolInfoLogPageData(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension
     // Set up SGL.
     //
     if (!FillClippedSGL(StorPortGetScatterGatherList(ChannelExtension->AdapterExtension,
-						     (PSCSI_REQUEST_BLOCK)Srb),
+						     Srb),
 			(PSTOR_SCATTER_GATHER_LIST)&srbExtension->LocalSgl,
 			sizeof(SRB_IO_CONTROL) +
 			    FIELD_OFFSET(STORAGE_PROTOCOL_DATA_DESCRIPTOR,

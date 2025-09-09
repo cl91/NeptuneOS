@@ -311,7 +311,7 @@ BOOLEAN MiniportHwInterrupt(IN PMINIPORT Miniport)
 }
 
 BOOLEAN MiniportStartIo(IN PMINIPORT Miniport,
-			IN PSCSI_REQUEST_BLOCK Srb)
+			IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     DPRINT1("MiniportHwStartIo(%p %p)\n", Miniport, Srb);
     return Miniport->InitData->HwStartIo(&Miniport->MiniportExtension->HwDeviceExtension,

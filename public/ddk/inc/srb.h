@@ -66,7 +66,7 @@
     (Bus = (UCHAR)((Value) >> 5),                  \
      Target = (UCHAR)((((Value) >> 8) & ~(0x20 - 1)) | ((Value) & (0x20 - 1))))
 
-/* SCSI_REQUEST_BLOCK.Function constants */
+/* STORAGE_REQUEST_BLOCK.SrbFunction constants */
 #define SRB_FUNCTION_EXECUTE_SCSI 0x00
 #define SRB_FUNCTION_CLAIM_DEVICE 0x01
 #define SRB_FUNCTION_IO_CONTROL 0x02
@@ -96,12 +96,15 @@
 #define SRB_FUNCTION_PNP 0x25
 #define SRB_FUNCTION_DUMP_POINTERS 0x26
 #define SRB_FUNCTION_FREE_DUMP_POINTERS 0x27
-#define SRB_FUNCTION_STORAGE_REQUEST_BLOCK 0x28 // special value
+// 0x28 is used on Windows/ReactOS to indicate the SRB is a newer STORAGE_REQUEST_BLOCK
+// Since we have removed support for the legacy SCSI_REQUEST_BLOCK, this value should
+// not be used.
+#define SRB_FUNCTION_INVALID_DO_NOT_USE 0x28
 #define SRB_FUNCTION_CRYPTO_OPERATION 0x29
 #define SRB_FUNCTION_GET_DUMP_INFO 0x2a
 #define SRB_FUNCTION_FREE_DUMP_INFO 0x2b
 
-/* SCSI_REQUEST_BLOCK.SrbStatus constants */
+/* STORAGE_REQUEST_BLOCK.SrbStatus constants */
 #define SRB_STATUS_PENDING 0x00
 #define SRB_STATUS_SUCCESS 0x01
 #define SRB_STATUS_ABORTED 0x02
@@ -140,7 +143,7 @@
 #define SRB_STATUS(Status) \
     (Status & ~(SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_QUEUE_FROZEN))
 
-/* SCSI_REQUEST_BLOCK.SrbFlags constants */
+/* STORAGE_REQUEST_BLOCK.SrbFlags constants */
 #define SRB_FLAGS_QUEUE_ACTION_ENABLE 0x00000002
 #define SRB_FLAGS_DISABLE_DISCONNECT 0x00000004
 #define SRB_FLAGS_DISABLE_SYNCH_TRANSFER 0x00000008
@@ -228,65 +231,6 @@ typedef struct _SCSI_SUPPORTED_CONTROL_TYPE_LIST {
     BOOLEAN SupportedTypeList[0];
 } SCSI_SUPPORTED_CONTROL_TYPE_LIST, *PSCSI_SUPPORTED_CONTROL_TYPE_LIST;
 
-typedef struct _SCSI_REQUEST_BLOCK {
-    USHORT Length;
-    UCHAR Function;
-    UCHAR SrbStatus;
-    UCHAR ScsiStatus;
-    UCHAR PathId;
-    UCHAR TargetId;
-    UCHAR Lun;
-    UCHAR QueueTag;
-    UCHAR QueueAction;
-    UCHAR CdbLength;
-    UCHAR SenseInfoBufferLength;
-    ULONG SrbFlags;
-    ULONG DataTransferLength;
-    ULONG TimeOutValue;
-    PVOID DataBuffer;
-    PVOID SenseInfoBuffer;
-    struct _SCSI_REQUEST_BLOCK *NextSrb;
-    PVOID OriginalRequest;
-    PVOID SrbExtension;
-    union {
-	ULONG InternalStatus;
-	ULONG QueueSortKey;
-	ULONG LinkTimeoutValue;
-    };
-#if defined(_WIN64)
-    ULONG Reserved;
-#endif
-    UCHAR Cdb[16];
-} SCSI_REQUEST_BLOCK, *PSCSI_REQUEST_BLOCK;
-
-#define SCSI_REQUEST_BLOCK_SIZE sizeof(SCSI_REQUEST_BLOCK)
-
-typedef struct _SCSI_WMI_REQUEST_BLOCK {
-    USHORT Length;
-    UCHAR Function;
-    UCHAR SrbStatus;
-    UCHAR WMISubFunction;
-    UCHAR PathId;
-    UCHAR TargetId;
-    UCHAR Lun;
-    UCHAR Reserved1;
-    UCHAR WMIFlags;
-    UCHAR Reserved2[2];
-    ULONG SrbFlags;
-    ULONG DataTransferLength;
-    ULONG TimeOutValue;
-    PVOID DataBuffer;
-    PVOID DataPath;
-    PVOID Reserved3;
-    PVOID OriginalRequest;
-    PVOID SrbExtension;
-    ULONG Reserved4;
-#if (NTDDI_VERSION >= NTDDI_WS03SP1) && defined(_WIN64)
-    ULONG Reserved6;
-#endif
-    UCHAR Reserved5[16];
-} SCSI_WMI_REQUEST_BLOCK, *PSCSI_WMI_REQUEST_BLOCK;
-
 typedef enum _STOR_DEVICE_POWER_STATE {
     StorPowerDeviceUnspecified = 0,
     StorPowerDeviceD0,
@@ -306,30 +250,6 @@ typedef enum _STOR_POWER_ACTION {
     StorPowerActionShutdownOff,
     StorPowerActionWarmEject
 } STOR_POWER_ACTION, *PSTOR_POWER_ACTION;
-
-typedef struct _SCSI_POWER_REQUEST_BLOCK {
-    USHORT Length;
-    UCHAR Function;
-    UCHAR SrbStatus;
-    UCHAR SrbPowerFlags;
-    UCHAR PathId;
-    UCHAR TargetId;
-    UCHAR Lun;
-    STOR_DEVICE_POWER_STATE DevicePowerState;
-    ULONG SrbFlags;
-    ULONG DataTransferLength;
-    ULONG TimeOutValue;
-    PVOID DataBuffer;
-    PVOID SenseInfoBuffer;
-    struct _SCSI_REQUEST_BLOCK *NextSrb;
-    PVOID OriginalRequest;
-    PVOID SrbExtension;
-    STOR_POWER_ACTION PowerAction;
-#if defined(_WIN64)
-    ULONG Reserved;
-#endif
-    UCHAR Reserved5[16];
-} SCSI_POWER_REQUEST_BLOCK, *PSCSI_POWER_REQUEST_BLOCK;
 
 typedef enum _STOR_PNP_ACTION {
     StorStartDevice = 0x0,
@@ -380,31 +300,6 @@ typedef struct _STOR_DEVICE_CAPABILITIES_EX {
     ULONG  Reserved1[2];
 } STOR_DEVICE_CAPABILITIES_EX, *PSTOR_DEVICE_CAPABILITIES_EX;
 
-typedef struct _SCSI_PNP_REQUEST_BLOCK {
-    USHORT Length;
-    UCHAR Function;
-    UCHAR SrbStatus;
-    UCHAR PnPSubFunction;
-    UCHAR PathId;
-    UCHAR TargetId;
-    UCHAR Lun;
-    STOR_PNP_ACTION PnPAction;
-    ULONG SrbFlags;
-    ULONG DataTransferLength;
-    ULONG TimeOutValue;
-    PVOID DataBuffer;
-    PVOID SenseInfoBuffer;
-    struct _SCSI_REQUEST_BLOCK *NextSrb;
-    PVOID OriginalRequest;
-    PVOID SrbExtension;
-    ULONG SrbPnPFlags;
-#if defined(_WIN64)
-    ULONG Reserved;
-#endif
-    UCHAR Reserved4[16];
-} SCSI_PNP_REQUEST_BLOCK, *PSCSI_PNP_REQUEST_BLOCK;
-
-#if (NTDDI_VERSION >= NTDDI_WIN8)
 #if defined(_WIN64)
 #define SRB_ALIGN DECLSPEC_ALIGN(8)
 #define POINTER_ALIGN DECLSPEC_ALIGN(8)
@@ -445,7 +340,11 @@ typedef struct SRB_ALIGN _SRBEX_DATA_BIDIRECTIONAL {
     _Field_size_bytes_full_(DataInTransferLength) PVOID POINTER_ALIGN DataInBuffer;
 } SRBEX_DATA_BIDIRECTIONAL, *PSRBEX_DATA_BIDIRECTIONAL;
 
-#define SRBEX_DATA_SCSI_CDB16_LENGTH \
+C_ASSERT(sizeof(SRBEX_DATA_BIDIRECTIONAL) ==
+	 SRBEX_DATA_BIDIRECTIONAL_LENGTH + FIELD_OFFSET(SRBEX_DATA_BIDIRECTIONAL,
+							DataInTransferLength));
+
+#define SRBEX_DATA_SCSI_CDB16_LENGTH				\
     ((20 * sizeof(UCHAR)) + sizeof(ULONG) + sizeof(PVOID))
 
 typedef struct SRB_ALIGN _SRBEX_DATA_SCSI_CDB16 {
@@ -460,6 +359,9 @@ typedef struct SRB_ALIGN _SRBEX_DATA_SCSI_CDB16 {
     _Field_size_bytes_full_(SenseInfoBufferLength) PVOID POINTER_ALIGN SenseInfoBuffer;
     UCHAR POINTER_ALIGN Cdb[16];
 } SRBEX_DATA_SCSI_CDB16, *PSRBEX_DATA_SCSI_CDB16;
+
+C_ASSERT(sizeof(SRBEX_DATA_SCSI_CDB16) ==
+	 SRBEX_DATA_SCSI_CDB16_LENGTH + FIELD_OFFSET(SRBEX_DATA_SCSI_CDB16, ScsiStatus));
 
 #define SRBEX_DATA_SCSI_CDB32_LENGTH \
     ((36 * sizeof(UCHAR)) + sizeof(ULONG) + sizeof(PVOID))
@@ -476,6 +378,9 @@ typedef struct SRB_ALIGN _SRBEX_DATA_SCSI_CDB32 {
     _Field_size_bytes_full_(SenseInfoBufferLength) PVOID POINTER_ALIGN SenseInfoBuffer;
     UCHAR POINTER_ALIGN Cdb[32];
 } SRBEX_DATA_SCSI_CDB32, *PSRBEX_DATA_SCSI_CDB32;
+
+C_ASSERT(sizeof(SRBEX_DATA_SCSI_CDB32) ==
+	 SRBEX_DATA_SCSI_CDB32_LENGTH + FIELD_OFFSET(SRBEX_DATA_SCSI_CDB32, ScsiStatus));
 
 #define SRBEX_DATA_SCSI_CDB_VAR_LENGTH_MIN \
     ((4 * sizeof(UCHAR)) + (3 * sizeof(ULONG)) + sizeof(PVOID))
@@ -506,8 +411,11 @@ typedef struct SRB_ALIGN _SRBEX_DATA_WMI {
     PVOID POINTER_ALIGN DataPath;
 } SRBEX_DATA_WMI, *PSRBEX_DATA_WMI;
 
+C_ASSERT(sizeof(SRBEX_DATA_WMI) ==
+	 SRBEX_DATA_WMI_LENGTH + FIELD_OFFSET(SRBEX_DATA_WMI, WMISubFunction));
+
 #define SRBEX_DATA_POWER_LENGTH \
-    ((4 * sizeof(UCHAR)) + sizeof(STOR_DEVICE_POWER_STATE) + sizeof(STOR_POWER_ACTION))
+    (sizeof(ULONG_PTR) + sizeof(STOR_DEVICE_POWER_STATE) + sizeof(STOR_POWER_ACTION))
 
 typedef struct SRB_ALIGN _SRBEX_DATA_POWER {
     _Field_range_(SrbExDataTypePower, SrbExDataTypePower) SRBEXDATATYPE Type;
@@ -517,6 +425,9 @@ typedef struct SRB_ALIGN _SRBEX_DATA_POWER {
     STOR_DEVICE_POWER_STATE DevicePowerState;
     STOR_POWER_ACTION PowerAction;
 } SRBEX_DATA_POWER, *PSRBEX_DATA_POWER;
+
+C_ASSERT(sizeof(SRBEX_DATA_POWER) ==
+	 SRBEX_DATA_POWER_LENGTH + FIELD_OFFSET(SRBEX_DATA_POWER, SrbPowerFlags));
 
 #define SRBEX_DATA_PNP_LENGTH \
     ((4 * sizeof(UCHAR)) + sizeof(STOR_PNP_ACTION) + (2 * sizeof(ULONG)))
@@ -531,6 +442,9 @@ typedef struct SRB_ALIGN _SRBEX_DATA_PNP {
     ULONG Reserved1;
 } SRBEX_DATA_PNP, *PSRBEX_DATA_PNP;
 
+C_ASSERT(sizeof(SRBEX_DATA_PNP) ==
+	 SRBEX_DATA_PNP_LENGTH + FIELD_OFFSET(SRBEX_DATA_PNP, PnPSubFunction));
+
 #define SRBEX_DATA_IO_INFO_LENGTH ((5 * sizeof(ULONG)) + (4 * sizeof(UCHAR)))
 
 #define REQUEST_INFO_NO_CACHE_FLAG 0x00000001
@@ -540,13 +454,9 @@ typedef struct SRB_ALIGN _SRBEX_DATA_PNP {
 #define REQUEST_INFO_WRITE_THROUGH_FLAG 0x00000010
 #define REQUEST_INFO_HYBRID_WRITE_THROUGH_FLAG 0x00000020
 
-#if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)
-
 #define REQUEST_INFO_NO_FILE_OBJECT_FLAG 0x00000040
 #define REQUEST_INFO_VOLSNAP_IO_FLAG 0x00000080
 #define REQUEST_INFO_STREAM_FLAG 0x00000100
-
-#endif /* (NTDDI_VERSION >= NTDDI_WINTHRESHOLD) */
 
 #define REQUEST_INFO_VALID_CACHEPRIORITY_FLAG 0x80000000
 
@@ -565,26 +475,15 @@ typedef struct SRB_ALIGN _SRBEX_DATA_IO_INFO {
 #define SRB_SIGNATURE 0x53524258
 #define STORAGE_REQUEST_BLOCK_VERSION_1 0x1
 
-typedef struct SRB_ALIGN _STORAGE_REQUEST_BLOCK_HEADER {
-    USHORT Length;
-    _Field_range_(SRB_FUNCTION_STORAGE_REQUEST_BLOCK,
-		  SRB_FUNCTION_STORAGE_REQUEST_BLOCK) UCHAR Function;
-    UCHAR SrbStatus;
-} STORAGE_REQUEST_BLOCK_HEADER, *PSTORAGE_REQUEST_BLOCK_HEADER;
-
 typedef _Struct_size_bytes_(SrbLength) struct SRB_ALIGN _STORAGE_REQUEST_BLOCK {
-    USHORT Length;
-    _Field_range_(SRB_FUNCTION_STORAGE_REQUEST_BLOCK,
-		  SRB_FUNCTION_STORAGE_REQUEST_BLOCK) UCHAR Function;
-    UCHAR SrbStatus;
-    UCHAR ReservedUchar[4];
     _Field_range_(SRB_SIGNATURE, SRB_SIGNATURE) ULONG Signature;
     _Field_range_(STORAGE_REQUEST_BLOCK_VERSION_1,
 		  STORAGE_REQUEST_BLOCK_VERSION_1) ULONG Version;
     ULONG SrbLength;
     ULONG SrbFunction;
     ULONG SrbFlags;
-    ULONG ReservedUlong;
+    UCHAR SrbStatus;
+    UCHAR ReservedUchar[3];
     ULONG RequestTag;
     USHORT RequestPriority;
     USHORT RequestAttribute;
@@ -607,10 +506,12 @@ typedef _Struct_size_bytes_(SrbLength) struct SRB_ALIGN _STORAGE_REQUEST_BLOCK {
 	_Field_size_(NumSrbExData) ULONG SrbExDataOffset[ANYSIZE_ARRAY];
 } STORAGE_REQUEST_BLOCK, *PSTORAGE_REQUEST_BLOCK;
 
-#define SRB_TYPE_SCSI_REQUEST_BLOCK 0
-#define SRB_TYPE_STORAGE_REQUEST_BLOCK 1
-
 #define STORAGE_ADDRESS_TYPE_BTL8 0
-#endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
+
+#define SRBEX_NO_SRBEX_DATA_BUFFER_SIZE				\
+    (sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8))
+
+#define SRBEX_SCSI_CDB16_BUFFER_SIZE					\
+    (SRBEX_NO_SRBEX_DATA_BUFFER_SIZE + sizeof(SRBEX_DATA_SCSI_CDB16))
 
 #endif /* _NTSRB_ */

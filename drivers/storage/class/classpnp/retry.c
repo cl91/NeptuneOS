@@ -58,26 +58,11 @@ BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt)
     }
 
     if (fdoData->InterpretSenseInfo != NULL) {
-	SCSI_REQUEST_BLOCK tempSrb = { 0 };
-	PSCSI_REQUEST_BLOCK srbPtr = (PSCSI_REQUEST_BLOCK)Pkt->Srb;
-
 	// SAL annotation and ClassInitializeEx() both validate this
 	NT_ASSERT(fdoData->InterpretSenseInfo->Interpret != NULL);
 
-	//
-	// If class driver does not support extended SRB and this is
-	// an extended SRB, convert to legacy SRB and pass to class
-	// driver.
-	//
-	if ((Pkt->Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	    ((fdoExtension->CommonExtension.DriverExtension->SrbSupport &
-	      CLASS_SRB_STORAGE_REQUEST_BLOCK) == 0)) {
-	    ClasspConvertToScsiRequestBlock(&tempSrb, (PSTORAGE_REQUEST_BLOCK)Pkt->Srb);
-	    srbPtr = &tempSrb;
-	}
-
 	shouldRetry = fdoData->InterpretSenseInfo->Interpret(
-	    Pkt->Fdo, Pkt->OriginalIrp, srbPtr, IRP_MJ_SCSI, 0, timesAlreadyRetried,
+	    Pkt->Fdo, Pkt->OriginalIrp, Pkt->Srb, IRP_MJ_SCSI, 0, timesAlreadyRetried,
 	    Pkt->RetryHistory, &Pkt->Irp->IoStatus.Status, &Pkt->RetryIn100nsUnits);
 
     } else {
@@ -105,7 +90,7 @@ BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt)
 	    /*
              *  This is an Ejection Control SRB.  Interpret its sense info specially.
              */
-	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, (PSCSI_REQUEST_BLOCK)Pkt->Srb,
+	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, Pkt->Srb,
 						  IRP_MJ_SCSI, 0, timesAlreadyRetried,
 						  &Pkt->Irp->IoStatus.Status,
 						  &retryIntervalSeconds);
@@ -144,7 +129,7 @@ BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt)
 	    /*
              *  This is an Mode Sense SRB.  Interpret its sense info specially.
              */
-	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, (PSCSI_REQUEST_BLOCK)Pkt->Srb,
+	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, Pkt->Srb,
 						  IRP_MJ_SCSI, 0, timesAlreadyRetried,
 						  &Pkt->Irp->IoStatus.Status,
 						  &retryIntervalSeconds);
@@ -201,7 +186,7 @@ BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt)
 	    /*
              *  This is a Drive Capacity SRB.  Interpret its sense info specially.
              */
-	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, (PSCSI_REQUEST_BLOCK)Pkt->Srb,
+	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, Pkt->Srb,
 						  IRP_MJ_SCSI, 0, timesAlreadyRetried,
 						  &Pkt->Irp->IoStatus.Status,
 						  &retryIntervalSeconds);
@@ -222,7 +207,7 @@ BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt)
 	    PIO_STACK_LOCATION origCurrentSp = IoGetCurrentIrpStackLocation(
 		Pkt->OriginalIrp);
 
-	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, (PSCSI_REQUEST_BLOCK)Pkt->Srb,
+	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, Pkt->Srb,
 						  origCurrentSp->MajorFunction, 0,
 						  timesAlreadyRetried,
 						  &Pkt->Irp->IoStatus.Status,
@@ -258,7 +243,7 @@ BOOLEAN InterpretTransferPacketError(PTRANSFER_PACKET Pkt)
 
 	    Pkt->TransferCount = 0;
 
-	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, (PSCSI_REQUEST_BLOCK)Pkt->Srb,
+	    shouldRetry = ClassInterpretSenseInfo(Pkt->Fdo, Pkt->Srb,
 						  IRP_MJ_SCSI, 0, timesAlreadyRetried,
 						  &Pkt->Irp->IoStatus.Status,
 						  &retryIntervalSeconds);
@@ -386,8 +371,7 @@ BOOLEAN RetryTransferPacket(PTRANSFER_PACKET Pkt)
 	// Do not apply this for thin provisioning soft threshold errors, since
 	// they should succeed as soon as they're retried on the right IT nexus.
 	//
-	if ((Pkt->NumRetries == 0) &&
-	    !ClasspIsThinProvisioningError((PSCSI_REQUEST_BLOCK)Pkt->Srb)) {
+	if ((Pkt->NumRetries == 0) && !ClasspIsThinProvisioningError(Pkt->Srb)) {
 	    scaleDown = TRUE;
 	}
     }

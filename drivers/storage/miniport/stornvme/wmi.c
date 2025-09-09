@@ -189,7 +189,7 @@ NTAPI BOOLEAN QueryWmiDataBlock(_In_ PVOID pContext,
 				_Out_writes_bytes_(BufferAvail) PUCHAR pBuffer)
 {
     PNVME_DEVICE_EXTENSION pDevExtension = (PNVME_DEVICE_EXTENSION)pContext;
-    PSCSI_WMI_REQUEST_BLOCK pSrb = (PSCSI_WMI_REQUEST_BLOCK)pDispatchContext->UserContext;
+    PSTORAGE_REQUEST_BLOCK pSrb = pDispatchContext->UserContext;
     ULONG                   sizeNeeded = 0;
     UCHAR                   status = SRB_STATUS_SUCCESS;
     if (BufferAvail > 0) {
@@ -264,7 +264,7 @@ NTAPI BOOLEAN ExecuteWmiMethod(_In_ PVOID pContext,
     )
 {
     PNVME_DEVICE_EXTENSION             pDevExtension = (PNVME_DEVICE_EXTENSION)pContext;
-    PSCSI_WMI_REQUEST_BLOCK pSrb = (PSCSI_WMI_REQUEST_BLOCK)pDispatchContext->UserContext;
+    PSTORAGE_REQUEST_BLOCK pSrb = pDispatchContext->UserContext;
     ULONG                   sizeNeeded = 0;
     UCHAR                   status = SRB_STATUS_SUCCESS;
 
@@ -343,7 +343,7 @@ NTAPI BOOLEAN ExecuteWmiMethod(_In_ PVOID pContext,
 } /* ExecuteWmiMethod */
 
 VOID SpUpdateWmiRequest(__in PNVME_DEVICE_EXTENSION pHbaExtension,
-			__in PSCSI_WMI_REQUEST_BLOCK  pSrb,
+			__in PSTORAGE_REQUEST_BLOCK  pSrb,
 			__in PSCSIWMI_REQUEST_CONTEXT pDispatchContext,
 			__in UCHAR                    Status,
 			__in ULONG                    SizeNeeded)

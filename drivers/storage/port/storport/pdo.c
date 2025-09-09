@@ -8,6 +8,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "precomp.h"
+#include <srbhelper.h>
 
 /* FUNCTIONS ******************************************************************/
 
@@ -66,7 +67,7 @@ NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
 {
     DPRINT("PortDeletePdo(%p)\n", PdoExtension);
 
-    /* Remove the PDO from the PDO list*/
+    /* Remove the PDO from the PDO list */
     RemoveEntryList(&PdoExtension->PdoListEntry);
     PdoExtension->FdoExtension->PdoCount--;
 
@@ -85,7 +86,7 @@ NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
 
 static VOID PortStartPacket(IN OUT PPDO_DEVICE_EXTENSION PdoExt,
 			    IN OUT PIRP Irp,
-			    IN OUT PSCSI_REQUEST_BLOCK Srb)
+			    IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     BOOLEAN QueueFrozen = PdoExt->QueueFrozen;
     if (Srb->SrbFlags & SRB_FLAGS_BYPASS_FROZEN_QUEUE) {
@@ -120,7 +121,7 @@ NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
     Irp->IoStatus.Information = 0;
 
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
-    PSCSI_REQUEST_BLOCK Srb = Stack->Parameters.Scsi.Srb;
+    PSTORAGE_REQUEST_BLOCK Srb = Stack->Parameters.Scsi.Srb;
     PPDO_DEVICE_EXTENSION PdoExt = DeviceObject->DeviceExtension;
     ASSERT(PdoExt);
     ASSERT(PdoExt->ExtensionType == PdoExtension);
@@ -135,19 +136,21 @@ NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 	goto done;
     }
 
-    DPRINT("Srb: %p, Srb->Function: %u\n", Srb, Srb->Function);
+    DPRINT("Srb: %p, Srb->SrbFunction: %u\n", Srb, Srb->SrbFunction);
 
-    if (Srb->PathId != PdoExt->Bus || Srb->TargetId != PdoExt->Target ||
-	Srb->Lun != PdoExt->Lun) {
+    UCHAR Bus = UCHAR_MAX;
+    UCHAR Target = UCHAR_MAX;
+    UCHAR Lun = UCHAR_MAX;
+    SrbGetPathTargetLun(Srb, &Bus, &Target, &Lun);
+    if (Bus != PdoExt->Bus || Target != PdoExt->Target || Lun != PdoExt->Lun) {
         DPRINT("SRB SCSI address %d:%d:%d does not match PDO %d:%d:%d\n",
-	       Srb->PathId, Srb->TargetId, Srb->Lun,
-	       PdoExt->Bus, PdoExt->Target, PdoExt->Lun);
+	       Bus, Target, Lun, PdoExt->Bus, PdoExt->Target, PdoExt->Lun);
         Status = STATUS_NO_SUCH_DEVICE;
         Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
 	goto done;
     }
 
-    switch (Srb->Function) {
+    switch (Srb->SrbFunction) {
     case SRB_FUNCTION_SHUTDOWN:
 	DPRINT("  SRB_FUNCTION_SHUTDOWN\n");
 	goto submit;
@@ -173,7 +176,7 @@ NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
     attach:
 	if (PdoExt->DeviceClaimed) {
 	    Srb->SrbStatus = SRB_STATUS_INTERNAL_ERROR;
-	    Srb->InternalStatus = STATUS_DEVICE_BUSY;
+	    Srb->SystemStatus = STATUS_DEVICE_BUSY;
 	    Status = STATUS_DEVICE_BUSY;
 	} else {
 	    PdoExt->DeviceClaimed = TRUE;
@@ -209,7 +212,7 @@ NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 	break;
 
     default:
-	DPRINT1("SRB function not implemented (Function %u)\n", Srb->Function);
+	DPRINT1("SRB function not implemented (Function %u)\n", Srb->SrbFunction);
 	Status = STATUS_NOT_IMPLEMENTED;
 	break;
     }

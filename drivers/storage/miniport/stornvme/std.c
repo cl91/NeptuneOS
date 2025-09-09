@@ -1002,10 +1002,9 @@ BOOLEAN NVMeIsReadWriteCmd(UCHAR function, UCHAR opCode)
  *     TRUE - Indicates that HwStorStartIo shall be called on this SRB
  *     FALSE - HwStorStartIo shall not be called on this SRB
  ******************************************************************************/
-BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
+BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSTORAGE_REQUEST_BLOCK Srb)
 {
     PNVME_DEVICE_EXTENSION pAdapterExtension = (PNVME_DEVICE_EXTENSION)AdapterExtension;
-    PSCSI_PNP_REQUEST_BLOCK pPnpSrb = NULL;
     PSRBEX_DATA_PNP pSrbExPnp = NULL;
     UCHAR PathId = SrbGetPathId((void *)Srb);
     UCHAR TargetId = SrbGetTargetId((void *)Srb);
@@ -1013,14 +1012,10 @@ BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
     UCHAR scsiStatus = 0;
     ULONG SrbPnPFlags = 0;
     ULONG PnPAction = 0;
-    UCHAR Function = Srb->Function;
+    UCHAR Function = Srb->SrbFunction;
     SNTI_TRANSLATION_STATUS sntiStatus;
     BOOLEAN ioctlStatus = FALSE;
     UCHAR opCode = 0;
-
-    if (Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	Function = (UCHAR)((PSTORAGE_REQUEST_BLOCK)Srb)->SrbFunction;
-    }
 
     if (pAdapterExtension->DeviceRemovedDuringIO == TRUE) {
 	Srb->SrbStatus = SRB_STATUS_ERROR;
@@ -1105,15 +1100,14 @@ BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
 	return FALSE;
 	break;
     case SRB_FUNCTION_PNP:
-	pSrbExPnp = (PSRBEX_DATA_PNP)SrbGetSrbExDataByType((PSTORAGE_REQUEST_BLOCK)Srb,
+	pSrbExPnp = (PSRBEX_DATA_PNP)SrbGetSrbExDataByType(Srb,
 							   SrbExDataTypePnP);
 	if (pSrbExPnp != NULL) {
 	    SrbPnPFlags = pSrbExPnp->SrbPnPFlags;
 	    PnPAction = pSrbExPnp->PnPAction;
 	} else {
-	    pPnpSrb = (PSCSI_PNP_REQUEST_BLOCK)Srb;
-	    SrbPnPFlags = pPnpSrb->SrbPnPFlags;
-	    PnPAction = pPnpSrb->PnPAction;
+	    assert(FALSE);
+	    return FALSE;
 	}
 
 	if (((SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST) == 0) &&
@@ -1240,10 +1234,10 @@ BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
 	 * have a valid SRB Extension... initialize its contents.
 	 */
 	NVMeInitSrbExtension((PNVME_SRB_EXTENSION)GET_SRB_EXTENSION(Srb),
-			     pAdapterExtension, (PSTORAGE_REQUEST_BLOCK)Srb);
+			     pAdapterExtension, Srb);
 
 	/* Perform SCSI to NVMe translation */
-	sntiStatus = SntiTranslateCommand(pAdapterExtension, (PSTORAGE_REQUEST_BLOCK)Srb);
+	sntiStatus = SntiTranslateCommand(pAdapterExtension, Srb);
 
 	switch (sntiStatus) {
 	case SNTI_COMMAND_COMPLETED:
@@ -1252,8 +1246,7 @@ BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
 	     * I/O is not called for this command. The appropriate SRB
 	     * status is already set.
 	     */
-	    IO_StorPortNotification(RequestComplete, AdapterExtension,
-				    (PSTORAGE_REQUEST_BLOCK)Srb);
+	    IO_StorPortNotification(RequestComplete, AdapterExtension, Srb);
 
 	    return FALSE;
 	    break;
@@ -1276,19 +1269,16 @@ BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
 	     * not call start I/O for this command. The appropriate SRB
 	     * status and SCSI sense data will aleady be set.
 	     */
-	    IO_StorPortNotification(RequestComplete, AdapterExtension,
-				    (PSTORAGE_REQUEST_BLOCK)Srb);
+	    IO_StorPortNotification(RequestComplete, AdapterExtension, Srb);
 
 	    return FALSE;
 	    break;
 	default:
 	    /* Invalid status returned */
 	    scsiStatus = SCSISTAT_CHECK_CONDITION;
-	    SrbSetScsiData((PSTORAGE_REQUEST_BLOCK)Srb, NULL, NULL, &scsiStatus, NULL,
-			   NULL);
+	    SrbSetScsiData(Srb, NULL, NULL, &scsiStatus, NULL, NULL);
 	    Srb->SrbStatus = SRB_STATUS_ERROR;
-	    IO_StorPortNotification(RequestComplete, AdapterExtension,
-				    (PSTORAGE_REQUEST_BLOCK)Srb);
+	    IO_StorPortNotification(RequestComplete, AdapterExtension, Srb);
 
 	    return FALSE;
 	    break;
@@ -1296,7 +1286,7 @@ BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
 	break;
     case SRB_FUNCTION_WMI:
 	NVMeInitSrbExtension((PNVME_SRB_EXTENSION)GET_SRB_EXTENSION(Srb),
-			     pAdapterExtension, (PSTORAGE_REQUEST_BLOCK)Srb);
+			     pAdapterExtension, Srb);
 	/* For WMI requests, just turn around and complete successfully */
 	StorPortDebugPrint(INFO, "BuildIo: SRB_FUNCTION_WMI\n");
 	return TRUE;
@@ -1312,8 +1302,7 @@ BOOLEAN NVMeBuildIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
 	StorPortDebugPrint(INFO, "BuildIo: Unsupported SRB Function = 0x%x\n", Function);
 
 	Srb->SrbStatus = SRB_STATUS_INVALID_REQUEST;
-	IO_StorPortNotification(RequestComplete, AdapterExtension,
-				(PSTORAGE_REQUEST_BLOCK)Srb);
+	IO_StorPortNotification(RequestComplete, AdapterExtension, Srb);
 	return FALSE;
 	break;
     } /* end switch */
@@ -1494,16 +1483,13 @@ BOOLEAN NVMeProcessAbortCmd(PNVME_DEVICE_EXTENSION pAE, PSTORAGE_REQUEST_BLOCK p
  * @return BOOLEAN
  *     TRUE - Required to return TRUE per MSDN
  ******************************************************************************/
-BOOLEAN NVMeStartIo(__in PVOID AdapterExtension, __in PSCSI_REQUEST_BLOCK Srb)
+BOOLEAN NVMeStartIo(__in PVOID AdapterExtension, __in PSTORAGE_REQUEST_BLOCK Srb)
 {
     PNVME_DEVICE_EXTENSION pAdapterExtension = (PNVME_DEVICE_EXTENSION)AdapterExtension;
-    UCHAR Function = Srb->Function;
+    UCHAR Function = Srb->SrbFunction;
     PNVME_SRB_EXTENSION pSrbExtension;
     BOOLEAN status;
     ULONG Version = 0;
-
-    if (Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK)
-	Function = (UCHAR)((PSTORAGE_REQUEST_BLOCK)Srb)->SrbFunction;
 
     /*
      * Initialize Variables. Determine if the request requires controller
@@ -2109,7 +2095,7 @@ NVMeIsrMsix(__in PVOID AdapterExtension, __in ULONG MsgID)
 	qNum = pMMT->CplQueueNum;
     }
 
-    StorPortIssueDpc(pAE, (PSTOR_DPC)pAE->pDpcArray + qNum, (PVOID)MsgID, NULL);
+    StorPortIssueDpc(pAE, (PSTOR_DPC)pAE->pDpcArray + qNum, (PVOID)(ULONG_PTR)MsgID, NULL);
 
     return TRUE;
 }
@@ -3247,12 +3233,8 @@ BOOLEAN NVMeProcessHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE,
 BOOLEAN NVMeDisableHMBCallback(PVOID pNVMeDevExt, PVOID pSrbExtension)
 {
     PNVME_DEVICE_EXTENSION pAdapterExtension = (PNVME_DEVICE_EXTENSION)pNVMeDevExt;
-    PSCSI_REQUEST_BLOCK pSrb = pAdapterExtension->pCurrentSrb;
-    UCHAR Function = pSrb->Function;
-
-    if (Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	Function = (UCHAR)((PSTORAGE_REQUEST_BLOCK)pSrb)->SrbFunction;
-    }
+    PSTORAGE_REQUEST_BLOCK pSrb = pAdapterExtension->pCurrentSrb;
+    UCHAR Function = pSrb->SrbFunction;
 
     /*continue host SRB request*/
     switch (Function) {

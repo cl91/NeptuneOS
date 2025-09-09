@@ -160,8 +160,6 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
     PIO_STACK_LOCATION nextStack;
 
     NTSTATUS status = STATUS_MORE_PROCESSING_REQUIRED;
-    PSTORAGE_REQUEST_BLOCK_HEADER srbHeader;
-    ULONG srbFlags;
     BOOLEAN FailurePredictionEnabled = FALSE;
 
     UNREFERENCED_PARAMETER(DeviceObject);
@@ -185,21 +183,9 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 		"Context %p\n",
 		PowerContext->DeviceObject, Irp, Context));
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) &
-		    (fdoExtension->PrivateFdoData->PowerSrb.SrbEx);
+    PSTORAGE_REQUEST_BLOCK srb = &fdoExtension->PrivateFdoData->PowerSrb.SrbEx;
 
-	//
-	// Check if reverted to using legacy SRB.
-	//
-	if (PowerContext->Srb.Length == sizeof(SCSI_REQUEST_BLOCK)) {
-	    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-	}
-    } else {
-	srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-    }
-
-    srbFlags = SrbGetSrbFlags(srbHeader);
+    ULONG srbFlags = SrbGetSrbFlags(srb);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
     NT_ASSERT(PowerContext->Options.PowerDown == FALSE);
@@ -233,7 +219,7 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			"(%p)\tIrp status was %lx\n", Irp, Irp->IoStatus.Status));
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
-			"(%p)\tSrb status was %lx\n", Irp, srbHeader->SrbStatus));
+			"(%p)\tSrb status was %lx\n", Irp, srb->SrbStatus));
 
 	    IoSetCompletionRoutine(OriginalIrp, ClasspDeviceLockFailurePowerIrpCompletion,
 				   PowerContext, TRUE, TRUE, TRUE);
@@ -335,59 +321,42 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    PowerContext->RetryCount =
 		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount;
 
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srbHeader,
-						       STORAGE_ADDRESS_TYPE_BTL8,
-						       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
-						       1, SrbExDataTypeScsiCdb16);
-		if (NT_SUCCESS(status)) {
-		    ((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction =
-			SRB_FUNCTION_EXECUTE_SCSI;
-
-		    //
-		    // Set length field in Power Context SRB so we know legacy SRB is not being used.
-		    //
-		    PowerContext->Srb.Length = 0;
-
-		} else {
-		    //
-		    // Should not happen. Revert to legacy SRB.
-		    //
-		    NT_ASSERT(FALSE);
-		    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-		    RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		    srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		    srbHeader->Function = SRB_FUNCTION_EXECUTE_SCSI;
-		}
-
+	    status = InitializeStorageRequestBlock(srb,
+						   STORAGE_ADDRESS_TYPE_BTL8,
+						   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
+						   1, SrbExDataTypeScsiCdb16);
+	    if (NT_SUCCESS(status)) {
+		srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 	    } else {
-		RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		srbHeader->Function = SRB_FUNCTION_EXECUTE_SCSI;
+		//
+		// Should not happen.
+		//
+		NT_ASSERT(FALSE);
+		PowerContext->FinalStatus = status;
+		goto ClasspPowerUpCompletionFailure;
 	    }
 
-	    SrbSetOriginalRequest(srbHeader,
+	    SrbSetOriginalRequest(srb,
 				  fdoExtension->PrivateFdoData->PowerProcessIrp);
-	    SrbSetSenseInfoBuffer(srbHeader,
+	    SrbSetSenseInfoBuffer(srb,
 				  commonExtension->PartitionZeroExtension->SenseData);
-	    SrbSetSenseInfoBufferLength(srbHeader,
+	    SrbSetSenseInfoBufferLength(srb,
 					GET_FDO_EXTENSON_SENSE_DATA_LENGTH(
 					    commonExtension->PartitionZeroExtension));
 
-	    SrbSetTimeOutValue(srbHeader, timeoutValue);
-	    SrbAssignSrbFlags(srbHeader,
+	    SrbSetTimeOutValue(srb, timeoutValue);
+	    SrbAssignSrbFlags(srb,
 			      (SRB_FLAGS_NO_DATA_TRANSFER | SRB_FLAGS_DISABLE_AUTOSENSE |
 			       SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 			       SRB_FLAGS_NO_QUEUE_FREEZE));
 
 	    if (PowerContext->Options.LockQueue) {
-		SrbSetSrbFlags(srbHeader, SRB_FLAGS_BYPASS_LOCKED_QUEUE);
+		SrbSetSrbFlags(srb, SRB_FLAGS_BYPASS_LOCKED_QUEUE);
 	    }
 
-	    SrbSetCdbLength(srbHeader, 6);
+	    SrbSetCdbLength(srb, 6);
 
-	    cdb = SrbGetCdb(srbHeader);
+	    cdb = SrbGetCdb(srb);
 	    RtlZeroMemory(cdb, sizeof(CDB));
 
 	    cdb->START_STOP.OperationCode = SCSIOP_START_STOP_UNIT;
@@ -399,7 +368,7 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 				   ClasspPowerUpCompletion, PowerContext, TRUE, TRUE,
 				   TRUE);
 
-	    nextStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srbHeader;
+	    nextStack->Parameters.Scsi.Srb = srb;
 	    nextStack->MajorFunction = IRP_MJ_SCSI;
 
 	    status = IoCallDriver(commonExtension->LowerDeviceObject,
@@ -427,7 +396,7 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	// First deal with an error if one occurred.
 	//
 
-	if (SRB_STATUS(srbHeader->SrbStatus) != SRB_STATUS_SUCCESS) {
+	if (SRB_STATUS(srb->SrbStatus) != SRB_STATUS_SUCCESS) {
 	    BOOLEAN retry;
 	    LONGLONG delta100nsUnits = 0;
 	    ULONG secondsRemaining = 0;
@@ -436,16 +405,14 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_POWER,
 			"%p\tError occured when issuing START_UNIT "
 			"command to device. Srb %p, Status %x\n",
-			Irp, srbHeader, srbHeader->SrbStatus));
+			Irp, srb, srb->SrbStatus));
 
-	    NT_ASSERT(!(TEST_FLAG(srbHeader->SrbStatus, SRB_STATUS_QUEUE_FROZEN)));
-	    NT_ASSERT((srbHeader->Function == SRB_FUNCTION_EXECUTE_SCSI) ||
-		      (((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction ==
-		       SRB_FUNCTION_EXECUTE_SCSI));
+	    NT_ASSERT(!(TEST_FLAG(srb->SrbStatus, SRB_STATUS_QUEUE_FROZEN)));
+	    NT_ASSERT(srb->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI);
 
 	    PowerContext->RetryInterval = 0;
 	    retry = InterpretSenseInfoWithoutHistory(
-		fdoExtension->DeviceObject, Irp, (PSCSI_REQUEST_BLOCK)srbHeader,
+		fdoExtension->DeviceObject, Irp, srb,
 		IRP_MJ_SCSI, IRP_MJ_POWER,
 		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount -
 		    PowerContext->RetryCount,
@@ -486,7 +453,7 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 		    }
 		}
 
-		SrbSetTimeOutValue(srbHeader, startUnitTimeout);
+		SrbSetTimeOutValue(srb, startUnitTimeout);
 
 		RetryPowerRequest(commonExtension->DeviceObject, Irp, PowerContext);
 
@@ -507,42 +474,23 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			"(%p)\tUnlocking queue\n", Irp));
 
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		//
-		// Will reuse SRB for a non-SCSI SRB.
-		//
-		status = InitializeStorageRequestBlock(
-		    (PSTORAGE_REQUEST_BLOCK)srbHeader, STORAGE_ADDRESS_TYPE_BTL8,
-		    CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE, 0);
-		if (NT_SUCCESS(status)) {
-		    ((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction =
-			SRB_FUNCTION_UNLOCK_QUEUE;
-
-		    //
-		    // Set length field in Power Context SRB so we know legacy SRB is not being used.
-		    //
-		    PowerContext->Srb.Length = 0;
-
-		} else {
-		    //
-		    // Should not occur. Revert to legacy SRB.
-		    NT_ASSERT(FALSE);
-		    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-		    RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		    srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		    srbHeader->Function = SRB_FUNCTION_UNLOCK_QUEUE;
-		}
+	    //
+	    // Will reuse SRB for a non-SCSI SRB.
+	    //
+	    status = InitializeStorageRequestBlock(srb, STORAGE_ADDRESS_TYPE_BTL8,
+						   CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE, 0);
+	    if (NT_SUCCESS(status)) {
+		srb->SrbFunction = SRB_FUNCTION_UNLOCK_QUEUE;
 	    } else {
-		RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		srbHeader->Function = SRB_FUNCTION_UNLOCK_QUEUE;
+		// Should not occur.
+		NT_ASSERT(FALSE);
+		return status;
 	    }
-	    SrbAssignSrbFlags(srbHeader, SRB_FLAGS_BYPASS_LOCKED_QUEUE);
-	    SrbSetOriginalRequest(srbHeader,
+	    SrbAssignSrbFlags(srb, SRB_FLAGS_BYPASS_LOCKED_QUEUE);
+	    SrbSetOriginalRequest(srb,
 				  fdoExtension->PrivateFdoData->PowerProcessIrp);
 
-	    nextStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srbHeader;
+	    nextStack->Parameters.Scsi.Srb = srb;
 	    nextStack->MajorFunction = IRP_MJ_SCSI;
 
 	    PowerContext->PowerChangeState.PowerUp = PowerUpDeviceStarted;
@@ -733,8 +681,6 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	fdoExtension->PrivateFdoData->PowerProcessIrp);
 
     NTSTATUS status = STATUS_MORE_PROCESSING_REQUIRED;
-    PSTORAGE_REQUEST_BLOCK_HEADER srbHeader;
-    ULONG srbFlags;
 
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -743,21 +689,9 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 		"Irp %p, Context %p\n",
 		PowerContext->DeviceObject, Irp, Context));
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) &
-		    (fdoExtension->PrivateFdoData->PowerSrb.SrbEx);
+    PSTORAGE_REQUEST_BLOCK srb = &fdoExtension->PrivateFdoData->PowerSrb.SrbEx;
 
-	//
-	// Check if reverted to using legacy SRB.
-	//
-	if (PowerContext->Srb.Length == sizeof(SCSI_REQUEST_BLOCK)) {
-	    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-	}
-    } else {
-	srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-    }
-
-    srbFlags = SrbGetSrbFlags(srbHeader);
+    ULONG srbFlags = SrbGetSrbFlags(srb);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
     NT_ASSERT(PowerContext->Options.PowerDown);
@@ -779,7 +713,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			"(%p)\tIrp status was %lx\n", Irp, Irp->IoStatus.Status));
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
-			"(%p)\tSrb status was %lx\n", Irp, srbHeader->SrbStatus));
+			"(%p)\tSrb status was %lx\n", Irp, srb->SrbStatus));
 
 	    //
 	    // Lock was not successful - throw down the power IRP
@@ -828,40 +762,28 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount = 0;
 	    PowerContext->RetryCount = 0;
 
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) &
-			    (fdoExtension->PrivateFdoData->PowerSrb.SrbEx);
+	    srb = &fdoExtension->PrivateFdoData->PowerSrb.SrbEx;
 
-		//
-		// Initialize extended SRB for a SRB_FUNCTION_LOCK_QUEUE
-		//
-		status = InitializeStorageRequestBlock(
-		    (PSTORAGE_REQUEST_BLOCK)srbHeader, STORAGE_ADDRESS_TYPE_BTL8,
-		    CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE, 0);
-		if (NT_SUCCESS(status)) {
-		    ((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction =
-			SRB_FUNCTION_QUIESCE_DEVICE;
-		} else {
-		    //
-		    // Should not happen. Revert to legacy SRB.
-		    //
-		    NT_ASSERT(FALSE);
-		    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-		    srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		    srbHeader->Function = SRB_FUNCTION_QUIESCE_DEVICE;
-		}
+	    //
+	    // Initialize extended SRB for a SRB_FUNCTION_LOCK_QUEUE
+	    //
+	    status = InitializeStorageRequestBlock(srb, STORAGE_ADDRESS_TYPE_BTL8,
+						   CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE, 0);
+	    if (NT_SUCCESS(status)) {
+		srb->SrbFunction = SRB_FUNCTION_QUIESCE_DEVICE;
 	    } else {
-		srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-		srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		srbHeader->Function = SRB_FUNCTION_QUIESCE_DEVICE;
+		//
+		// Should not happen.
+		//
+		NT_ASSERT(FALSE);
+		break;
 	    }
 
-	    SrbSetOriginalRequest(srbHeader,
+	    SrbSetOriginalRequest(srb,
 				  fdoExtension->PrivateFdoData->PowerProcessIrp);
-	    SrbSetTimeOutValue(srbHeader, fdoExtension->TimeOutValue);
+	    SrbSetTimeOutValue(srb, fdoExtension->TimeOutValue);
 
-	    SrbAssignSrbFlags(srbHeader,
+	    SrbAssignSrbFlags(srb,
 			      (SRB_FLAGS_NO_DATA_TRANSFER | SRB_FLAGS_DISABLE_AUTOSENSE |
 			       SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 			       SRB_FLAGS_NO_QUEUE_FREEZE | SRB_FLAGS_BYPASS_LOCKED_QUEUE |
@@ -871,7 +793,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 				   ClasspPowerDownCompletion, PowerContext, TRUE, TRUE,
 				   TRUE);
 
-	    nextStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srbHeader;
+	    nextStack->Parameters.Scsi.Srb = srb;
 	    nextStack->MajorFunction = IRP_MJ_SCSI;
 
 	    status = IoCallDriver(commonExtension->LowerDeviceObject,
@@ -903,55 +825,36 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount = MAXIMUM_RETRIES;
 	    PowerContext->RetryCount = MAXIMUM_RETRIES;
 
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srbHeader,
-						       STORAGE_ADDRESS_TYPE_BTL8,
-						       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
-						       1, SrbExDataTypeScsiCdb16);
-		if (NT_SUCCESS(status)) {
-		    ((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction =
-			SRB_FUNCTION_EXECUTE_SCSI;
-
-		    //
-		    // Set length field in Power Context SRB so we know legacy SRB is not being used.
-		    //
-		    PowerContext->Srb.Length = 0;
-
-		} else {
-		    //
-		    // Should not occur. Revert to legacy SRB.
-		    NT_ASSERT(FALSE);
-		    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-		    RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		    srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		    srbHeader->Function = SRB_FUNCTION_EXECUTE_SCSI;
-		}
-
+	    status = InitializeStorageRequestBlock(srb,
+						   STORAGE_ADDRESS_TYPE_BTL8,
+						   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
+						   1, SrbExDataTypeScsiCdb16);
+	    if (NT_SUCCESS(status)) {
+		srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 	    } else {
-		RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		srbHeader->Function = SRB_FUNCTION_EXECUTE_SCSI;
+		// Should not occur.
+		NT_ASSERT(FALSE);
+		break;
 	    }
 
-	    SrbSetOriginalRequest(srbHeader,
+	    SrbSetOriginalRequest(srb,
 				  fdoExtension->PrivateFdoData->PowerProcessIrp);
-	    SrbSetSenseInfoBuffer(srbHeader,
+	    SrbSetSenseInfoBuffer(srb,
 				  commonExtension->PartitionZeroExtension->SenseData);
-	    SrbSetSenseInfoBufferLength(srbHeader,
+	    SrbSetSenseInfoBufferLength(srb,
 					GET_FDO_EXTENSON_SENSE_DATA_LENGTH(
 					    commonExtension->PartitionZeroExtension));
-	    SrbSetTimeOutValue(srbHeader, fdoExtension->TimeOutValue);
+	    SrbSetTimeOutValue(srb, fdoExtension->TimeOutValue);
 
-	    SrbAssignSrbFlags(srbHeader,
+	    SrbAssignSrbFlags(srb,
 			      (SRB_FLAGS_NO_DATA_TRANSFER | SRB_FLAGS_DISABLE_AUTOSENSE |
 			       SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 			       SRB_FLAGS_NO_QUEUE_FREEZE | SRB_FLAGS_BYPASS_LOCKED_QUEUE |
 			       SRB_FLAGS_D3_PROCESSING));
 
-	    SrbSetCdbLength(srbHeader, 10);
+	    SrbSetCdbLength(srb, 10);
 
-	    cdb = SrbGetCdb(srbHeader);
+	    cdb = SrbGetCdb(srb);
 
 	    RtlZeroMemory(cdb, sizeof(CDB));
 	    cdb->SYNCHRONIZE_CACHE10.OperationCode = SCSIOP_SYNCHRONIZE_CACHE;
@@ -960,7 +863,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 				   ClasspPowerDownCompletion, PowerContext, TRUE, TRUE,
 				   TRUE);
 
-	    nextStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srbHeader;
+	    nextStack->Parameters.Scsi.Srb = srb;
 	    nextStack->MajorFunction = IRP_MJ_SCSI;
 
 	    status = IoCallDriver(commonExtension->LowerDeviceObject,
@@ -976,7 +879,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 			"(%p)\tPower Down: not sending SYNCH_CACHE\n",
 			PowerContext->DeviceObject));
 	    PowerContext->PowerChangeState.PowerDown3++;
-	    srbHeader->SrbStatus = SRB_STATUS_SUCCESS;
+	    srb->SrbStatus = SRB_STATUS_SUCCESS;
 	    // and fall through....
 	}
 	// no break in case the device doesn't like synch_cache commands
@@ -992,7 +895,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	// SCSIOP_SYNCHRONIZE_CACHE was sent
 	//
 
-	if (SRB_STATUS(srbHeader->SrbStatus) != SRB_STATUS_SUCCESS) {
+	if (SRB_STATUS(srb->SrbStatus) != SRB_STATUS_SUCCESS) {
 	    BOOLEAN retry;
 	    LONGLONG delta100nsUnits = 0;
 
@@ -1000,16 +903,14 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 			"(%p)\tError occured when issuing "
 			"SYNCHRONIZE_CACHE command to device. "
 			"Srb %p, Status %lx\n",
-			Irp, srbHeader, srbHeader->SrbStatus));
+			Irp, srb, srb->SrbStatus));
 
-	    NT_ASSERT(!(TEST_FLAG(srbHeader->SrbStatus, SRB_STATUS_QUEUE_FROZEN)));
-	    NT_ASSERT((srbHeader->Function == SRB_FUNCTION_EXECUTE_SCSI) ||
-		      (((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction ==
-		       SRB_FUNCTION_EXECUTE_SCSI));
+	    NT_ASSERT(!(TEST_FLAG(srb->SrbStatus, SRB_STATUS_QUEUE_FROZEN)));
+	    NT_ASSERT(srb->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI);
 
 	    PowerContext->RetryInterval = 0;
 	    retry = InterpretSenseInfoWithoutHistory(
-		fdoExtension->DeviceObject, Irp, (PSCSI_REQUEST_BLOCK)srbHeader,
+		fdoExtension->DeviceObject, Irp, srb,
 		IRP_MJ_SCSI, IRP_MJ_POWER,
 		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount - PowerContext->RetryCount,
 		&status, &delta100nsUnits);
@@ -1058,7 +959,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 			PowerContext->DeviceObject));
 
 	    PowerContext->PowerChangeState.PowerDown3++;
-	    srbHeader->SrbStatus = SRB_STATUS_SUCCESS;
+	    srb->SrbStatus = SRB_STATUS_SUCCESS;
 	    status = STATUS_SUCCESS;
 
 	    // Fall through to next case...
@@ -1125,55 +1026,38 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 
 	    PowerContext->RetryCount = fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount;
 
-	    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srbHeader,
-						       STORAGE_ADDRESS_TYPE_BTL8,
-						       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
-						       1, SrbExDataTypeScsiCdb16);
-		if (NT_SUCCESS(status)) {
-		    ((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction =
-			SRB_FUNCTION_EXECUTE_SCSI;
-
-		    //
-		    // Set length field in Power Context SRB so we know legacy SRB is not being used.
-		    //
-		    PowerContext->Srb.Length = 0;
-
-		} else {
-		    //
-		    // Should not occur. Revert to legacy SRB.
-		    //
-		    NT_ASSERT(FALSE);
-		    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-		    RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		    srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		    srbHeader->Function = SRB_FUNCTION_EXECUTE_SCSI;
-		}
-
+	    status = InitializeStorageRequestBlock(srb,
+						   STORAGE_ADDRESS_TYPE_BTL8,
+						   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
+						   1, SrbExDataTypeScsiCdb16);
+	    if (NT_SUCCESS(status)) {
+		srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 	    } else {
-		RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		srbHeader->Function = SRB_FUNCTION_EXECUTE_SCSI;
+		//
+		// Should not occur.
+		//
+		NT_ASSERT(FALSE);
+		break;
 	    }
 
-	    SrbSetOriginalRequest(srbHeader,
+	    SrbSetOriginalRequest(srb,
 				  fdoExtension->PrivateFdoData->PowerProcessIrp);
-	    SrbSetSenseInfoBuffer(srbHeader,
+	    SrbSetSenseInfoBuffer(srb,
 				  commonExtension->PartitionZeroExtension->SenseData);
-	    SrbSetSenseInfoBufferLength(srbHeader,
+	    SrbSetSenseInfoBufferLength(srb,
 					GET_FDO_EXTENSON_SENSE_DATA_LENGTH(
 					    commonExtension->PartitionZeroExtension));
-	    SrbSetTimeOutValue(srbHeader, timeoutValue);
+	    SrbSetTimeOutValue(srb, timeoutValue);
 
-	    SrbAssignSrbFlags(srbHeader,
+	    SrbAssignSrbFlags(srb,
 			      (SRB_FLAGS_NO_DATA_TRANSFER | SRB_FLAGS_DISABLE_AUTOSENSE |
 			       SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 			       SRB_FLAGS_NO_QUEUE_FREEZE | SRB_FLAGS_BYPASS_LOCKED_QUEUE |
 			       SRB_FLAGS_D3_PROCESSING));
 
-	    SrbSetCdbLength(srbHeader, 6);
+	    SrbSetCdbLength(srb, 6);
 
-	    cdb = SrbGetCdb(srbHeader);
+	    cdb = SrbGetCdb(srb);
 	    RtlZeroMemory(cdb, sizeof(CDB));
 
 	    cdb->START_STOP.OperationCode = SCSIOP_START_STOP_UNIT;
@@ -1184,7 +1068,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 				   ClasspPowerDownCompletion, PowerContext, TRUE, TRUE,
 				   TRUE);
 
-	    nextStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srbHeader;
+	    nextStack->Parameters.Scsi.Srb = srb;
 	    nextStack->MajorFunction = IRP_MJ_SCSI;
 
 	    status = IoCallDriver(commonExtension->LowerDeviceObject,
@@ -1204,23 +1088,21 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	// stop was sent
 	//
 
-	if (SRB_STATUS(srbHeader->SrbStatus) != SRB_STATUS_SUCCESS) {
+	if (SRB_STATUS(srb->SrbStatus) != SRB_STATUS_SUCCESS) {
 	    BOOLEAN retry;
 	    LONGLONG delta100nsUnits = 0;
 
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_POWER,
 			"(%p)\tError occured when issueing STOP_UNIT "
 			"command to device. Srb %p, Status %lx\n",
-			Irp, srbHeader, srbHeader->SrbStatus));
+			Irp, srb, srb->SrbStatus));
 
-	    NT_ASSERT(!(TEST_FLAG(srbHeader->SrbStatus, SRB_STATUS_QUEUE_FROZEN)));
-	    NT_ASSERT((srbHeader->Function == SRB_FUNCTION_EXECUTE_SCSI) ||
-		      (((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction ==
-		       SRB_FUNCTION_EXECUTE_SCSI));
+	    NT_ASSERT(!(TEST_FLAG(srb->SrbStatus, SRB_STATUS_QUEUE_FROZEN)));
+	    NT_ASSERT(srb->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI);
 
 	    PowerContext->RetryInterval = 0;
 	    retry = InterpretSenseInfoWithoutHistory(
-		fdoExtension->DeviceObject, Irp, (PSCSI_REQUEST_BLOCK)srbHeader,
+		fdoExtension->DeviceObject, Irp, srb,
 		IRP_MJ_SCSI, IRP_MJ_POWER,
 		fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount -
 		    PowerContext->RetryCount,
@@ -1246,7 +1128,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 
 		PowerContext->PowerChangeState.PowerDown3--;
 
-		SrbSetTimeOutValue(srbHeader, DEFAULT_IO_TIMEOUT_VALUE);
+		SrbSetTimeOutValue(srb, DEFAULT_IO_TIMEOUT_VALUE);
 
 		RetryPowerRequest(commonExtension->DeviceObject, Irp, PowerContext);
 		break;
@@ -1268,9 +1150,9 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	//
 
 	if (!NT_SUCCESS(status)) {
-	    PVOID senseBuffer = SrbGetSenseInfoBuffer(srbHeader);
+	    PVOID senseBuffer = SrbGetSenseInfoBuffer(srb);
 
-	    if (TEST_FLAG(srbHeader->SrbStatus, SRB_STATUS_AUTOSENSE_VALID) &&
+	    if (TEST_FLAG(srb->SrbStatus, SRB_STATUS_AUTOSENSE_VALID) &&
 		(senseBuffer != NULL)) {
 		BOOLEAN validSense = FALSE;
 		UCHAR senseKey = 0;
@@ -1278,7 +1160,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 		UCHAR additionalSenseCodeQualifier = 0;
 
 		validSense = ScsiGetSenseKeyAndCodes(
-		    senseBuffer, SrbGetSenseInfoBufferLength(srbHeader),
+		    senseBuffer, SrbGetSenseInfoBufferLength(srb),
 		    SCSI_SENSE_OPTIONS_FIXED_FORMAT_IF_UNKNOWN_FORMAT_INDICATED,
 		    &senseKey, &additionalSenseCode, &additionalSenseCodeQualifier);
 
@@ -1330,45 +1212,27 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			"(%p)\tUnlocking queue\n", OriginalIrp));
 
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		//
-		// Will reuse SRB for a non-SCSI SRB.
-		//
-		status = InitializeStorageRequestBlock(
-		    (PSTORAGE_REQUEST_BLOCK)srbHeader, STORAGE_ADDRESS_TYPE_BTL8,
-		    CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE, 0);
-		if (NT_SUCCESS(status)) {
-		    ((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction =
-			SRB_FUNCTION_UNLOCK_QUEUE;
-
-		    //
-		    // Set length field in Power Context SRB so we know legacy SRB is not being used.
-		    //
-		    PowerContext->Srb.Length = 0;
-
-		} else {
-		    //
-		    // Should not occur. Revert to legacy SRB.
-		    //
-		    NT_ASSERT(FALSE);
-		    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (PowerContext->Srb);
-		    RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		    srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		    srbHeader->Function = SRB_FUNCTION_UNLOCK_QUEUE;
-		}
+	    //
+	    // Will reuse SRB for a non-SCSI SRB.
+	    //
+	    status = InitializeStorageRequestBlock(srb, STORAGE_ADDRESS_TYPE_BTL8,
+						   CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE, 0);
+	    if (NT_SUCCESS(status)) {
+		srb->SrbFunction = SRB_FUNCTION_UNLOCK_QUEUE;
 	    } else {
-		RtlZeroMemory(srbHeader, sizeof(SCSI_REQUEST_BLOCK));
-		srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-		srbHeader->Function = SRB_FUNCTION_UNLOCK_QUEUE;
+		//
+		// Should not occur.
+		//
+		NT_ASSERT(FALSE);
+		break;
 	    }
 
-	    SrbSetOriginalRequest(srbHeader,
+	    SrbSetOriginalRequest(srb,
 				  fdoExtension->PrivateFdoData->PowerProcessIrp);
-	    SrbAssignSrbFlags(srbHeader,
+	    SrbAssignSrbFlags(srb,
 			      (SRB_FLAGS_BYPASS_LOCKED_QUEUE | SRB_FLAGS_D3_PROCESSING));
 
-	    nextStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srbHeader;
+	    nextStack->Parameters.Scsi.Srb = srb;
 	    nextStack->MajorFunction = IRP_MJ_SCSI;
 
 	    IoSetCompletionRoutine(fdoExtension->PrivateFdoData->PowerProcessIrp,
@@ -1397,7 +1261,7 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 			"(%p)\tPreviously unlocked queue\n", OriginalIrp));
 	    NT_ASSERT(NT_SUCCESS(Irp->IoStatus.Status));
-	    NT_ASSERT(srbHeader->SrbStatus == SRB_STATUS_SUCCESS);
+	    NT_ASSERT(srb->SrbStatus == SRB_STATUS_SUCCESS);
 
 	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
 		PowerContext->QueueLocked = FALSE;
@@ -1477,8 +1341,6 @@ static NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject,
     PIO_STACK_LOCATION nextIrpStack;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PCLASS_POWER_CONTEXT context;
-    PSTORAGE_REQUEST_BLOCK_HEADER srbHeader;
-    ULONG srbFlags;
     NTSTATUS status;
 
     _Analysis_assume_(fdoExtension);
@@ -1639,39 +1501,30 @@ static NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject,
     RtlZeroMemory(context, sizeof(CLASS_POWER_CONTEXT));
     context->InUse = TRUE;
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) &
-		    (fdoExtension->PrivateFdoData->PowerSrb.SrbEx);
+    PSTORAGE_REQUEST_BLOCK srb = &fdoExtension->PrivateFdoData->PowerSrb.SrbEx;
 
-	//
-	// Initialize extended SRB for a SRB_FUNCTION_LOCK_QUEUE
-	//
-	status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srbHeader,
-					       STORAGE_ADDRESS_TYPE_BTL8,
-					       CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE, 0);
-	if (NT_SUCCESS(status)) {
-	    ((PSTORAGE_REQUEST_BLOCK)srbHeader)->SrbFunction = SRB_FUNCTION_LOCK_QUEUE;
-	} else {
-	    //
-	    // Should not happen. Revert to legacy SRB.
-	    //
-	    NT_ASSERT(FALSE);
-	    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (context->Srb);
-	    srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-	    srbHeader->Function = SRB_FUNCTION_LOCK_QUEUE;
-	}
+    //
+    // Initialize extended SRB for a SRB_FUNCTION_LOCK_QUEUE
+    //
+    status = InitializeStorageRequestBlock(srb,
+					   STORAGE_ADDRESS_TYPE_BTL8,
+					   CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE, 0);
+    if (NT_SUCCESS(status)) {
+	srb->SrbFunction = SRB_FUNCTION_LOCK_QUEUE;
     } else {
-	srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER) & (context->Srb);
-	srbHeader->Length = sizeof(SCSI_REQUEST_BLOCK);
-	srbHeader->Function = SRB_FUNCTION_LOCK_QUEUE;
+	//
+	// Should not happen.
+	//
+	NT_ASSERT(FALSE);
+	return status;
     }
-    nextIrpStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srbHeader;
+    nextIrpStack->Parameters.Scsi.Srb = srb;
     nextIrpStack->MajorFunction = IRP_MJ_SCSI;
 
     context->FinalStatus = STATUS_SUCCESS;
 
-    SrbSetOriginalRequest(srbHeader, fdoExtension->PrivateFdoData->PowerProcessIrp);
-    SrbSetSrbFlags(srbHeader,
+    SrbSetOriginalRequest(srb, fdoExtension->PrivateFdoData->PowerProcessIrp);
+    SrbSetSrbFlags(srb,
 		   (SRB_FLAGS_BYPASS_LOCKED_QUEUE | SRB_FLAGS_NO_QUEUE_FREEZE));
 
     fdoExtension->PrivateFdoData->MaxPowerOperationRetryCount = MAXIMUM_RETRIES;
@@ -1724,7 +1577,7 @@ static NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject,
     // we are not dealing with port-allocated sense in these routines.
     //
 
-    srbFlags = SrbGetSrbFlags(srbHeader);
+    ULONG srbFlags = SrbGetSrbFlags(srb);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
 
@@ -1965,35 +1818,17 @@ static VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     PIO_STACK_LOCATION nextIrpStack = IoGetNextIrpStackLocation(Irp);
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension =
 	(PFUNCTIONAL_DEVICE_EXTENSION)Context->DeviceObject->DeviceExtension;
-    PSTORAGE_REQUEST_BLOCK_HEADER srb;
     LONGLONG dueTime;
-    ULONG srbFlags;
-    ULONG srbFunction;
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,
 		"(%p)\tDelaying retry by queueing IO workitem\n", Irp));
 
     //NT_ASSERT(Context->Irp == Irp);
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srb = (PSTORAGE_REQUEST_BLOCK_HEADER) &
-	      (fdoExtension->PrivateFdoData->PowerSrb.SrbEx);
-
-	//
-	// Check if reverted to using legacy SRB.
-	//
-	if (Context->Srb.Length == sizeof(SCSI_REQUEST_BLOCK)) {
-	    srb = (PSTORAGE_REQUEST_BLOCK_HEADER) & (Context->Srb);
-	    srbFunction = srb->Function;
-	} else {
-	    srbFunction = ((PSTORAGE_REQUEST_BLOCK)srb)->SrbFunction;
-	}
-    } else {
-	srb = (PSTORAGE_REQUEST_BLOCK_HEADER) & (Context->Srb);
-	srbFunction = srb->Function;
-    }
+    PSTORAGE_REQUEST_BLOCK srb = &fdoExtension->PrivateFdoData->PowerSrb.SrbEx;
+    ULONG srbFunction = srb->SrbFunction;
 
     NT_ASSERT(Context->DeviceObject == DeviceObject);
-    srbFlags = SrbGetSrbFlags(srb);
+    ULONG srbFlags = SrbGetSrbFlags(srb);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
 
@@ -2039,7 +1874,7 @@ static VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     // Save SRB address in next stack for port driver.
     //
 
-    nextIrpStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srb;
+    nextIrpStack->Parameters.Scsi.Srb = srb;
 
     //
     // Set the completion routine up again.

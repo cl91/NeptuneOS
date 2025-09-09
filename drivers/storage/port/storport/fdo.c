@@ -8,6 +8,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "precomp.h"
+#include <srbhelper.h>
 
 /* FUNCTIONS ******************************************************************/
 
@@ -173,7 +174,7 @@ static NTAPI NTSTATUS PortFdoStartDevice(IN PFDO_DEVICE_EXTENSION DeviceExtensio
     return Status;
 }
 
-static VOID PortInitializeSrb(IN PSCSI_REQUEST_BLOCK Srb,
+static VOID PortInitializeSrb(IN PSTORAGE_REQUEST_BLOCK Srb,
 			      IN PIRP Irp,
 			      IN PSENSE_DATA SenseInfo,
 			      IN PVOID DataBuffer,
@@ -182,20 +183,31 @@ static VOID PortInitializeSrb(IN PSCSI_REQUEST_BLOCK Srb,
 			      IN UCHAR TargetId,
 			      IN UCHAR Lun)
 {
-    /* Prepare SRB */
-    RtlZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
+    ULONG SrbSize = SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    RtlZeroMemory(Srb, SrbSize);
 
-    Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
+    Srb->Signature = SRB_SIGNATURE;
+    Srb->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    Srb->SrbLength = SrbSize;
     Srb->OriginalRequest = Irp;
-    Srb->PathId = BusId;
-    Srb->TargetId = TargetId;
-    Srb->Lun = Lun;
-    Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+    Srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
     Srb->SrbFlags = SRB_FLAGS_DATA_IN | SRB_FLAGS_DISABLE_SYNCH_TRANSFER;
     Srb->TimeOutValue = 4;
 
-    Srb->SenseInfoBuffer = SenseInfo;
-    Srb->SenseInfoBufferLength = SENSE_BUFFER_SIZE;
+    Srb->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    PSTOR_ADDR_BTL8 AddrBtl8 = (PVOID)((PUCHAR)Srb + Srb->AddressOffset);
+    AddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    AddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    SrbSetPathTargetLun(Srb, BusId, TargetId, Lun);
+
+    Srb->NumSrbExData = 1;
+    Srb->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8);
+    PSRBEX_DATA_SCSI_CDB16 DataCdb16 = (PVOID)((PUCHAR)Srb + Srb->SrbExDataOffset[0]);
+    DataCdb16->Type = SrbExDataTypeScsiCdb16;
+    DataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+
+    SrbSetSenseInfoBuffer(Srb, SenseInfo);
+    SrbSetSenseInfoBufferLength(Srb, SENSE_BUFFER_SIZE);
 
     Srb->DataBuffer = DataBuffer;
     Srb->DataTransferLength = DataBufferSize;
@@ -213,7 +225,8 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
     NTSTATUS Status;
     BOOLEAN KeepTrying = TRUE;
     ULONG RetryCount = 0;
-    SCSI_REQUEST_BLOCK Srb;
+    UCHAR SrbBuffer[SRBEX_SCSI_CDB16_BUFFER_SIZE];
+    PSTORAGE_REQUEST_BLOCK Srb = (PSTORAGE_REQUEST_BLOCK)SrbBuffer;
     //    PSCSI_PORT_LUN_EXTENSION LunExtension;
     //    PFDO_DEVICE_EXTENSION DeviceExtension;
 
@@ -251,13 +264,13 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
 	    continue;
 	}
 
-	PortInitializeSrb(&Srb, Irp, SenseBuffer, PdoExtension->InquiryBuffer,
+	PortInitializeSrb(Srb, Irp, SenseBuffer, PdoExtension->InquiryBuffer,
 			  INQUIRYDATABUFFERSIZE, PdoExtension->Bus,
 			  PdoExtension->Target, PdoExtension->Lun);
 
 	/* Fill in CDB */
-	Srb.CdbLength = 6;
-	PCDB Cdb = (PCDB)&Srb.Cdb;
+	SrbSetCdbLength(Srb, 6);
+	PCDB Cdb = SrbGetCdb(Srb);
 	Cdb->CDB6INQUIRY.OperationCode = SCSIOP_INQUIRY;
 	Cdb->CDB6INQUIRY.LogicalUnitNumber = PdoExtension->Lun;
 	Cdb->CDB6INQUIRY.AllocationLength = INQUIRYDATABUFFERSIZE;
@@ -274,7 +287,7 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
 	DPRINT("PortSendInquirySrb(): Request processed by driver, status = 0x%08X\n",
 	       Status);
 
-	if (SRB_STATUS(Srb.SrbStatus) == SRB_STATUS_SUCCESS) {
+	if (SRB_STATUS(Srb->SrbStatus) == SRB_STATUS_SUCCESS) {
 	    DPRINT("Found a device!\n");
 
 	    /* Quit the loop */
@@ -282,15 +295,15 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
 	    break;
 	}
 
-	DPRINT("Inquiry SRB failed with SrbStatus 0x%08X\n", Srb.SrbStatus);
+	DPRINT("Inquiry SRB failed with SrbStatus 0x%08X\n", Srb->SrbStatus);
 
 	/* Check if the queue is frozen */
-	if (Srb.SrbStatus & SRB_STATUS_QUEUE_FROZEN) {
+	if (Srb->SrbStatus & SRB_STATUS_QUEUE_FROZEN) {
 	    /* Something weird happened, deal with it (unfreeze the queue) */
 	    KeepTrying = FALSE;
 
 	    DPRINT("PortSendInquirySrb(): the queue is frozen at TargetId %d\n",
-		   Srb.TargetId);
+		   SrbGetTargetId(Srb));
 
 	    //            LunExtension = SpiGetLunExtension(DeviceExtension,
 	    //                                              LunInfo->PathId,
@@ -312,13 +325,13 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
 	}
 
 	/* Check if data overrun happened */
-	if (SRB_STATUS(Srb.SrbStatus) == SRB_STATUS_DATA_OVERRUN) {
+	if (SRB_STATUS(Srb->SrbStatus) == SRB_STATUS_DATA_OVERRUN) {
 	    DPRINT("Data overrun at TargetId %d\n", PdoExtension->Target);
 
 	    /* Quit the loop */
 	    Status = STATUS_SUCCESS;
 	    KeepTrying = FALSE;
-	} else if ((Srb.SrbStatus & SRB_STATUS_AUTOSENSE_VALID) &&
+	} else if ((Srb->SrbStatus & SRB_STATUS_AUTOSENSE_VALID) &&
 		   SenseBuffer->SenseKey == SCSI_SENSE_ILLEGAL_REQUEST) {
 	    /* LUN is not valid, but some device responds there.
                 Mark it as invalid anyway */
@@ -328,8 +341,8 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
 	    KeepTrying = FALSE;
 	} else {
 	    /* Retry a couple of times if no timeout happened */
-	    if ((RetryCount < 2) && (SRB_STATUS(Srb.SrbStatus) != SRB_STATUS_NO_DEVICE) &&
-		(SRB_STATUS(Srb.SrbStatus) != SRB_STATUS_SELECTION_TIMEOUT)) {
+	    if ((RetryCount < 2) && (SRB_STATUS(Srb->SrbStatus) != SRB_STATUS_NO_DEVICE) &&
+		(SRB_STATUS(Srb->SrbStatus) != SRB_STATUS_SELECTION_TIMEOUT)) {
 		RetryCount++;
 		KeepTrying = TRUE;
 	    } else {
@@ -337,8 +350,8 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
 		KeepTrying = FALSE;
 
 		/* Set status according to SRB status */
-		if (SRB_STATUS(Srb.SrbStatus) == SRB_STATUS_BAD_FUNCTION ||
-		    SRB_STATUS(Srb.SrbStatus) == SRB_STATUS_BAD_SRB_BLOCK_LENGTH) {
+		if (SRB_STATUS(Srb->SrbStatus) == SRB_STATUS_BAD_FUNCTION ||
+		    SRB_STATUS(Srb->SrbStatus) == SRB_STATUS_BAD_SRB_BLOCK_LENGTH) {
 		    Status = STATUS_INVALID_DEVICE_REQUEST;
 		} else {
 		    Status = STATUS_IO_DEVICE_ERROR;
@@ -394,12 +407,13 @@ static NTSTATUS PortSendReportLunsSrb(IN PDEVICE_OBJECT Fdo,
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    SCSI_REQUEST_BLOCK Srb;
-    PortInitializeSrb(&Srb, Irp, SenseBuffer, LunList, LunListSize, BusId, TargetId, 0);
+    UCHAR SrbBuffer[SRBEX_SCSI_CDB16_BUFFER_SIZE];
+    PSTORAGE_REQUEST_BLOCK Srb = (PSTORAGE_REQUEST_BLOCK)SrbBuffer;
+    PortInitializeSrb(Srb, Irp, SenseBuffer, LunList, LunListSize, BusId, TargetId, 0);
 
     /* Fill in CDB */
-    Srb.CdbLength = 12;
-    PCDB Cdb = (PCDB)&Srb.Cdb;
+    SrbSetCdbLength(Srb, 12);
+    PCDB Cdb = SrbGetCdb(Srb);
     Cdb->REPORT_LUNS.OperationCode = SCSIOP_REPORT_LUNS;
     Cdb->REPORT_LUNS.AllocationLength[0] = (UCHAR)(LunListSize >> 24);
     Cdb->REPORT_LUNS.AllocationLength[1] = (UCHAR)(LunListSize >> 16);

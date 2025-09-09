@@ -994,7 +994,7 @@ Return Value:
 
 --*/
 NTSTATUS ClasspWriteCacheProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				  IN OUT PSCSI_REQUEST_BLOCK Srb)
+				  IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PSTORAGE_WRITE_CACHE_PROPERTY writeCache;
@@ -1350,7 +1350,7 @@ NTSTATUS InterpretReadCapacity16Data(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExte
   on checking 'AccessAlignment.LowerLayerSupported' in case the cached info is good enough.
 */
 NTSTATUS ClassReadCapacity16(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			     IN OUT PSCSI_REQUEST_BLOCK Srb)
+			     IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_SUCCESS;
     PREAD_CAPACITY16_DATA dataBuffer = NULL;
@@ -1400,26 +1400,20 @@ NTSTATUS ClassReadCapacity16(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     //
     // Initialize the SRB.
     //
-    if (FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)Srb,
-					       STORAGE_ADDRESS_TYPE_BTL8,
-					       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
-					       SrbExDataTypeScsiCdb16);
-	if (NT_SUCCESS(status)) {
-	    ((PSTORAGE_REQUEST_BLOCK)Srb)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	} else {
-	    //
-	    // Should not occur.
-	    //
-	    NT_ASSERT(FALSE);
-	}
+    status = InitializeStorageRequestBlock(Srb,
+					   STORAGE_ADDRESS_TYPE_BTL8,
+					   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
+					   SrbExDataTypeScsiCdb16);
+    if (NT_SUCCESS(status)) {
+	Srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
     } else {
-	RtlZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
-	Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+	//
+	// Should not occur.
+	//
+	NT_ASSERT(FALSE);
     }
 
-    //prepare the Srb
+    // prepare the Srb
     if (NT_SUCCESS(status)) {
 	SrbSetTimeOutValue(Srb, FdoExtension->TimeOutValue);
 	SrbSetRequestTag(Srb, SP_UNTAGGED);
@@ -1470,7 +1464,7 @@ NTSTATUS ClassReadCapacity16(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
   If it's not supported, SCSIOP_READ_CAPACITY16 will be sent down to retrieve the information.
 */
 NTSTATUS ClasspAccessAlignmentProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				       IN OUT PSCSI_REQUEST_BLOCK Srb)
+				       IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
@@ -1700,7 +1694,7 @@ Return Value:
 --*/
 NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
 				       IN OUT PIRP Irp,
-				       IN OUT PSCSI_REQUEST_BLOCK Srb)
+				       IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
@@ -1833,7 +1827,7 @@ Return Value:
     This function may return other NTSTATUS codes from internal function calls.
 --*/
 NTSTATUS ClasspDeviceGetBlockDeviceCharacteristicsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION fdoExtension,
-							  IN PSCSI_REQUEST_BLOCK Srb)
+							  IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PCDB cdb;
@@ -1916,7 +1910,7 @@ Exit:
   If it's not supported, INQUIRY (Block Device Characteristics VPD page) will be sent down to retrieve the information.
 */
 NTSTATUS ClasspDeviceSeekPenaltyProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-					 IN OUT PSCSI_REQUEST_BLOCK Srb)
+					 IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
 
@@ -2091,7 +2085,7 @@ Exit:
 }
 
 NTSTATUS ClasspDeviceGetLBProvisioningVPDPage(IN PDEVICE_OBJECT DeviceObject,
-					      IN OUT OPTIONAL PSCSI_REQUEST_BLOCK Srb)
+					      IN OUT OPTIONAL PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_UNSUCCESSFUL;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
@@ -2156,24 +2150,17 @@ NTSTATUS ClasspDeviceGetLBProvisioningVPDPage(IN PDEVICE_OBJECT DeviceObject,
 
 	RtlZeroMemory(dataBuffer, allocationBufferLength);
 
-	if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	    status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)Srb,
-						   STORAGE_ADDRESS_TYPE_BTL8,
-						   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
-						   SrbExDataTypeScsiCdb16);
-	    if (NT_SUCCESS(status)) {
-		((PSTORAGE_REQUEST_BLOCK)Srb)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	    } else {
-		//
-		// Should not occur.
-		//
-		NT_ASSERT(FALSE);
-	    }
+	status = InitializeStorageRequestBlock(Srb,
+					       STORAGE_ADDRESS_TYPE_BTL8,
+					       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
+					       SrbExDataTypeScsiCdb16);
+	if (NT_SUCCESS(status)) {
+	    Srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 	} else {
-	    RtlZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
-	    Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	    Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	    status = STATUS_SUCCESS;
+	    //
+	    // Should not occur.
+	    //
+	    NT_ASSERT(FALSE);
 	}
 
 	if (NT_SUCCESS(status)) {
@@ -2269,7 +2256,7 @@ Exit:
 }
 
 NTSTATUS ClasspDeviceGetBlockLimitsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-					   IN OUT PSCSI_REQUEST_BLOCK Srb,
+					   IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 					   IN ULONG SrbSize,
 					   OUT PCLASS_VPD_B0_DATA BlockLimitsData)
 {
@@ -2333,24 +2320,17 @@ NTSTATUS ClasspDeviceGetBlockLimitsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION FdoEx
 
 	RtlZeroMemory(dataBuffer, allocationBufferLength);
 
-	if (FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	    status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)Srb,
-						   STORAGE_ADDRESS_TYPE_BTL8, SrbSize, 1,
-						   SrbExDataTypeScsiCdb16);
+	status = InitializeStorageRequestBlock(Srb,
+					       STORAGE_ADDRESS_TYPE_BTL8, SrbSize, 1,
+					       SrbExDataTypeScsiCdb16);
 
-	    if (NT_SUCCESS(status)) {
-		((PSTORAGE_REQUEST_BLOCK)Srb)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	    } else {
-		//
-		// Should not occur.
-		//
-		NT_ASSERT(FALSE);
-	    }
+	if (NT_SUCCESS(status)) {
+	    Srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 	} else {
-	    RtlZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
-	    Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	    Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	    status = STATUS_SUCCESS;
+	    //
+	    // Should not occur.
+	    //
+	    NT_ASSERT(FALSE);
 	}
 
 	if (NT_SUCCESS(status)) {
@@ -2477,7 +2457,7 @@ Exit:
   If it's not supported, INQUIRY (Block Limits VPD page) will be sent down to retrieve the information.
 */
 NTSTATUS ClasspDeviceTrimProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				  IN OUT PSCSI_REQUEST_BLOCK Srb)
+				  IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_SUCCESS;
 
@@ -2632,7 +2612,7 @@ Exit:
 
 NTSTATUS ClasspDeviceLBProvisioningProperty(IN PDEVICE_OBJECT DeviceObject,
 					    IN OUT PIRP Irp,
-					    IN OUT PSCSI_REQUEST_BLOCK Srb)
+					    IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_SUCCESS;
     NTSTATUS blockLimitsStatus;
@@ -2905,7 +2885,7 @@ NTSTATUS DeviceProcessDsmTrimRequest(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 				     IN ULONG SrbFlags,
 				     IN PIRP Irp,
 				     IN PGUID ActivityId,
-				     IN OUT PSCSI_REQUEST_BLOCK Srb)
+				     IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_SUCCESS;
 
@@ -3115,26 +3095,18 @@ NTSTATUS DeviceProcessDsmTrimRequest(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 	    //
 	    // Initialize the SRB.
 	    //
-	    if (FdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)Srb,
-						       STORAGE_ADDRESS_TYPE_BTL8,
-						       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
-						       1, SrbExDataTypeScsiCdb16);
-		if (NT_SUCCESS(status)) {
-		    ((PSTORAGE_REQUEST_BLOCK)Srb)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-		} else {
-		    //
-		    // Should not occur.
-		    //
-		    NT_ASSERT(FALSE);
-		    break;
-		}
-
+	    status = InitializeStorageRequestBlock(Srb,
+						   STORAGE_ADDRESS_TYPE_BTL8,
+						   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
+						   1, SrbExDataTypeScsiCdb16);
+	    if (NT_SUCCESS(status)) {
+		Srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 	    } else {
-		RtlZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
-		Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-		Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+		//
+		// Should not occur.
+		//
+		NT_ASSERT(FALSE);
+		break;
 	    }
 
 	    //
@@ -3194,7 +3166,7 @@ Exit:
 NTSTATUS ClasspDeviceTrimProcess(IN PDEVICE_OBJECT DeviceObject,
 				 IN PIRP Irp,
 				 IN PGUID ActivityId,
-				 IN OUT PSCSI_REQUEST_BLOCK Srb)
+				 IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_SUCCESS;
 
@@ -3487,7 +3459,7 @@ Return Value:
 
 --*/
 NTSTATUS GetLBAStatus(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-		      IN PSCSI_REQUEST_BLOCK Srb,
+		      IN PSTORAGE_REQUEST_BLOCK Srb,
 		      IN ULONGLONG StartingLBA,
 		      IN OUT PLBA_STATUS_LIST_HEADER LBAStatusHeader,
 		      IN ULONG LBAStatusSize,
@@ -3587,7 +3559,7 @@ Return Value:
 --*/
 NTSTATUS ClasspDeviceGetLBAStatus(IN PDEVICE_OBJECT DeviceObject,
 				  IN OUT PIRP Irp,
-				  IN OUT PSCSI_REQUEST_BLOCK Srb)
+				  IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
 						    DeviceObject->DeviceExtension;
@@ -3792,7 +3764,7 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
 					IN ULONGLONG LengthInBytes,
 					OUT PDEVICE_MANAGE_DATA_SET_ATTRIBUTES_OUTPUT DsmOutput,
 					IN OUT PULONG DsmOutputLength,
-					IN OUT PSCSI_REQUEST_BLOCK Srb,
+					IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 					IN BOOLEAN ConsolidateableBlocksOnly,
 					IN ULONG OutputVersion,
 					OUT PBOOLEAN BlockLimitsDataMayHaveChanged)
@@ -4305,7 +4277,7 @@ Return Value:
     This function may return other NTSTATUS codes from internal function calls.
 --*/
 NTSTATUS ClassGetLBProvisioningLogPage(IN PDEVICE_OBJECT DeviceObject,
-				       IN PSCSI_REQUEST_BLOCK Srb,
+				       IN PSTORAGE_REQUEST_BLOCK Srb,
 				       IN ULONG LogPageSize,
 				       IN OUT PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING LogPage)
 {
@@ -4332,23 +4304,17 @@ NTSTATUS ClassGetLBProvisioningLogPage(IN PDEVICE_OBJECT DeviceObject,
     //
     // Initialize the SRB.
     //
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)Srb,
-					       STORAGE_ADDRESS_TYPE_BTL8,
-					       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
-					       SrbExDataTypeScsiCdb16);
-	if (NT_SUCCESS(status)) {
-	    ((PSTORAGE_REQUEST_BLOCK)Srb)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	} else {
-	    //
-	    // Should not occur.
-	    //
-	    NT_ASSERT(FALSE);
-	}
+    status = InitializeStorageRequestBlock(Srb,
+					   STORAGE_ADDRESS_TYPE_BTL8,
+					   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
+					   SrbExDataTypeScsiCdb16);
+    if (NT_SUCCESS(status)) {
+	Srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
     } else {
-	RtlZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
-	Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+	//
+	// Should not occur.
+	//
+	NT_ASSERT(FALSE);
     }
 
     //
@@ -4588,7 +4554,7 @@ Return Value:
     This function may return other NTSTATUS codes from internal function calls.
 --*/
 NTSTATUS ClassGetLBProvisioningResources(IN PDEVICE_OBJECT DeviceObject,
-					 IN OUT PSCSI_REQUEST_BLOCK Srb,
+					 IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 					 IN ULONG ResourcesSize,
 					 IN OUT PSTORAGE_LB_PROVISIONING_MAP_RESOURCES Resources)
 {
@@ -4696,7 +4662,7 @@ Return Value:
 --*/
 NTSTATUS ClassDeviceGetLBProvisioningResources(IN PDEVICE_OBJECT DeviceObject,
 					       IN OUT PIRP Irp,
-					       IN OUT PSCSI_REQUEST_BLOCK Srb)
+					       IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
@@ -4736,187 +4702,181 @@ NTAPI VOID ClassLogThresholdEvent(IN PDEVICE_OBJECT DeviceObject,
 				  IN OPTIONAL PVOID Context)
 {
     NTSTATUS status = STATUS_SUCCESS;
-    PIO_WORKITEM workItem = (PIO_WORKITEM)Context;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
-						    DeviceObject->DeviceExtension;
-    PSCSI_REQUEST_BLOCK srb = NULL;
-    STORAGE_LB_PROVISIONING_MAP_RESOURCES resources = { 0 };
+    PIO_WORKITEM workItem = Context;
+    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
+    STORAGE_LB_PROVISIONING_MAP_RESOURCES resources = {};
     ULONG resourcesSize = sizeof(STORAGE_LB_PROVISIONING_MAP_RESOURCES);
     PIO_ERROR_LOG_PACKET errorLogEntry = NULL;
     ULONG logEntrySize = sizeof(IO_ERROR_LOG_PACKET);
     PWCHAR stringIndex = NULL;
     LONG stringSize = 0;
-    ULONG srbSize;
 
     //
     // Allocate an SRB for getting the LBP log page.
     //
-    if ((fdoExtension->AdapterDescriptor != NULL) &&
-	(fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK)) {
-	srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-    } else {
-	srbSize = sizeof(SCSI_REQUEST_BLOCK);
-    }
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
 
-    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, 'ACcS');
-    if (srb != NULL) {
-	//
-	// Try to get the LBP resources from the device so we can report them in
-	// the system event log.
-	//
-	ClassGetLBProvisioningResources(DeviceObject, srb, resourcesSize, &resources);
-
-	//
-	// We need to allocate enough space for 3 insertion strings:
-	// The first is a ULONG representing the disk number in decimal, which means
-	// a max of 10 digits, plus one for the NULL character.
-	// The second and third are ULONGLONGs representing the used and available
-	// bytes, which means a max of 20 digits, plus one for the NULL character.
-	// Make sure we do not exceed the max error log size or the max size of a
-	// UCHAR since the size gets truncated to a UCHAR when we pass it to
-	// IoAllocateErrorLogEntry().
-	//
-	logEntrySize = sizeof(IO_ERROR_LOG_PACKET) + (11 * sizeof(WCHAR)) +
-		       (2 * (21 * sizeof(WCHAR)));
-	logEntrySize = min(logEntrySize, ERROR_LOG_MAXIMUM_SIZE);
-	logEntrySize = min(logEntrySize, MAXUCHAR);
-
-	errorLogEntry = (PIO_ERROR_LOG_PACKET)
-	    IoAllocateErrorLogEntry(DeviceObject, (UCHAR)logEntrySize);
-	if (errorLogEntry != NULL) {
-	    //
-	    // There are two event IDs we can use here.  Both use the disk number,
-	    // but one reports the available and used bytes while the other does not.
-	    // We fall back on the latter if we failed to obtain the available and
-	    // used byte counts from the LBP log page.
-	    //
-	    // The event insertion strings need to be in this order:
-	    // 1. The disk number. (Both event IDs use this.)
-	    // 2. Bytes used.
-	    // 3. Bytes available.
-	    //
-
-	    RtlZeroMemory(errorLogEntry, logEntrySize);
-	    errorLogEntry->StringOffset = sizeof(IO_ERROR_LOG_PACKET);
-
-	    stringIndex = (PWCHAR)((ULONG_PTR)errorLogEntry +
-				   sizeof(IO_ERROR_LOG_PACKET));
-	    stringSize = logEntrySize - sizeof(IO_ERROR_LOG_PACKET);
-
-	    //
-	    // Add the disk number to the insertion strings.
-	    //
-	    status = RtlStringCbPrintfW(stringIndex, stringSize, L"%d",
-					fdoExtension->DeviceNumber);
-
-	    if (NT_SUCCESS(status)) {
-		errorLogEntry->NumberOfStrings++;
-
-		if (resources.UsedMappingResourcesValid &&
-		    resources.AvailableMappingResourcesValid) {
-		    //
-		    // Add the used mapping resources to the insertion strings.
-		    //
-		    stringIndex += (wcslen(stringIndex) + 1);
-		    stringSize -= (LONG)(wcslen(stringIndex) + 1) * sizeof(WCHAR);
-
-		    status = RtlStringCbPrintfW(stringIndex, stringSize, L"%llu",
-						resources.UsedMappingResources);
-
-		    if (NT_SUCCESS(status)) {
-			errorLogEntry->NumberOfStrings++;
-
-			//
-			// Add the available mapping resources to the insertion strings.
-			//
-			stringIndex += (wcslen(stringIndex) + 1);
-			stringSize -= (LONG)(wcslen(stringIndex) + 1) * sizeof(WCHAR);
-
-			status = RtlStringCbPrintfW(stringIndex, stringSize, L"%llu",
-						    resources.AvailableMappingResources);
-
-			if (NT_SUCCESS(status)) {
-			    errorLogEntry->NumberOfStrings++;
-			}
-		    }
-		} else {
-		    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
-				"ClassLogThresholdEvent: DO (%p), Used and available "
-				"mapping resources were unavailable.\n",
-				DeviceObject));
-		}
-	    }
-
-	    //
-	    // If we were able to successfully assemble all 3 insertion strings,
-	    // then we can use one of the "extended" event IDs.  Otherwise, use the basic
-	    // event ID, which only requires the disk number.
-	    //
-	    if (errorLogEntry->NumberOfStrings == 3) {
-		if (resources.UsedMappingResourcesScope ==
-			LOG_PAGE_LBP_RESOURCE_SCOPE_DEDICATED_TO_LUN &&
-		    resources.AvailableMappingResourcesScope ==
-			LOG_PAGE_LBP_RESOURCE_SCOPE_DEDICATED_TO_LUN) {
-		    errorLogEntry->ErrorCode =
-			IO_WARNING_SOFT_THRESHOLD_REACHED_EX_LUN_LUN;
-
-		} else if (resources.UsedMappingResourcesScope ==
-			       LOG_PAGE_LBP_RESOURCE_SCOPE_DEDICATED_TO_LUN &&
-			   resources.AvailableMappingResourcesScope ==
-			       LOG_PAGE_LBP_RESOURCE_SCOPE_NOT_DEDICATED_TO_LUN) {
-		    errorLogEntry->ErrorCode =
-			IO_WARNING_SOFT_THRESHOLD_REACHED_EX_LUN_POOL;
-
-		} else if (resources.UsedMappingResourcesScope ==
-			       LOG_PAGE_LBP_RESOURCE_SCOPE_NOT_DEDICATED_TO_LUN &&
-			   resources.AvailableMappingResourcesScope ==
-			       LOG_PAGE_LBP_RESOURCE_SCOPE_DEDICATED_TO_LUN) {
-		    errorLogEntry->ErrorCode =
-			IO_WARNING_SOFT_THRESHOLD_REACHED_EX_POOL_LUN;
-
-		} else if (resources.UsedMappingResourcesScope ==
-			       LOG_PAGE_LBP_RESOURCE_SCOPE_NOT_DEDICATED_TO_LUN &&
-			   resources.AvailableMappingResourcesScope ==
-			       LOG_PAGE_LBP_RESOURCE_SCOPE_NOT_DEDICATED_TO_LUN) {
-		    errorLogEntry->ErrorCode =
-			IO_WARNING_SOFT_THRESHOLD_REACHED_EX_POOL_POOL;
-
-		} else {
-		    errorLogEntry->ErrorCode = IO_WARNING_SOFT_THRESHOLD_REACHED_EX;
-		}
-	    } else {
-		errorLogEntry->ErrorCode = IO_WARNING_SOFT_THRESHOLD_REACHED;
-	    }
-
-	    //
-	    // Write the error log packet to the system error logging thread.
-	    // It will be freed automatically.
-	    //
-	    IoWriteErrorLogEntry(errorLogEntry);
-
-	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-			"ClassLogThresholdEvent: DO (%p), Soft threshold notification "
-			"logged.\n",
-			DeviceObject));
-	} else {
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
-			"ClassLogThresholdEvent: DO (%p), Failed to allocate memory for "
-			"error log entry.\n",
-			DeviceObject));
-	}
-    } else {
+    PSTORAGE_REQUEST_BLOCK srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, 'ACcS');
+    if (!srb) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
 		    "ClassLogThresholdEvent: DO (%p), Failed to allocate memory for "
 		    "SRB.\n",
 		    DeviceObject));
+	goto Exit;
     }
 
     //
+    // Try to get the LBP resources from the device so we can report them in
+    // the system event log.
+    //
+    ClassGetLBProvisioningResources(DeviceObject, srb, resourcesSize, &resources);
+
+    //
+    // We need to allocate enough space for 3 insertion strings:
+    // The first is a ULONG representing the disk number in decimal, which means
+    // a max of 10 digits, plus one for the NULL character.
+    // The second and third are ULONGLONGs representing the used and available
+    // bytes, which means a max of 20 digits, plus one for the NULL character.
+    // Make sure we do not exceed the max error log size or the max size of a
+    // UCHAR since the size gets truncated to a UCHAR when we pass it to
+    // IoAllocateErrorLogEntry().
+    //
+    logEntrySize = sizeof(IO_ERROR_LOG_PACKET) + (11 * sizeof(WCHAR)) +
+	(2 * (21 * sizeof(WCHAR)));
+    logEntrySize = min(logEntrySize, ERROR_LOG_MAXIMUM_SIZE);
+    logEntrySize = min(logEntrySize, MAXUCHAR);
+
+    errorLogEntry = (PIO_ERROR_LOG_PACKET)
+	IoAllocateErrorLogEntry(DeviceObject, (UCHAR)logEntrySize);
+    if (!errorLogEntry) {
+	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
+		    "ClassLogThresholdEvent: DO (%p), Failed to allocate memory for "
+		    "error log entry.\n",
+		    DeviceObject));
+	goto Exit;
+    }
+
+    //
+    // There are two event IDs we can use here.  Both use the disk number,
+    // but one reports the available and used bytes while the other does not.
+    // We fall back on the latter if we failed to obtain the available and
+    // used byte counts from the LBP log page.
+    //
+    // The event insertion strings need to be in this order:
+    // 1. The disk number. (Both event IDs use this.)
+    // 2. Bytes used.
+    // 3. Bytes available.
+    //
+
+    RtlZeroMemory(errorLogEntry, logEntrySize);
+    errorLogEntry->StringOffset = sizeof(IO_ERROR_LOG_PACKET);
+
+    stringIndex = (PWCHAR)((ULONG_PTR)errorLogEntry +
+			   sizeof(IO_ERROR_LOG_PACKET));
+    stringSize = logEntrySize - sizeof(IO_ERROR_LOG_PACKET);
+
+    //
+    // Add the disk number to the insertion strings.
+    //
+    status = RtlStringCbPrintfW(stringIndex, stringSize, L"%d",
+				fdoExtension->DeviceNumber);
+
+    if (NT_SUCCESS(status)) {
+	errorLogEntry->NumberOfStrings++;
+
+	if (resources.UsedMappingResourcesValid &&
+	    resources.AvailableMappingResourcesValid) {
+	    //
+	    // Add the used mapping resources to the insertion strings.
+	    //
+	    stringIndex += (wcslen(stringIndex) + 1);
+	    stringSize -= (LONG)(wcslen(stringIndex) + 1) * sizeof(WCHAR);
+
+	    status = RtlStringCbPrintfW(stringIndex, stringSize, L"%llu",
+					resources.UsedMappingResources);
+
+	    if (NT_SUCCESS(status)) {
+		errorLogEntry->NumberOfStrings++;
+
+		//
+		// Add the available mapping resources to the insertion strings.
+		//
+		stringIndex += (wcslen(stringIndex) + 1);
+		stringSize -= (LONG)(wcslen(stringIndex) + 1) * sizeof(WCHAR);
+
+		status = RtlStringCbPrintfW(stringIndex, stringSize, L"%llu",
+					    resources.AvailableMappingResources);
+
+		if (NT_SUCCESS(status)) {
+		    errorLogEntry->NumberOfStrings++;
+		}
+	    }
+	} else {
+	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
+			"ClassLogThresholdEvent: DO (%p), Used and available "
+			"mapping resources were unavailable.\n",
+			DeviceObject));
+	}
+    }
+
+    //
+    // If we were able to successfully assemble all 3 insertion strings,
+    // then we can use one of the "extended" event IDs.  Otherwise, use the basic
+    // event ID, which only requires the disk number.
+    //
+    if (errorLogEntry->NumberOfStrings == 3) {
+	if (resources.UsedMappingResourcesScope ==
+	    LOG_PAGE_LBP_RESOURCE_SCOPE_DEDICATED_TO_LUN &&
+	    resources.AvailableMappingResourcesScope ==
+	    LOG_PAGE_LBP_RESOURCE_SCOPE_DEDICATED_TO_LUN) {
+	    errorLogEntry->ErrorCode =
+		IO_WARNING_SOFT_THRESHOLD_REACHED_EX_LUN_LUN;
+
+	} else if (resources.UsedMappingResourcesScope ==
+		   LOG_PAGE_LBP_RESOURCE_SCOPE_DEDICATED_TO_LUN &&
+		   resources.AvailableMappingResourcesScope ==
+		   LOG_PAGE_LBP_RESOURCE_SCOPE_NOT_DEDICATED_TO_LUN) {
+	    errorLogEntry->ErrorCode =
+		IO_WARNING_SOFT_THRESHOLD_REACHED_EX_LUN_POOL;
+
+	} else if (resources.UsedMappingResourcesScope ==
+		   LOG_PAGE_LBP_RESOURCE_SCOPE_NOT_DEDICATED_TO_LUN &&
+		   resources.AvailableMappingResourcesScope ==
+		   LOG_PAGE_LBP_RESOURCE_SCOPE_DEDICATED_TO_LUN) {
+	    errorLogEntry->ErrorCode =
+		IO_WARNING_SOFT_THRESHOLD_REACHED_EX_POOL_LUN;
+
+	} else if (resources.UsedMappingResourcesScope ==
+		   LOG_PAGE_LBP_RESOURCE_SCOPE_NOT_DEDICATED_TO_LUN &&
+		   resources.AvailableMappingResourcesScope ==
+		   LOG_PAGE_LBP_RESOURCE_SCOPE_NOT_DEDICATED_TO_LUN) {
+	    errorLogEntry->ErrorCode =
+		IO_WARNING_SOFT_THRESHOLD_REACHED_EX_POOL_POOL;
+
+	} else {
+	    errorLogEntry->ErrorCode = IO_WARNING_SOFT_THRESHOLD_REACHED_EX;
+	}
+    } else {
+	errorLogEntry->ErrorCode = IO_WARNING_SOFT_THRESHOLD_REACHED;
+    }
+
+    //
+    // Write the error log packet to the system error logging thread.
+    // It will be freed automatically.
+    //
+    IoWriteErrorLogEntry(errorLogEntry);
+
+    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
+		"ClassLogThresholdEvent: DO (%p), Soft threshold notification "
+		"logged.\n",
+		DeviceObject));
+
+Exit:
+    //
     // Clear the soft threshold event pending flag so that another can be queued.
     //
-    InterlockedExchange((PLONG) & (fdoExtension->FunctionSupportInfo->LBProvisioningData
-				       .SoftThresholdEventPending),
-			0);
+    InterlockedExchange((PLONG)&(fdoExtension->FunctionSupportInfo->LBProvisioningData
+				 .SoftThresholdEventPending), 0);
 
     ClassReleaseRemoveLock(DeviceObject, (PIRP)workItem);
 
@@ -5737,7 +5697,7 @@ Return Value:
 --*/
 NTSTATUS ClasspPersistentReserve(IN PDEVICE_OBJECT DeviceObject,
 				 IN PIRP Irp,
-				 IN OUT PSCSI_REQUEST_BLOCK Srb)
+				 IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PCDB cdb = NULL;
@@ -6038,187 +5998,6 @@ PriorityHintExit:
 
 /*++
 
-ClasspConvertToScsiRequestBlock
-
-Routine Description:
-
-    Convert an extended SRB to a SCSI_REQUEST_BLOCK. This function handles only
-    a single SRB and will not converted SRBs that are linked.
-
-Arguments:
-
-    Srb - a pointer to a SCSI_REQUEST_BLOCK
-    SrbEx - a pointer to an extended SRB
-
-Return Value:
-
-    None
-
---*/
-VOID ClasspConvertToScsiRequestBlock(OUT PSCSI_REQUEST_BLOCK Srb,
-				     IN PSTORAGE_REQUEST_BLOCK SrbEx)
-{
-    PSTOR_ADDR_BTL8 storAddrBtl8;
-    ULONG i;
-    BOOLEAN foundEntry = FALSE;
-    PSRBEX_DATA srbExData;
-
-    if ((Srb == NULL) || (SrbEx == NULL)) {
-	return;
-    }
-
-    RtlZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
-
-    Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-    Srb->Function = (UCHAR)SrbEx->SrbFunction;
-    Srb->SrbStatus = SrbEx->SrbStatus;
-    Srb->QueueTag = (UCHAR)SrbEx->RequestTag;
-    Srb->QueueAction = (UCHAR)SrbEx->RequestAttribute;
-    Srb->SrbFlags = SrbEx->SrbFlags;
-    Srb->DataTransferLength = SrbEx->DataTransferLength;
-    Srb->TimeOutValue = SrbEx->TimeOutValue;
-    Srb->DataBuffer = SrbEx->DataBuffer;
-    Srb->OriginalRequest = SrbEx->OriginalRequest;
-    Srb->SrbExtension = SrbEx->MiniportContext;
-    Srb->InternalStatus = SrbEx->SystemStatus;
-
-    //
-    // Handle address fields
-    //
-    if (SrbEx->AddressOffset >= sizeof(STORAGE_REQUEST_BLOCK)) {
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PCHAR)SrbEx + SrbEx->AddressOffset);
-
-	if (storAddrBtl8->Type == STOR_ADDRESS_TYPE_BTL8) {
-	    Srb->PathId = storAddrBtl8->Path;
-	    Srb->TargetId = storAddrBtl8->Target;
-	    Srb->Lun = storAddrBtl8->Lun;
-	} else {
-	    // Catch unsupported address types
-	    NT_ASSERT(FALSE);
-	}
-    }
-
-    //
-    // Handle SRB function specific fields
-    //
-    if (SrbEx->NumSrbExData > 0) {
-	for (i = 0; i < SrbEx->NumSrbExData; i++) {
-	    if ((SrbEx->SrbExDataOffset[i] == 0) ||
-		(SrbEx->SrbExDataOffset[i] < sizeof(STORAGE_REQUEST_BLOCK))) {
-		// Catch invalid offsets
-		NT_ASSERT(FALSE);
-		continue;
-	    }
-
-	    srbExData = (PSRBEX_DATA)((PCHAR)SrbEx + SrbEx->SrbExDataOffset[i]);
-
-	    switch (SrbEx->SrbFunction) {
-	    case SRB_FUNCTION_EXECUTE_SCSI:
-
-		switch (srbExData->Type) {
-		case SrbExDataTypeScsiCdb16:
-		    Srb->ScsiStatus = ((PSRBEX_DATA_SCSI_CDB16)srbExData)->ScsiStatus;
-		    Srb->CdbLength = ((PSRBEX_DATA_SCSI_CDB16)srbExData)->CdbLength;
-		    Srb->SenseInfoBufferLength =
-			((PSRBEX_DATA_SCSI_CDB16)srbExData)->SenseInfoBufferLength;
-		    Srb->SenseInfoBuffer =
-			((PSRBEX_DATA_SCSI_CDB16)srbExData)->SenseInfoBuffer;
-		    RtlCopyMemory(Srb->Cdb, ((PSRBEX_DATA_SCSI_CDB16)srbExData)->Cdb,
-				  sizeof(Srb->Cdb));
-		    foundEntry = TRUE;
-		    break;
-
-		case SrbExDataTypeScsiCdb32:
-		    Srb->ScsiStatus = ((PSRBEX_DATA_SCSI_CDB32)srbExData)->ScsiStatus;
-		    Srb->CdbLength = ((PSRBEX_DATA_SCSI_CDB32)srbExData)->CdbLength;
-		    Srb->SenseInfoBufferLength =
-			((PSRBEX_DATA_SCSI_CDB32)srbExData)->SenseInfoBufferLength;
-		    Srb->SenseInfoBuffer =
-			((PSRBEX_DATA_SCSI_CDB32)srbExData)->SenseInfoBuffer;
-
-		    // Copy only the first 16 bytes
-		    RtlCopyMemory(Srb->Cdb, ((PSRBEX_DATA_SCSI_CDB32)srbExData)->Cdb,
-				  sizeof(Srb->Cdb));
-		    foundEntry = TRUE;
-		    break;
-
-		case SrbExDataTypeScsiCdbVar:
-		    Srb->ScsiStatus = ((PSRBEX_DATA_SCSI_CDB_VAR)srbExData)->ScsiStatus;
-		    Srb->CdbLength =
-			(UCHAR)((PSRBEX_DATA_SCSI_CDB_VAR)srbExData)->CdbLength;
-		    Srb->SenseInfoBufferLength =
-			((PSRBEX_DATA_SCSI_CDB_VAR)srbExData)->SenseInfoBufferLength;
-		    Srb->SenseInfoBuffer =
-			((PSRBEX_DATA_SCSI_CDB_VAR)srbExData)->SenseInfoBuffer;
-
-		    // Copy only the first 16 bytes
-		    RtlCopyMemory(Srb->Cdb, ((PSRBEX_DATA_SCSI_CDB_VAR)srbExData)->Cdb,
-				  sizeof(Srb->Cdb));
-		    foundEntry = TRUE;
-		    break;
-
-		default:
-		    break;
-		}
-		break;
-
-	    case SRB_FUNCTION_WMI:
-
-		if (srbExData->Type == SrbExDataTypeWmi) {
-		    ((PSCSI_WMI_REQUEST_BLOCK)Srb)->WMISubFunction =
-			((PSRBEX_DATA_WMI)srbExData)->WMISubFunction;
-		    ((PSCSI_WMI_REQUEST_BLOCK)Srb)->WMIFlags =
-			((PSRBEX_DATA_WMI)srbExData)->WMIFlags;
-		    ((PSCSI_WMI_REQUEST_BLOCK)Srb)->DataPath =
-			((PSRBEX_DATA_WMI)srbExData)->DataPath;
-		    foundEntry = TRUE;
-		}
-		break;
-
-	    case SRB_FUNCTION_PNP:
-
-		if (srbExData->Type == SrbExDataTypePnP) {
-		    ((PSCSI_PNP_REQUEST_BLOCK)Srb)->PnPAction =
-			((PSRBEX_DATA_PNP)srbExData)->PnPAction;
-		    ((PSCSI_PNP_REQUEST_BLOCK)Srb)->PnPSubFunction =
-			((PSRBEX_DATA_PNP)srbExData)->PnPSubFunction;
-		    ((PSCSI_PNP_REQUEST_BLOCK)Srb)->SrbPnPFlags =
-			((PSRBEX_DATA_PNP)srbExData)->SrbPnPFlags;
-		    foundEntry = TRUE;
-		}
-		break;
-
-	    case SRB_FUNCTION_POWER:
-
-		if (srbExData->Type == SrbExDataTypePower) {
-		    ((PSCSI_POWER_REQUEST_BLOCK)Srb)->DevicePowerState =
-			((PSRBEX_DATA_POWER)srbExData)->DevicePowerState;
-		    ((PSCSI_POWER_REQUEST_BLOCK)Srb)->PowerAction =
-			((PSRBEX_DATA_POWER)srbExData)->PowerAction;
-		    ((PSCSI_POWER_REQUEST_BLOCK)Srb)->SrbPowerFlags =
-			((PSRBEX_DATA_POWER)srbExData)->SrbPowerFlags;
-		    foundEntry = TRUE;
-		}
-		break;
-
-	    default:
-		break;
-	    }
-
-	    //
-	    // Quit on first match
-	    //
-	    if (foundEntry) {
-		break;
-	    }
-	}
-    }
-
-    return;
-}
-
-/*++
-
 Routine Description:
 
     This routine returns the maximum ListIdentifier (to be used when building TokenOperation
@@ -6396,7 +6175,7 @@ Return Value:
 --*/
 NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 					 IN OUT PIRP Irp,
-					 IN OUT PSCSI_REQUEST_BLOCK Srb)
+					 IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     PAGED_CODE();
     NTSTATUS status;
@@ -7552,7 +7331,7 @@ NTSTATUS ClassDeviceHwFirmwareGetInfoProcess(IN PDEVICE_OBJECT DeviceObject,
 
 NTSTATUS ClassDeviceHwFirmwareDownloadProcess(IN PDEVICE_OBJECT DeviceObject,
 					      IN OUT PIRP Irp,
-					      IN OUT PSCSI_REQUEST_BLOCK Srb)
+					      IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_NOT_IMPLEMENTED;
     Irp->IoStatus.Status = status;
@@ -7567,7 +7346,7 @@ NTSTATUS ClassDeviceHwFirmwareDownloadProcess(IN PDEVICE_OBJECT DeviceObject,
 
 NTSTATUS ClassDeviceHwFirmwareActivateProcess(IN PDEVICE_OBJECT DeviceObject,
 					      IN OUT PIRP Irp,
-					      IN OUT PSCSI_REQUEST_BLOCK Srb)
+					      IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     NTSTATUS status = STATUS_NOT_IMPLEMENTED;
     Irp->IoStatus.Status = status;
@@ -7595,7 +7374,7 @@ Return Value:
     BOOLEAN
 
 --*/
-BOOLEAN ClasspIsThinProvisioningError(IN PSCSI_REQUEST_BLOCK Srb)
+BOOLEAN ClasspIsThinProvisioningError(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     if (TEST_FLAG(Srb->SrbStatus, SRB_STATUS_AUTOSENSE_VALID)) {
 	PVOID senseBuffer = SrbGetSenseInfoBuffer(Srb);

@@ -98,7 +98,7 @@ NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo,
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    PSCSI_REQUEST_BLOCK srb = Context;
+    PSTORAGE_REQUEST_BLOCK srb = Context;
 
     PIRP originalIrp = Irp->MasterIrp;
     LONG irpCount;
@@ -300,13 +300,12 @@ Return Value:
     None
 
 --*/
-VOID RetryRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp, PSCSI_REQUEST_BLOCK Srb,
+VOID RetryRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp, PSTORAGE_REQUEST_BLOCK Srb,
 		  BOOLEAN Associated, LONGLONG TimeDelta100ns)
 {
     PIO_STACK_LOCATION currentIrpStack = IoGetCurrentIrpStackLocation(Irp);
     PIO_STACK_LOCATION nextIrpStack = IoGetNextIrpStackLocation(Irp);
     ULONG transferByteCount;
-    PSTORAGE_REQUEST_BLOCK_HEADER srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER)Srb;
 
     // This function is obsolete but is still used by some of our class drivers.
     // TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL, "RetryRequest is OBSOLETE !"));
@@ -331,7 +330,7 @@ VOID RetryRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp, PSCSI_REQUEST_BLOCK Srb
 	// likely incorrect.
 	//
 
-	NT_ASSERT(SrbGetDataBuffer(srbHeader) == MmGetMdlVirtualAddress(Irp->MdlAddress));
+	NT_ASSERT(SrbGetDataBuffer(Srb) == MmGetMdlVirtualAddress(Irp->MdlAddress));
 	_Analysis_assume_(Irp->MdlAddress->ByteCount <= dataTransferLength);
 	transferByteCount = Irp->MdlAddress->ByteCount;
 
@@ -344,20 +343,20 @@ VOID RetryRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp, PSCSI_REQUEST_BLOCK Srb
     // not guaranteed to be an fdoExtension
     //
 
-    NT_ASSERT(!TEST_FLAG(SrbGetSrbFlags(srbHeader), SRB_FLAGS_FREE_SENSE_BUFFER));
+    NT_ASSERT(!TEST_FLAG(SrbGetSrbFlags(Srb), SRB_FLAGS_FREE_SENSE_BUFFER));
 
     //
     // Reset byte count of transfer in SRB Extension.
     //
 
-    SrbSetDataTransferLength(srbHeader, transferByteCount);
+    SrbSetDataTransferLength(Srb, transferByteCount);
 
     //
     // Zero SRB statuses.
     //
 
-    srbHeader->SrbStatus = 0;
-    SrbSetScsiStatus(srbHeader, 0);
+    Srb->SrbStatus = 0;
+    SrbSetScsiStatus(Srb, 0);
 
     //
     // If this is the last retry, then disable all the special flags.
@@ -370,11 +369,11 @@ VOID RetryRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp, PSCSI_REQUEST_BLOCK Srb
 	// NOTE: Cannot clear these flags, just add to them
 	//
 
-	SrbSetSrbFlags(srbHeader,
+	SrbSetSrbFlags(Srb,
 		       SRB_FLAGS_DISABLE_DISCONNECT | SRB_FLAGS_DISABLE_SYNCH_TRANSFER);
-	SrbClearSrbFlags(srbHeader, SRB_FLAGS_QUEUE_ACTION_ENABLE);
+	SrbClearSrbFlags(Srb, SRB_FLAGS_QUEUE_ACTION_ENABLE);
 
-	SrbSetQueueTag(srbHeader, SP_UNTAGGED);
+	SrbSetRequestTag(Srb, SP_UNTAGGED);
     }
 
     //
@@ -435,7 +434,7 @@ NTAPI NTSTATUS ClassBuildRequest(IN PDEVICE_OBJECT Fdo, IN PIRP Irp)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
-    PSCSI_REQUEST_BLOCK srb;
+    PSTORAGE_REQUEST_BLOCK srb;
 
     // This function is obsolete, but still called by CDROM.SYS .
     // TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL, "ClassBuildRequest is OBSOLETE !"));
@@ -487,22 +486,18 @@ Return Value:
     NT Status
 
 --*/
-VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP Irp,
-			  IN PSCSI_REQUEST_BLOCK Srb)
+VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+			  IN PIRP Irp,
+			  IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     PIO_STACK_LOCATION currentIrpStack = IoGetCurrentIrpStackLocation(Irp);
     PIO_STACK_LOCATION nextIrpStack = IoGetNextIrpStackLocation(Irp);
 
     LARGE_INTEGER startingOffset = currentIrpStack->Parameters.Read.ByteOffset;
 
-    PCDB cdb;
-    ULONG logicalBlockAddress;
-    USHORT transferBlocks;
-    NTSTATUS status;
-    PSTORAGE_REQUEST_BLOCK_HEADER srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER)Srb;
-
     // This function is obsolete, but still called by CDROM.SYS .
-    // TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL, "ClasspBuildRequestEx is OBSOLETE !"));
+    // TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL,
+    // "ClasspBuildRequestEx is OBSOLETE !"));
 
     if (Srb == NULL) {
 	NT_ASSERT(FALSE);
@@ -513,97 +508,80 @@ VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP 
     // Calculate relative sector address.
     //
 
-    logicalBlockAddress = (ULONG)(Int64ShrlMod32(startingOffset.QuadPart,
-						 FdoExtension->SectorShift));
+    ULONG logicalBlockAddress = (ULONG)(Int64ShrlMod32(startingOffset.QuadPart,
+						       FdoExtension->SectorShift));
 
     //
     // Prepare the SRB.
     // NOTE - for extended SRB, size used is based on allocation in ClasspAllocateSrb.
     //
 
-    if (FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)Srb,
-					       STORAGE_ADDRESS_TYPE_BTL8,
-					       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
-					       SrbExDataTypeScsiCdb16);
-	if (!NT_SUCCESS(status)) {
-	    NT_ASSERT(FALSE);
-	    return;
-	}
 
-	((PSTORAGE_REQUEST_BLOCK)Srb)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-    } else {
-	RtlZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
-
-	//
-	// Write length to SRB.
-	//
-
-	Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-
-	Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+    NTSTATUS status = InitializeStorageRequestBlock(Srb,
+						    STORAGE_ADDRESS_TYPE_BTL8,
+						    CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
+						    SrbExDataTypeScsiCdb16);
+    if (!NT_SUCCESS(status)) {
+	NT_ASSERT(FALSE);
+	return;
     }
+
+    Srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 
     //
     // Set up IRP Address.
     //
 
-    SrbSetOriginalRequest(srbHeader, Irp);
+    SrbSetOriginalRequest(Srb, Irp);
 
     //
     // Set up data buffer
     //
 
-    SrbSetDataBuffer(srbHeader, MmGetMdlVirtualAddress(Irp->MdlAddress));
+    SrbSetDataBuffer(Srb, MmGetMdlVirtualAddress(Irp->MdlAddress));
 
     //
     // Save byte count of transfer in SRB Extension.
     //
 
-    SrbSetDataTransferLength(srbHeader, currentIrpStack->Parameters.Read.Length);
+    SrbSetDataTransferLength(Srb, currentIrpStack->Parameters.Read.Length);
 
     //
     // Initialize the queue actions field.
     //
 
-    SrbSetRequestAttribute(srbHeader, SRB_SIMPLE_TAG_REQUEST);
-
-    //
-    // Queue sort key is Relative Block Address.
-    //
-
-    SrbSetQueueSortKey(srbHeader, logicalBlockAddress);
+    SrbSetRequestAttribute(Srb, SRB_SIMPLE_TAG_REQUEST);
 
     //
     // Indicate auto request sense by specifying buffer and size.
     //
 
-    SrbSetSenseInfoBuffer(srbHeader, FdoExtension->SenseData);
-    SrbSetSenseInfoBufferLength(srbHeader,
+    SrbSetSenseInfoBuffer(Srb, FdoExtension->SenseData);
+    SrbSetSenseInfoBufferLength(Srb,
 				GET_FDO_EXTENSON_SENSE_DATA_LENGTH(FdoExtension));
 
     //
     // Set timeout value of one unit per 64k bytes of data.
     //
 
-    SrbSetTimeOutValue(srbHeader, ((SrbGetDataTransferLength(srbHeader) + 0xFFFF) >> 16) *
-				      FdoExtension->TimeOutValue);
+    SrbSetTimeOutValue(Srb, ((SrbGetDataTransferLength(Srb) + 0xFFFF) >> 16) *
+		       FdoExtension->TimeOutValue);
 
     //
     // Indicate that 10-byte CDB's will be used.
     //
 
-    SrbSetCdbLength(srbHeader, 10);
+    SrbSetCdbLength(Srb, 10);
 
     //
     // Fill in CDB fields.
     //
 
-    cdb = SrbGetCdb(srbHeader);
+    PCDB cdb = SrbGetCdb(Srb);
     NT_ASSERT(cdb != NULL);
 
-    transferBlocks = (USHORT)(currentIrpStack->Parameters.Read.Length >>
-			      FdoExtension->SectorShift);
+    USHORT transferBlocks = (USHORT)(currentIrpStack->Parameters.Read.Length >>
+				     FdoExtension->SectorShift);
 
     //
     // Move little endian values into CDB in big endian format.
@@ -625,14 +603,14 @@ VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP 
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_RW,
 		    "ClassBuildRequest: Read Command\n"));
 
-	SrbSetSrbFlags(srbHeader, SRB_FLAGS_DATA_IN);
+	SrbSetSrbFlags(Srb, SRB_FLAGS_DATA_IN);
 	cdb->CDB10.OperationCode = SCSIOP_READ;
 
     } else {
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_RW,
 		    "ClassBuildRequest: Write Command\n"));
 
-	SrbSetSrbFlags(srbHeader, SRB_FLAGS_DATA_OUT);
+	SrbSetSrbFlags(Srb, SRB_FLAGS_DATA_OUT);
 	cdb->CDB10.OperationCode = SCSIOP_WRITE;
     }
 
@@ -641,7 +619,7 @@ VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP 
     //
 
     if (!(currentIrpStack->Flags & SL_WRITE_THROUGH)) {
-	SrbSetSrbFlags(srbHeader, SRB_FLAGS_ADAPTER_CACHE_ENABLE);
+	SrbSetSrbFlags(Srb, SRB_FLAGS_ADAPTER_CACHE_ENABLE);
 
     } else {
 	//
@@ -653,14 +631,14 @@ VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension, IN PIRP 
     }
 
     if (TEST_FLAG(Irp->Flags, (IRP_PAGING_IO | IRP_SYNCHRONOUS_PAGING_IO))) {
-	SrbSetSrbFlags(srbHeader, SRB_CLASS_FLAGS_PAGING);
+	SrbSetSrbFlags(Srb, SRB_CLASS_FLAGS_PAGING);
     }
 
     //
     // OR in the default flags from the device object.
     //
 
-    SrbSetSrbFlags(srbHeader, FdoExtension->SrbFlags);
+    SrbSetSrbFlags(Srb, FdoExtension->SrbFlags);
 
     //
     // Set up major SCSI function.
@@ -803,7 +781,7 @@ Return Value:
 
 --*/
 VOID ClassFreeOrReuseSrb(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			 IN PSCSI_REQUEST_BLOCK Srb)
+			 IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     PCOMMON_DEVICE_EXTENSION commonExt = &FdoExtension->CommonExtension;
 
@@ -898,39 +876,16 @@ Note:
 NTAPI VOID ClassInitializeSrbLookasideList(IN OUT PCOMMON_DEVICE_EXTENSION CommonExtension,
 					   IN ULONG NumberElements)
 {
-    size_t sizeNeeded;
-    PFUNCTIONAL_DEVICE_EXTENSION fdo;
-
     // This function is obsolete, but still called by DISK.SYS .
     // TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_GENERAL, "ClassInitializeSrbLookasideList is OBSOLETE !"));
 
     NT_ASSERT(!CommonExtension->IsSrbLookasideListInitialized);
     if (!CommonExtension->IsSrbLookasideListInitialized) {
-	if (CommonExtension->IsFdo == TRUE) {
-	    fdo = (PFUNCTIONAL_DEVICE_EXTENSION)CommonExtension;
-
-	    //
-	    // Check FDO extension on the SRB type supported
-	    //
-	    if (fdo->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		//
-		// It's 16 byte CDBs for now. Need to change when classpnp uses >16
-		// byte CDBs or support new address types.
-		//
-		sizeNeeded = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-
-	    } else {
-		sizeNeeded = sizeof(SCSI_REQUEST_BLOCK);
-	    }
-
-	} else {
-	    //
-	    // For PDO, use the max of old and new SRB as can't guarantee we can get
-	    // corresponding FDO to determine SRB support.
-	    //
-	    sizeNeeded = max(sizeof(SCSI_REQUEST_BLOCK),
-			     CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE);
-	}
+	//
+	// It's 16 byte CDBs for now. Need to change when classpnp uses >16
+	// byte CDBs or support new address types.
+	//
+	size_t sizeNeeded = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
 
 	ExInitializeLookasideList(&CommonExtension->SrbLookasideList, NULL, NULL,
 				  sizeNeeded, '$scS');

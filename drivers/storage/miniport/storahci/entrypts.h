@@ -360,7 +360,10 @@ typedef struct _AHCI_SRB_EXTENSION {
 } AHCI_SRB_EXTENSION, *PAHCI_SRB_EXTENSION;
 
 typedef struct _LOCAL_COMMAND {
-    SCSI_REQUEST_BLOCK Srb;
+    union {
+	STORAGE_REQUEST_BLOCK Srb;
+	CHAR SrbBuffer[SRBEX_SCSI_CDB16_BUFFER_SIZE];
+    };
     PAHCI_SRB_EXTENSION SrbExtension;
     STOR_PHYSICAL_ADDRESS SrbExtensionPhysicalAddress;
 } LOCAL_COMMAND, *PLOCAL_COMMAND;
@@ -468,9 +471,8 @@ typedef struct _AHCI_CHANNEL_EXTENSION {
 
     // Local Command Structures
     LOCAL_COMMAND Local;
-    LOCAL_COMMAND
-    Sense; // used to retrieve Sense Data from ATAPI device; or NCQ Log from ATA device
-	   // that supports it.
+    LOCAL_COMMAND Sense; // used to retrieve Sense Data from ATAPI device;
+			 // or NCQ Log from ATA device that supports it.
 
     AHCI_DEVICE_INIT_COMMANDS DeviceInitCommands;
     PERSISTENT_SETTINGS PersistentSettings;

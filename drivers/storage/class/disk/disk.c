@@ -181,7 +181,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     //
     // Call class init Ex routine to register SRB support
     //
-    srbSupport = CLASS_SRB_SCSI_REQUEST_BLOCK | CLASS_SRB_STORAGE_REQUEST_BLOCK;
+    srbSupport = CLASS_SRB_STORAGE_REQUEST_BLOCK;
     if (!NT_SUCCESS(ClassInitializeEx(DriverObject, &guidSrbSupport, &srbSupport))) {
 	//
 	// Should not fail
@@ -1006,9 +1006,6 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     PDISK_DATA diskData = (PDISK_DATA)commonExtension->DriverData;
     PIO_STACK_LOCATION irpStack;
     NTSTATUS status = STATUS_SUCCESS;
-    ULONG srbSize;
-    PSCSI_REQUEST_BLOCK srb;
-    PSTORAGE_REQUEST_BLOCK srbEx = NULL;
     PSTOR_ADDR_BTL8 storAddrBtl8 = NULL;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16 = NULL;
     PCDB cdb;
@@ -1065,8 +1062,7 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    } else {
 #if DBG
 		if (diskData->FlushContext.DbgTagCount < 64) {
-		    diskData->FlushContext
-			.DbgRefCount[diskData->FlushContext.DbgTagCount]++;
+		    diskData->FlushContext.DbgRefCount[diskData->FlushContext.DbgTagCount]++;
 		}
 
 		diskData->FlushContext.DbgSavCount += diskData->FlushContext.DbgTagCount;
@@ -1130,14 +1126,10 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	// Allocate SCSI request block.
 	//
 
-	if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	    srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-	} else {
-	    srbSize = sizeof(SCSI_REQUEST_BLOCK);
-	}
-
-	srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
-	if (srb == NULL) {
+	ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
+	PSTORAGE_REQUEST_BLOCK srbEx = ExAllocatePoolWithTag(NonPagedPool,
+							     srbSize, DISK_TAG_SRB);
+	if (srbEx == NULL) {
 	    //
 	    // Set the status and complete the request.
 	    //
@@ -1148,84 +1140,60 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    return (STATUS_INSUFFICIENT_RESOURCES);
 	}
 
-	RtlZeroMemory(srb, srbSize);
-	if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	    srbEx = (PSTORAGE_REQUEST_BLOCK)srb;
+	RtlZeroMemory(srbEx, srbSize);
 
-	    //
-	    // Set up STORAGE_REQUEST_BLOCK fields
-	    //
+	//
+	// Set up STORAGE_REQUEST_BLOCK fields
+	//
 
-	    srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	    srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	    srbEx->Signature = SRB_SIGNATURE;
-	    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	    srbEx->SrbLength = srbSize;
-	    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	    srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
-	    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
-	    srbEx->NumSrbExData = 1;
+	srbEx->Signature = SRB_SIGNATURE;
+	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+	srbEx->SrbLength = srbSize;
+	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+	srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
+	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+	srbEx->NumSrbExData = 1;
 
-	    // Set timeout value and mark the request as not being a tagged request.
-	    srbEx->TimeOutValue = fdoExtension->TimeOutValue * 4;
-	    srbEx->RequestTag = SP_UNTAGGED;
-	    srbEx->RequestAttribute = SRB_SIMPLE_TAG_REQUEST;
-	    srbEx->SrbFlags = fdoExtension->SrbFlags;
+	// Set timeout value and mark the request as not being a tagged request.
+	srbEx->TimeOutValue = fdoExtension->TimeOutValue * 4;
+	srbEx->RequestTag = SP_UNTAGGED;
+	srbEx->RequestAttribute = SRB_SIMPLE_TAG_REQUEST;
+	srbEx->SrbFlags = fdoExtension->SrbFlags;
 
-	    //
-	    // Set up address fields
-	    //
+	//
+	// Set up address fields
+	//
 
-	    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
-	    //
-	    // Set up SCSI SRB extended data fields
-	    //
+	//
+	// Set up SCSI SRB extended data fields
+	//
 
-	    srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-					sizeof(STOR_ADDR_BTL8);
-	    if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-		srbEx->SrbLength) {
-		srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-							  srbEx->SrbExDataOffset[0]);
-		srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
-		srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
+	    sizeof(STOR_ADDR_BTL8);
+	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
+	    srbEx->SrbLength) {
+	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
+						      srbEx->SrbExDataOffset[0]);
+	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
+	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
 
-		cdb = (PCDB)srbExDataCdb16->Cdb;
-	    } else {
-		// Should not happen
-		NT_ASSERT(FALSE);
-
-		//
-		// Set the status and complete the request.
-		//
-
-		Irp->IoStatus.Status = STATUS_INTERNAL_ERROR;
-		ClassReleaseRemoveLock(DeviceObject, Irp);
-		ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
-		return (STATUS_INTERNAL_ERROR);
-	    }
-
+	    cdb = (PCDB)srbExDataCdb16->Cdb;
 	} else {
-	    //
-	    // Write length to SRB.
-	    //
-
-	    srb->Length = SCSI_REQUEST_BLOCK_SIZE;
+	    // Should not happen
+	    NT_ASSERT(FALSE);
 
 	    //
-	    // Set timeout value and mark the request as not being a tagged request.
+	    // Set the status and complete the request.
 	    //
 
-	    srb->TimeOutValue = fdoExtension->TimeOutValue * 4;
-	    srb->QueueTag = SP_UNTAGGED;
-	    srb->QueueAction = SRB_SIMPLE_TAG_REQUEST;
-	    srb->SrbFlags = fdoExtension->SrbFlags;
-	    srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-
-	    cdb = (PCDB)srb->Cdb;
+	    Irp->IoStatus.Status = STATUS_INTERNAL_ERROR;
+	    ClassReleaseRemoveLock(DeviceObject, Irp);
+	    ClassCompleteRequest(DeviceObject, Irp, IO_NO_INCREMENT);
+	    return (STATUS_INTERNAL_ERROR);
 	}
 
 	//
@@ -1233,16 +1201,11 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	//
 
 	if (TEST_FLAG(fdoExtension->DeviceFlags, DEV_WRITE_CACHE)) {
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		srbExDataCdb16->CdbLength = 10;
-	    } else {
-		srb->CdbLength = 10;
-	    }
+	    srbExDataCdb16->CdbLength = 10;
 
 	    cdb->CDB10.OperationCode = SCSIOP_SYNCHRONIZE_CACHE;
 
-	    status = ClassSendSrbSynchronous(DeviceObject, srb, NULL, 0, TRUE);
+	    status = ClassSendSrbSynchronous(DeviceObject, srbEx, NULL, 0, TRUE);
 
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
 			"DiskShutdownFlush: Synchonize cache sent. Status = %lx\n",
@@ -1254,44 +1217,25 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	//
 
 	if (TEST_FLAG(DeviceObject->Flags, FILE_REMOVABLE_MEDIA)) {
-	    if (fdoExtension->AdapterDescriptor->SrbType ==
-		SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		//
-		// Reinitialize status fields to 0 in case there was a previous request
-		//
+	    //
+	    // Reinitialize status fields to 0 in case there was a previous request
+	    //
 
-		srbEx->SrbStatus = 0;
-		srbExDataCdb16->ScsiStatus = 0;
+	    srbEx->SrbStatus = 0;
+	    srbExDataCdb16->ScsiStatus = 0;
 
-		srbExDataCdb16->CdbLength = 6;
+	    srbExDataCdb16->CdbLength = 6;
 
-		//
-		// Set timeout value
-		//
+	    //
+	    // Set timeout value
+	    //
 
-		srbEx->TimeOutValue = fdoExtension->TimeOutValue;
-
-	    } else {
-		//
-		// Reinitialize status fields to 0 in case there was a previous request
-		//
-
-		srb->SrbStatus = 0;
-		srb->ScsiStatus = 0;
-
-		srb->CdbLength = 6;
-
-		//
-		// Set timeout value.
-		//
-
-		srb->TimeOutValue = fdoExtension->TimeOutValue;
-	    }
+	    srbEx->TimeOutValue = fdoExtension->TimeOutValue;
 
 	    cdb->MEDIA_REMOVAL.OperationCode = SCSIOP_MEDIUM_REMOVAL;
 	    cdb->MEDIA_REMOVAL.Prevent = FALSE;
 
-	    status = ClassSendSrbSynchronous(DeviceObject, srb, NULL, 0, TRUE);
+	    status = ClassSendSrbSynchronous(DeviceObject, srbEx, NULL, 0, TRUE);
 
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
 			"DiskShutdownFlush: Unlock device request sent. Status = %lx\n",
@@ -1302,19 +1246,12 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	// Set up a SHUTDOWN SRB
 	//
 
-	if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	    srbEx->NumSrbExData = 0;
-	    srbEx->SrbExDataOffset[0] = 0;
-	    srbEx->SrbFunction = SRB_FUNCTION_SHUTDOWN;
-	    srbEx->OriginalRequest = Irp;
-	    srbEx->SrbLength = CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE;
-	    srbEx->SrbStatus = 0;
-	} else {
-	    srb->CdbLength = 0;
-	    srb->Function = SRB_FUNCTION_SHUTDOWN;
-	    srb->SrbStatus = 0;
-	    srb->OriginalRequest = Irp;
-	}
+	srbEx->NumSrbExData = 0;
+	srbEx->SrbExDataOffset[0] = 0;
+	srbEx->SrbFunction = SRB_FUNCTION_SHUTDOWN;
+	srbEx->OriginalRequest = Irp;
+	srbEx->SrbLength = CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE;
+	srbEx->SrbStatus = 0;
 
 	//
 	// Set the retry count to zero.
@@ -1326,7 +1263,7 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	// Set up IoCompletion routine address.
 	//
 
-	IoSetCompletionRoutine(Irp, ClassIoComplete, srb, TRUE, TRUE, TRUE);
+	IoSetCompletionRoutine(Irp, ClassIoComplete, srbEx, TRUE, TRUE, TRUE);
 
 	//
 	// Get next stack location and
@@ -1342,7 +1279,7 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	// Save SRB address in next stack for port driver.
 	//
 
-	irpStack->Parameters.Scsi.Srb = srb;
+	irpStack->Parameters.Scsi.Srb = srbEx;
 
 	//
 	// Call the port driver to process the request.
@@ -1376,7 +1313,6 @@ Return Value:
 VOID DiskFlushDispatch(IN PDEVICE_OBJECT Fdo, IN PDISK_GROUP_CONTEXT FlushContext)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
-    PSCSI_REQUEST_BLOCK srb = &FlushContext->Srb.Srb;
     PSTORAGE_REQUEST_BLOCK srbEx = &FlushContext->Srb.SrbEx;
     PIO_STACK_LOCATION irpSp = NULL;
     PSTOR_ADDR_BTL8 storAddrBtl8;
@@ -1386,106 +1322,72 @@ VOID DiskFlushDispatch(IN PDEVICE_OBJECT Fdo, IN PDISK_GROUP_CONTEXT FlushContex
     //
     // Fill in the srb fields appropriately
     //
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	RtlZeroMemory(srbEx, sizeof(FlushContext->Srb.SrbExBuffer));
+    RtlZeroMemory(srbEx, sizeof(FlushContext->Srb.SrbExBuffer));
 
-	srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	srbEx->Signature = SRB_SIGNATURE;
-	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	srbEx->SrbLength = sizeof(FlushContext->Srb.SrbExBuffer);
-	srbEx->RequestPriority = IoGetIoPriorityHint(FlushContext->CurrIrp);
-	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
-	srbEx->TimeOutValue = fdoExt->TimeOutValue * 4;
-	srbEx->RequestTag = SP_UNTAGGED;
-	srbEx->RequestAttribute = SRB_SIMPLE_TAG_REQUEST;
-	srbEx->SrbFlags = fdoExt->SrbFlags;
+    srbEx->Signature = SRB_SIGNATURE;
+    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srbEx->SrbLength = sizeof(FlushContext->Srb.SrbExBuffer);
+    srbEx->RequestPriority = IoGetIoPriorityHint(FlushContext->CurrIrp);
+    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    srbEx->TimeOutValue = fdoExt->TimeOutValue * 4;
+    srbEx->RequestTag = SP_UNTAGGED;
+    srbEx->RequestAttribute = SRB_SIMPLE_TAG_REQUEST;
+    srbEx->SrbFlags = fdoExt->SrbFlags;
 
-	//
-	// Set up address fields
-	//
+    //
+    // Set up address fields
+    //
 
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
-
-    } else {
-	RtlZeroMemory(srb, SCSI_REQUEST_BLOCK_SIZE);
-
-	srb->Length = SCSI_REQUEST_BLOCK_SIZE;
-	srb->TimeOutValue = fdoExt->TimeOutValue * 4;
-	srb->QueueTag = SP_UNTAGGED;
-	srb->QueueAction = SRB_SIMPLE_TAG_REQUEST;
-	srb->SrbFlags = fdoExt->SrbFlags;
-    }
+    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
     //
     // If write caching is enabled then send down a synchronize cache request
     //
     if (TEST_FLAG(fdoExt->DeviceFlags, DEV_WRITE_CACHE)) {
-	if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	    srbEx->NumSrbExData = 1;
+	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+	srbEx->NumSrbExData = 1;
 
-	    //
-	    // Set up SCSI SRB extended data fields
-	    //
+	//
+	// Set up SCSI SRB extended data fields
+	//
 
-	    srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-					sizeof(STOR_ADDR_BTL8);
-	    if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-		srbEx->SrbLength) {
-		srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-							  srbEx->SrbExDataOffset[0]);
-		srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
-		srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
-		srbExDataCdb16->CdbLength = 10;
-		srbExDataCdb16->Cdb[0] = SCSIOP_SYNCHRONIZE_CACHE;
-	    } else {
-		// Should not happen
-		NT_ASSERT(FALSE);
-		return;
-	    }
-
+	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
+	    sizeof(STOR_ADDR_BTL8);
+	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
+	    srbEx->SrbLength) {
+	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
+						      srbEx->SrbExDataOffset[0]);
+	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
+	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+	    srbExDataCdb16->CdbLength = 10;
+	    srbExDataCdb16->Cdb[0] = SCSIOP_SYNCHRONIZE_CACHE;
 	} else {
-	    srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	    srb->CdbLength = 10;
-	    srb->Cdb[0] = SCSIOP_SYNCHRONIZE_CACHE;
+	    // Should not happen
+	    NT_ASSERT(FALSE);
+	    return;
 	}
 
 	TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_SCSI,
 		    "DiskFlushDispatch: sending sync cache\n"));
 
-	SyncCacheStatus = ClassSendSrbSynchronous(Fdo, srb, NULL, 0, TRUE);
+	SyncCacheStatus = ClassSendSrbSynchronous(Fdo, srbEx, NULL, 0, TRUE);
     }
 
     //
     // Set up a FLUSH SRB
     //
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx->SrbFunction = SRB_FUNCTION_FLUSH;
-	srbEx->NumSrbExData = 0;
-	srbEx->SrbExDataOffset[0] = 0;
-	srbEx->OriginalRequest = FlushContext->CurrIrp;
-	srbEx->SrbStatus = 0;
+    srbEx->SrbFunction = SRB_FUNCTION_FLUSH;
+    srbEx->NumSrbExData = 0;
+    srbEx->SrbExDataOffset[0] = 0;
+    srbEx->OriginalRequest = FlushContext->CurrIrp;
+    srbEx->SrbStatus = 0;
 
-	//
-	// Make sure that this srb does not get freed
-	//
-	SET_FLAG(srbEx->SrbFlags, SRB_CLASS_FLAGS_PERSISTANT);
-
-    } else {
-	srb->Function = SRB_FUNCTION_FLUSH;
-	srb->CdbLength = 0;
-	srb->OriginalRequest = FlushContext->CurrIrp;
-	srb->SrbStatus = 0;
-	srb->ScsiStatus = 0;
-
-	//
-	// Make sure that this srb does not get freed
-	//
-	SET_FLAG(srb->SrbFlags, SRB_CLASS_FLAGS_PERSISTANT);
-    }
+    //
+    // Make sure that this srb does not get freed
+    //
+    SET_FLAG(srbEx->SrbFlags, SRB_CLASS_FLAGS_PERSISTANT);
 
     //
     // Make sure that this request does not get retried
@@ -1500,7 +1402,7 @@ VOID DiskFlushDispatch(IN PDEVICE_OBJECT Fdo, IN PDISK_GROUP_CONTEXT FlushContex
     irpSp = IoGetNextIrpStackLocation(FlushContext->CurrIrp);
 
     irpSp->MajorFunction = IRP_MJ_SCSI;
-    irpSp->Parameters.Scsi.Srb = srb;
+    irpSp->Parameters.Scsi.Srb = srbEx;
 
     IoSetCompletionRoutine(FlushContext->CurrIrp, DiskFlushComplete,
 			   (PVOID)(ULONG_PTR)SyncCacheStatus, TRUE, TRUE, TRUE);
@@ -1564,7 +1466,7 @@ NTAPI NTSTATUS DiskFlushComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Co
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_SCSI,
 		"DiskFlushComplete: completing irp %p\n", Irp));
-    status = ClassIoComplete(Fdo, Irp, &FlushContext->Srb.Srb);
+    status = ClassIoComplete(Fdo, Irp, &FlushContext->Srb.SrbEx);
 
     //
     // Make sure that ClassIoComplete did not decide to retry this request
@@ -1633,7 +1535,6 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo,
 {
     PFUNCTIONAL_DEVICE_EXTENSION FdoExt = Fdo->DeviceExtension;
     PCDB cdb;
-    SCSI_REQUEST_BLOCK srb = { 0 };
     ULONG retries = 1;
     ULONG length2;
     NTSTATUS status;
@@ -1643,7 +1544,6 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo,
     PSTORAGE_REQUEST_BLOCK srbEx = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
     PSTOR_ADDR_BTL8 storAddrBtl8;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16;
-    PSCSI_REQUEST_BLOCK srbPtr;
 
     //
     // Check whether block length is available
@@ -1697,67 +1597,49 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo,
     // Build the MODE SELECT CDB.
     //
 
-    if (FdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	//
-	// Set up STORAGE_REQUEST_BLOCK fields
-	//
+    //
+    // Set up STORAGE_REQUEST_BLOCK fields
+    //
 
-	srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	srbEx->Signature = SRB_SIGNATURE;
-	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	srbEx->SrbLength = sizeof(srbExBuffer);
-	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	srbEx->RequestPriority = IoPriorityNormal;
-	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
-	srbEx->NumSrbExData = 1;
+    srbEx->Signature = SRB_SIGNATURE;
+    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srbEx->SrbLength = sizeof(srbExBuffer);
+    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+    srbEx->RequestPriority = IoPriorityNormal;
+    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    srbEx->NumSrbExData = 1;
 
-	// Set timeout value from device extension.
-	srbEx->TimeOutValue = FdoExt->TimeOutValue * 2;
+    // Set timeout value from device extension.
+    srbEx->TimeOutValue = FdoExt->TimeOutValue * 2;
 
-	//
-	// Set up address fields
-	//
+    //
+    // Set up address fields
+    //
 
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
-	//
-	// Set up SCSI SRB extended data fields
-	//
+    //
+    // Set up SCSI SRB extended data fields
+    //
 
-	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8);
-	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <= srbEx->SrbLength) {
-	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx + srbEx->SrbExDataOffset[0]);
-	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
-	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
-	    srbExDataCdb16->CdbLength = 6;
+    srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8);
+    if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <= srbEx->SrbLength) {
+	srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx + srbEx->SrbExDataOffset[0]);
+	srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
+	srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+	srbExDataCdb16->CdbLength = 6;
 
-	    cdb = (PCDB)srbExDataCdb16->Cdb;
-	} else {
-	    // Should not happen
-	    NT_ASSERT(FALSE);
-
-	    FREE_POOL(buffer);
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-			"DiskModeSelect: Insufficient extended SRB size\n"));
-	    return STATUS_INTERNAL_ERROR;
-	}
-
-	srbPtr = (PSCSI_REQUEST_BLOCK)srbEx;
-
+	cdb = (PCDB)srbExDataCdb16->Cdb;
     } else {
-	srb.CdbLength = 6;
-	cdb = (PCDB)srb.Cdb;
+	// Should not happen
+	NT_ASSERT(FALSE);
 
-	//
-	// Set timeout value from device extension.
-	//
-
-	srb.TimeOutValue = FdoExt->TimeOutValue * 2;
-
-	srbPtr = &srb;
+	FREE_POOL(buffer);
+	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
+		    "DiskModeSelect: Insufficient extended SRB size\n"));
+	return STATUS_INTERNAL_ERROR;
     }
 
     cdb->MODE_SELECT.OperationCode = SCSIOP_MODE_SELECT;
@@ -1767,7 +1649,7 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo,
 
 Retry:
 
-    status = ClassSendSrbSynchronous(Fdo, srbPtr, buffer, length2, TRUE);
+    status = ClassSendSrbSynchronous(Fdo, srbEx, buffer, length2, TRUE);
 
     if (status == STATUS_VERIFY_REQUIRED) {
 	//
@@ -1783,7 +1665,7 @@ Retry:
 	    goto Retry;
 	}
 
-    } else if (SRB_STATUS(srbPtr->SrbStatus) == SRB_STATUS_DATA_OVERRUN) {
+    } else if (SRB_STATUS(srbEx->SrbStatus) == SRB_STATUS_DATA_OVERRUN) {
 	status = STATUS_SUCCESS;
     }
 
@@ -1821,25 +1703,21 @@ NTAPI VOID DisableWriteCache(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 {
     PDISK_VERIFY_WORKITEM_CONTEXT WorkContext = (PDISK_VERIFY_WORKITEM_CONTEXT)Context;
-    PIRP Irp = NULL;
     PFUNCTIONAL_DEVICE_EXTENSION FdoExt = (PFUNCTIONAL_DEVICE_EXTENSION)Fdo->DeviceExtension;
     PDISK_DATA DiskData = (PDISK_DATA)FdoExt->CommonExtension.DriverData;
-    PVERIFY_INFORMATION verifyInfo = NULL;
-    PSCSI_REQUEST_BLOCK Srb = NULL;
     PCDB Cdb = NULL;
     LARGE_INTEGER byteOffset;
     LARGE_INTEGER sectorOffset;
     ULONG sectorCount;
     NTSTATUS status = STATUS_SUCCESS;
-    PSTORAGE_REQUEST_BLOCK srbEx = NULL;
+    PSTORAGE_REQUEST_BLOCK srbEx = WorkContext->Srb;
     PSTOR_ADDR_BTL8 storAddrBtl8 = NULL;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16 = NULL;
 
     NT_ASSERT(WorkContext != NULL);
 
-    Srb = WorkContext->Srb;
-    Irp = WorkContext->Irp;
-    verifyInfo = (PVERIFY_INFORMATION)Irp->SystemBuffer;
+    PIRP Irp = WorkContext->Irp;
+    PVERIFY_INFORMATION verifyInfo = Irp->SystemBuffer;
 
     //
     // We don't need to hold on to this memory as
@@ -1880,110 +1758,74 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
     //
     // Initialize SCSI SRB for a verify CDB
     //
-    if (FdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	RtlZeroMemory(Srb, CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE);
-	srbEx = (PSTORAGE_REQUEST_BLOCK)Srb;
+    RtlZeroMemory(srbEx, CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE);
 
-	//
-	// Set up STORAGE_REQUEST_BLOCK fields
-	//
+    //
+    // Set up STORAGE_REQUEST_BLOCK fields
+    //
 
-	srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	srbEx->Signature = SRB_SIGNATURE;
-	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	srbEx->SrbLength = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
-	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
-	srbEx->NumSrbExData = 1;
+    srbEx->Signature = SRB_SIGNATURE;
+    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srbEx->SrbLength = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+    srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
+    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    srbEx->NumSrbExData = 1;
 
-	//
-	// Set up address fields
-	//
+    //
+    // Set up address fields
+    //
 
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
-	//
-	// Set up SCSI SRB extended data fields
-	//
+    //
+    // Set up SCSI SRB extended data fields
+    //
 
-	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-				    sizeof(STOR_ADDR_BTL8);
-	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-	    srbEx->SrbLength) {
-	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-						      srbEx->SrbExDataOffset[0]);
-	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
-	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+    srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
+	sizeof(STOR_ADDR_BTL8);
+    if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
+	srbEx->SrbLength) {
+	srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
+						  srbEx->SrbExDataOffset[0]);
+	srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
+	srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
 
-	    Cdb = (PCDB)srbExDataCdb16->Cdb;
-	    if (TEST_FLAG(FdoExt->DeviceFlags, DEV_USE_16BYTE_CDB)) {
-		srbExDataCdb16->CdbLength = 16;
-		Cdb->CDB16.OperationCode = SCSIOP_VERIFY16;
-	    } else {
-		srbExDataCdb16->CdbLength = 10;
-		Cdb->CDB10.OperationCode = SCSIOP_VERIFY;
-	    }
-	} else {
-	    // Should not happen
-	    NT_ASSERT(FALSE);
-
-	    FREE_POOL(Srb);
-	    FREE_POOL(WorkContext);
-	    status = STATUS_INTERNAL_ERROR;
-	}
-
-    } else {
-	RtlZeroMemory(Srb, SCSI_REQUEST_BLOCK_SIZE);
-
-	Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-
-	Cdb = (PCDB)Srb->Cdb;
+	Cdb = (PCDB)srbExDataCdb16->Cdb;
 	if (TEST_FLAG(FdoExt->DeviceFlags, DEV_USE_16BYTE_CDB)) {
-	    Srb->CdbLength = 16;
+	    srbExDataCdb16->CdbLength = 16;
 	    Cdb->CDB16.OperationCode = SCSIOP_VERIFY16;
 	} else {
-	    Srb->CdbLength = 10;
+	    srbExDataCdb16->CdbLength = 10;
 	    Cdb->CDB10.OperationCode = SCSIOP_VERIFY;
 	}
+    } else {
+	// Should not happen
+	NT_ASSERT(FALSE);
+
+	FREE_POOL(srbEx);
+	FREE_POOL(WorkContext);
+	status = STATUS_INTERNAL_ERROR;
     }
 
     while (NT_SUCCESS(status) && (sectorCount != 0)) {
 	USHORT numSectors = (USHORT)min(sectorCount, MAX_SECTORS_PER_VERIFY);
 
-	if (FdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	    //
-	    // Reset status fields
-	    //
+	//
+	// Reset status fields
+	//
 
-	    srbEx->SrbStatus = 0;
-	    srbExDataCdb16->ScsiStatus = 0;
+	srbEx->SrbStatus = 0;
+	srbExDataCdb16->ScsiStatus = 0;
 
-	    //
-	    // Calculate the request timeout value based
-	    // on  the number of sectors  being verified
-	    //
+	//
+	// Calculate the request timeout value based
+	// on  the number of sectors  being verified
+	//
 
-	    srbEx->TimeOutValue = ((numSectors + 0x7F) >> 7) * FdoExt->TimeOutValue;
-	} else {
-	    //
-	    // Reset status fields
-	    //
-
-	    Srb->SrbStatus = 0;
-	    Srb->ScsiStatus = 0;
-
-	    //
-	    // Calculate the request timeout value based
-	    // on  the number of sectors  being verified
-	    //
-
-	    Srb->TimeOutValue = ((numSectors + 0x7F) >> 7) * FdoExt->TimeOutValue;
-	}
+	srbEx->TimeOutValue = ((numSectors + 0x7F) >> 7) * FdoExt->TimeOutValue;
 
 	//
 	// Update verify CDB info.
@@ -2008,7 +1850,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 	    Cdb->CDB10.TransferBlocksLsb = ((PFOUR_BYTE)&numSectors)->Byte0;
 	}
 
-	status = ClassSendSrbSynchronous(Fdo, Srb, NULL, 0, FALSE);
+	status = ClassSendSrbSynchronous(Fdo, srbEx, NULL, 0, FALSE);
 
 	NT_ASSERT(status != STATUS_NONEXISTENT_SECTOR);
 
@@ -2024,7 +1866,7 @@ NTAPI VOID DiskIoctlVerifyThread(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
     ClassReleaseRemoveLock(Fdo, Irp);
     ClassCompleteRequest(Fdo, Irp, IO_NO_INCREMENT);
 
-    FREE_POOL(Srb);
+    FREE_POOL(srbEx);
     FREE_POOL(WorkContext);
 }
 
@@ -2050,11 +1892,10 @@ Return Value:
     None.
 
 --*/
-NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT Fdo, PSCSI_REQUEST_BLOCK Srb,
+NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT Fdo, PSTORAGE_REQUEST_BLOCK srbEx,
 			       NTSTATUS *Status, BOOLEAN *Retry)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
-    PSTORAGE_REQUEST_BLOCK srbEx;
     PCDB cdb = NULL;
     UCHAR scsiStatus = 0;
     UCHAR senseBufferLength = 0;
@@ -2063,37 +1904,25 @@ NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT Fdo, PSCSI_REQUEST_BLOCK Srb,
 
     //
     // Get relevant fields from SRB
+    // Look for SCSI SRB specific fields
     //
-    if (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srbEx = (PSTORAGE_REQUEST_BLOCK)Srb;
+    if ((srbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI) &&
+	(srbEx->NumSrbExData > 0)) {
+	cdb = GetSrbScsiData(srbEx, NULL, NULL, &scsiStatus, &senseBuffer,
+			     &senseBufferLength);
 
 	//
-	// Look for SCSI SRB specific fields
+	// cdb and sense buffer should not be NULL
 	//
-	if ((srbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI) &&
-	    (srbEx->NumSrbExData > 0)) {
-	    cdb = GetSrbScsiData(srbEx, NULL, NULL, &scsiStatus, &senseBuffer,
-				 &senseBufferLength);
+	NT_ASSERT(cdb != NULL);
+	NT_ASSERT(senseBuffer != NULL);
+    }
 
-	    //
-	    // cdb and sense buffer should not be NULL
-	    //
-	    NT_ASSERT(cdb != NULL);
-	    NT_ASSERT(senseBuffer != NULL);
-	}
-
-	if (cdb == NULL) {
-	    //
-	    // Use a cdb that is all 0s
-	    //
-	    cdb = &noOp;
-	}
-
-    } else {
-	cdb = (PCDB)(Srb->Cdb);
-	scsiStatus = Srb->ScsiStatus;
-	senseBufferLength = Srb->SenseInfoBufferLength;
-	senseBuffer = Srb->SenseInfoBuffer;
+    if (cdb == NULL) {
+	//
+	// Use a cdb that is all 0s
+	//
+	cdb = &noOp;
     }
 
     if (*Status == STATUS_DATA_OVERRUN && (cdb != NULL) &&
@@ -2106,7 +1935,7 @@ NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT Fdo, PSCSI_REQUEST_BLOCK Srb,
 
 	fdoExtension->ErrorCount++;
 
-    } else if (SRB_STATUS(Srb->SrbStatus) == SRB_STATUS_ERROR &&
+    } else if (SRB_STATUS(srbEx->SrbStatus) == SRB_STATUS_ERROR &&
 	       scsiStatus == SCSISTAT_BUSY) {
 	//
 	// a disk drive should never be busy this long. Reset the scsi bus
@@ -2128,7 +1957,7 @@ NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT Fdo, PSCSI_REQUEST_BLOCK Srb,
 	// See if this might indicate that something on the drive has changed.
 	//
 
-	if ((Srb->SrbStatus & SRB_STATUS_AUTOSENSE_VALID) && (senseBuffer != NULL) &&
+	if ((srbEx->SrbStatus & SRB_STATUS_AUTOSENSE_VALID) && (senseBuffer != NULL) &&
 	    (cdb != NULL)) {
 	    BOOLEAN validSense = FALSE;
 	    UCHAR senseKey = 0;
@@ -2281,7 +2110,7 @@ NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT Fdo, PSCSI_REQUEST_BLOCK Srb,
 	    // table.
 	    //
 
-	    switch (SRB_STATUS(Srb->SrbStatus)) {
+	    switch (SRB_STATUS(srbEx->SrbStatus)) {
 	    case SRB_STATUS_INVALID_LUN:
 	    case SRB_STATUS_INVALID_TARGET_ID:
 	    case SRB_STATUS_NO_DEVICE:
@@ -2304,7 +2133,7 @@ NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT Fdo, PSCSI_REQUEST_BLOCK Srb,
 
 		break;
 	    }
-	    } // end switch(Srb->SrbStatus)
+	    } // end switch(srbEx->SrbStatus)
 	}
 
 	if (invalidatePartitionTable &&
@@ -2427,7 +2256,6 @@ VOID ResetBus(IN PDEVICE_OBJECT Fdo)
     PIRP irp;
 
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
-    PSCSI_REQUEST_BLOCK srb;
     PCOMPLETION_CONTEXT context;
     PSTORAGE_REQUEST_BLOCK srbEx = NULL;
     PSTOR_ADDR_BTL8 storAddrBtl8 = NULL;
@@ -2452,52 +2280,32 @@ VOID ResetBus(IN PDEVICE_OBJECT Fdo)
     //
 
     context->DeviceObject = Fdo;
-    srb = &context->Srb.Srb;
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx = &context->Srb.SrbEx;
+    srbEx = &context->Srb.SrbEx;
 
-	//
-	// Zero out srb
-	//
+    //
+    // Zero out srb
+    //
 
-	RtlZeroMemory(srbEx, sizeof(context->Srb.SrbExBuffer));
+    RtlZeroMemory(srbEx, sizeof(context->Srb.SrbExBuffer));
 
-	//
-	// Set up STORAGE_REQUEST_BLOCK fields
-	//
+    //
+    // Set up STORAGE_REQUEST_BLOCK fields
+    //
 
-	srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	srbEx->Signature = SRB_SIGNATURE;
-	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	srbEx->SrbLength = sizeof(context->Srb.SrbExBuffer);
-	srbEx->SrbFunction = SRB_FUNCTION_RESET_BUS;
-	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    srbEx->Signature = SRB_SIGNATURE;
+    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srbEx->SrbLength = sizeof(context->Srb.SrbExBuffer);
+    srbEx->SrbFunction = SRB_FUNCTION_RESET_BUS;
+    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
 
-	//
-	// Set up address fields
-	//
+    //
+    // Set up address fields
+    //
 
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
-
-    } else {
-	//
-	// Zero out srb.
-	//
-
-	RtlZeroMemory(srb, SCSI_REQUEST_BLOCK_SIZE);
-
-	//
-	// Write length to SRB.
-	//
-
-	srb->Length = SCSI_REQUEST_BLOCK_SIZE;
-
-	srb->Function = SRB_FUNCTION_RESET_BUS;
-    }
+    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
     //
     // Build the asynchronous request to be sent to the port driver.
@@ -2519,18 +2327,14 @@ VOID ResetBus(IN PDEVICE_OBJECT Fdo)
 
     irpStack->MajorFunction = IRP_MJ_SCSI;
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx->RequestPriority = IoGetIoPriorityHint(irp);
-	srbEx->OriginalRequest = irp;
-    } else {
-	srb->OriginalRequest = irp;
-    }
+    srbEx->RequestPriority = IoGetIoPriorityHint(irp);
+    srbEx->OriginalRequest = irp;
 
     //
     // Store the SRB address in next stack for port driver.
     //
 
-    irpStack->Parameters.Scsi.Srb = srb;
+    irpStack->Parameters.Scsi.Srb = srbEx;
 
     //
     // Call the port driver with the IRP.
@@ -3535,15 +3339,12 @@ NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 
     PMODE_PARAMETER_HEADER modeData;
     PMODE_PARAMETER_BLOCK blockDescriptor;
-    PSCSI_REQUEST_BLOCK srb;
     PCDB cdb;
     ULONG modeLength;
     ULONG retries = 4;
     UCHAR densityCode = 0;
     BOOLEAN writable = TRUE;
     BOOLEAN mediaPresent = FALSE;
-    ULONG srbSize;
-    PSTORAGE_REQUEST_BLOCK srbEx = NULL;
     PSTOR_ADDR_BTL8 storAddrBtl8 = NULL;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16 = NULL;
 
@@ -3561,94 +3362,69 @@ NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-    } else {
-	srbSize = SCSI_REQUEST_BLOCK_SIZE;
-    }
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
 
-    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
+    PSTORAGE_REQUEST_BLOCK srbEx = ExAllocatePoolWithTag(NonPagedPool,
+							 srbSize, DISK_TAG_SRB);
 
-    if (srb == NULL) {
+    if (srbEx == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "DiskIoctlGetMediaTypesEx: Unable to allocate memory.\n"));
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(srb, srbSize);
+    RtlZeroMemory(srbEx, srbSize);
 
     //
     // Send a TUR to determine if media is present.
     //
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx = (PSTORAGE_REQUEST_BLOCK)srb;
+    srbEx->Signature = SRB_SIGNATURE;
+    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srbEx->SrbLength = srbSize;
+    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+    srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
+    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    srbEx->NumSrbExData = 1;
 
-	//
-	// Set up STORAGE_REQUEST_BLOCK fields
-	//
+    // Set timeout value.
+    srbEx->TimeOutValue = fdoExtension->TimeOutValue;
 
-	srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	srbEx->Signature = SRB_SIGNATURE;
-	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	srbEx->SrbLength = srbSize;
-	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
-	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
-	srbEx->NumSrbExData = 1;
+    //
+    // Set up address fields
+    //
 
-	// Set timeout value.
-	srbEx->TimeOutValue = fdoExtension->TimeOutValue;
+    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
-	//
-	// Set up address fields
-	//
+    //
+    // Set up SCSI SRB extended data fields
+    //
 
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
+	sizeof(STOR_ADDR_BTL8);
+    if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
+	srbEx->SrbLength) {
+	srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx + srbEx->SrbExDataOffset[0]);
+	srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
+	srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+	srbExDataCdb16->CdbLength = 6;
 
-	//
-	// Set up SCSI SRB extended data fields
-	//
-
-	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-				    sizeof(STOR_ADDR_BTL8);
-	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-	    srbEx->SrbLength) {
-	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-						      srbEx->SrbExDataOffset[0]);
-	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
-	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
-	    srbExDataCdb16->CdbLength = 6;
-
-	    cdb = (PCDB)srbExDataCdb16->Cdb;
-	} else {
-	    // Should not happen
-	    NT_ASSERT(FALSE);
-
-	    FREE_POOL(srb);
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-			"DiskIoctlGetMediaTypesEx: Insufficient extended SRB size.\n"));
-	    return STATUS_INTERNAL_ERROR;
-	}
-
+	cdb = (PCDB)srbExDataCdb16->Cdb;
     } else {
-	srb->Length = SCSI_REQUEST_BLOCK_SIZE;
-	srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	srb->CdbLength = 6;
-	cdb = (PCDB)srb->Cdb;
+	// Should not happen
+	NT_ASSERT(FALSE);
 
-	//
-	// Set timeout value.
-	//
-
-	srb->TimeOutValue = fdoExtension->TimeOutValue;
+	FREE_POOL(srbEx);
+	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
+		    "DiskIoctlGetMediaTypesEx: Insufficient extended SRB size.\n"));
+	return STATUS_INTERNAL_ERROR;
     }
+
     cdb->CDB6GENERIC.OperationCode = SCSIOP_TEST_UNIT_READY;
 
-    status = ClassSendSrbSynchronous(DeviceObject, srb, NULL, 0, FALSE);
+    status = ClassSendSrbSynchronous(DeviceObject, srbEx, NULL, 0, FALSE);
 
     if (NT_SUCCESS(status)) {
 	mediaPresent = TRUE;
@@ -3660,7 +3436,7 @@ NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "DiskIoctlGetMediaTypesEx: Unable to allocate memory.\n"));
-	FREE_POOL(srb);
+	FREE_POOL(srbEx);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -3670,27 +3446,15 @@ NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
     // Build the MODE SENSE CDB using previous SRB.
     //
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx->SrbStatus = 0;
-	srbExDataCdb16->ScsiStatus = 0;
-	srbExDataCdb16->CdbLength = 6;
+    srbEx->SrbStatus = 0;
+    srbExDataCdb16->ScsiStatus = 0;
+    srbExDataCdb16->CdbLength = 6;
 
-	//
-	// Set timeout value from device extension.
-	//
+    //
+    // Set timeout value from device extension.
+    //
 
-	srbEx->TimeOutValue = fdoExtension->TimeOutValue;
-    } else {
-	srb->SrbStatus = 0;
-	srb->ScsiStatus = 0;
-	srb->CdbLength = 6;
-
-	//
-	// Set timeout value from device extension.
-	//
-
-	srb->TimeOutValue = fdoExtension->TimeOutValue;
-    }
+    srbEx->TimeOutValue = fdoExtension->TimeOutValue;
 
     //
     // Page code of 0x3F will return all pages.
@@ -3706,7 +3470,7 @@ NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
     cdb->MODE_SENSE.AllocationLength = (UCHAR)modeLength;
 
 Retry:
-    status = ClassSendSrbSynchronous(DeviceObject, srb, modeData, modeLength, FALSE);
+    status = ClassSendSrbSynchronous(DeviceObject, srbEx, modeData, modeLength, FALSE);
 
     if (status == STATUS_VERIFY_REQUIRED) {
 	if (retries--) {
@@ -3716,7 +3480,7 @@ Retry:
 
 	    goto Retry;
 	}
-    } else if (SRB_STATUS(srb->SrbStatus) == SRB_STATUS_DATA_OVERRUN) {
+    } else if (SRB_STATUS(srbEx->SrbStatus) == SRB_STATUS_DATA_OVERRUN) {
 	status = STATUS_SUCCESS;
     }
 
@@ -3747,7 +3511,7 @@ Retry:
 		    status));
     }
 
-    FREE_POOL(srb);
+    FREE_POOL(srbEx);
     FREE_POOL(modeData);
 
     return status;
@@ -3904,13 +3668,10 @@ Return Value:
 NTSTATUS DiskIoctlVerify(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PVERIFY_INFORMATION verifyInfo = Irp->SystemBuffer;
     PDISK_VERIFY_WORKITEM_CONTEXT Context = NULL;
-    PSCSI_REQUEST_BLOCK srb;
     LARGE_INTEGER byteOffset;
-    ULONG srbSize;
 
     //
     // Validate the request.
@@ -3926,12 +3687,9 @@ NTSTATUS DiskIoctlVerify(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
 	return STATUS_INFO_LENGTH_MISMATCH;
     }
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-    } else {
-	srbSize = SCSI_REQUEST_BLOCK_SIZE;
-    }
-    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    PSTORAGE_REQUEST_BLOCK srb = ExAllocatePoolWithTag(NonPagedPool,
+						       srbSize, DISK_TAG_SRB);
 
     if (srb == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4024,13 +3782,10 @@ NTSTATUS DiskIoctlReassignBlocks(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     NTSTATUS status;
     PREASSIGN_BLOCKS badBlocks = Irp->SystemBuffer;
-    PSCSI_REQUEST_BLOCK srb;
     PCDB cdb;
     ULONG bufferSize;
     ULONG blockNumber;
     ULONG blockCount;
-    ULONG srbSize;
-    PSTORAGE_REQUEST_BLOCK srbEx;
     PSTOR_ADDR_BTL8 storAddrBtl8;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16;
 
@@ -4067,20 +3822,17 @@ NTSTATUS DiskIoctlReassignBlocks(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp
 	return STATUS_INFO_LENGTH_MISMATCH;
     }
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-    } else {
-	srbSize = SCSI_REQUEST_BLOCK_SIZE;
-    }
-    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    PSTORAGE_REQUEST_BLOCK srbEx = ExAllocatePoolWithTag(NonPagedPool,
+							 srbSize, DISK_TAG_SRB);
 
-    if (srb == NULL) {
+    if (srbEx == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "DiskIoctlReassignBlocks: Unable to allocate memory.\n"));
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(srb, srbSize);
+    RtlZeroMemory(srbEx, srbSize);
 
     //
     // Build the data buffer to be transferred in the input buffer.
@@ -4120,78 +3872,55 @@ NTSTATUS DiskIoctlReassignBlocks(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp
     // Build a SCSI SRB containing a SCSIOP_REASSIGN_BLOCKS cdb
     //
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx = (PSTORAGE_REQUEST_BLOCK)srb;
+    srbEx->Signature = SRB_SIGNATURE;
+    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srbEx->SrbLength = srbSize;
+    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+    srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
+    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    srbEx->NumSrbExData = 1;
 
-	//
-	// Set up STORAGE_REQUEST_BLOCK fields
-	//
+    // Set timeout value.
+    srbEx->TimeOutValue = fdoExtension->TimeOutValue;
 
-	srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	srbEx->Signature = SRB_SIGNATURE;
-	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	srbEx->SrbLength = srbSize;
-	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
-	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
-	srbEx->NumSrbExData = 1;
+    //
+    // Set up address fields
+    //
 
-	// Set timeout value.
-	srbEx->TimeOutValue = fdoExtension->TimeOutValue;
+    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
-	//
-	// Set up address fields
-	//
+    //
+    // Set up SCSI SRB extended data fields
+    //
 
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
+	sizeof(STOR_ADDR_BTL8);
+    if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
+	srbEx->SrbLength) {
+	srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
+						  srbEx->SrbExDataOffset[0]);
+	srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
+	srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+	srbExDataCdb16->CdbLength = 6;
 
-	//
-	// Set up SCSI SRB extended data fields
-	//
-
-	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-				    sizeof(STOR_ADDR_BTL8);
-	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-	    srbEx->SrbLength) {
-	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-						      srbEx->SrbExDataOffset[0]);
-	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
-	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
-	    srbExDataCdb16->CdbLength = 6;
-
-	    cdb = (PCDB)srbExDataCdb16->Cdb;
-	} else {
-	    // Should not happen
-	    NT_ASSERT(FALSE);
-
-	    FREE_POOL(srb);
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-			"DiskIoctlReassignBlocks: Insufficient extended SRB size.\n"));
-	    return STATUS_INTERNAL_ERROR;
-	}
-
+	cdb = (PCDB)srbExDataCdb16->Cdb;
     } else {
-	srb->Length = SCSI_REQUEST_BLOCK_SIZE;
-	srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	srb->CdbLength = 6;
+	// Should not happen
+	NT_ASSERT(FALSE);
 
-	//
-	// Set timeout value.
-	//
-
-	srb->TimeOutValue = fdoExtension->TimeOutValue;
-
-	cdb = (PCDB)srb->Cdb;
+	FREE_POOL(srbEx);
+	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
+		    "DiskIoctlReassignBlocks: Insufficient extended SRB size.\n"));
+	return STATUS_INTERNAL_ERROR;
     }
 
     cdb->CDB6GENERIC.OperationCode = SCSIOP_REASSIGN_BLOCKS;
 
-    status = ClassSendSrbSynchronous(DeviceObject, srb, badBlocks, bufferSize, TRUE);
+    status = ClassSendSrbSynchronous(DeviceObject, srbEx, badBlocks, bufferSize, TRUE);
 
-    FREE_POOL(srb);
+    FREE_POOL(srbEx);
     return status;
 }
 
@@ -4222,13 +3951,10 @@ NTSTATUS DiskIoctlReassignBlocksEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP I
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     NTSTATUS status;
     PREASSIGN_BLOCKS_EX badBlocks = Irp->SystemBuffer;
-    PSCSI_REQUEST_BLOCK srb;
     PCDB cdb;
     LARGE_INTEGER blockNumber;
     ULONG bufferSize;
     ULONG blockCount;
-    ULONG srbSize;
-    PSTORAGE_REQUEST_BLOCK srbEx;
     PSTOR_ADDR_BTL8 storAddrBtl8;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16;
 
@@ -4267,20 +3993,17 @@ NTSTATUS DiskIoctlReassignBlocksEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP I
 	return STATUS_INFO_LENGTH_MISMATCH;
     }
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-    } else {
-	srbSize = SCSI_REQUEST_BLOCK_SIZE;
-    }
-    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    PSTORAGE_REQUEST_BLOCK srbEx = ExAllocatePoolWithTag(NonPagedPool,
+							 srbSize, DISK_TAG_SRB);
 
-    if (srb == NULL) {
+    if (srbEx == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "DiskIoctlReassignBlocks: Unable to allocate memory.\n"));
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(srb, srbSize);
+    RtlZeroMemory(srbEx, srbSize);
 
     //
     // Build the data buffer to be transferred in the input buffer.
@@ -4319,79 +4042,56 @@ NTSTATUS DiskIoctlReassignBlocksEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP I
     // Build a SCSI SRB containing a SCSIOP_REASSIGN_BLOCKS cdb
     //
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx = (PSTORAGE_REQUEST_BLOCK)srb;
+    srbEx->Signature = SRB_SIGNATURE;
+    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srbEx->SrbLength = srbSize;
+    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+    srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
+    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    srbEx->NumSrbExData = 1;
 
-	//
-	// Set up STORAGE_REQUEST_BLOCK fields
-	//
+    // Set timeout value.
+    srbEx->TimeOutValue = fdoExtension->TimeOutValue;
 
-	srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	srbEx->Signature = SRB_SIGNATURE;
-	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	srbEx->SrbLength = srbSize;
-	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
-	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
-	srbEx->NumSrbExData = 1;
+    //
+    // Set up address fields
+    //
 
-	// Set timeout value.
-	srbEx->TimeOutValue = fdoExtension->TimeOutValue;
+    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
-	//
-	// Set up address fields
-	//
+    //
+    // Set up SCSI SRB extended data fields
+    //
 
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
+	sizeof(STOR_ADDR_BTL8);
+    if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
+	srbEx->SrbLength) {
+	srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
+						  srbEx->SrbExDataOffset[0]);
+	srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
+	srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+	srbExDataCdb16->CdbLength = 6;
 
-	//
-	// Set up SCSI SRB extended data fields
-	//
-
-	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-				    sizeof(STOR_ADDR_BTL8);
-	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-	    srbEx->SrbLength) {
-	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-						      srbEx->SrbExDataOffset[0]);
-	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
-	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
-	    srbExDataCdb16->CdbLength = 6;
-
-	    cdb = (PCDB)srbExDataCdb16->Cdb;
-	} else {
-	    // Should not happen
-	    NT_ASSERT(FALSE);
-
-	    FREE_POOL(srb);
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
-			"DiskIoctlReassignBlocks: Insufficient extended SRB size.\n"));
-	    return STATUS_INTERNAL_ERROR;
-	}
-
+	cdb = (PCDB)srbExDataCdb16->Cdb;
     } else {
-	srb->Length = SCSI_REQUEST_BLOCK_SIZE;
-	srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	srb->CdbLength = 6;
+	// Should not happen
+	NT_ASSERT(FALSE);
 
-	//
-	// Set timeout value.
-	//
-
-	srb->TimeOutValue = fdoExtension->TimeOutValue;
-
-	cdb = (PCDB)srb->Cdb;
+	FREE_POOL(srbEx);
+	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
+		    "DiskIoctlReassignBlocks: Insufficient extended SRB size.\n"));
+	return STATUS_INTERNAL_ERROR;
     }
 
     cdb->CDB6GENERIC.OperationCode = SCSIOP_REASSIGN_BLOCKS;
     cdb->CDB6GENERIC.CommandUniqueBits = 1; // LONGLBA
 
-    status = ClassSendSrbSynchronous(DeviceObject, srb, badBlocks, bufferSize, TRUE);
+    status = ClassSendSrbSynchronous(DeviceObject, srbEx, badBlocks, bufferSize, TRUE);
 
-    FREE_POOL(srb);
+    FREE_POOL(srbEx);
     return status;
 }
 
@@ -4422,12 +4122,9 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     NTSTATUS status = STATUS_SUCCESS;
 
     PMODE_PARAMETER_HEADER modeData;
-    PSCSI_REQUEST_BLOCK srb;
     PCDB cdb = NULL;
     ULONG modeLength;
     ULONG retries = 4;
-    ULONG srbSize;
-    PSTORAGE_REQUEST_BLOCK srbEx;
     PSTOR_ADDR_BTL8 storAddrBtl8;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16;
 
@@ -4438,20 +4135,17 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
 		"DiskIoctlIsWritable: DeviceObject %p Irp %p\n", DeviceObject, Irp));
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-    } else {
-	srbSize = SCSI_REQUEST_BLOCK_SIZE;
-    }
-    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, DISK_TAG_SRB);
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    PSTORAGE_REQUEST_BLOCK srbEx = ExAllocatePoolWithTag(NonPagedPool,
+							 srbSize, DISK_TAG_SRB);
 
-    if (srb == NULL) {
+    if (srbEx == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "DiskIoctlIsWritable: Unable to allocate memory.\n"));
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    RtlZeroMemory(srb, srbSize);
+    RtlZeroMemory(srbEx, srbSize);
 
     //
     // Allocate memory for a mode header and then some
@@ -4466,7 +4160,7 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 		    "DiskIoctlIsWritable: Unable to allocate memory.\n"));
-	FREE_POOL(srb);
+	FREE_POOL(srbEx);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -4476,70 +4170,47 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     // Build the MODE SENSE CDB
     //
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx = (PSTORAGE_REQUEST_BLOCK)srb;
+    srbEx->Signature = SRB_SIGNATURE;
+    srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srbEx->SrbLength = srbSize;
+    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+    srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
+    srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    srbEx->NumSrbExData = 1;
 
-	//
-	// Set up STORAGE_REQUEST_BLOCK fields
-	//
+    // Set timeout value.
+    srbEx->TimeOutValue = fdoExtension->TimeOutValue;
 
-	srbEx->Length = FIELD_OFFSET(STORAGE_REQUEST_BLOCK, Signature);
-	srbEx->Function = SRB_FUNCTION_STORAGE_REQUEST_BLOCK;
-	srbEx->Signature = SRB_SIGNATURE;
-	srbEx->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-	srbEx->SrbLength = srbSize;
-	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	srbEx->RequestPriority = IoGetIoPriorityHint(Irp);
-	srbEx->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
-	srbEx->NumSrbExData = 1;
+    //
+    // Set up address fields
+    //
 
-	// Set timeout value.
-	srbEx->TimeOutValue = fdoExtension->TimeOutValue;
+    storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
+    storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
-	//
-	// Set up address fields
-	//
+    //
+    // Set up SCSI SRB extended data fields
+    //
 
-	storAddrBtl8 = (PSTOR_ADDR_BTL8)((PUCHAR)srbEx + srbEx->AddressOffset);
-	storAddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
-	storAddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
+    srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
+	sizeof(STOR_ADDR_BTL8);
+    if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
+	srbEx->SrbLength) {
+	srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
+						  srbEx->SrbExDataOffset[0]);
+	srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
+	srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
+	srbExDataCdb16->CdbLength = 6;
 
-	//
-	// Set up SCSI SRB extended data fields
-	//
-
-	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-				    sizeof(STOR_ADDR_BTL8);
-	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-	    srbEx->SrbLength) {
-	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-						      srbEx->SrbExDataOffset[0]);
-	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
-	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
-	    srbExDataCdb16->CdbLength = 6;
-
-	    cdb = (PCDB)srbExDataCdb16->Cdb;
-	} else {
-	    // Should not happen
-	    NT_ASSERT(FALSE);
-
-	    FREE_POOL(srb);
-	    FREE_POOL(modeData);
-	    return STATUS_INTERNAL_ERROR;
-	}
-
+	cdb = (PCDB)srbExDataCdb16->Cdb;
     } else {
-	srb->Length = SCSI_REQUEST_BLOCK_SIZE;
-	srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	srb->CdbLength = 6;
+	// Should not happen
+	NT_ASSERT(FALSE);
 
-	//
-	// Set timeout value.
-	//
-
-	srb->TimeOutValue = fdoExtension->TimeOutValue;
-
-	cdb = (PCDB)srb->Cdb;
+	FREE_POOL(srbEx);
+	FREE_POOL(modeData);
+	return STATUS_INTERNAL_ERROR;
     }
 
     //
@@ -4556,10 +4227,10 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     cdb->MODE_SENSE.AllocationLength = (UCHAR)modeLength;
 
     while (retries != 0) {
-	status = ClassSendSrbSynchronous(DeviceObject, srb, modeData, modeLength, FALSE);
+	status = ClassSendSrbSynchronous(DeviceObject, srbEx, modeData, modeLength, FALSE);
 
 	if (status != STATUS_VERIFY_REQUIRED) {
-	    if (SRB_STATUS(srb->SrbStatus) == SRB_STATUS_DATA_OVERRUN) {
+	    if (SRB_STATUS(srbEx->SrbStatus) == SRB_STATUS_DATA_OVERRUN) {
 		status = STATUS_SUCCESS;
 	    }
 	    break;
@@ -4573,7 +4244,7 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
 	}
     }
 
-    FREE_POOL(srb);
+    FREE_POOL(srbEx);
     FREE_POOL(modeData);
     return status;
 }

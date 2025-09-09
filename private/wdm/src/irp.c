@@ -177,7 +177,7 @@
 
 #include <wdmp.h>
 #include <scsi.h>
-#include <srb.h>
+#include <srbhelper.h>
 
 PIO_PACKET IopIncomingIoPacketBuffer;
 PIO_PACKET IopOutgoingIoPacketBuffer;
@@ -1443,11 +1443,13 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	     Stack->CompletionRoutine, Stack->Context);
     switch (Stack->MajorFunction) {
     case IRP_MJ_CREATE:
-	DbgPrint("    CREATE  SecurityContext %p Options 0x%x FileAttr 0x%x ShareAccess 0x%x EaLength %d\n",
+	DbgPrint("    CREATE  SecurityContext %p Options 0x%x FileAttr 0x%x "
+		 "ShareAccess 0x%x EaLength %d\n",
 		 Stack->Parameters.Create.SecurityContext, Stack->Parameters.Create.Options,
 		 Stack->Parameters.Create.FileAttributes, Stack->Parameters.Create.ShareAccess,
 		 Stack->Parameters.Create.EaLength);
 	break;
+
     case IRP_MJ_READ:
 	DbgPrint("    READ%s  Length 0x%x Key 0x%x ByteOffset 0x%llx\n",
 		 Stack->MinorFunction == IRP_MN_MDL ? " MDL" : "",
@@ -1455,6 +1457,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.Read.Key,
 		 Stack->Parameters.Read.ByteOffset.QuadPart);
 	break;
+
     case IRP_MJ_WRITE:
 	DbgPrint("    WRITE%s  Length 0x%x Key 0x%x ByteOffset 0x%llx\n",
 		 Stack->MinorFunction == IRP_MN_MDL ? " MDL" : "",
@@ -1462,6 +1465,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		 Stack->Parameters.Write.Key,
 		 Stack->Parameters.Write.ByteOffset.QuadPart);
 	break;
+
     case IRP_MJ_DIRECTORY_CONTROL:
 	DbgPrint("    DIRECTORY-CONTROL  ");
 	switch (Stack->MinorFunction) {
@@ -1482,11 +1486,13 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	    DbgPrint("UNKNOWN-MINOR-FUNCTION\n");
 	}
 	break;
+
     case IRP_MJ_QUERY_INFORMATION:
 	DbgPrint("    QUERY-INFORMATION  FileInformationClass %d Length 0x%x\n",
 		 Stack->Parameters.QueryFile.FileInformationClass,
 		 Stack->Parameters.QueryFile.Length);
 	break;
+
     case IRP_MJ_SET_INFORMATION:
 	DbgPrint("    SET-INFORMATION  FileInformationClass %d Length 0x%x "
 		 "FileObject %p(%p, fcb %p, refcount %d)",
@@ -1507,55 +1513,183 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	    DbgPrint("\n");
 	}
 	break;
+
     case IRP_MJ_QUERY_VOLUME_INFORMATION:
 	DbgPrint("    QUERY-VOLUME-INFORMATION  FsInformationClass %d Length 0x%x\n",
 		 Stack->Parameters.QueryVolume.FsInformationClass,
 		 Stack->Parameters.QueryVolume.Length);
 	break;
+
     case IRP_MJ_FLUSH_BUFFERS:
 	DbgPrint("    FLUSH-BUFFERS\n");
 	break;
+
     case IRP_MJ_CLOSE:
 	DbgPrint("    CLOSE\n");
 	break;
+
     case IRP_MJ_CLEANUP:
 	DbgPrint("    CLEANUP\n");
 	break;
+
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
 	if ((DEVICE_TYPE_FROM_CTL_CODE(Stack->Parameters.DeviceIoControl.IoControlCode) ==
 	     FILE_DEVICE_SCSI) && Stack->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
-	    DbgPrint("    SCSI  SRB %p Length 0x%x Function 0x%x SrbStatus 0x%x ScsiStatus 0x%x\n"
-		     "      PathId 0x%x TargetId 0x%x Lun 0x%x QueueTag 0x%x QueueAction 0x%x\n"
-		     "      CdbLength 0x%x SenseInfoBufferLength 0x%x SrbFlags 0x%x\n"
-		     "      DataTransferLength 0x%x TimeOutValue 0x%x DataBuffer %p\n"
-		     "      SenseInfoBuffer %p NextSrb %p OriginalRequest %p SrbExtension %p\n"
-		     "      InternalStatus 0x%x CDB 0x%08x 0x%08x 0x%08x 0x%08x\n",
-		     Stack->Parameters.Scsi.Srb,
-		     Stack->Parameters.Scsi.Srb->Length,
-		     Stack->Parameters.Scsi.Srb->Function,
-		     Stack->Parameters.Scsi.Srb->SrbStatus,
-		     Stack->Parameters.Scsi.Srb->ScsiStatus,
-		     Stack->Parameters.Scsi.Srb->PathId,
-		     Stack->Parameters.Scsi.Srb->TargetId,
-		     Stack->Parameters.Scsi.Srb->Lun,
-		     Stack->Parameters.Scsi.Srb->QueueTag,
-		     Stack->Parameters.Scsi.Srb->QueueAction,
-		     Stack->Parameters.Scsi.Srb->CdbLength,
-		     Stack->Parameters.Scsi.Srb->SenseInfoBufferLength,
-		     Stack->Parameters.Scsi.Srb->SrbFlags,
-		     Stack->Parameters.Scsi.Srb->DataTransferLength,
-		     Stack->Parameters.Scsi.Srb->TimeOutValue,
-		     Stack->Parameters.Scsi.Srb->DataBuffer,
-		     Stack->Parameters.Scsi.Srb->SenseInfoBuffer,
-		     Stack->Parameters.Scsi.Srb->NextSrb,
-		     Stack->Parameters.Scsi.Srb->OriginalRequest,
-		     Stack->Parameters.Scsi.Srb->SrbExtension,
-		     Stack->Parameters.Scsi.Srb->InternalStatus,
-		     ((PULONG)Stack->Parameters.Scsi.Srb->Cdb)[0],
-		     ((PULONG)Stack->Parameters.Scsi.Srb->Cdb)[1],
-		     ((PULONG)Stack->Parameters.Scsi.Srb->Cdb)[2],
-		     ((PULONG)Stack->Parameters.Scsi.Srb->Cdb)[3]);
+	    PSTORAGE_REQUEST_BLOCK Srb = Stack->Parameters.Scsi.Srb;
+	    DbgPrint("    SCSI  SRB %p Signature 0x%x Verion 0x%x SrbLength 0x%x SrbFunction "
+		     "0x%x SrbStatus 0x%x SrbFlags 0x%x\n"
+		     "      RequestTag 0x%x RequestPriority 0x%x RequestAttribute 0x%x"
+		     " TimeOutValue 0x%x SystemStatus 0x%x\n"
+		     "      AddressOffset 0x%x NumSrbExData 0x%x DataTransferLength 0x%x"
+		     " DataBuffer 0x%p\n"
+		     "      OriginalRequest %p ClassContext %p PortContext %p MiniportContext %p"
+		     " NextSrb %p\n",
+		     Srb, Srb->Signature, Srb->Version, Srb->SrbLength, Srb->SrbFunction,
+		     Srb->SrbStatus, Srb->SrbFlags, Srb->RequestTag, Srb->RequestPriority,
+		     Srb->RequestAttribute, Srb->TimeOutValue, Srb->SystemStatus,
+		     Srb->AddressOffset, Srb->NumSrbExData, Srb->DataTransferLength,
+		     Srb->DataBuffer, Srb->OriginalRequest, Srb->ClassContext,
+		     Srb->PortContext, Srb->MiniportContext, Srb->NextSrb);
+
+	    if (Srb->AddressOffset) {
+		PSTOR_ADDRESS StorAddr = (PVOID)((PUCHAR)Srb + Srb->AddressOffset);
+		if (StorAddr->Type == STOR_ADDRESS_TYPE_BTL8) {
+		    DbgPrint("      BusId %d TargetId %d Lun %d\n",
+			     ((PSTOR_ADDR_BTL8)StorAddr)->Path,
+			     ((PSTOR_ADDR_BTL8)StorAddr)->Target,
+			     ((PSTOR_ADDR_BTL8)StorAddr)->Lun);
+		} else {
+		    DbgPrint("      INVALID SRB ADDRESS TYPE 0x%x\n", StorAddr->Type);
+		}
+	    }
+
+	    for (ULONG i = 0; i < Srb->NumSrbExData; i++) {
+		ULONG Offset = Srb->SrbExDataOffset[i];
+		if (Offset < sizeof(STORAGE_REQUEST_BLOCK) || Offset >= Srb->SrbLength) {
+		    DbgPrint("      INVALID SRBEX DATA OFFSET [%d] 0x%x\n",
+			     i, Offset);
+		    continue;
+		}
+		PSRBEX_DATA SrbExData = (PVOID)((PUCHAR)Srb + Srb->SrbExDataOffset[i]);
+		DbgPrint("      SRBEX DATA OFFSET [%d] 0x%x TYPE 0x%x LENGTH 0x%x\n",
+			 i, Offset, SrbExData->Type, SrbExData->Length);
+		switch (SrbExData->Type) {
+		case SrbExDataTypeBidirectional:
+		    if (Srb->SrbExDataOffset[i] + sizeof(SRBEX_DATA_BIDIRECTIONAL) >
+			Srb->SrbLength) {
+			DbgPrint("      NOT ENOUGH SPACE FOR SRB BIDIRECTIONAL DATA [%d] 0x%x\n",
+				 i, Offset);
+			continue;
+		    }
+		    PSRBEX_DATA_BIDIRECTIONAL BidData = (PSRBEX_DATA_BIDIRECTIONAL)SrbExData;
+		    DbgPrint("        DataInTransferLength 0x%x DataInBuffer %p\n",
+			     BidData->DataInTransferLength, BidData->DataInBuffer);
+		    break;
+
+		case SrbExDataTypeWmi:
+		    if (Srb->SrbExDataOffset[i] + sizeof(SRBEX_DATA_WMI) > Srb->SrbLength) {
+			DbgPrint("      NOT ENOUGH SPACE FOR SRB WMI DATA [%d] 0x%x\n",
+				 i, Offset);
+			continue;
+		    }
+		    PSRBEX_DATA_WMI WmiData = (PSRBEX_DATA_WMI)SrbExData;
+		    DbgPrint("        WMISubFunction 0x%x WMIFlags 0x%x DataPath %p\n",
+			     WmiData->WMISubFunction, WmiData->WMIFlags,
+			     WmiData->DataPath);
+		    break;
+
+		case SrbExDataTypePower:
+		    if (Srb->SrbExDataOffset[i] + sizeof(SRBEX_DATA_POWER) > Srb->SrbLength) {
+			DbgPrint("      NOT ENOUGH SPACE FOR SRB POWER DATA [%d] 0x%x\n",
+				 i, Offset);
+			continue;
+		    }
+		    PSRBEX_DATA_POWER PowerData = (PSRBEX_DATA_POWER)SrbExData;
+		    DbgPrint("        SrbPowerFlags 0x%x DevicePowerState 0x%x "
+			     "PowerAction 0x%x\n",
+			     PowerData->SrbPowerFlags, PowerData->DevicePowerState,
+			     PowerData->PowerAction);
+		    break;
+
+		case SrbExDataTypePnP:
+		    if (Srb->SrbExDataOffset[i] + sizeof(SRBEX_DATA_PNP) > Srb->SrbLength) {
+			DbgPrint("      NOT ENOUGH SPACE FOR SRB PNP DATA [%d] 0x%x\n",
+				 i, Offset);
+			continue;
+		    }
+		    PSRBEX_DATA_PNP PnpData = (PSRBEX_DATA_PNP)SrbExData;
+		    DbgPrint("        PnPSubFunction 0x%x PnPAction 0x%x SrbPnPFlags 0x%x\n",
+			     PnpData->PnPSubFunction, PnpData->PnPAction,
+			     PnpData->SrbPnPFlags);
+		    break;
+
+		case SrbExDataTypeScsiCdb16:
+		    if (Srb->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB16) >
+			Srb->SrbLength) {
+			DbgPrint("      NOT ENOUGH SPACE FOR SRB CDB16 DATA [%d] 0x%x\n",
+				 i, Offset);
+			continue;
+		    }
+		    PSRBEX_DATA_SCSI_CDB16 Cdb16Data = (PSRBEX_DATA_SCSI_CDB16)SrbExData;
+		    DbgPrint("        ScsiStatus 0x%x SenseInfoBufferLength 0x%x "
+			     "CdbLength 0x%x SenseInfoBuffer %p\n",
+			     Cdb16Data->ScsiStatus, Cdb16Data->SenseInfoBufferLength,
+			     Cdb16Data->CdbLength, Cdb16Data->SenseInfoBuffer);
+		    DbgPrint("        CDB 0x%08x 0x%08x 0x%08x 0x%08x\n",
+			     ((PULONG)Cdb16Data->Cdb)[0],
+			     ((PULONG)Cdb16Data->Cdb)[1],
+			     ((PULONG)Cdb16Data->Cdb)[2],
+			     ((PULONG)Cdb16Data->Cdb)[3]);
+		    break;
+
+		case SrbExDataTypeScsiCdb32:
+		    if (Srb->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB32) >
+			Srb->SrbLength) {
+			DbgPrint("      NOT ENOUGH SPACE FOR SRB CDB32 DATA [%d] 0x%x\n",
+				 i, Offset);
+			continue;
+		    }
+		    PSRBEX_DATA_SCSI_CDB32 Cdb32Data = (PSRBEX_DATA_SCSI_CDB32)SrbExData;
+		    DbgPrint("        ScsiStatus 0x%x SenseInfoBufferLength 0x%x "
+			     "CdbLength 0x%x SenseInfoBuffer %p\n",
+			     Cdb32Data->ScsiStatus, Cdb32Data->SenseInfoBufferLength,
+			     Cdb32Data->CdbLength, Cdb32Data->SenseInfoBuffer);
+		    DbgPrint("        CDB 0x%08x 0x%08x 0x%08x 0x%08x  "
+			     "0x%08x 0x%08x 0x%08x 0x%08x\n",
+			     ((PULONG)Cdb32Data->Cdb)[0],
+			     ((PULONG)Cdb32Data->Cdb)[1],
+			     ((PULONG)Cdb32Data->Cdb)[2],
+			     ((PULONG)Cdb32Data->Cdb)[3],
+			     ((PULONG)Cdb32Data->Cdb)[4],
+			     ((PULONG)Cdb32Data->Cdb)[5],
+			     ((PULONG)Cdb32Data->Cdb)[6],
+			     ((PULONG)Cdb32Data->Cdb)[7]);
+		    break;
+
+		case SrbExDataTypeScsiCdbVar:
+		    if (Srb->SrbExDataOffset[i] + sizeof(SRBEX_DATA_SCSI_CDB_VAR) >
+			Srb->SrbLength) {
+			DbgPrint("      NOT ENOUGH SPACE FOR SRB CDBVAR DATA [%d] 0x%x\n",
+				 i, Offset);
+			continue;
+		    }
+		    PSRBEX_DATA_SCSI_CDB_VAR CdbVarData = (PSRBEX_DATA_SCSI_CDB_VAR)SrbExData;
+		    DbgPrint("      ScsiStatus 0x%x SenseInfoBufferLength 0x%x "
+			     "CdbLength 0x%x SenseInfoBuffer %p      CDB\n",
+			     CdbVarData->ScsiStatus, CdbVarData->SenseInfoBufferLength,
+			     CdbVarData->CdbLength, CdbVarData->SenseInfoBuffer);
+		    for (ULONG i = 0; i < CdbVarData->CdbLength; i++) {
+			DbgPrint(" 0x%x", CdbVarData->Cdb[i]);
+		    }
+		    break;
+
+		default:
+		    UNIMPLEMENTED;
+		    assert(FALSE);
+		}
+
+	    }
 	} else {
 	    DbgPrint("    %sDEVICE-CONTROL  IoControlCode 0x%x OutputBufferLength 0x%x "
 		     "InputBufferLength 0x%x Type3InputBuffer %p\n",

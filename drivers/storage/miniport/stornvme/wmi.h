@@ -52,7 +52,7 @@ VOID DispatchWmi(IN PNVME_DEVICE_EXTENSION pHbaExtension,
 		 IN PSTORAGE_REQUEST_BLOCK Srb);
 
 VOID SpUpdateWmiRequest(IN PNVME_DEVICE_EXTENSION   pHbaExtension,
-			IN PSCSI_WMI_REQUEST_BLOCK  pSrb,
+			IN PSTORAGE_REQUEST_BLOCK  pSrb,
 			IN PSCSIWMI_REQUEST_CONTEXT pDispatchContext,
 			IN UCHAR                    Status,
 			IN ULONG                    SizeNeeded);
@@ -60,7 +60,7 @@ VOID SpUpdateWmiRequest(IN PNVME_DEVICE_EXTENSION   pHbaExtension,
 VOID InitializeWmiContext(IN PNVME_DEVICE_EXTENSION);
 
 BOOLEAN HandleWmiSrb(IN     PNVME_DEVICE_EXTENSION,
-		     IN OUT PSCSI_WMI_REQUEST_BLOCK);
+		     IN OUT PSTORAGE_REQUEST_BLOCK);
 
 NTAPI UCHAR QueryWmiRegInfo(_In_ PVOID pContext,
 			    _In_ PSCSIWMI_REQUEST_CONTEXT pRequestContext,

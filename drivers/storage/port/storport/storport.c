@@ -990,7 +990,7 @@ NTAPI ULONG StorPortFreeDmaMemory(IN PVOID HwDeviceExtension,
  * @implemented
  */
 NTAPI STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtension,
-						       IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
+						       IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
 						       IN PVOID VirtualAddress,
 						       OUT ULONG *Length)
 {
@@ -1134,7 +1134,7 @@ NTAPI PVOID StorPortGetUncachedExtension(IN PVOID HwDeviceExtension,
  * @unimplemented
  */
 NTAPI PSTOR_SCATTER_GATHER_LIST StorPortGetScatterGatherList(IN PVOID DeviceExtension,
-							     IN PSCSI_REQUEST_BLOCK Srb)
+							     IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     DPRINT1("StorPortGetScatterGatherList()\n");
     UNIMPLEMENTED;
@@ -1327,7 +1327,7 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
  * @unimplemented
  */
 NTAPI VOID StorPortLogError(IN PVOID HwDeviceExtension,
-			    IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
+			    IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
 			    IN UCHAR PathId,
 			    IN UCHAR TargetId,
 			    IN UCHAR Lun,
@@ -1364,7 +1364,7 @@ NTAPI PVOID StorPortGetLogicalUnit(IN PVOID HwDeviceExtension,
 /*
  * @implemented
  */
-NTAPI PSCSI_REQUEST_BLOCK StorPortGetSrb(IN PVOID DeviceExtension,
+NTAPI PSTORAGE_REQUEST_BLOCK StorPortGetSrb(IN PVOID DeviceExtension,
 					 IN UCHAR PathId,
 					 IN UCHAR TargetId,
 					 IN UCHAR Lun,
@@ -1410,7 +1410,7 @@ VOID StorPortNotification(IN SCSI_NOTIFICATION_TYPE NotificationType,
     case RequestComplete:
     {
 	DPRINT1("RequestComplete\n");
-	GET_VA_ARG(ap, PSCSI_REQUEST_BLOCK, Srb);
+	GET_VA_ARG(ap, PSTORAGE_REQUEST_BLOCK, Srb);
 	DPRINT1("Srb %p\n", Srb);
 	if (Srb->OriginalRequest != NULL) {
 	    DPRINT1("Need to complete the IRP!\n");

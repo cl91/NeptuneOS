@@ -560,21 +560,11 @@ NTAPI ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 	ULONG srbSupport = *((PULONG)Data);
 
 	//
-	// Validate that at least one of the supported bit flags is set. Assume
-	// all class drivers support SCSI_REQUEST_BLOCK as a class driver that
-	// supports only extended SRB is not feasible.
+	// We only support STORAGE_REQUEST_BLOCK, so validate that the class
+	// driver supports STORAGE_REQUEST_BLOCK and not SCSI_REQUEST_BLOCK.
 	//
-	if ((srbSupport &
-	     (CLASS_SRB_SCSI_REQUEST_BLOCK | CLASS_SRB_STORAGE_REQUEST_BLOCK)) != 0) {
-	    driverExtension->SrbSupport = srbSupport;
+	if (srbSupport == CLASS_SRB_STORAGE_REQUEST_BLOCK) {
 	    status = STATUS_SUCCESS;
-
-	    //
-	    // Catch cases of a class driver reporting only extended SRB support
-	    //
-	    if ((driverExtension->SrbSupport & CLASS_SRB_SCSI_REQUEST_BLOCK) == 0) {
-		NT_ASSERT(FALSE);
-	    }
 	} else {
 	    status = STATUS_INVALID_PARAMETER;
 	}
@@ -1676,8 +1666,7 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 	    status = InitializeStorageRequestBlock(
 		&(fdoExtension->PrivateFdoData->ReleaseQueueSrb.SrbEx),
 		STORAGE_ADDRESS_TYPE_BTL8,
-		sizeof(
-		    fdoExtension->PrivateFdoData->ReleaseQueueSrb.ReleaseQueueSrbBuffer),
+		sizeof(fdoExtension->PrivateFdoData->ReleaseQueueSrb.ReleaseQueueSrbBuffer),
 		0);
 	    if (!NT_SUCCESS(status)) {
 		NT_ASSERT(FALSE);
@@ -2719,20 +2708,15 @@ Return Value:
 --*/
 NTAPI NTSTATUS ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 {
-    PIO_STACK_LOCATION irpStack;
-    PIRP irp;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
-    PSCSI_REQUEST_BLOCK srb;
-    PCOMPLETION_CONTEXT context;
-    PCDB cdb;
-    NTSTATUS status;
-    PSTORAGE_REQUEST_BLOCK srbEx;
 
     //
     // Allocate Srb from nonpaged pool.
     //
 
-    context = ExAllocatePoolWithTag(NonPagedPool, sizeof(COMPLETION_CONTEXT), '6CcS');
+    PCOMPLETION_CONTEXT context = ExAllocatePoolWithTag(NonPagedPool,
+							sizeof(COMPLETION_CONTEXT),
+							'6CcS');
 
     if (context == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -2745,66 +2729,48 @@ NTAPI NTSTATUS ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 
     context->DeviceObject = Fdo;
 
-    srb = &context->Srb.Srb;
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbEx = &context->Srb.SrbEx;
-	status = InitializeStorageRequestBlock(srbEx, STORAGE_ADDRESS_TYPE_BTL8,
-					       sizeof(context->Srb.SrbExBuffer), 1,
-					       SrbExDataTypeScsiCdb16);
-	if (!NT_SUCCESS(status)) {
-	    FREE_POOL(context);
-	    NT_ASSERT(FALSE);
-	    return status;
-	}
-
-	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-
-    } else {
-	//
-	// Zero out srb.
-	//
-
-	RtlZeroMemory(srb, sizeof(SCSI_REQUEST_BLOCK));
-
-	//
-	// Write length to SRB.
-	//
-
-	srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-
-	srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+    PSTORAGE_REQUEST_BLOCK srbEx = &context->Srb.SrbEx;
+    NTSTATUS status = InitializeStorageRequestBlock(srbEx, STORAGE_ADDRESS_TYPE_BTL8,
+						    sizeof(context->Srb.SrbExBuffer),
+						    1, SrbExDataTypeScsiCdb16);
+    if (!NT_SUCCESS(status)) {
+	FREE_POOL(context);
+	NT_ASSERT(FALSE);
+	return status;
     }
+
+    srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 
     //
     // Set timeout value large enough for drive to spin up.
     //
 
-    SrbSetTimeOutValue(srb, START_UNIT_TIMEOUT);
+    SrbSetTimeOutValue(srbEx, START_UNIT_TIMEOUT);
 
     //
     // Set the transfer length.
     //
 
-    SrbAssignSrbFlags(srb, (SRB_FLAGS_NO_DATA_TRANSFER | SRB_FLAGS_DISABLE_AUTOSENSE |
-			    SRB_FLAGS_DISABLE_SYNCH_TRANSFER));
+    SrbAssignSrbFlags(srbEx, (SRB_FLAGS_NO_DATA_TRANSFER | SRB_FLAGS_DISABLE_AUTOSENSE |
+			      SRB_FLAGS_DISABLE_SYNCH_TRANSFER));
 
     //
     // Build the start unit CDB.
     //
 
-    SrbSetCdbLength(srb, 6);
-    cdb = SrbGetCdb(srb);
+    SrbSetCdbLength(srbEx, 6);
+    PCDB cdb = SrbGetCdb(srbEx);
 
     cdb->START_STOP.OperationCode = SCSIOP_START_STOP_UNIT;
     cdb->START_STOP.Start = 1;
     cdb->START_STOP.Immediate = 0;
-    cdb->START_STOP.LogicalUnitNumber = srb->Lun;
+    cdb->START_STOP.LogicalUnitNumber = SrbGetLun(srbEx);
 
     //
     // Build the asynchronous request to be sent to the port driver.
     //
 
-    irp = IoAllocateIrp(Fdo->StackSize);
+    PIRP irp = IoAllocateIrp(Fdo->StackSize);
 
     if (irp == NULL) {
 	FREE_POOL(context);
@@ -2816,15 +2782,15 @@ NTAPI NTSTATUS ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
     IoSetCompletionRoutine(irp, (PIO_COMPLETION_ROUTINE)ClassAsynchronousCompletion,
 			   context, TRUE, TRUE, TRUE);
 
-    irpStack = IoGetNextIrpStackLocation(irp);
+    PIO_STACK_LOCATION irpStack = IoGetNextIrpStackLocation(irp);
     irpStack->MajorFunction = IRP_MJ_SCSI;
-    SrbSetOriginalRequest(srb, irp);
+    SrbSetOriginalRequest(srbEx, irp);
 
     //
     // Store the SRB address in next stack for port driver.
     //
 
-    irpStack->Parameters.Scsi.Srb = srb;
+    irpStack->Parameters.Scsi.Srb = srbEx;
 
     //
     // Call the port driver with the IRP.
@@ -2866,9 +2832,6 @@ NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject,
 					   PVOID Context)
 {
     PCOMPLETION_CONTEXT context = Context;
-    PSCSI_REQUEST_BLOCK srb;
-    ULONG srbFunction;
-    ULONG srbFlags;
 
     if (context == NULL) {
 	return STATUS_INVALID_PARAMETER;
@@ -2878,15 +2841,10 @@ NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject,
 	DeviceObject = context->DeviceObject;
     }
 
-    srb = &context->Srb.Srb;
+    PSTORAGE_REQUEST_BLOCK srb = &context->Srb.SrbEx;
 
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srbFunction = ((PSTORAGE_REQUEST_BLOCK)srb)->SrbFunction;
-	srbFlags = ((PSTORAGE_REQUEST_BLOCK)srb)->SrbFlags;
-    } else {
-	srbFunction = srb->Function;
-	srbFlags = srb->SrbFlags;
-    }
+    ULONG srbFunction = srb->SrbFunction;
+    ULONG srbFlags = srb->SrbFlags;
 
     //
     // If this is an execute srb, then check the return status and make sure.
@@ -3288,24 +3246,17 @@ Return Value:
 NTAPI NTSTATUS ClassIoComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Context)
 {
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
-    PSCSI_REQUEST_BLOCK srb = Context;
+    PSTORAGE_REQUEST_BLOCK srb = Context;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
     NTSTATUS status;
     BOOLEAN retry;
     BOOLEAN callStartNextPacket;
-    ULONG srbFlags;
-    ULONG srbFunction;
 
     NT_ASSERT(fdoExtension->CommonExtension.IsFdo);
 
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srbFlags = ((PSTORAGE_REQUEST_BLOCK)srb)->SrbFlags;
-	srbFunction = ((PSTORAGE_REQUEST_BLOCK)srb)->SrbFunction;
-    } else {
-	srbFlags = srb->SrbFlags;
-	srbFunction = srb->Function;
-    }
+    ULONG srbFlags = srb->SrbFlags;
+    ULONG srbFunction = srb->SrbFunction;
 
 #if DBG
     if (srbFunction == SRB_FUNCTION_FLUSH) {
@@ -3446,7 +3397,7 @@ NTAPI NTSTATUS ClassIoComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Cont
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
 			"ClassIoComplete: Not Freeing sensebuffer @ %p "
 			" because SRB_CLASS_FLAGS_PERSISTANT set\n",
-			srb->SenseInfoBuffer));
+			SrbGetSenseInfoBuffer(srb)));
 	}
     }
 
@@ -3519,7 +3470,7 @@ Return Value:
 
 --*/
 NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo,
-				       IN OUT PSCSI_REQUEST_BLOCK Req,
+				       IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 				       IN PVOID BufferAddress,
 				       IN ULONG BufferLength,
 				       IN BOOLEAN WriteToDevice)
@@ -3535,7 +3486,6 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo,
     ULONG retryCount = MAXIMUM_RETRIES;
     NTSTATUS status;
     BOOLEAN retry;
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)Req;
 
     //
     // NOTE: This code is only pagable because we are not freezing
@@ -3549,29 +3499,11 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo,
 
     NT_ASSERT(fdoExtension->CommonExtension.IsFdo);
 
-    if (Srb->Function != SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	//
-	// Write length to SRB.
-	//
-
-	Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-
-	//
-	// Set SCSI bus address.
-	//
-
-	Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-    }
-
     //
-    // The Srb->Function should have been set corresponding to SrbType.
+    // The SrbFunction should have been set to EXECUTE_SCSI.
     //
 
-    NT_ASSERT(
-	((fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_SCSI_REQUEST_BLOCK) &&
-	 (Srb->Function == SRB_FUNCTION_EXECUTE_SCSI)) ||
-	((fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) &&
-	 (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK)));
+    NT_ASSERT(Srb->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI);
 
     //
     // Sense buffer is in aligned nonpaged pool.
@@ -3674,7 +3606,7 @@ retry:
     //
 
     irpStack->MajorFunction = IRP_MJ_SCSI;
-    irpStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)Srb;
+    irpStack->Parameters.Scsi.Srb = Srb;
 
     IoSetCompletionRoutine(irp, ClasspSendSynchronousCompletion, Srb, TRUE, TRUE, TRUE);
 
@@ -3753,7 +3685,7 @@ retry:
 
 	retry = InterpretSenseInfoWithoutHistory(Fdo,
 						 NULL, // no valid irp exists
-						 (PSCSI_REQUEST_BLOCK)Srb, IRP_MJ_SCSI, 0,
+						 Srb, IRP_MJ_SCSI, 0,
 						 MAXIMUM_RETRIES - retryCount, &status,
 						 &retryInterval);
 
@@ -3857,7 +3789,7 @@ Return Value:
 
 --*/
 NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
-				      IN PSCSI_REQUEST_BLOCK Req,
+				      IN PSTORAGE_REQUEST_BLOCK Srb,
 				      IN UCHAR MajorFunctionCode,
 				      IN ULONG IoDeviceCode,
 				      IN ULONG RetryCount,
@@ -3866,7 +3798,6 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)Req;
     PVOID senseBuffer = SrbGetSenseInfoBuffer(Srb);
     BOOLEAN retry = TRUE;
     BOOLEAN logError = FALSE;
@@ -5574,22 +5505,7 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
     //
 
     if (fdoExtension->CommonExtension.DevInfo->ClassError != NULL) {
-	SCSI_REQUEST_BLOCK tempSrb = { 0 };
-	PSCSI_REQUEST_BLOCK srbPtr = (PSCSI_REQUEST_BLOCK)Srb;
-
-	//
-	// If class driver does not support extended SRB and this is
-	// an extended SRB, convert to legacy SRB and pass to class
-	// driver.
-	//
-	if ((Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	    ((fdoExtension->CommonExtension.DriverExtension->SrbSupport &
-	      CLASS_SRB_STORAGE_REQUEST_BLOCK) == 0)) {
-	    ClasspConvertToScsiRequestBlock(&tempSrb, (PSTORAGE_REQUEST_BLOCK)Srb);
-	    srbPtr = &tempSrb;
-	}
-
-	fdoExtension->CommonExtension.DevInfo->ClassError(Fdo, srbPtr, Status, &retry);
+	fdoExtension->CommonExtension.DevInfo->ClassError(Fdo, Srb, Status, &retry);
     }
 
     //
@@ -5651,11 +5567,7 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 
 	//
 	// Logic below assumes that IO_ERROR_LOG_PACKET + CLASS_ERROR_LOG_DATA
-	// is less than ERROR_LOG_MAXIMUM_SIZE which is not true for extended SRB.
-	// Given that classpnp currently does not use >16 byte CDB, we'll convert
-	// an extended SRB to SCSI_REQUEST_BLOCK instead of changing this code.
-	// More changes will need to be made when classpnp starts using >16 byte
-	// CDBs.
+	// is less than ERROR_LOG_MAXIMUM_SIZE.
 	//
 
 	//
@@ -5738,10 +5650,11 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 	// If we've used up all of our retry attempts, set the final status to
 	// reflect the appropriate result.
 	//
-	// ISSUE: the test below should also check RetryCount to determine if we will actually retry,
-	//            but there is no easy test because we'd have to consider the original retry count
-	//            for the op; besides, InterpretTransferPacketError sometimes ignores the retry
-	//            decision returned by this function.  So just ErrorRetried to be true in the majority case.
+	// ISSUE: the test below should also check RetryCount to determine if we will
+	//        actually retry, but there is no easy test because we'd have to consider
+	//        the original retry count for the op; besides, InterpretTransferPacketError
+	//        sometimes ignores the retry decision returned by this function.  So
+	//        just ErrorRetried to be true in the majority case.
 	//
 	if (retry) {
 	    staticErrLogEntry.FinalStatus = STATUS_SUCCESS;
@@ -5794,12 +5707,7 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 	/*
          *  Save the entire contents of the SRB.
          */
-	if (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	    ClasspConvertToScsiRequestBlock(&staticErrLogData.Srb,
-					    (PSTORAGE_REQUEST_BLOCK)Srb);
-	} else {
-	    staticErrLogData.Srb = *(PSCSI_REQUEST_BLOCK)Srb;
-	}
+	RtlCopyMemory(&staticErrLogData.SrbEx, Srb, Srb->SrbLength);
 
 	/*
          *  For our private log, save just the default length of the SENSE_DATA.
@@ -5809,14 +5717,15 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 	    //
 	    // If sense buffer is in Fixed format, put it in the private log
 	    //
-	    // If sense buffer is in Descriptor format, put it in the private log if conversion to Fixed format
-	    // succeeded. Otherwise, do not put it in the private log.
+	    // If sense buffer is in Descriptor format, put it in the private log if conversion
+	    // to Fixed format succeeded. Otherwise, do not put it in the private log.
 	    //
-	    // If sense buffer is in unknown format, the device or the driver probably does not populate
-	    // the first byte of sense data, we probably still want to log error in this case assuming
-	    // it's fixed format, so that its sense key, its additional sense code, and its additional sense code
-	    // qualifier would be shown in the debugger extension output. By doing so, it minimizes any potential
-	    // negative impacts to our ability to diagnose issue.
+	    // If sense buffer is in unknown format, the device or the driver probably does
+	    // not populate the first byte of sense data, we probably still want to log error
+	    // in this case assuming it's fixed format, so that its sense key, its additional
+	    // sense code, and its additional sense code qualifier would be shown in the
+	    // debugger extension output. By doing so, it minimizes any potential negative
+	    // impacts to our ability to diagnose issue.
 	    //
 	    if (IsDescriptorSenseDataFormat(senseBuffer)) {
 		if (senseDataConverted) {
@@ -5854,9 +5763,10 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 	}
 
 	/*
-         *  If logError is set, also save this log in the system's error log.
-         *  But make sure we don't log TUR failures over and over
-         *  (e.g. if an external drive was switched off and we're still sending TUR's to it every second).
+         * If logError is set, also save this log in the system's error log.
+         * But make sure we don't log TUR failures over and over
+         * (e.g. if an external drive was switched off and we're still sending
+	 * TUR's to it every second).
          */
 
 	if (logError) {
@@ -6281,7 +6191,7 @@ Return Value:
 
 --*/
 NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
-					IN OUT PSCSI_REQUEST_BLOCK Req,
+					IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 					IN PIRP Irp,
 					IN OPTIONAL PVOID BufferAddress,
 					IN ULONG BufferLength,
@@ -6289,30 +6199,8 @@ NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PIO_STACK_LOCATION irpStack;
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb = (PSTORAGE_REQUEST_BLOCK_HEADER)Req;
 
     ULONG savedFlags;
-
-    if (Srb->Function != SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	//
-	// Write length to SRB.
-	//
-
-	Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-
-	//
-	// Set SCSI bus address.
-	//
-
-	Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-    }
-
-    //
-    // This is a violation of the SCSI spec but it is required for
-    // some targets.
-    //
-
-    // Srb->Cdb[1] |= deviceExtension->Lun << 5;
 
     //
     // Indicate auto request sense by specifying buffer and size.
@@ -6428,7 +6316,7 @@ NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
     // Save SRB address in next stack for port driver.
     //
 
-    irpStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)Srb;
+    irpStack->Parameters.Scsi.Srb = Srb;
 
     //
     // Set up Irp Address.
@@ -6529,7 +6417,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 
     ULONG controlCode = irpStack->Parameters.DeviceIoControl.IoControlCode;
 
-    PSCSI_REQUEST_BLOCK srb = NULL;
+    PSTORAGE_REQUEST_BLOCK srb = NULL;
     PCDB cdb = NULL;
 
     NTSTATUS status;
@@ -6752,23 +6640,10 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
     }
 
     if (commonExtension->IsFdo) {
-	PULONG_PTR function;
-	PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
-	    commonExtension;
-	size_t sizeNeeded;
-
 	//
-	// Allocate a SCSI SRB for handling various IOCTLs.
-	// NOTE - there is a case where an IOCTL is sent to classpnp before AdapterDescriptor
-	// is initialized. In this case, default to legacy SRB.
+	// Allocate a STORAGE_REQUEST_BLOCK for handling various IOCTLs.
 	//
-	if ((fdoExtension->AdapterDescriptor != NULL) &&
-	    (fdoExtension->AdapterDescriptor->SrbType ==
-	     SRB_TYPE_STORAGE_REQUEST_BLOCK)) {
-	    sizeNeeded = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-	} else {
-	    sizeNeeded = sizeof(SCSI_REQUEST_BLOCK);
-	}
+	size_t sizeNeeded = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
 
 	srb = ExAllocatePoolWithTag(NonPagedPool,
 				    sizeNeeded + (sizeof(ULONG_PTR) * 2),
@@ -6782,28 +6657,19 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    goto SetStatusAndReturn;
 	}
 
-	if ((fdoExtension->AdapterDescriptor != NULL) &&
-	    (fdoExtension->AdapterDescriptor->SrbType ==
-	     SRB_TYPE_STORAGE_REQUEST_BLOCK)) {
-	    status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srb,
-						   STORAGE_ADDRESS_TYPE_BTL8,
-						   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
-						   SrbExDataTypeScsiCdb16);
-	    if (NT_SUCCESS(status)) {
-		((PSTORAGE_REQUEST_BLOCK)srb)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-		function = (PULONG_PTR)((PCHAR)srb + sizeNeeded);
-	    } else {
-		//
-		// Should not occur.
-		//
-		NT_ASSERT(FALSE);
-		goto SetStatusAndReturn;
-	    }
+	PULONG_PTR function;
+	status = InitializeStorageRequestBlock(srb, STORAGE_ADDRESS_TYPE_BTL8,
+					       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE,
+					       1, SrbExDataTypeScsiCdb16);
+	if (NT_SUCCESS(status)) {
+	    srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+	    function = (PULONG_PTR)((PCHAR)srb + sizeNeeded);
 	} else {
-	    RtlZeroMemory(srb, sizeof(SCSI_REQUEST_BLOCK));
-	    srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	    srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	    function = (PULONG_PTR)((PSCSI_REQUEST_BLOCK)(srb + 1));
+	    //
+	    // Should not occur.
+	    //
+	    NT_ASSERT(FALSE);
+	    goto SetStatusAndReturn;
 	}
 
 	//
@@ -8235,15 +8101,16 @@ NTAPI NTSTATUS ClassClaimDevice(IN PDEVICE_OBJECT LowerDeviceObject,
     PIO_STACK_LOCATION irpStack;
     KEVENT event;
     NTSTATUS status;
-    SCSI_REQUEST_BLOCK srb = { 0 };
+    STORAGE_REQUEST_BLOCK srb = {};
 
     //
     // WORK ITEM - MPIO related. Need to think about how to handle.
     //
 
-    srb.Length = sizeof(SCSI_REQUEST_BLOCK);
-
-    srb.Function = Release ? SRB_FUNCTION_RELEASE_DEVICE : SRB_FUNCTION_CLAIM_DEVICE;
+    srb.Signature = SRB_SIGNATURE;
+    srb.Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srb.SrbLength = sizeof(STORAGE_REQUEST_BLOCK);
+    srb.SrbFunction = Release ? SRB_FUNCTION_RELEASE_DEVICE : SRB_FUNCTION_CLAIM_DEVICE;
 
     //
     // Set the event object to the unsignaled state.
@@ -8346,8 +8213,6 @@ NTAPI NTSTATUS ClassInternalIoControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Ir
 
     ULONG isRemoved;
 
-    PSCSI_REQUEST_BLOCK srb;
-
     isRemoved = ClassAcquireRemoveLock(DeviceObject, Irp);
     _Analysis_assume_(isRemoved);
     if (isRemoved) {
@@ -8364,7 +8229,7 @@ NTAPI NTSTATUS ClassInternalIoControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Ir
     // Get a pointer to the SRB.
     //
 
-    srb = irpStack->Parameters.Scsi.Srb;
+    PSTORAGE_REQUEST_BLOCK srb = irpStack->Parameters.Scsi.Srb;
 
     //
     // Set the parameters in the next stack location.
@@ -10002,12 +9867,6 @@ NTSTATUS ClasspAllocateReleaseRequest(IN PDEVICE_OBJECT Fdo)
 
     fdoExtension->ReleaseQueueIrp = NULL;
 
-    //
-    // Write length to SRB.
-    //
-
-    fdoExtension->ReleaseQueueSrb.Length = sizeof(SCSI_REQUEST_BLOCK);
-
     return STATUS_SUCCESS;
 } // end ClasspAllocateReleaseRequest()
 
@@ -10183,14 +10042,8 @@ Return Value:
 static VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo,
 			       IN OPTIONAL PIRP ReleaseQueueIrp)
 {
-    PIO_STACK_LOCATION irpStack;
-    PIRP irp;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
-    PDEVICE_OBJECT lowerDevice;
-    PSTORAGE_REQUEST_BLOCK_HEADER srb;
-    ULONG function;
-
-    lowerDevice = fdoExtension->CommonExtension.LowerDeviceObject;
+    PDEVICE_OBJECT lowerDevice = fdoExtension->CommonExtension.LowerDeviceObject;
 
     //
     // make sure that if they passed us an irp, it matches our allocated irp.
@@ -10228,22 +10081,18 @@ static VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo,
     //
 
     fdoExtension->ReleaseQueueInProgress = TRUE;
+    PIRP irp;
     if (ReleaseQueueIrp) {
 	irp = ReleaseQueueIrp;
     } else {
 	irp = fdoExtension->PrivateFdoData->ReleaseQueueIrp;
     }
 
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srb = (PSTORAGE_REQUEST_BLOCK_HEADER) &
-	      (fdoExtension->PrivateFdoData->ReleaseQueueSrb.SrbEx);
-    } else {
-	srb = (PSTORAGE_REQUEST_BLOCK_HEADER) & (fdoExtension->ReleaseQueueSrb);
-    }
+    PSTORAGE_REQUEST_BLOCK srb = &fdoExtension->PrivateFdoData->ReleaseQueueSrb.SrbEx;
 
     NT_ASSERT(irp != NULL);
 
-    irpStack = IoGetNextIrpStackLocation(irp);
+    PIO_STACK_LOCATION irpStack = IoGetNextIrpStackLocation(irp);
 
     irpStack->MajorFunction = IRP_MJ_SCSI;
 
@@ -10253,7 +10102,7 @@ static VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo,
     // Store the SRB address in next stack for port driver.
     //
 
-    irpStack->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)srb;
+    irpStack->Parameters.Scsi.Srb = srb;
 
     //
     // If this device is removable then flush the queue.  This will also
@@ -10261,15 +10110,9 @@ static VOID ClasspReleaseQueue(IN PDEVICE_OBJECT Fdo,
     //
 
     if (TEST_FLAG(Fdo->Flags, FILE_REMOVABLE_MEDIA)) {
-	function = SRB_FUNCTION_FLUSH_QUEUE;
+	srb->SrbFunction = SRB_FUNCTION_FLUSH_QUEUE;
     } else {
-	function = SRB_FUNCTION_RELEASE_QUEUE;
-    }
-
-    if (fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	((PSTORAGE_REQUEST_BLOCK)srb)->SrbFunction = function;
-    } else {
-	srb->Function = (UCHAR)function;
+	srb->SrbFunction = SRB_FUNCTION_RELEASE_QUEUE;
     }
 
     ClassAcquireRemoveLock(Fdo, irp);
@@ -10680,16 +10523,16 @@ static NTAPI VOID ClasspRetryRequestWorkerRoutine(IN PDEVICE_OBJECT DeviceObject
 	    PIO_STACK_LOCATION irpStack;
 
 	    //
-	    // Ensure that we don't skip a completion routine (equivalent of sending down a request
-	    // to a device after it has received a remove and it completes the request. We need to
-	    // mimic that behavior here).
+	    // Ensure that we don't skip a completion routine (equivalent of sending
+	    // down a request to a device after it has received a remove and it
+	    // completes the request. We need to mimic that behavior here).
 	    //
 	    IoSetNextIrpStackLocation(irp);
 
 	    irpStack = IoGetCurrentIrpStackLocation(irp);
 
 	    if (irpStack->MajorFunction == IRP_MJ_SCSI) {
-		PSCSI_REQUEST_BLOCK srb = irpStack->Parameters.Scsi.Srb;
+		PSTORAGE_REQUEST_BLOCK srb = irpStack->Parameters.Scsi.Srb;
 
 		if (srb) {
 		    srb->SrbStatus = SRB_STATUS_NO_DEVICE;
@@ -10701,7 +10544,7 @@ static NTAPI VOID ClasspRetryRequestWorkerRoutine(IN PDEVICE_OBJECT DeviceObject
 	    // not IRP_MJ_SCSI or for ones where the SRB was passed in to the completion routine
 	    // as a context as opposed to an argument on the IRP stack location.
 	    //
-	    irpStack->Parameters.Others.Argument4 = (PVOID)0;
+	    irpStack->Parameters.Others.Argument4 = NULL;
 
 	    irp->IoStatus.Status = STATUS_NO_SUCH_DEVICE;
 	    irp->IoStatus.Information = 0;
@@ -11130,7 +10973,7 @@ NTAPI VOID ClasspUpdateDiskProperties(IN PDEVICE_OBJECT Fdo, IN PVOID Context)
 
 BOOLEAN InterpretSenseInfoWithoutHistory(IN PDEVICE_OBJECT Fdo,
 					 IN OPTIONAL PIRP OriginalRequest,
-					 IN PSCSI_REQUEST_BLOCK Srb,
+					 IN PSTORAGE_REQUEST_BLOCK Srb,
 					 UCHAR MajorFunctionCode,
 					 ULONG IoDeviceCode,
 					 ULONG PreviousRetryCount,
@@ -11143,25 +10986,9 @@ BOOLEAN InterpretSenseInfoWithoutHistory(IN PDEVICE_OBJECT Fdo,
     BOOLEAN retry = FALSE;
 
     if (fdoData->InterpretSenseInfo != NULL) {
-	SCSI_REQUEST_BLOCK tempSrb = { 0 };
-	PSCSI_REQUEST_BLOCK srbPtr = Srb;
-
 	// SAL annotations and ClassInitializeEx() both validate this
 	NT_ASSERT(fdoData->InterpretSenseInfo->Interpret != NULL);
-
-	//
-	// If class driver does not support extended SRB and this is
-	// an extended SRB, convert to legacy SRB and pass to class
-	// driver.
-	//
-	if ((Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	    ((fdoExtension->CommonExtension.DriverExtension->SrbSupport &
-	      CLASS_SRB_STORAGE_REQUEST_BLOCK) == 0)) {
-	    ClasspConvertToScsiRequestBlock(&tempSrb, (PSTORAGE_REQUEST_BLOCK)Srb);
-	    srbPtr = &tempSrb;
-	}
-
-	retry = fdoData->InterpretSenseInfo->Interpret(Fdo, OriginalRequest, srbPtr,
+	retry = fdoData->InterpretSenseInfo->Interpret(Fdo, OriginalRequest, Srb,
 						       MajorFunctionCode, IoDeviceCode,
 						       PreviousRetryCount, NULL, Status,
 						       &tmpRetry);
@@ -11183,26 +11010,21 @@ VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExten
 {
     NTSTATUS status;
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
-    SCSI_REQUEST_BLOCK srb = { 0 };
-    PCDB cdb;
     PVPD_SUPPORTED_PAGES_PAGE supportedPages = NULL;
     UCHAR bufferLength = VPD_MAX_BUFFER_SIZE;
     ULONG allocationBufferLength = bufferLength;
     UCHAR srbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE] = { 0 };
-    PSTORAGE_REQUEST_BLOCK_HEADER srbHeader;
+    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
 
 #if defined(_ARM_) || defined(_ARM64_)
     //
-    // ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-    // based platforms. We are taking the conservative approach here.
+    // ARM has specific alignment requirements, although this will not have a functional
+    // impact on x86 or amd64 based platforms. We are taking the conservative approach here.
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
-    supportedPages = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength, '3CcS');
-
-#else
-    supportedPages = ExAllocatePoolWithTag(NonPagedPool, bufferLength, '3CcS');
 #endif
+    supportedPages = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength, '3CcS');
 
     if (supportedPages == NULL) {
 	// memory allocation failure.
@@ -11212,67 +11034,51 @@ VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExten
     RtlZeroMemory(supportedPages, allocationBufferLength);
 
     // prepare the Srb
-    if (FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srbExBuffer,
-					       STORAGE_ADDRESS_TYPE_BTL8,
-					       sizeof(srbExBuffer), 1,
-					       SrbExDataTypeScsiCdb16);
-
-	if (!NT_SUCCESS(status)) {
-	    //
-	    // Should not happen. Revert to legacy SRB.
-	    NT_ASSERT(FALSE);
-	    srb.Length = SCSI_REQUEST_BLOCK_SIZE;
-	    srb.Function = SRB_FUNCTION_EXECUTE_SCSI;
-	    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER)&srb;
-	} else {
-	    ((PSTORAGE_REQUEST_BLOCK)srbExBuffer)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-	    srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER)srbExBuffer;
-	}
-
-    } else {
-	srb.Length = SCSI_REQUEST_BLOCK_SIZE;
-	srb.Function = SRB_FUNCTION_EXECUTE_SCSI;
-	srbHeader = (PSTORAGE_REQUEST_BLOCK_HEADER)&srb;
+    status = InitializeStorageRequestBlock(srb, STORAGE_ADDRESS_TYPE_BTL8,
+					   sizeof(srbExBuffer), 1, SrbExDataTypeScsiCdb16);
+    if (!NT_SUCCESS(status)) {
+	//
+	// Should not happen.
+	NT_ASSERT(FALSE);
+	return;
     }
+    srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 
-    SrbSetTimeOutValue(srbHeader, FdoExtension->TimeOutValue);
-    SrbSetRequestTag(srbHeader, SP_UNTAGGED);
-    SrbSetRequestAttribute(srbHeader, SRB_SIMPLE_TAG_REQUEST);
-    SrbAssignSrbFlags(srbHeader, FdoExtension->SrbFlags);
-    SrbSetCdbLength(srbHeader, 6);
+    SrbSetTimeOutValue(srb, FdoExtension->TimeOutValue);
+    SrbSetRequestTag(srb, SP_UNTAGGED);
+    SrbSetRequestAttribute(srb, SRB_SIMPLE_TAG_REQUEST);
+    SrbAssignSrbFlags(srb, FdoExtension->SrbFlags);
+    SrbSetCdbLength(srb, 6);
 
-    cdb = SrbGetCdb(srbHeader);
+    PCDB cdb = SrbGetCdb(srb);
     cdb->CDB6INQUIRY3.OperationCode = SCSIOP_INQUIRY;
-    cdb->CDB6INQUIRY3.EnableVitalProductData = 1; //EVPD bit
+    cdb->CDB6INQUIRY3.EnableVitalProductData = 1; // EVPD bit
     cdb->CDB6INQUIRY3.PageCode = VPD_SUPPORTED_PAGES;
-    cdb->CDB6INQUIRY3.AllocationLength =
-	bufferLength; //AllocationLength field in CDB6INQUIRY3 is only one byte.
+    cdb->CDB6INQUIRY3.AllocationLength = bufferLength; // AllocationLength field in
+						       // CDB6INQUIRY3 is only one byte.
 
-    status = ClassSendSrbSynchronous(commonExtension->DeviceObject,
-				     (PSCSI_REQUEST_BLOCK)srbHeader, supportedPages,
-				     allocationBufferLength, FALSE);
+    status = ClassSendSrbSynchronous(commonExtension->DeviceObject, srb,
+				     supportedPages, allocationBufferLength, FALSE);
 
     //
     // Handle the case where we get back STATUS_DATA_OVERRUN b/c the input
     // buffer was larger than necessary.
     //
-    if (status == STATUS_DATA_OVERRUN &&
-	SrbGetDataTransferLength(srbHeader) < bufferLength) {
+    if (status == STATUS_DATA_OVERRUN && SrbGetDataTransferLength(srb) < bufferLength) {
 	status = STATUS_SUCCESS;
     }
 
     if (NT_SUCCESS(status) && (supportedPages->PageLength > 0) &&
 	(supportedPages->SupportedPageList[0] > 0)) {
-	// ataport treats all INQUIRY command as standard INQUIRY command, thus fills invalid info
-	// If VPD INQUIRY is supported, the first page reported (additional length field for standard INQUIRY data) should be '00'
+	// ataport treats all INQUIRY command as standard INQUIRY command, thus fills
+	// invalid info
+	// If VPD INQUIRY is supported, the first page reported (additional length field
+	// for standard INQUIRY data) should be '00'
 	status = STATUS_NOT_SUPPORTED;
     }
 
     if (NT_SUCCESS(status)) {
-	int i;
-
-	for (i = 0; i < supportedPages->PageLength; i++) {
+	for (int i = 0; i < supportedPages->PageLength; i++) {
 	    if ((i > 0) && (supportedPages->SupportedPageList[i] <=
 			    supportedPages->SupportedPageList[i - 1])) {
 		// shall be in ascending order beginning with page code 00h.
@@ -11309,8 +11115,6 @@ VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExten
     }
 
     ExFreePool(supportedPages);
-
-    return;
 }
 
 //
@@ -11343,9 +11147,6 @@ VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExten
 //
 NTSTATUS ClasspGetLBProvisioningInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
 {
-    PSCSI_REQUEST_BLOCK srb = NULL;
-    ULONG srbSize = 0;
-
     //
     // Make sure we actually have data structures to work with.
     //
@@ -11358,21 +11159,10 @@ NTSTATUS ClasspGetLBProvisioningInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExte
     // the Logical Block Provisioning (0xB2) or Block Limits (0xB0) VPD page
     // exists.
     //
-    if ((FdoExtension->FunctionSupportInfo->ValidInquiryPages.LBProvisioning == TRUE) ||
-	(FdoExtension->FunctionSupportInfo->ValidInquiryPages.BlockLimits == TRUE)) {
-	if ((FdoExtension->AdapterDescriptor != NULL) &&
-	    (FdoExtension->AdapterDescriptor->SrbType ==
-	     SRB_TYPE_STORAGE_REQUEST_BLOCK)) {
-	    srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-	} else {
-	    srbSize = sizeof(SCSI_REQUEST_BLOCK);
-	}
-
-	srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, '0DcS');
-
-	if (srb == NULL) {
-	    return STATUS_INSUFFICIENT_RESOURCES;
-	}
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    PSTORAGE_REQUEST_BLOCK srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, '0DcS');
+    if (srb == NULL) {
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     //
@@ -11385,8 +11175,8 @@ NTSTATUS ClasspGetLBProvisioningInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExte
     // Get the Block Limits VPD page (0xB0), which may override the default
     // UNMAP parameter values set above.
     //
-    ClasspDeviceGetBlockLimitsVPDPage(
-	FdoExtension, srb, srbSize, &FdoExtension->FunctionSupportInfo->BlockLimitsData);
+    ClasspDeviceGetBlockLimitsVPDPage(FdoExtension, srb, srbSize,
+				      &FdoExtension->FunctionSupportInfo->BlockLimitsData);
 
     FREE_POOL(srb);
 
@@ -11473,14 +11263,11 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = DeviceObject->DeviceExtension;
     NTSTATUS status;
-    PSCSI_REQUEST_BLOCK srb = NULL;
-    ULONG srbSize = 0;
     USHORT pageLength = 0;
     USHORT descriptorLength = 0;
     PVOID dataBuffer = NULL;
     UCHAR bufferLength = VPD_MAX_BUFFER_SIZE;
     ULONG allocationBufferLength = bufferLength;
-    PCDB cdb;
     ULONG dataTransferLength = 0;
     PVPD_THIRD_PARTY_COPY_PAGE operatingParameters = NULL;
     PWINDOWS_BLOCK_DEVICE_TOKEN_LIMITS_DESCRIPTOR blockDeviceTokenLimits = NULL;
@@ -11492,14 +11279,9 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
     //
     // Allocate an SRB for querying the device for LBP-related info.
     //
-    if ((fdoExtension->AdapterDescriptor != NULL) &&
-	(fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK)) {
-	srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-    } else {
-	srbSize = sizeof(SCSI_REQUEST_BLOCK);
-    }
-
-    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, CLASSPNP_POOL_TAG_SRB);
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    PSTORAGE_REQUEST_BLOCK srb = ExAllocatePoolWithTag(NonPagedPool, srbSize,
+						       CLASSPNP_POOL_TAG_SRB);
 
     if (!srb) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
@@ -11512,17 +11294,15 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 
 #if defined(_ARM_) || defined(_ARM64_)
     //
-    // ARM has specific alignment requirements, although this will not have a functional impact on x86 or amd64
-    // based platforms. We are taking the conservative approach here.
+    // ARM has specific alignment requirements, although this will not have a
+    // functional impact on x86 or amd64 based platforms. We are taking the
+    // conservative approach here.
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
+#endif
     dataBuffer = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength,
 				       CLASSPNP_POOL_TAG_VPD);
-#else
-    dataBuffer = ExAllocatePoolWithTag(NonPagedPool, bufferLength,
-				       CLASSPNP_POOL_TAG_VPD);
-#endif
 
     if (!dataBuffer) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
@@ -11538,35 +11318,18 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 
     RtlZeroMemory(dataBuffer, allocationBufferLength);
 
-    if ((fdoExtension->AdapterDescriptor != NULL) &&
-	(fdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK)) {
-	status = InitializeStorageRequestBlock((PSTORAGE_REQUEST_BLOCK)srb,
-					       STORAGE_ADDRESS_TYPE_BTL8,
-					       CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
-					       SrbExDataTypeScsiCdb16);
-	if (NT_SUCCESS(status)) {
-	    ((PSTORAGE_REQUEST_BLOCK)srb)->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
-
-	} else {
-	    //
-	    // Should not occur. Revert to legacy SRB.
-	    //
-	    NT_ASSERT(FALSE);
-
-	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_PNP,
-			"ClasspGetBlockDeviceTokenLimitsInfo (%p): Falling back to using "
-			"SRB (instead of SRB_EX).\n",
-			DeviceObject));
-
-	    RtlZeroMemory(srb, sizeof(SCSI_REQUEST_BLOCK));
-	    srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	    srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	}
-    } else {
-	RtlZeroMemory(srb, sizeof(SCSI_REQUEST_BLOCK));
-	srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-	srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+    status = InitializeStorageRequestBlock(srb,
+					   STORAGE_ADDRESS_TYPE_BTL8,
+					   CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE, 1,
+					   SrbExDataTypeScsiCdb16);
+    if (!NT_SUCCESS(status)) {
+	//
+	// Should not occur.
+	//
+	NT_ASSERT(FALSE);
+	goto Exit;
     }
+    srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 
     SrbSetTimeOutValue(srb, fdoExtension->TimeOutValue);
     SrbSetRequestTag(srb, SP_UNTAGGED);
@@ -11575,7 +11338,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 
     SrbSetCdbLength(srb, 6);
 
-    cdb = SrbGetCdb(srb);
+    PCDB cdb = SrbGetCdb(srb);
     cdb->CDB6INQUIRY3.OperationCode = SCSIOP_INQUIRY;
     cdb->CDB6INQUIRY3.EnableVitalProductData = 1;
     cdb->CDB6INQUIRY3.PageCode = VPD_THIRD_PARTY_COPY;
@@ -11719,7 +11482,7 @@ Return Value:
 --*/
 NTSTATUS ClassDeviceProcessOffloadRead(IN PDEVICE_OBJECT DeviceObject,
 				       IN PIRP Irp,
-				       IN OUT PSCSI_REQUEST_BLOCK Srb)
+				       IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     PIO_STACK_LOCATION irpStack;
     NTSTATUS status;
@@ -11852,7 +11615,7 @@ Return Value:
 --*/
 NTSTATUS ClassDeviceProcessOffloadWrite(IN PDEVICE_OBJECT DeviceObject,
 					IN PIRP Irp,
-					IN OUT PSCSI_REQUEST_BLOCK Srb)
+					IN OUT PSTORAGE_REQUEST_BLOCK Srb)
 {
     PIO_STACK_LOCATION irpStack;
     NTSTATUS status;
@@ -12475,7 +12238,6 @@ VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadC
     PTRANSFER_PACKET pkt;
     PIRP pseudoIrp;
     ULONG receiveTokenInformationBufferLength;
-    PSCSI_REQUEST_BLOCK srb;
     NTSTATUS status;
     ULONG tempSizeUlong;
     PULONGLONG totalSectorsProcessed;
@@ -12493,7 +12255,7 @@ VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadC
 		"ClasspReceivePopulateTokenInformation (%p): Entering function. Irp %p\n",
 		fdo, irp));
 
-    srb = &OffloadReadContext->Srb;
+    PSTORAGE_REQUEST_BLOCK srb = &OffloadReadContext->SrbEx;
     *totalSectorsProcessed = 0;
 
     pkt = DequeueFreeTransferPacket(fdo, TRUE);
@@ -12532,10 +12294,10 @@ VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadC
     // Cache away the CDB as it may be required for forwarded sense data
     // after this command completes.
     //
-    RtlZeroMemory(srb, sizeof(*srb));
+    RtlZeroMemory(srb, sizeof(OffloadReadContext->SrbExBuffer));
     cdbLength = SrbGetCdbLength(pkt->Srb);
     if (cdbLength <= 16) {
-	RtlCopyMemory(&srb->Cdb, SrbGetCdb(pkt->Srb), cdbLength);
+	RtlCopyMemory(SrbGetCdb(srb), SrbGetCdb(pkt->Srb), cdbLength);
     }
 
     SubmitTransferPacket(pkt);
@@ -12597,7 +12359,6 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
     PSENSE_DATA senseData;
     ULONG senseDataFieldLength;
     UCHAR senseDataLength;
-    PSCSI_REQUEST_BLOCK srb;
     NTSTATUS status;
     PUCHAR token;
     PVOID tokenAscii;
@@ -12619,7 +12380,7 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
     irp = offloadReadContext->OffloadReadDsmIrp;
     totalSectorsToProcess = offloadReadContext->TotalSectorsToProcess;
     totalSectorsProcessed = &offloadReadContext->TotalSectorsProcessed;
-    srb = &offloadReadContext->Srb;
+    PSTORAGE_REQUEST_BLOCK srb = &offloadReadContext->SrbEx;
     tokenAscii = NULL;
     tokenSize = BLOCK_DEVICE_TOKEN_SIZE;
     tokenInformationResults = (PRECEIVE_TOKEN_INFORMATION_HEADER)buffer;
@@ -12639,8 +12400,8 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 
     //
     // The buffer we hand allows for the max sizes for all the fields whereas the returned
-    // data may be lesser (e.g. sense data info will almost never be MAX_SENSE_BUFFER_SIZE, etc.
-    // so handle underrun "error"
+    // data may be lesser (e.g. sense data info will almost never be MAX_SENSE_BUFFER_SIZE,
+    // etc., so handle underrun "error".
     //
     if (status == STATUS_DATA_OVERRUN) {
 	status = STATUS_SUCCESS;
@@ -12706,7 +12467,8 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 	}
 
 	//
-	// Since the TokenOperation was sent down synchronously, the operation is complete as soon as the command returns.
+	// Since the TokenOperation was sent down synchronously, the operation is
+	// complete as soon as the command returns.
 	//
 
 	senseDataFieldLength = tokenInformationResults->SenseDataFieldLength;
@@ -12805,10 +12567,10 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 	}
 
 	//
-	// Operation that completes with success can have sense data (for target to pass on some extra info)
-	// but we don't care about such sense info.
-	// Operation that complete but not with success, may not have sense data associated, but may
-	// have valid CompletionStatus.
+	// Operation that completes with success can have sense data (for target to
+	// pass on some extra info) but we don't care about such sense info.
+	// Operation that complete but not with success, may not have sense data
+	// associated, but may have valid CompletionStatus.
 	//
 	// The "status" may be overriden by ClassInterpretSenseInfo().  Final
 	// status is determined a bit later - this is just the default status
@@ -12818,19 +12580,18 @@ VOID ClasspReceivePopulateTokenInformationTransferPacketDone(IN PVOID Context)
 	if (operationStatus == OPERATION_COMPLETED_WITH_ERROR ||
 	    operationStatus == OPERATION_COMPLETED_WITH_RESIDUAL_DATA ||
 	    operationStatus == OPERATION_TERMINATED) {
-	    SrbSetScsiStatus((PSTORAGE_REQUEST_BLOCK_HEADER)srb, completionStatus);
+	    SrbSetScsiStatus(srb, completionStatus);
 
 	    if (senseDataLength) {
 		ULONG retryInterval;
 
 		NT_ASSERT(senseDataLength <= sizeof(SENSE_DATA));
 
-		srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+		srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 
 		srb->SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
-		SrbSetSenseInfoBuffer((PSTORAGE_REQUEST_BLOCK_HEADER)srb, senseData);
-		SrbSetSenseInfoBufferLength((PSTORAGE_REQUEST_BLOCK_HEADER)srb,
-					    senseDataLength);
+		SrbSetSenseInfoBuffer(srb, senseData);
+		SrbSetSenseInfoBufferLength(srb, senseDataLength);
 
 		ClassInterpretSenseInfo(fdo, srb, IRP_MJ_SCSI, 0, 0, &status,
 					&retryInterval);
@@ -13902,29 +13663,16 @@ Return Value:
 --*/
 VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
-    PVOID buffer;
-    ULONG bufferLength;
-    ULONG cdbLength;
-    PDEVICE_OBJECT fdo;
-    PIRP irp;
-    ULONG listIdentifier;
-    PTRANSFER_PACKET pkt;
-    PIRP pseudoIrp;
-    ULONG receiveTokenInformationBufferLength;
-    PSCSI_REQUEST_BLOCK srb;
-    NTSTATUS status;
-    ULONG tempSizeUlong;
-
-    fdo = OffloadWriteContext->Fdo;
-    irp = OffloadWriteContext->OffloadWriteDsmIrp;
-    pseudoIrp = &OffloadWriteContext->PseudoIrp;
-    buffer = OffloadWriteContext + 1;
-    bufferLength = OffloadWriteContext->BufferLength;
-    receiveTokenInformationBufferLength =
+    PDEVICE_OBJECT fdo = OffloadWriteContext->Fdo;
+    PIRP irp = OffloadWriteContext->OffloadWriteDsmIrp;
+    PIRP pseudoIrp = &OffloadWriteContext->PseudoIrp;
+    PVOID buffer = OffloadWriteContext + 1;
+    ULONG bufferLength = OffloadWriteContext->BufferLength;
+    ULONG receiveTokenInformationBufferLength =
 	OffloadWriteContext->ReceiveTokenInformationBufferLength;
-    listIdentifier = OffloadWriteContext->ListIdentifier;
-    srb = &OffloadWriteContext->Srb;
-    status = STATUS_SUCCESS;
+    ULONG listIdentifier = OffloadWriteContext->ListIdentifier;
+    PSTORAGE_REQUEST_BLOCK srb = &OffloadWriteContext->SrbEx;
+    NTSTATUS status = STATUS_SUCCESS;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspReceiveWriteUsingTokenInformation (%p): Entering function. Irp "
@@ -13940,7 +13688,7 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
 
     NT_ASSERT(OffloadWriteContext->TotalSectorsProcessed == 0);
 
-    pkt = DequeueFreeTransferPacket(fdo, TRUE);
+    PTRANSFER_PACKET pkt = DequeueFreeTransferPacket(fdo, TRUE);
 
     if (!pkt) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -13956,7 +13704,7 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
 
     RtlZeroMemory(buffer, bufferLength);
 
-    tempSizeUlong = receiveTokenInformationBufferLength - 4;
+    ULONG tempSizeUlong = receiveTokenInformationBufferLength - 4;
     REVERSE_BYTES(((PRECEIVE_TOKEN_INFORMATION_HEADER)buffer)->AvailableData,
 		  &tempSizeUlong);
 
@@ -13967,8 +13715,8 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
     pseudoIrp->Tail.DriverContext[0] = LongToPtr(1);
     pseudoIrp->UserBuffer = buffer;
 
-    ClasspSetupReceiveWriteUsingTokenInformationTransferPacket(OffloadWriteContext, pkt,
-							       bufferLength,
+    ClasspSetupReceiveWriteUsingTokenInformationTransferPacket(OffloadWriteContext,
+							       pkt, bufferLength,
 							       (PUCHAR)buffer, pseudoIrp,
 							       listIdentifier);
 
@@ -13976,10 +13724,10 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
     // Cache away the CDB as it may be required for forwarded sense data
     // after this command completes.
     //
-    RtlZeroMemory(srb, sizeof(*srb));
-    cdbLength = SrbGetCdbLength(pkt->Srb);
+    RtlZeroMemory(srb, sizeof(OffloadWriteContext->SrbExBuffer));
+    ULONG cdbLength = SrbGetCdbLength(pkt->Srb);
     if (cdbLength <= 16) {
-	RtlCopyMemory(&srb->Cdb, SrbGetCdb(pkt->Srb), cdbLength);
+	RtlCopyMemory(SrbGetCdb(srb), SrbGetCdb(pkt->Srb), cdbLength);
     }
 
     SubmitTransferPacket(pkt);
@@ -13999,8 +13747,6 @@ ErrorExit:
     //
 
     ClasspCompleteOffloadWrite(OffloadWriteContext, status);
-
-    return;
 }
 
 /*++
@@ -14029,54 +13775,30 @@ Return Value:
 --*/
 VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
-    ULONG availableData;
-    PVOID buffer;
-    UCHAR completionStatus;
-    ULONG estimatedRetryInterval;
-    PDEVICE_OBJECT fdo;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
-    PIRP irp;
-    ULONG listIdentifier;
-    BOOLEAN operationCompleted;
-    UCHAR operationStatus;
-    PIRP pseudoIrp;
-    USHORT segmentsProcessed;
-    PSENSE_DATA senseData;
-    ULONG senseDataFieldLength;
-    UCHAR senseDataLength;
-    PSCSI_REQUEST_BLOCK srb;
-    NTSTATUS status;
-    ULONG tokenDescriptorLength;
-    PRECEIVE_TOKEN_INFORMATION_HEADER tokenInformationResults;
-    PRECEIVE_TOKEN_INFORMATION_RESPONSE_HEADER tokenInformationResponsePadding;
-    PBOOLEAN tokenInvalidated;
-    PULONGLONG totalSectorsProcessed;
-    ULONGLONG totalSectorsToProcess;
-    ULONGLONG transferBlockCount;
-
-    fdo = OffloadWriteContext->Fdo;
-    fdoExt = fdo->DeviceExtension;
-    listIdentifier = OffloadWriteContext->ListIdentifier;
-    totalSectorsProcessed = &OffloadWriteContext->TotalSectorsProcessed;
-    totalSectorsToProcess = OffloadWriteContext->TotalSectorsToProcess;
-    irp = OffloadWriteContext->OffloadWriteDsmIrp;
-    pseudoIrp = &OffloadWriteContext->PseudoIrp;
-    tokenInvalidated = &OffloadWriteContext->TokenInvalidated;
-    srb = &OffloadWriteContext->Srb;
-    operationCompleted = FALSE;
-    buffer = OffloadWriteContext + 1;
-    tokenInformationResults = (PRECEIVE_TOKEN_INFORMATION_HEADER)buffer;
-    senseData = (PSENSE_DATA)((PUCHAR)tokenInformationResults +
-			      FIELD_OFFSET(RECEIVE_TOKEN_INFORMATION_HEADER, SenseData));
-    transferBlockCount = 0;
-    tokenInformationResponsePadding = NULL;
-    tokenDescriptorLength = 0;
+    PDEVICE_OBJECT fdo = OffloadWriteContext->Fdo;
+    PFUNCTIONAL_DEVICE_EXTENSION fdoExt = fdo->DeviceExtension;
+    ULONG listIdentifier = OffloadWriteContext->ListIdentifier;
+    PULONGLONG totalSectorsProcessed = &OffloadWriteContext->TotalSectorsProcessed;
+    ULONGLONG totalSectorsToProcess = OffloadWriteContext->TotalSectorsToProcess;
+    PIRP irp = OffloadWriteContext->OffloadWriteDsmIrp;
+    PIRP pseudoIrp = &OffloadWriteContext->PseudoIrp;
+    PBOOLEAN tokenInvalidated = &OffloadWriteContext->TokenInvalidated;
+    PSTORAGE_REQUEST_BLOCK srb = &OffloadWriteContext->SrbEx;
+    BOOLEAN operationCompleted = FALSE;
+    PVOID buffer = OffloadWriteContext + 1;
+    PRECEIVE_TOKEN_INFORMATION_HEADER tokenInformationResults = buffer;
+    PSENSE_DATA senseData = (PSENSE_DATA)((PUCHAR)tokenInformationResults +
+					  FIELD_OFFSET(RECEIVE_TOKEN_INFORMATION_HEADER,
+						       SenseData));
+    ULONGLONG transferBlockCount = 0;
+    PRECEIVE_TOKEN_INFORMATION_RESPONSE_HEADER tokenInformationResponsePadding = NULL;
+    ULONG tokenDescriptorLength = 0;
 
     NT_ASSERT((*totalSectorsProcessed) == 0);
 
     OffloadWriteContext->Pkt = NULL;
 
-    status = pseudoIrp->IoStatus.Status;
+    NTSTATUS status = pseudoIrp->IoStatus.Status;
     NT_ASSERT(status != STATUS_PENDING);
 
     //
@@ -14101,6 +13823,7 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 	goto ErrorExit;
     }
 
+    ULONG availableData;
     REVERSE_BYTES(&availableData, &tokenInformationResults->AvailableData);
 
     NT_ASSERT(availableData <= FIELD_OFFSET(RECEIVE_TOKEN_INFORMATION_HEADER, SenseData) +
@@ -14109,26 +13832,24 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
     NT_ASSERT(tokenInformationResults->ResponseToServiceAction ==
 	      SERVICE_ACTION_WRITE_USING_TOKEN);
 
-    operationStatus = tokenInformationResults->OperationStatus;
+    UCHAR operationStatus = tokenInformationResults->OperationStatus;
     operationCompleted = ClasspIsTokenOperationComplete(operationStatus);
     NT_ASSERT(operationCompleted);
 
+    ULONG estimatedRetryInterval;
     REVERSE_BYTES(&estimatedRetryInterval,
 		  &tokenInformationResults->EstimatedStatusUpdateDelay);
 
-    completionStatus = tokenInformationResults->CompletionStatus;
+    UCHAR completionStatus = tokenInformationResults->CompletionStatus;
 
-    senseDataFieldLength = tokenInformationResults->SenseDataFieldLength;
-    senseDataLength = tokenInformationResults->SenseDataLength;
+    ULONG senseDataFieldLength = tokenInformationResults->SenseDataFieldLength;
+    UCHAR senseDataLength = tokenInformationResults->SenseDataLength;
     NT_ASSERT(senseDataFieldLength >= senseDataLength);
 
-    tokenInformationResponsePadding =
-	(PRECEIVE_TOKEN_INFORMATION_RESPONSE_HEADER)((PUCHAR)tokenInformationResults +
-						     FIELD_OFFSET(
-							 RECEIVE_TOKEN_INFORMATION_HEADER,
-							 SenseData) +
-						     tokenInformationResults
-							 ->SenseDataFieldLength);
+    tokenInformationResponsePadding = (PRECEIVE_TOKEN_INFORMATION_RESPONSE_HEADER)
+	((PUCHAR)tokenInformationResults + FIELD_OFFSET(RECEIVE_TOKEN_INFORMATION_HEADER,
+							SenseData) +
+	 tokenInformationResults->SenseDataFieldLength);
 
     REVERSE_BYTES(&tokenDescriptorLength,
 		  &tokenInformationResponsePadding->TokenDescriptorsLength);
@@ -14138,6 +13859,7 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 	      TRANSFER_COUNT_UNITS_NUMBER_BLOCKS);
     REVERSE_BYTES_QUAD(&transferBlockCount, &tokenInformationResults->TransferCount);
 
+    USHORT segmentsProcessed;
     REVERSE_BYTES_SHORT(&segmentsProcessed, &tokenInformationResults->SegmentsProcessed);
     NT_ASSERT(segmentsProcessed == 0);
 
@@ -14166,8 +13888,8 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 	}
 
 	//
-	// Since the TokenOperation was sent down synchronously but failed, the operation is complete as soon as the
-	// ReceiveTokenInformation command returns.
+	// Since the TokenOperation was sent down synchronously but failed, the operation
+	// is complete as soon as the ReceiveTokenInformation command returns.
 	//
 
 	NT_ASSERT((*totalSectorsProcessed) == 0);
@@ -14210,19 +13932,18 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 	if (operationStatus == OPERATION_COMPLETED_WITH_ERROR ||
 	    operationStatus == OPERATION_COMPLETED_WITH_RESIDUAL_DATA ||
 	    operationStatus == OPERATION_TERMINATED) {
-	    SrbSetScsiStatus((PSTORAGE_REQUEST_BLOCK_HEADER)srb, completionStatus);
+	    SrbSetScsiStatus(srb, completionStatus);
 
 	    if (senseDataLength) {
 		ULONG retryInterval;
 
 		NT_ASSERT(senseDataLength <= sizeof(SENSE_DATA));
 
-		srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
+		srb->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
 
 		srb->SrbStatus = SRB_STATUS_AUTOSENSE_VALID | SRB_STATUS_ERROR;
-		SrbSetSenseInfoBuffer((PSTORAGE_REQUEST_BLOCK_HEADER)srb, senseData);
-		SrbSetSenseInfoBufferLength((PSTORAGE_REQUEST_BLOCK_HEADER)srb,
-					    senseDataLength);
+		SrbSetSenseInfoBuffer(srb, senseData);
+		SrbSetSenseInfoBufferLength(srb, senseDataLength);
 
 		ClassInterpretSenseInfo(fdo, srb, IRP_MJ_SCSI, 0, 0, &status,
 					&retryInterval);
@@ -14235,8 +13956,8 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 			    transferBlockCount * fdoExt->DiskGeometry.BytesPerSector));
 
 		//
-		// If the token isn't valid any longer, we should let the upper layers know so that
-		// they don't waste time retrying the write with the same token.
+		// If the token isn't valid any longer, we should let the upper layers know
+		// so that they don't waste time retrying the write with the same token.
 		//
 		if (status == STATUS_INVALID_TOKEN) {
 		    *tokenInvalidated = TRUE;
@@ -14340,8 +14061,6 @@ NTSTATUS ClasspRefreshFunctionSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION Fd
 					  IN BOOLEAN ForceQuery)
 {
     NTSTATUS status;
-    PSCSI_REQUEST_BLOCK srb = NULL;
-    ULONG srbSize;
     CLASS_VPD_B0_DATA blockLimitsDataNew;
     PCLASS_VPD_B0_DATA blockLimitsDataOriginal;
     ULONG generationCount;
@@ -14366,14 +14085,9 @@ NTSTATUS ClasspRefreshFunctionSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION Fd
     // the Logical Block Provisioning (0xB2) or Block Limits (0xB0) VPD page
     // exists.
     //
-    if ((FdoExtension->AdapterDescriptor != NULL) &&
-	(FdoExtension->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK)) {
-	srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
-    } else {
-	srbSize = sizeof(SCSI_REQUEST_BLOCK);
-    }
+    ULONG srbSize = CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE;
 
-    srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, '1DcS');
+    PSTORAGE_REQUEST_BLOCK srb = ExAllocatePoolWithTag(NonPagedPool, srbSize, '1DcS');
     if (srb == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }

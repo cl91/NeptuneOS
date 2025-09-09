@@ -291,7 +291,6 @@ typedef struct _MEDIA_CHANGE_DETECTION_INFO {
     //
 
     union {
-	SCSI_REQUEST_BLOCK Srb;
 	STORAGE_REQUEST_BLOCK SrbEx;
 	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
     } MediaChangeSrb;
@@ -385,19 +384,8 @@ typedef enum _CLASS_DETECTION_STATE {
     ClassDetectionUnknown = 0,
     ClassDetectionUnsupported = 1,
     ClassDetectionSupported = 2
-} CLASS_DETECTION_STATE,
-    *PCLASS_DETECTION_STATE;
+} CLASS_DETECTION_STATE, *PCLASS_DETECTION_STATE;
 
-#if _MSC_VER >= 1600
-#pragma warning(push)
-#pragma warning(disable : 4214) // bit field types other than int
-#endif
-//
-// CLASS_ERROR_LOG_DATA will still use SCSI_REQUEST_BLOCK even
-// when using extended SRB as an extended SRB is too large to
-// fit into. Should revisit this code once classpnp starts to
-// use greater than 16 byte CDB.
-//
 typedef struct _CLASS_ERROR_LOG_DATA {
     LARGE_INTEGER TickCount; // Offset 0x00
     ULONG PortNumber; // Offset 0x08
@@ -409,21 +397,21 @@ typedef struct _CLASS_ERROR_LOG_DATA {
 
     UCHAR Reserved[3];
 
-    SCSI_REQUEST_BLOCK Srb; // Offset 0x10
+    union {
+	STORAGE_REQUEST_BLOCK SrbEx; // Offset 0x10
+	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
+    };
 
     /*
-     *  We define the SenseData as the default length.
-     *  Since the sense data returned by the port driver may be longer,
-     *  SenseData must be at the end of this structure.
-     *  For our internal error log, we only log the default length.
+     * We define the SenseData as the default length.
+     * Since the sense data returned by the port driver may be longer,
+     * SenseData must be at the end of this structure.
+     * For our internal error log, we only log the default length.
      */
-    SENSE_DATA
-    SenseData; // Offset 0x50 for x86 (or 0x68 for ia64) (ULONG32 Alignment required!)
-
+    SENSE_DATA SenseData;
 } CLASS_ERROR_LOG_DATA, *PCLASS_ERROR_LOG_DATA;
-#if _MSC_VER >= 1600
-#pragma warning(pop)
-#endif
+
+C_ASSERT(ERROR_LOG_MAXIMUM_SIZE > sizeof(IO_ERROR_LOG_PACKET) + sizeof(CLASS_ERROR_LOG_DATA));
 
 #define NUM_ERROR_LOG_ENTRIES 16
 #define DBG_NUM_PACKET_LOG_ENTRIES (64 * 2) // 64 send&receive's
@@ -502,7 +490,7 @@ typedef struct _TRANSFER_PACKET {
      *  device object and ioctl code; so these must
      *  immediately follow the SRB block.
      */
-    PSTORAGE_REQUEST_BLOCK_HEADER Srb;
+    PSTORAGE_REQUEST_BLOCK Srb;
     // ULONG SrbIoctlDevObj;        // not handling ioctls yet
     // ULONG SrbIoctlCode;
 
@@ -687,10 +675,10 @@ struct _CLASS_PRIVATE_FDO_DATA {
     ULONG HwMaxXferLen;
 
     /*
-     *  SCSI_REQUEST_BLOCK template preconfigured with the constant values.
+     *  STORAGE_REQUEST_BLOCK template preconfigured with the constant values.
      *  This is slapped into the SRB in the TRANSFER_PACKET for each transfer.
      */
-    PSTORAGE_REQUEST_BLOCK_HEADER SrbTemplate;
+    PSTORAGE_REQUEST_BLOCK SrbTemplate;
 
     /*
      *  For non-removable media, we read the drive capacity at start time and cache it.
@@ -932,7 +920,10 @@ typedef struct _OFFLOAD_READ_CONTEXT {
     // Just a cached copy of what was in the transfer packet.
     //
 
-    SCSI_REQUEST_BLOCK Srb;
+    union {
+	STORAGE_REQUEST_BLOCK SrbEx;
+	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
+    };
 
     //
     // Pointer into the token part of the SCSI buffer (the buffer immediately
@@ -990,7 +981,10 @@ typedef struct _OFFLOAD_WRITE_CONTEXT {
     // Just a cached copy of what was in the transfer packet.
     //
 
-    SCSI_REQUEST_BLOCK Srb;
+    union {
+	STORAGE_REQUEST_BLOCK SrbEx;
+	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
+    };
 
     ULONGLONG OperationStartTime;
 } OFFLOAD_WRITE_CONTEXT, *POFFLOAD_WRITE_CONTEXT;
@@ -1156,7 +1150,7 @@ IO_COMPLETION_ROUTINE ClasspSendSynchronousCompletion;
 
 VOID RetryRequest(PDEVICE_OBJECT DeviceObject,
 		  PIRP Irp,
-		  PSCSI_REQUEST_BLOCK Srb,
+		  PSTORAGE_REQUEST_BLOCK Srb,
 		  BOOLEAN Associated,
 		  LONGLONG TimeDelta100ns);
 
@@ -1189,7 +1183,7 @@ NTSTATUS ClasspMediaChangeCompletion(PDEVICE_OBJECT DeviceObject,
 
 NTSTATUS ClasspMcnControl(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 			  IN PIRP Irp,
-			  IN PSCSI_REQUEST_BLOCK Srb);
+			  IN PSTORAGE_REQUEST_BLOCK Srb);
 
 VOID ClasspRegisterMountedDeviceInterface(IN PDEVICE_OBJECT DeviceObject);
 
@@ -1209,7 +1203,7 @@ VOID ClassInitializeDispatchTables(PCLASS_DRIVER_EXTENSION DriverExtension);
 
 NTSTATUS ClasspPersistentReserve(IN PDEVICE_OBJECT DeviceObject,
 				 IN PIRP Irp,
-				 IN OUT PSCSI_REQUEST_BLOCK Srb);
+				 IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 //
 // routines for dictionary list support
@@ -1265,14 +1259,14 @@ PPHYSICAL_DEVICE_EXTENSION ClassRemoveChild(IN PFUNCTIONAL_DEVICE_EXTENSION Pare
 					    IN BOOLEAN AcquireLock);
 
 VOID ClassFreeOrReuseSrb(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			 IN PSCSI_REQUEST_BLOCK Srb);
+			 IN PSTORAGE_REQUEST_BLOCK Srb);
 
 VOID ClassRetryRequest(IN PDEVICE_OBJECT SelfDeviceObject, IN PIRP Irp,
 		       IN LONGLONG TimeDelta100ns); // in 100ns units
 
 VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 			  IN PIRP Irp,
-			  IN PSCSI_REQUEST_BLOCK Srb);
+			  IN PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspAllocateReleaseQueueIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension);
 
@@ -1396,40 +1390,40 @@ NTSTATUS ClasspModeSelect(IN PDEVICE_OBJECT Fdo,
 			  IN BOOLEAN SavePages);
 
 NTSTATUS ClasspWriteCacheProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				  IN OUT PSCSI_REQUEST_BLOCK Srb);
+				  IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspAccessAlignmentProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				       IN OUT PSCSI_REQUEST_BLOCK Srb);
+				       IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspDeviceSeekPenaltyProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-					 IN OUT PSCSI_REQUEST_BLOCK Srb);
+					 IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspDeviceGetLBProvisioningVPDPage(IN PDEVICE_OBJECT DeviceObject,
-					      IN OUT OPTIONAL PSCSI_REQUEST_BLOCK Srb);
+					      IN OUT OPTIONAL PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspDeviceGetBlockDeviceCharacteristicsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION fdoExtension,
-							  IN PSCSI_REQUEST_BLOCK Srb);
+							  IN PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspDeviceGetBlockLimitsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-					   IN OUT PSCSI_REQUEST_BLOCK Srb,
+					   IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 					   IN ULONG SrbSize,
 					   OUT PCLASS_VPD_B0_DATA BlockLimitsData);
 
 NTSTATUS ClasspDeviceTrimProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-				  IN OUT PSCSI_REQUEST_BLOCK Srb);
+				  IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspDeviceLBProvisioningProperty(IN PDEVICE_OBJECT DeviceObject,
 					    IN OUT PIRP Irp,
-					    IN OUT PSCSI_REQUEST_BLOCK Srb);
+					    IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspDeviceTrimProcess(IN PDEVICE_OBJECT DeviceObject,
 				 IN PIRP Irp,
 				 IN PGUID ActivityId,
-				 IN OUT PSCSI_REQUEST_BLOCK Srb);
+				 IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspDeviceGetLBAStatus(IN PDEVICE_OBJECT DeviceObject,
 				  IN OUT PIRP Irp,
-				  IN OUT PSCSI_REQUEST_BLOCK Srb);
+				  IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
 					IN PCLASS_VPD_B0_DATA BlockLimitsData,
@@ -1437,7 +1431,7 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
 					IN ULONGLONG LengthInBytes,
 					OUT PDEVICE_MANAGE_DATA_SET_ATTRIBUTES_OUTPUT DsmOutput,
 					IN OUT PULONG DsmOutputLength,
-					IN OUT PSCSI_REQUEST_BLOCK Srb,
+					IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 					IN BOOLEAN ConsolidateableBlocksOnly,
 					IN ULONG OutputVersion,
 					OUT PBOOLEAN BlockLimitsDataMayHaveChanged);
@@ -1474,7 +1468,7 @@ NTSTATUS ClasspGetCopyOffloadMaxDuration(IN PDEVICE_OBJECT DeviceObject,
 
 NTSTATUS ClasspDeviceCopyOffloadProperty(IN PDEVICE_OBJECT DeviceObject,
 					 IN OUT PIRP Irp,
-					 IN OUT PSCSI_REQUEST_BLOCK Srb);
+					 IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspValidateOffloadSupported(IN PDEVICE_OBJECT DeviceObject,
 					IN PIRP Irp);
@@ -1505,7 +1499,7 @@ VOID ClasspConvertDataSetRangeToBlockDescr(IN PDEVICE_OBJECT Fdo,
 
 NTSTATUS ClasspDeviceMediaTypeProperty(IN PDEVICE_OBJECT DeviceObject,
 				       IN OUT PIRP Irp,
-				       IN OUT PSCSI_REQUEST_BLOCK Srb);
+				       IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 PUCHAR ClasspBinaryToAscii(IN PUCHAR HexBuffer,
 			   IN ULONG Length,
@@ -1586,11 +1580,11 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 
 NTSTATUS ClassDeviceProcessOffloadRead(IN PDEVICE_OBJECT DeviceObject,
 				       IN PIRP Irp,
-				       IN OUT PSCSI_REQUEST_BLOCK Srb);
+				       IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClassDeviceProcessOffloadWrite(IN PDEVICE_OBJECT DeviceObject,
 					IN PIRP Irp,
-					IN OUT PSCSI_REQUEST_BLOCK Srb);
+					IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 VOID ClasspReceivePopulateTokenInformation(IN POFFLOAD_READ_CONTEXT OffloadReadContext);
 
@@ -1641,11 +1635,11 @@ NTSTATUS InterpretReadCapacity16Data(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExte
 				     IN PREAD_CAPACITY16_DATA ReadCapacity16Data);
 
 NTSTATUS ClassReadCapacity16(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			     IN OUT PSCSI_REQUEST_BLOCK Srb);
+			     IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClassDeviceGetLBProvisioningResources(IN PDEVICE_OBJECT DeviceObject,
 					       IN OUT PIRP Irp,
-					       IN OUT PSCSI_REQUEST_BLOCK Srb);
+					       IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClasspStorageEventNotification(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
@@ -1694,7 +1688,7 @@ VOID HistoryLogReturnedPacket(TRANSFER_PACKET *Pkt);
 
 BOOLEAN InterpretSenseInfoWithoutHistory(IN PDEVICE_OBJECT Fdo,
 					 IN OPTIONAL PIRP OriginalRequest,
-					 IN PSCSI_REQUEST_BLOCK Srb,
+					 IN PSTORAGE_REQUEST_BLOCK Srb,
 					 UCHAR MajorFunctionCode,
 					 ULONG IoDeviceCode,
 					 ULONG PreviousRetryCount,
@@ -1727,9 +1721,6 @@ NTSTATUS InitializeStorageRequestBlock(IN OUT PSTORAGE_REQUEST_BLOCK Srb,
 				       IN USHORT AddressType,
 				       IN ULONG ByteSize,
 				       IN ULONG NumSrbExData, ...);
-
-VOID ClasspConvertToScsiRequestBlock(OUT PSCSI_REQUEST_BLOCK Srb,
-				     IN PSTORAGE_REQUEST_BLOCK SrbEx);
 
 FORCEINLINE PCDB ClasspTransferPacketGetCdb(IN PTRANSFER_PACKET Pkt)
 {
@@ -1787,18 +1778,14 @@ FORCEINLINE UCHAR ClasspTransferPacketGetSenseInfoBufferLength(IN PTRANSFER_PACK
     return SrbGetSenseInfoBufferLength(Pkt->Srb);
 }
 
-FORCEINLINE VOID ClasspSrbSetOriginalIrp(IN PSTORAGE_REQUEST_BLOCK_HEADER Srb,
+FORCEINLINE VOID ClasspSrbSetOriginalIrp(IN PSTORAGE_REQUEST_BLOCK Srb,
 					 IN PIRP Irp)
 {
-    if (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	((PSTORAGE_REQUEST_BLOCK)Srb)->MiniportContext = (PVOID)Irp;
-    } else {
-	((PSCSI_REQUEST_BLOCK)Srb)->SrbExtension = (PVOID)Irp;
-    }
+    Srb->MiniportContext = (PVOID)Irp;
 }
 
 FORCEINLINE BOOLEAN PORT_ALLOCATED_SENSE_EX(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-					    IN PSTORAGE_REQUEST_BLOCK_HEADER Srb)
+					    IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     return ((BOOLEAN)((TEST_FLAG(SrbGetSrbFlags(Srb), SRB_FLAGS_PORT_DRIVER_ALLOCSENSE) &&
 		       TEST_FLAG(SrbGetSrbFlags(Srb), SRB_FLAGS_FREE_SENSE_BUFFER)) &&
@@ -1806,7 +1793,7 @@ FORCEINLINE BOOLEAN PORT_ALLOCATED_SENSE_EX(IN PFUNCTIONAL_DEVICE_EXTENSION FdoE
 }
 
 FORCEINLINE VOID FREE_PORT_ALLOCATED_SENSE_BUFFER_EX(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-						     IN PSTORAGE_REQUEST_BLOCK_HEADER Srb)
+						     IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     NT_ASSERT(TEST_FLAG(SrbGetSrbFlags(Srb), SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
     NT_ASSERT(TEST_FLAG(SrbGetSrbFlags(Srb), SRB_FLAGS_FREE_SENSE_BUFFER));
@@ -1862,7 +1849,7 @@ FORCEINLINE ULONG ClasspGetMaxUsableBufferLengthFromOffset(IN PVOID BaseAddress,
     return BaseStructureSizeInBytes - OffsetInBytes;
 }
 
-BOOLEAN ClasspIsThinProvisioningError(IN PSCSI_REQUEST_BLOCK Srb);
+BOOLEAN ClasspIsThinProvisioningError(IN PSTORAGE_REQUEST_BLOCK Srb);
 
 FORCEINLINE BOOLEAN ClasspLowerLayerNotSupport(IN NTSTATUS Status)
 {
@@ -1871,7 +1858,7 @@ FORCEINLINE BOOLEAN ClasspLowerLayerNotSupport(IN NTSTATUS Status)
 	    (Status == STATUS_INVALID_PARAMETER_1));
 }
 
-FORCEINLINE BOOLEAN ClasspSrbTimeOutStatus(IN PSTORAGE_REQUEST_BLOCK_HEADER Srb)
+FORCEINLINE BOOLEAN ClasspSrbTimeOutStatus(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     UCHAR srbStatus = SrbGetSrbStatus(Srb);
     return ((srbStatus == SRB_STATUS_BUS_RESET) || (srbStatus == SRB_STATUS_TIMEOUT) ||
@@ -1884,8 +1871,8 @@ NTSTATUS ClassDeviceHwFirmwareGetInfoProcess(IN PDEVICE_OBJECT DeviceObject,
 
 NTSTATUS ClassDeviceHwFirmwareDownloadProcess(IN PDEVICE_OBJECT DeviceObject,
 					      IN OUT PIRP Irp,
-					      IN OUT PSCSI_REQUEST_BLOCK Srb);
+					      IN OUT PSTORAGE_REQUEST_BLOCK Srb);
 
 NTSTATUS ClassDeviceHwFirmwareActivateProcess(IN PDEVICE_OBJECT DeviceObject,
 					      IN OUT PIRP Irp,
-					      IN OUT PSCSI_REQUEST_BLOCK Srb);
+					      IN OUT PSTORAGE_REQUEST_BLOCK Srb);

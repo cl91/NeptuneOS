@@ -99,7 +99,7 @@ VOID IssueInitCommands(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 		       _In_opt_ PSTORAGE_REQUEST_BLOCK Srb);
 
 VOID IssueSetDateAndTimeCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
-				_Inout_ PSCSI_REQUEST_BLOCK Srb,
+				_Inout_ PSTORAGE_REQUEST_BLOCK Srb,
 				_In_ BOOLEAN SendStandBy);
 
 VOID IssueReadLogExtCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,

@@ -221,21 +221,21 @@ BOOLEAN AhciPortInitialize(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension)
 
     // 4.4 Setup the Local SRB Extension
     ChannelExtension->Local.SrbExtensionPhysicalAddress = StorPortGetPhysicalAddress(
-	adapterExtension, NULL, (PVOID)ChannelExtension->Local.SrbExtension,
+	adapterExtension, NULL, ChannelExtension->Local.SrbExtension,
 	&mappedLength);
     ChannelExtension->Sense.SrbExtensionPhysicalAddress = StorPortGetPhysicalAddress(
-	adapterExtension, NULL, (PVOID)ChannelExtension->Sense.SrbExtension,
+	adapterExtension, NULL, ChannelExtension->Sense.SrbExtension,
 	&mappedLength);
 
     // 4.6 Setup Device Identify Data and Inquiry Data buffers
     ChannelExtension->DeviceExtension[0].IdentifyDataPhysicalAddress =
 	StorPortGetPhysicalAddress(
 	    adapterExtension, NULL,
-	    (PVOID)ChannelExtension->DeviceExtension[0].IdentifyDeviceData,
+	    ChannelExtension->DeviceExtension[0].IdentifyDeviceData,
 	    &mappedLength);
     ChannelExtension->DeviceExtension[0].InquiryDataPhysicalAddress =
 	StorPortGetPhysicalAddress(adapterExtension, NULL,
-				   (PVOID)ChannelExtension->DeviceExtension[0].InquiryData,
+				   ChannelExtension->DeviceExtension[0].InquiryData,
 				   &mappedLength);
 
     // 4.8 Setup STOR_ADDRESS for the device. StorAHCI uses Bus/Target/Lun addressing
@@ -2038,25 +2038,28 @@ Affected Variables/Registers:
     none
 
 --*/
-__inline VOID BuildLocalCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
-				_In_ PATA_TASK_FILE TaskFile,
-				_In_opt_ PSRB_COMPLETION_ROUTINE CompletionRountine)
+static VOID BuildLocalCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
+			      _In_ PATA_TASK_FILE TaskFile,
+			      _In_opt_ PSRB_COMPLETION_ROUTINE CompletionRountine)
 {
-    PSCSI_REQUEST_BLOCK srb;
-    PAHCI_SRB_EXTENSION srbExtension;
-
     //
-    // Local Srb still uses SCSI_REQUEST_BLOCK type.
     // do not touch field "srb->NextSrb". It should be only touched in queue related
     // operations.
     //
-    srb = &ChannelExtension->Local.Srb;
+    PSTORAGE_REQUEST_BLOCK srb = &ChannelExtension->Local.Srb;
+    srb->Signature = SRB_SIGNATURE;
+    srb->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    srb->SrbLength = SRBEX_SCSI_CDB16_BUFFER_SIZE;
+    srb->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    PSTOR_ADDR_BTL8 AddrBtl8 = (PVOID)((PUCHAR)srb + srb->AddressOffset);
+    AddrBtl8->Type = STOR_ADDRESS_TYPE_BTL8;
+    AddrBtl8->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
     srb->SrbStatus = SRB_STATUS_PENDING;
-    srb->SrbExtension = (PVOID)ChannelExtension->Local.SrbExtension;
+    srb->MiniportContext = ChannelExtension->Local.SrbExtension;
     srb->TimeOutValue = 1; // as it's sent by miniport, no one monitors the timeout value.
 
     // Fills in the local SRB with the SetFeatures command
-    srbExtension = ChannelExtension->Local.SrbExtension;
+    PAHCI_SRB_EXTENSION srbExtension = ChannelExtension->Local.SrbExtension;
     AhciZeroMemory((PCHAR)srbExtension, sizeof(AHCI_SRB_EXTENSION));
 
     srbExtension->AtaFunction = ATA_FUNCTION_ATA_COMMAND;
@@ -2147,8 +2150,6 @@ VOID IssuePreservedSettingCommands(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension
     taskFile.Current.bCommandReg = IDE_COMMAND_SET_FEATURE;
 
     BuildLocalCommand(ChannelExtension, &taskFile, IssuePreservedSettingCommands);
-
-    return;
 }
 
 /*++
@@ -2295,10 +2296,10 @@ Affected Variables/Registers:
 
 --*/
 VOID IssueSetDateAndTimeCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
-				_Inout_ PSCSI_REQUEST_BLOCK Srb,
+				_Inout_ PSTORAGE_REQUEST_BLOCK Srb,
 				_In_ BOOLEAN SendStandBy)
 {
-    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension((PSTORAGE_REQUEST_BLOCK)Srb);
+    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(Srb);
 
     NT_ASSERT(Srb != &ChannelExtension->Local.Srb);
 

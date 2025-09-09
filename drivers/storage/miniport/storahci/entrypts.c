@@ -1533,19 +1533,14 @@ BOOLEAN AhciHwResetBus(_In_ PVOID AdapterExtension, _In_ ULONG PathId)
     return status;
 }
 
-BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
+BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSTORAGE_REQUEST_BLOCK Srb)
 {
     PAHCI_ADAPTER_EXTENSION adapterExtension = (PAHCI_ADAPTER_EXTENSION)AdapterExtension;
     PAHCI_CHANNEL_EXTENSION channelExtension = NULL;
     UCHAR pathId = SrbGetPathId(Srb);
     ULONG function = SrbGetSrbFunction(Srb);
     ULONG srbFlags = SrbGetSrbFlags(Srb);
-    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension((PSTORAGE_REQUEST_BLOCK)Srb);
-
-    //
-    // Make sure the incoming Srb with the expected type
-    //
-    NT_ASSERT(Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK);
+    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(Srb);
 
     //
     // SrbStatus value should have been set to pending.
@@ -1613,13 +1608,12 @@ BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
     // Get the flag from Storport that tells us if the adapter is removable or not.
     //
     case SRB_FUNCTION_PNP: {
-	PSRBEX_DATA_PNP pnpData = (PSRBEX_DATA_PNP)
-	    SrbGetSrbExDataByType((PSTORAGE_REQUEST_BLOCK)Srb, SrbExDataTypePnP);
+	PSRBEX_DATA_PNP pnpData = (PSRBEX_DATA_PNP)SrbGetSrbExDataByType(Srb,
+									 SrbExDataTypePnP);
 	if (((pnpData->SrbPnPFlags & SRB_PNP_FLAGS_ADAPTER_REQUEST)) &&
 	    (pnpData->PnPAction == StorQueryCapabilities) &&
 	    (SrbGetDataTransferLength(Srb) >= sizeof(STOR_DEVICE_CAPABILITIES_EX))) {
-	    PSTOR_DEVICE_CAPABILITIES_EX storCapabilities = (PSTOR_DEVICE_CAPABILITIES_EX)
-		SrbGetDataBuffer(Srb);
+	    PSTOR_DEVICE_CAPABILITIES_EX storCapabilities = (PVOID)SrbGetDataBuffer(Srb);
 	    adapterExtension->StateFlags.Removable = storCapabilities->Removable;
 	    Srb->SrbStatus = SRB_STATUS_SUCCESS;
 	}
@@ -1628,13 +1622,12 @@ BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 
     case SRB_FUNCTION_IO_CONTROL: {
 	if ((srbFlags & SRB_IOCTL_FLAGS_ADAPTER_REQUEST) == 0) {
-	    IOCTLtoATA(adapterExtension->PortExtension[pathId], (PSTORAGE_REQUEST_BLOCK)Srb);
+	    IOCTLtoATA(adapterExtension->PortExtension[pathId], Srb);
 
 	    if (srbExtension->AtaFunction != 0) {
-		if ((srbExtension->Sgl == NULL) &&
-		    (IsDataTransferNeeded((PSTORAGE_REQUEST_BLOCK)Srb))) {
-		    srbExtension->Sgl = (PLOCAL_SCATTER_GATHER_LIST)
-			StorPortGetScatterGatherList(adapterExtension, Srb);
+		if ((srbExtension->Sgl == NULL) && IsDataTransferNeeded(Srb)) {
+		    srbExtension->Sgl = (PVOID)StorPortGetScatterGatherList(adapterExtension,
+									    Srb);
 		}
 		if (srbExtension->Sgl != NULL) {
 		    // Zero PRDT according to SGL elements number to avoid unnecessary CPU
@@ -1649,13 +1642,12 @@ BOOLEAN AhciHwBuildIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
     }
 
     case SRB_FUNCTION_EXECUTE_SCSI: {
-	SCSItoATA(adapterExtension->PortExtension[pathId], (PSTORAGE_REQUEST_BLOCK)Srb);
+	SCSItoATA(adapterExtension->PortExtension[pathId], Srb);
 
 	if (srbExtension->AtaFunction != 0) {
-	    if ((srbExtension->Sgl == NULL) &&
-		(IsDataTransferNeeded((PSTORAGE_REQUEST_BLOCK)Srb))) {
-		srbExtension->Sgl = (PLOCAL_SCATTER_GATHER_LIST)
-		    StorPortGetScatterGatherList(adapterExtension, Srb);
+	    if ((srbExtension->Sgl == NULL) && IsDataTransferNeeded(Srb)) {
+		srbExtension->Sgl = (PVOID)StorPortGetScatterGatherList(adapterExtension,
+									Srb);
 	    }
 	    if (srbExtension->Sgl != NULL) {
 		// Zero PRDT according to SGL elements number to avoid unnecessary CPU
@@ -1699,7 +1691,7 @@ exit:
     3. Validate Port Number, if not valid, bail out.
     4. Process Device/Port request
 */
-BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
+BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSTORAGE_REQUEST_BLOCK Srb)
 {
     STOR_LOCK_HANDLE lockhandle = { InterruptLock };
     PAHCI_ADAPTER_EXTENSION adapterExtension = (PAHCI_ADAPTER_EXTENSION)AdapterExtension;
@@ -1711,8 +1703,7 @@ BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
     // 1 Work on Adapter requests
     switch (function) {
     case SRB_FUNCTION_PNP: {
-	PSRBEX_DATA_PNP pnpData = (PSRBEX_DATA_PNP)
-	    SrbGetSrbExDataByType((PSTORAGE_REQUEST_BLOCK)Srb, SrbExDataTypePnP);
+	PSRBEX_DATA_PNP pnpData = (PVOID)SrbGetSrbExDataByType(Srb, SrbExDataTypePnP);
 
 	NT_ASSERT(pnpData != NULL);
 
@@ -1751,8 +1742,7 @@ BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 	break;
     }
     case SRB_FUNCTION_POWER: {
-	PSRBEX_DATA_POWER powerData = (PSRBEX_DATA_POWER)
-	    SrbGetSrbExDataByType((PSTORAGE_REQUEST_BLOCK)Srb, SrbExDataTypePower);
+	PSRBEX_DATA_POWER powerData = (PVOID)SrbGetSrbExDataByType(Srb, SrbExDataTypePower);
 
 	NT_ASSERT(powerData != NULL);
 
@@ -1781,8 +1771,7 @@ BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 	ULONG srbFlags = SrbGetSrbFlags(Srb);
 
 	if ((srbFlags & SRB_IOCTL_FLAGS_ADAPTER_REQUEST) != 0) {
-	    adapterRequest = AdapterProcessIOCTL(adapterExtension,
-						 (PSTORAGE_REQUEST_BLOCK)Srb);
+	    adapterRequest = AdapterProcessIOCTL(adapterExtension, Srb);
 
 	    if (adapterRequest) {
 		StorPortNotification(RequestComplete, AdapterExtension, Srb);
@@ -1811,8 +1800,8 @@ BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 				 adapterExtension->SystemIoBusNumber, L"SlotNumber",
 				 adapterExtension->SlotNumber, L"AhciBaseAddress",
 				 adapterExtension->AhciBaseAddress, L"PathId", pathId,
-				 L"Function", Srb->Function, L"SrbStatus", Srb->SrbStatus,
-				 NULL, 0);
+				 L"SrbFunction", Srb->SrbFunction,
+				 L"SrbStatus", Srb->SrbStatus, NULL, 0);
 
 	StorPortNotification(RequestComplete, AdapterExtension, Srb);
 	return TRUE;
@@ -1850,8 +1839,7 @@ BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
     }
 
     case SRB_FUNCTION_PNP: {
-	PSRBEX_DATA_PNP pnpData = (PSRBEX_DATA_PNP)
-	    SrbGetSrbExDataByType((PSTORAGE_REQUEST_BLOCK)Srb, SrbExDataTypePnP);
+	PSRBEX_DATA_PNP pnpData = (PVOID)SrbGetSrbExDataByType(Srb, SrbExDataTypePnP);
 
 	NT_ASSERT(pnpData != NULL);
 
@@ -1923,8 +1911,7 @@ BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 	} else if (sendStandby) {
 	    // in dump mode, this is the last Srb sent after SYNC CACHE, spin down the
 	    // disk
-	    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(
-		(PSTORAGE_REQUEST_BLOCK)Srb);
+	    PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(Srb);
 	    srbExtension->AtaFunction = ATA_FUNCTION_ATA_COMMAND;
 	    SetCommandReg((&srbExtension->TaskFile.Current),
 			  IDE_COMMAND_STANDBY_IMMEDIATE);
@@ -2105,12 +2092,10 @@ BOOLEAN AhciHwStartIo(_In_ PVOID AdapterExtension, _In_ PSCSI_REQUEST_BLOCK Srb)
 	if ((function != SRB_FUNCTION_EXECUTE_SCSI) &&
 	    (SrbGetSrbFlags(Srb) & SRB_FLAGS_D3_PROCESSING) == 0) {
 	    // for incoming request, port driver should make sure it's active.
-	    PortAcquireActiveReference(adapterExtension->PortExtension[pathId],
-				       (PSTORAGE_REQUEST_BLOCK)Srb, NULL);
+	    PortAcquireActiveReference(adapterExtension->PortExtension[pathId], Srb, NULL);
 	}
 
-	AhciProcessIo(adapterExtension->PortExtension[pathId],
-		      (PSTORAGE_REQUEST_BLOCK)Srb, FALSE);
+	AhciProcessIo(adapterExtension->PortExtension[pathId], Srb, FALSE);
 	ActivateQueue(adapterExtension->PortExtension[pathId], FALSE);
     }
 
@@ -3010,16 +2995,12 @@ SCSI_UNIT_CONTROL_STATUS AhciHwUnitControl(_In_ PVOID AdapterExtension,
 		    // Starts processing the command. Only need to do the first command if
 		    // it exists. all others will be done by processing completion
 		    // routine.
-		    if (channelExtension->Local.Srb.SrbExtension != NULL) {
-			PAHCI_SRB_EXTENSION srbExtension = GetSrbExtension(
-			    (PSTORAGE_REQUEST_BLOCK)&channelExtension->Local.Srb);
-			if (srbExtension->AtaFunction != 0) {
-			    AhciProcessIo(
-				channelExtension,
-				(PSTORAGE_REQUEST_BLOCK)&channelExtension->Local.Srb,
-				FALSE);
-			    ActivateQueue(channelExtension, FALSE);
-			}
+		    PAHCI_SRB_EXTENSION srbExtension =
+			GetSrbExtension(&channelExtension->Local.Srb);
+		    if (srbExtension && srbExtension->AtaFunction) {
+			AhciProcessIo(channelExtension,
+				      &channelExtension->Local.Srb, FALSE);
+			ActivateQueue(channelExtension, FALSE);
 		    }
 		}
 	    } else {

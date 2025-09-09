@@ -976,11 +976,11 @@ typedef BOOLEAN (NTAPI HW_INITIALIZE)(IN PVOID DeviceExtension);
 typedef HW_INITIALIZE *PHW_INITIALIZE;
 
 typedef BOOLEAN (NTAPI HW_BUILDIO)(IN PVOID DeviceExtension,
-				   IN PSCSI_REQUEST_BLOCK Srb);
+				   IN PSTORAGE_REQUEST_BLOCK Srb);
 typedef HW_BUILDIO *PHW_BUILDIO;
 
 typedef BOOLEAN (NTAPI HW_STARTIO)(IN PVOID DeviceExtension,
-				   IN PSCSI_REQUEST_BLOCK Srb);
+				   IN PSTORAGE_REQUEST_BLOCK Srb);
 typedef HW_STARTIO *PHW_STARTIO;
 
 typedef BOOLEAN (NTAPI HW_INTERRUPT)(IN PVOID DeviceExtension);
@@ -1088,7 +1088,7 @@ typedef PVOID (NTAPI *PStorPortAllocatePool)(IN ULONG NumberOfBytes, IN ULONG Ta
 					     IN PVOID HwDeviceExtension,
 					     OUT PVOID *PMdl);
 
-typedef PVOID (NTAPI *PStorPortGetSystemAddress)(IN PSCSI_REQUEST_BLOCK Srb);
+typedef PVOID (NTAPI *PStorPortGetSystemAddress)(IN PSTORAGE_REQUEST_BLOCK Srb);
 
 typedef struct _STORPORT_EXTENDED_FUNCTIONS {
     ULONG Version;
@@ -1272,9 +1272,11 @@ NTAPI STORPORT_API VOID StorPortCompleteRequest(IN PVOID HwDeviceExtension,
 						IN UCHAR Lun,
 						IN UCHAR SrbStatus);
 
-NTAPI STORPORT_API ULONG64 StorPortConvertPhysicalAddressToUlong64(IN STOR_PHYSICAL_ADDRESS Address);
+NTAPI STORPORT_API ULONG64
+StorPortConvertPhysicalAddressToUlong64(IN STOR_PHYSICAL_ADDRESS Address);
 
-NTAPI STORPORT_API STOR_PHYSICAL_ADDRESS StorPortConvertUlong64ToPhysicalAddress(IN ULONG64 UlongAddress);
+NTAPI STORPORT_API STOR_PHYSICAL_ADDRESS
+StorPortConvertUlong64ToPhysicalAddress(IN ULONG64 UlongAddress);
 
 __cdecl STORPORT_API VOID StorPortDebugPrint(IN ULONG DebugPrintLevel,
 					     IN PCCHAR DebugMessage, ...);
@@ -1315,19 +1317,21 @@ NTAPI STORPORT_API PVOID StorPortGetLogicalUnit(IN PVOID HwDeviceExtension,
 						IN UCHAR TargetId,
 						IN UCHAR Lun);
 
-NTAPI STORPORT_API STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtension,
-								    IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
-								    IN PVOID VirtualAddress,
-								    OUT ULONG *Length);
+NTAPI STORPORT_API STOR_PHYSICAL_ADDRESS
+StorPortGetPhysicalAddress(IN PVOID HwDeviceExtension,
+			   IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
+			   IN PVOID VirtualAddress,
+			   OUT ULONG *Length);
 
-NTAPI STORPORT_API PSTOR_SCATTER_GATHER_LIST StorPortGetScatterGatherList(IN PVOID DeviceExtension,
-									  IN PSCSI_REQUEST_BLOCK Srb);
+NTAPI STORPORT_API PSTOR_SCATTER_GATHER_LIST
+StorPortGetScatterGatherList(IN PVOID DeviceExtension,
+			     IN PSTORAGE_REQUEST_BLOCK Srb);
 
-NTAPI STORPORT_API PSCSI_REQUEST_BLOCK StorPortGetSrb(IN PVOID DeviceExtension,
-						      IN UCHAR PathId,
-						      IN UCHAR TargetId,
-						      IN UCHAR Lun,
-						      IN LONG QueueTag);
+NTAPI STORPORT_API PSTORAGE_REQUEST_BLOCK StorPortGetSrb(IN PVOID DeviceExtension,
+							 IN UCHAR PathId,
+							 IN UCHAR TargetId,
+							 IN UCHAR Lun,
+							 IN LONG QueueTag);
 
 NTAPI STORPORT_API PVOID StorPortGetUncachedExtension(IN PVOID HwDeviceExtension,
 						      IN PPORT_CONFIGURATION_INFORMATION Info,
@@ -1342,7 +1346,7 @@ NTAPI STORPORT_API ULONG StorPortInitialize(IN PVOID Argument1,
 					    IN OPTIONAL PVOID Unused);
 
 NTAPI STORPORT_API VOID StorPortLogError(IN PVOID HwDeviceExtension,
-					 IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
+					 IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
 					 IN UCHAR PathId,
 					 IN UCHAR TargetId,
 					 IN UCHAR Lun,
@@ -1744,7 +1748,7 @@ FORCEINLINE ULONG StorPortBuildMdlForNonPagedPool(IN PVOID HwDeviceExtension,
 }
 
 FORCEINLINE ULONG StorPortGetSystemAddress(IN PVOID HwDeviceExtension,
-					   IN PSCSI_REQUEST_BLOCK Srb,
+					   IN PSTORAGE_REQUEST_BLOCK Srb,
 					   OUT PVOID *SystemAddress)
 {
     return StorPortExtendedFunction(ExtFunctionGetSystemAddress,
@@ -1753,7 +1757,7 @@ FORCEINLINE ULONG StorPortGetSystemAddress(IN PVOID HwDeviceExtension,
 }
 
 FORCEINLINE ULONG StorPortGetOriginalMdl(IN PVOID HwDeviceExtension,
-					 IN PSCSI_REQUEST_BLOCK Srb,
+					 IN PSTORAGE_REQUEST_BLOCK Srb,
 					 OUT PVOID *Mdl)
 {
     return StorPortExtendedFunction(ExtFunctionGetOriginalMdl,
@@ -1834,7 +1838,7 @@ FORCEINLINE ULONG StorPortInitializePerfOpts(IN PVOID HwDeviceExtension,
 }
 
 FORCEINLINE ULONG StorPortGetStartIoPerfParams(IN PVOID HwDeviceExtension,
-					       IN PSCSI_REQUEST_BLOCK Srb,
+					       IN PSTORAGE_REQUEST_BLOCK Srb,
 					       IN OUT PSTARTIO_PERFORMANCE_PARAMETERS Params)
 {
     return StorPortExtendedFunction(ExtFunctionGetStartIoPerformanceParameters,
@@ -1965,7 +1969,7 @@ FORCEINLINE ULONG StorPortInvokeAcpiMethod(IN      PVOID HwDeviceExtension,
 }
 
 FORCEINLINE ULONG StorPortGetActivityIdSrb(IN PVOID HwDeviceExtension,
-					   IN PSCSI_REQUEST_BLOCK Srb,
+					   IN PSTORAGE_REQUEST_BLOCK Srb,
 					   OUT LPGUID ActivityId)
 {
     return StorPortExtendedFunction(ExtFunctionGetActivityId,
@@ -1975,7 +1979,7 @@ FORCEINLINE ULONG StorPortGetActivityIdSrb(IN PVOID HwDeviceExtension,
 }
 
 FORCEINLINE ULONG StorPortGetDataInBufferMdl(IN PVOID HwDeviceExtension,
-					     IN PSCSI_REQUEST_BLOCK Srb,
+					     IN PSTORAGE_REQUEST_BLOCK Srb,
 					     OUT PVOID* Mdl)
 {
     return StorPortExtendedFunction(ExtFunctionGetDataInBufferMdl,
@@ -1985,7 +1989,7 @@ FORCEINLINE ULONG StorPortGetDataInBufferMdl(IN PVOID HwDeviceExtension,
 }
 
 FORCEINLINE ULONG StorPortGetDataInBufferSystemAddress(IN PVOID HwDeviceExtension,
-						       IN PSCSI_REQUEST_BLOCK Srb,
+						       IN PSTORAGE_REQUEST_BLOCK Srb,
 						       OUT PVOID* SystemAddress)
 {
     return StorPortExtendedFunction(ExtFunctionGetDataInBufferSystemAddress,
@@ -1995,7 +1999,7 @@ FORCEINLINE ULONG StorPortGetDataInBufferSystemAddress(IN PVOID HwDeviceExtensio
 }
 
 FORCEINLINE ULONG StorPortGetDataInBufferScatterGatherList(IN PVOID HwDeviceExtension,
-							   IN PSCSI_REQUEST_BLOCK Srb,
+							   IN PSTORAGE_REQUEST_BLOCK Srb,
 							   OUT PSTOR_SCATTER_GATHER_LIST* SgList)
 {
     return StorPortExtendedFunction(ExtFunctionGetDataInBufferScatterGatherList,
@@ -2006,7 +2010,7 @@ FORCEINLINE ULONG StorPortGetDataInBufferScatterGatherList(IN PVOID HwDeviceExte
 
 
 FORCEINLINE ULONG StorPortFlushDataBufferMdl(IN PVOID HwDeviceExtension,
-					     IN PSCSI_REQUEST_BLOCK Srb)
+					     IN PSTORAGE_REQUEST_BLOCK Srb)
 {
 #if defined (_ARM_)
     return StorPortExtendedFunction(ExtFunctionFlushDataBufferMdl,
@@ -2085,7 +2089,7 @@ FORCEINLINE ULONG StorPortQueryPerformanceCounter(IN PVOID HwDeviceExtension,
 }
 
 FORCEINLINE ULONG StorPortGetRequestInfo(IN PVOID HwDeviceExtension,
-					 IN PSCSI_REQUEST_BLOCK Srb,
+					 IN PSTORAGE_REQUEST_BLOCK Srb,
 					 OUT PSTOR_REQUEST_INFO RequestInfo)
 {
     return StorPortExtendedFunction(ExtFunctionGetRequestInfo,
@@ -2200,7 +2204,7 @@ FORCEINLINE ULONG StorPortInitializePoFxPower(IN PVOID HwDeviceExtension,
 
 FORCEINLINE ULONG StorPortPoFxActivateComponent(IN PVOID HwDeviceExtension,
 						IN OPTIONAL PSTOR_ADDRESS Address,
-						IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
+						IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
 						IN ULONG Component,
 						IN ULONG Flags)
 {
@@ -2209,7 +2213,7 @@ FORCEINLINE ULONG StorPortPoFxActivateComponent(IN PVOID HwDeviceExtension,
 
 FORCEINLINE ULONG StorPortPoFxIdleComponent(IN PVOID HwDeviceExtension,
 					    IN OPTIONAL PSTOR_ADDRESS Address,
-					    IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
+					    IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
 					    IN ULONG Component,
 					    IN ULONG Flags)
 {
@@ -2257,7 +2261,7 @@ FORCEINLINE ULONG StorPortEtwEvent2(IN PVOID HwDeviceExtension,
 				    IN ULONGLONG EventKeywords,
 				    IN STORPORT_ETW_LEVEL EventLevel,
 				    IN STORPORT_ETW_EVENT_OPCODE EventOpcode,
-				    IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
+				    IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
 				    IN PWSTR Parameter1Name,
 				    IN ULONGLONG Parameter1Value,
 				    IN PWSTR Parameter2Name,
@@ -2285,7 +2289,7 @@ FORCEINLINE ULONG StorPortEtwEvent4(IN PVOID HwDeviceExtension,
 				    IN ULONGLONG EventKeywords,
 				    IN STORPORT_ETW_LEVEL EventLevel,
 				    IN STORPORT_ETW_EVENT_OPCODE EventOpcode,
-				    IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
+				    IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
 				    IN PWSTR Parameter1Name,
 				    IN ULONGLONG Parameter1Value,
 				    IN PWSTR Parameter2Name,
@@ -2321,7 +2325,7 @@ FORCEINLINE ULONG StorPortEtwEvent8(IN PVOID HwDeviceExtension,
 				    IN ULONGLONG EventKeywords,
 				    IN STORPORT_ETW_LEVEL EventLevel,
 				    IN STORPORT_ETW_EVENT_OPCODE EventOpcode,
-				    IN OPTIONAL PSCSI_REQUEST_BLOCK Srb,
+				    IN OPTIONAL PSTORAGE_REQUEST_BLOCK Srb,
 				    IN PWSTR Parameter1Name,
 				    IN ULONGLONG Parameter1Value,
 				    IN PWSTR Parameter2Name,
@@ -2375,7 +2379,7 @@ FORCEINLINE ULONG StorPortEtwChannelEvent2(IN PVOID HwDeviceExtension,
 					   IN ULONGLONG EventKeywords,
 					   IN STORPORT_ETW_LEVEL EventLevel,
 					   IN STORPORT_ETW_EVENT_OPCODE EventOpcode,
-					   IN PSCSI_REQUEST_BLOCK Srb,
+					   IN PSTORAGE_REQUEST_BLOCK Srb,
 					   IN PWSTR Parameter1Name,
 					   IN ULONGLONG Parameter1Value,
 					   IN PWSTR Parameter2Name,
@@ -2392,7 +2396,7 @@ FORCEINLINE ULONG StorPortEtwChannelEvent8(IN PVOID HwDeviceExtension,
 					   IN ULONGLONG EventKeywords,
 					   IN STORPORT_ETW_LEVEL EventLevel,
 					   IN STORPORT_ETW_EVENT_OPCODE EventOpcode,
-					   IN PSCSI_REQUEST_BLOCK Srb,
+					   IN PSTORAGE_REQUEST_BLOCK Srb,
 					   IN PWSTR Parameter1Name,
 					   IN ULONGLONG Parameter1Value,
 					   IN PWSTR Parameter2Name,

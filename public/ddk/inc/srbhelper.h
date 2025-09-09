@@ -4,53 +4,36 @@
 #include <scsi.h>
 #include <srb.h>
 
-#if (NTDDI_VERSION >= NTDDI_WIN8)
-
 #if !defined(SRBHELPER_ASSERT)
 #define SRBHELPER_ASSERT NT_ASSERT
 #endif
 
 #if !defined(SRB_ALIGN_SIZEOF)
-#define SRB_ALIGN_SIZEOF(x) \
+#define SRB_ALIGN_SIZEOF(x)						\
     (((ULONG_PTR)(sizeof(x) + sizeof(PVOID) - 1)) & ~(sizeof(PVOID) - 1))
 #endif
 
 #if defined(_NTSTORPORT_) || defined(_NTSTORPORTP_)
-#define SrbMoveMemory(Destination, Source, Length) \
+#define SrbMoveMemory(Destination, Source, Length)	\
     StorPortMoveMemory(Destination, Source, Length)
-#elif defined(_NTDDK_)
-#define SrbMoveMemory(Destination, Source, Length) \
+#else
+#define SrbMoveMemory(Destination, Source, Length)	\
     RtlMoveMemory(Destination, Source, Length)
-#else
-#define SrbMoveMemory(Destination, Source, Length) memmove(Destination, Source, Length)
 #endif
 
-#if defined(_NTDDK_)
-#define SrbCopyMemory(Destination, Source, Length) \
+#define SrbCopyMemory(Destination, Source, Length)	\
     RtlCopyMemory(Destination, Source, Length)
-#else
-#define SrbCopyMemory(Destination, Source, Length) memcpy(Destination, Source, Length)
-#endif
-
-#if defined(_NTDDK_)
-#define SrbZeroMemory(Destination, Length) RtlZeroMemory(Destination, Length)
-#else
-#define SrbZeroMemory(Destination, Length) memset(Destination, 0, Length)
-#endif
-
-#if defined(_NTDDK_)
-#define SrbEqualMemory(Source1, Source2, Length) RtlEqualMemory(Source1, Source2, Length)
-#else
-#define SrbEqualMemory(Source1, Source2, Length) (memcmp(Source1, Source2, Length) == 0)
-#endif
+#define SrbZeroMemory(Destination, Length)		\
+    RtlZeroMemory(Destination, Length)
+#define SrbEqualMemory(Source1, Source2, Length)	\
+    RtlEqualMemory(Source1, Source2, Length)
 
 FORCEINLINE PSRBEX_DATA SrbGetSrbExDataByIndex(IN PSTORAGE_REQUEST_BLOCK Srb,
 					       IN ULONG SrbExDataIndex)
 {
     PSRBEX_DATA srbExData = NULL;
 
-    if ((Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	(SrbExDataIndex < Srb->NumSrbExData) && (Srb->SrbExDataOffset[SrbExDataIndex]) &&
+    if ((SrbExDataIndex < Srb->NumSrbExData) && (Srb->SrbExDataOffset[SrbExDataIndex]) &&
 	(Srb->SrbExDataOffset[SrbExDataIndex] >= sizeof(STORAGE_REQUEST_BLOCK)) &&
 	(Srb->SrbExDataOffset[SrbExDataIndex] < Srb->SrbLength)) {
 	srbExData = (PSRBEX_DATA)((PUCHAR)Srb + Srb->SrbExDataOffset[SrbExDataIndex]);
@@ -62,8 +45,7 @@ FORCEINLINE PSRBEX_DATA SrbGetSrbExDataByIndex(IN PSTORAGE_REQUEST_BLOCK Srb,
 FORCEINLINE PSRBEX_DATA SrbGetSrbExDataByType(IN PSTORAGE_REQUEST_BLOCK Srb,
 					      IN SRBEXDATATYPE Type)
 {
-    if ((Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	(Srb->NumSrbExData > 0)) {
+    if (Srb->NumSrbExData > 0) {
 	PSRBEX_DATA srbExData = NULL;
 	UCHAR i = 0;
 
@@ -83,119 +65,81 @@ FORCEINLINE PSRBEX_DATA SrbGetSrbExDataByType(IN PSTORAGE_REQUEST_BLOCK Srb,
 
 FORCEINLINE PSRBEX_DATA SrbGetPrimarySrbExData(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    if (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	switch (Srb->SrbFunction) {
-	case SRB_FUNCTION_POWER:
-	    return SrbGetSrbExDataByType(Srb, SrbExDataTypePower);
+    switch (Srb->SrbFunction) {
+    case SRB_FUNCTION_POWER:
+	return SrbGetSrbExDataByType(Srb, SrbExDataTypePower);
 
-	case SRB_FUNCTION_PNP:
-	    return SrbGetSrbExDataByType(Srb, SrbExDataTypePnP);
+    case SRB_FUNCTION_PNP:
+	return SrbGetSrbExDataByType(Srb, SrbExDataTypePnP);
 
-	case SRB_FUNCTION_WMI:
-	    return SrbGetSrbExDataByType(Srb, SrbExDataTypeWmi);
+    case SRB_FUNCTION_WMI:
+	return SrbGetSrbExDataByType(Srb, SrbExDataTypeWmi);
 
-	case SRB_FUNCTION_EXECUTE_SCSI: {
-	    PSRBEX_DATA srbExData = NULL;
-	    UCHAR i = 0;
+    case SRB_FUNCTION_EXECUTE_SCSI: {
+	PSRBEX_DATA srbExData = NULL;
+	UCHAR i = 0;
 
-	    for (i = 0; i < Srb->NumSrbExData; i++) {
-		if (Srb->SrbExDataOffset[i] >= sizeof(STORAGE_REQUEST_BLOCK) &&
-		    Srb->SrbExDataOffset[i] < Srb->SrbLength) {
-		    srbExData = (PSRBEX_DATA)((PUCHAR)Srb + Srb->SrbExDataOffset[i]);
-		    if (srbExData->Type == SrbExDataTypeScsiCdb16 ||
-			srbExData->Type == SrbExDataTypeScsiCdb32 ||
-			srbExData->Type == SrbExDataTypeScsiCdbVar) {
-			return srbExData;
-		    }
+	for (i = 0; i < Srb->NumSrbExData; i++) {
+	    if (Srb->SrbExDataOffset[i] >= sizeof(STORAGE_REQUEST_BLOCK) &&
+		Srb->SrbExDataOffset[i] < Srb->SrbLength) {
+		srbExData = (PSRBEX_DATA)((PUCHAR)Srb + Srb->SrbExDataOffset[i]);
+		if (srbExData->Type == SrbExDataTypeScsiCdb16 ||
+		    srbExData->Type == SrbExDataTypeScsiCdb32 ||
+		    srbExData->Type == SrbExDataTypeScsiCdbVar) {
+		    return srbExData;
 		}
 	    }
-	    return NULL;
 	}
-
-	default:
-	    return NULL;
-	}
+	return NULL;
     }
 
-    return NULL;
+    default:
+	return NULL;
+    }
 }
 
 FORCEINLINE PSTOR_ADDRESS SrbGetAddress(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     PSTOR_ADDRESS storAddr = NULL;
+    SRBHELPER_ASSERT(Srb->AddressOffset);
 
-    if (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SRBHELPER_ASSERT(Srb->AddressOffset);
-
-	if (Srb->AddressOffset) {
-	    storAddr = (PSTOR_ADDRESS)((PUCHAR)Srb + Srb->AddressOffset);
-	    SRBHELPER_ASSERT(storAddr->Type == STOR_ADDRESS_TYPE_BTL8);
-	}
+    if (Srb->AddressOffset) {
+	storAddr = (PSTOR_ADDRESS)((PUCHAR)Srb + Srb->AddressOffset);
+	SRBHELPER_ASSERT(storAddr->Type == STOR_ADDRESS_TYPE_BTL8);
     }
 
     return storAddr;
 }
 
-FORCEINLINE BOOLEAN SrbCopySrb(IN PVOID DestinationSrb,
+FORCEINLINE BOOLEAN SrbCopySrb(IN PSTORAGE_REQUEST_BLOCK DestinationSrb,
 			       IN ULONG DestinationSrbLength,
-			       IN PVOID SourceSrb)
+			       IN PSTORAGE_REQUEST_BLOCK SourceSrb)
 {
-    PSTORAGE_REQUEST_BLOCK sourceSrb = (PSTORAGE_REQUEST_BLOCK)SourceSrb;
-    BOOLEAN status = FALSE;
+    BOOLEAN Status = FALSE;
 
-    if (sourceSrb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	if (DestinationSrbLength >= sourceSrb->SrbLength) {
-	    SrbCopyMemory(DestinationSrb, SourceSrb, sourceSrb->SrbLength);
-	    status = TRUE;
-	}
-    } else {
-	if (DestinationSrbLength >= SCSI_REQUEST_BLOCK_SIZE) {
-	    SrbCopyMemory(DestinationSrb, SourceSrb, SCSI_REQUEST_BLOCK_SIZE);
-	    status = TRUE;
-	}
+    if (DestinationSrbLength >= SourceSrb->SrbLength) {
+	SrbCopyMemory(DestinationSrb, SourceSrb, SourceSrb->SrbLength);
+	Status = TRUE;
     }
 
-    return status;
+    return Status;
 }
 
-FORCEINLINE VOID SrbZeroSrb(IN PVOID Srb)
+FORCEINLINE VOID SrbZeroSrb(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    UCHAR function = srb->Function;
-    USHORT length = srb->Length;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	ULONG srbLength = srb->SrbLength;
-
-	SrbZeroMemory(Srb, srb->SrbLength);
-
-	srb->SrbLength = srbLength;
-    } else {
-	SrbZeroMemory(Srb, sizeof(SCSI_REQUEST_BLOCK));
-    }
-
-    srb->Function = function;
-    srb->Length = length;
+    ULONG srbLength = Srb->SrbLength;
+    SrbZeroMemory(Srb, Srb->SrbLength);
+    Srb->SrbLength = srbLength;
 }
 
-FORCEINLINE ULONG SrbGetSrbLength(IN PVOID Srb)
+FORCEINLINE ULONG SrbGetSrbLength(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return srb->SrbLength;
-    } else {
-	return sizeof(SCSI_REQUEST_BLOCK);
-    }
+    return Srb->SrbLength;
 }
 
-FORCEINLINE VOID SrbSetSrbLength(IN PVOID Srb, IN ULONG Length)
+FORCEINLINE VOID SrbSetSrbLength(IN PSTORAGE_REQUEST_BLOCK Srb, IN ULONG Length)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->SrbLength = Length;
-    }
+    Srb->SrbLength = Length;
 }
 
 FORCEINLINE ULONG SrbGetDefaultSrbLengthFromFunction(IN ULONG SrbFunction)
@@ -232,8 +176,7 @@ FORCEINLINE PCDB SrbGetScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
     PSRBEX_DATA SrbExData = NULL;
     BOOLEAN FoundEntry = FALSE;
 
-    if ((SrbEx->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	(SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI)) {
+    if (SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI) {
 	SRBHELPER_ASSERT(SrbEx->NumSrbExData > 0);
 
 	for (i = 0; i < SrbEx->NumSrbExData; i++) {
@@ -381,8 +324,7 @@ FORCEINLINE VOID SrbSetScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
     PSRBEX_DATA SrbExData = NULL;
     BOOLEAN FoundEntry = FALSE;
 
-    if ((SrbEx->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	(SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI)) {
+    if (SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI) {
 	SRBHELPER_ASSERT(SrbEx->NumSrbExData > 0);
 
 	for (i = 0; i < SrbEx->NumSrbExData; i++) {
@@ -484,563 +426,364 @@ FORCEINLINE VOID SrbSetScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
     }
 }
 
-FORCEINLINE PCDB SrbGetCdb(IN PVOID Srb)
+FORCEINLINE PCDB SrbGetCdb(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    PCDB pCdb = NULL;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return SrbGetScsiData(srb, NULL, NULL, NULL, NULL, NULL);
-    } else {
-	pCdb = (PCDB)((PSCSI_REQUEST_BLOCK)srb)->Cdb;
-    }
-    return pCdb;
+    return SrbGetScsiData(Srb, NULL, NULL, NULL, NULL, NULL);
 }
 
-FORCEINLINE ULONG SrbGetSrbFunction(IN PVOID Srb)
+FORCEINLINE ULONG SrbGetSrbFunction(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return srb->SrbFunction;
-    } else {
-	return (ULONG)((PSCSI_REQUEST_BLOCK)srb)->Function;
-    }
+    return Srb->SrbFunction;
 }
 
-FORCEINLINE PVOID SrbGetSenseInfoBuffer(IN PVOID Srb)
+FORCEINLINE PVOID SrbGetSenseInfoBuffer(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
     PVOID pSenseInfoBuffer = NULL;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SrbGetScsiData(srb, NULL, NULL, NULL, &pSenseInfoBuffer, NULL);
-    } else {
-	pSenseInfoBuffer = ((PSCSI_REQUEST_BLOCK)srb)->SenseInfoBuffer;
-    }
+    SrbGetScsiData(Srb, NULL, NULL, NULL, &pSenseInfoBuffer, NULL);
     return pSenseInfoBuffer;
 }
 
-FORCEINLINE UCHAR SrbGetSenseInfoBufferLength(IN PVOID Srb)
+FORCEINLINE UCHAR SrbGetSenseInfoBufferLength(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
     UCHAR SenseInfoBufferLength = 0;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SrbGetScsiData(srb, NULL, NULL, NULL, NULL, &SenseInfoBufferLength);
-    } else {
-	SenseInfoBufferLength = ((PSCSI_REQUEST_BLOCK)srb)->SenseInfoBufferLength;
-    }
+    SrbGetScsiData(Srb, NULL, NULL, NULL, NULL, &SenseInfoBufferLength);
     return SenseInfoBufferLength;
 }
 
-FORCEINLINE VOID SrbSetSenseInfoBuffer(IN PVOID Srb,
+FORCEINLINE VOID SrbSetSenseInfoBuffer(IN PSTORAGE_REQUEST_BLOCK Srb,
 				       IN OPTIONAL PVOID SenseInfoBuffer)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SrbSetScsiData(srb, NULL, NULL, NULL, &SenseInfoBuffer, NULL);
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->SenseInfoBuffer = SenseInfoBuffer;
-    }
+    SrbSetScsiData(Srb, NULL, NULL, NULL, &SenseInfoBuffer, NULL);
 }
 
-FORCEINLINE VOID SrbSetSenseInfoBufferLength(IN PVOID Srb,
+FORCEINLINE VOID SrbSetSenseInfoBufferLength(IN PSTORAGE_REQUEST_BLOCK Srb,
 					     IN UCHAR SenseInfoBufferLength)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SrbSetScsiData(srb, NULL, NULL, NULL, NULL, &SenseInfoBufferLength);
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->SenseInfoBufferLength = SenseInfoBufferLength;
-    }
+    SrbSetScsiData(Srb, NULL, NULL, NULL, NULL, &SenseInfoBufferLength);
 }
 
-FORCEINLINE PVOID SrbGetOriginalRequest(IN PVOID Srb)
+FORCEINLINE PVOID SrbGetOriginalRequest(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return srb->OriginalRequest;
-    } else {
-	return ((PSCSI_REQUEST_BLOCK)srb)->OriginalRequest;
-    }
+    return Srb->OriginalRequest;
 }
 
-FORCEINLINE VOID SrbSetOriginalRequest(IN PVOID Srb, IN OPTIONAL PVOID OriginalRequest)
+FORCEINLINE VOID SrbSetOriginalRequest(IN PSTORAGE_REQUEST_BLOCK Srb,
+				       IN OPTIONAL PVOID OriginalRequest)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->OriginalRequest = OriginalRequest;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->OriginalRequest = OriginalRequest;
-    }
+    Srb->OriginalRequest = OriginalRequest;
 }
 
-FORCEINLINE PVOID SrbGetDataBuffer(IN PVOID Srb)
+FORCEINLINE PVOID SrbGetDataBuffer(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    PVOID DataBuffer;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	DataBuffer = srb->DataBuffer;
-    } else {
-	DataBuffer = ((PSCSI_REQUEST_BLOCK)srb)->DataBuffer;
-    }
-    return DataBuffer;
+    return Srb->DataBuffer;
 }
 
-FORCEINLINE VOID SrbSetDataBuffer(IN PVOID Srb, IN OPTIONAL PVOID DataBuffer)
+FORCEINLINE VOID SrbSetDataBuffer(IN PSTORAGE_REQUEST_BLOCK Srb,
+				  IN OPTIONAL PVOID DataBuffer)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->DataBuffer = DataBuffer;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->DataBuffer = DataBuffer;
-    }
+    Srb->DataBuffer = DataBuffer;
 }
 
-FORCEINLINE ULONG SrbGetDataTransferLength(IN PVOID Srb)
+FORCEINLINE ULONG SrbGetDataTransferLength(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    ULONG DataTransferLength;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	DataTransferLength = srb->DataTransferLength;
-    } else {
-	DataTransferLength = ((PSCSI_REQUEST_BLOCK)srb)->DataTransferLength;
-    }
-    return DataTransferLength;
+    return Srb->DataTransferLength;
 }
 
-FORCEINLINE VOID SrbSetDataTransferLength(IN PVOID Srb, IN ULONG DataTransferLength)
+FORCEINLINE VOID SrbSetDataTransferLength(IN PSTORAGE_REQUEST_BLOCK Srb,
+					  IN ULONG DataTransferLength)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->DataTransferLength = DataTransferLength;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->DataTransferLength = DataTransferLength;
-    }
+    Srb->DataTransferLength = DataTransferLength;
 }
 
-FORCEINLINE ULONG SrbGetTimeOutValue(IN PVOID Srb)
+FORCEINLINE ULONG SrbGetTimeOutValue(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    ULONG timeOutValue;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	timeOutValue = srb->TimeOutValue;
-    } else {
-	timeOutValue = ((PSCSI_REQUEST_BLOCK)srb)->TimeOutValue;
-    }
-    return timeOutValue;
+    return Srb->TimeOutValue;
 }
 
-FORCEINLINE VOID SrbSetTimeOutValue(IN PVOID Srb, IN ULONG TimeOutValue)
+FORCEINLINE VOID SrbSetTimeOutValue(IN PSTORAGE_REQUEST_BLOCK Srb,
+				    IN ULONG TimeOutValue)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->TimeOutValue = TimeOutValue;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->TimeOutValue = TimeOutValue;
-    }
+    Srb->TimeOutValue = TimeOutValue;
 }
 
-FORCEINLINE VOID SrbSetQueueSortKey(IN PVOID Srb, IN ULONG QueueSortKey)
+FORCEINLINE VOID SrbSetRequestTag(IN PSTORAGE_REQUEST_BLOCK Srb,
+				IN ULONG RequestTag)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function != SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	((PSCSI_REQUEST_BLOCK)srb)->QueueSortKey = QueueSortKey;
-    }
+    Srb->RequestTag = RequestTag;
 }
 
-FORCEINLINE VOID SrbSetQueueTag(IN PVOID Srb, IN ULONG QueueTag)
+FORCEINLINE ULONG SrbGetRequestTag(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->RequestTag = QueueTag;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->QueueTag = (UCHAR)QueueTag;
-    }
+    return Srb->RequestTag;
 }
 
-#define SrbSetRequestTag SrbSetQueueTag
-
-FORCEINLINE ULONG SrbGetQueueTag(IN PVOID Srb)
+FORCEINLINE PVOID SrbGetNextSrb(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return srb->RequestTag;
-    } else {
-	return ((PSCSI_REQUEST_BLOCK)srb)->QueueTag;
-    }
+    return Srb->NextSrb;
 }
 
-#define SrbGetRequestTag SrbGetQueueTag
-
-FORCEINLINE PVOID SrbGetNextSrb(IN PVOID Srb)
+FORCEINLINE VOID SrbSetNextSrb(IN PSTORAGE_REQUEST_BLOCK Srb,
+			       IN OPTIONAL PSTORAGE_REQUEST_BLOCK NextSrb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return (PVOID)srb->NextSrb;
-    } else {
-	return (PVOID)((PSCSI_REQUEST_BLOCK)srb)->NextSrb;
-    }
+    Srb->NextSrb = NextSrb;
 }
 
-FORCEINLINE VOID SrbSetNextSrb(IN PVOID Srb, IN OPTIONAL PVOID NextSrb)
+FORCEINLINE ULONG SrbGetSrbFlags(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->NextSrb = (PSTORAGE_REQUEST_BLOCK)NextSrb;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->NextSrb = (PSCSI_REQUEST_BLOCK)NextSrb;
-    }
+    return Srb->SrbFlags;
 }
 
-FORCEINLINE ULONG SrbGetSrbFlags(IN PVOID Srb)
+FORCEINLINE VOID SrbAssignSrbFlags(IN PSTORAGE_REQUEST_BLOCK Srb,
+				   IN ULONG Flags)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    ULONG srbFlags;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srbFlags = srb->SrbFlags;
-    } else {
-	srbFlags = ((PSCSI_REQUEST_BLOCK)srb)->SrbFlags;
-    }
-    return srbFlags;
+    Srb->SrbFlags = Flags;
 }
 
-FORCEINLINE VOID SrbAssignSrbFlags(IN PVOID Srb, IN ULONG Flags)
+FORCEINLINE VOID SrbSetSrbFlags(IN PSTORAGE_REQUEST_BLOCK Srb,
+				IN ULONG Flags)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->SrbFlags = Flags;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->SrbFlags = Flags;
-    }
+    Srb->SrbFlags |= Flags;
 }
 
-FORCEINLINE VOID SrbSetSrbFlags(IN PVOID Srb, IN ULONG Flags)
+FORCEINLINE VOID SrbClearSrbFlags(IN PSTORAGE_REQUEST_BLOCK Srb,
+				  IN ULONG Flags)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->SrbFlags |= Flags;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->SrbFlags |= Flags;
-    }
+    Srb->SrbFlags &= ~Flags;
 }
 
-FORCEINLINE VOID SrbClearSrbFlags(IN PVOID Srb, IN ULONG Flags)
+FORCEINLINE ULONG SrbGetSystemStatus(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->SrbFlags &= ~Flags;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->SrbFlags &= ~Flags;
-    }
+    return Srb->SystemStatus;
 }
 
-FORCEINLINE ULONG SrbGetSystemStatus(IN PVOID Srb)
+FORCEINLINE VOID SrbSetSystemStatus(IN PSTORAGE_REQUEST_BLOCK Srb,
+				    IN ULONG Status)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    ULONG systemStatus;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	systemStatus = srb->SystemStatus;
-    } else {
-	systemStatus = ((PSCSI_REQUEST_BLOCK)srb)->InternalStatus;
-    }
-    return systemStatus;
+    Srb->SystemStatus = Status;
 }
 
-FORCEINLINE VOID SrbSetSystemStatus(IN PVOID Srb, IN ULONG Status)
+FORCEINLINE UCHAR SrbGetScsiStatus(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->SystemStatus = Status;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->InternalStatus = Status;
-    }
+    UCHAR ScsiStatus = 0;
+    SrbGetScsiData(Srb, NULL, NULL, &ScsiStatus, NULL, NULL);
+    return ScsiStatus;
 }
 
-FORCEINLINE UCHAR SrbGetScsiStatus(IN PVOID Srb)
+FORCEINLINE VOID SrbSetScsiStatus(IN PSTORAGE_REQUEST_BLOCK Srb,
+				  IN UCHAR ScsiStatus)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    UCHAR scsiStatus = 0;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SrbGetScsiData(srb, NULL, NULL, &scsiStatus, NULL, NULL);
-    } else {
-	scsiStatus = ((PSCSI_REQUEST_BLOCK)srb)->ScsiStatus;
-    }
-    return scsiStatus;
+    SrbSetScsiData(Srb, NULL, NULL, &ScsiStatus, NULL, NULL);
 }
 
-FORCEINLINE VOID SrbSetScsiStatus(IN PVOID Srb, IN UCHAR ScsiStatus)
+FORCEINLINE UCHAR SrbGetCdbLength(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SrbSetScsiData(srb, NULL, NULL, &ScsiStatus, NULL, NULL);
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->ScsiStatus = ScsiStatus;
-    }
-}
-
-FORCEINLINE UCHAR SrbGetCdbLength(IN PVOID Srb)
-{
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
     UCHAR CdbLength = 0;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SrbGetScsiData(srb, &CdbLength, NULL, NULL, NULL, NULL);
-    } else {
-	CdbLength = ((PSCSI_REQUEST_BLOCK)srb)->CdbLength;
-    }
+    SrbGetScsiData(Srb, &CdbLength, NULL, NULL, NULL, NULL);
     return CdbLength;
 }
 
-FORCEINLINE VOID SrbSetCdbLength(IN PVOID Srb, IN UCHAR CdbLength)
+FORCEINLINE VOID SrbSetCdbLength(IN PSTORAGE_REQUEST_BLOCK Srb,
+				 IN UCHAR CdbLength)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	SrbSetScsiData(srb, &CdbLength, NULL, NULL, NULL, NULL);
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->CdbLength = CdbLength;
-    }
+    SrbSetScsiData(Srb, &CdbLength, NULL, NULL, NULL, NULL);
 }
 
-FORCEINLINE ULONG SrbGetRequestAttribute(IN PVOID Srb)
+FORCEINLINE ULONG SrbGetRequestAttribute(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    ULONG RequestAttribute;
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	RequestAttribute = srb->RequestAttribute;
-    } else {
-	RequestAttribute = ((PSCSI_REQUEST_BLOCK)srb)->QueueAction;
-    }
-    return RequestAttribute;
+    return Srb->RequestAttribute;
 }
 
-#define SrbGetQueueAction SrbGetRequestAttribute
-
-FORCEINLINE VOID SrbSetRequestAttribute(IN PVOID Srb, IN UCHAR RequestAttribute)
+FORCEINLINE VOID SrbSetRequestAttribute(IN PSTORAGE_REQUEST_BLOCK Srb,
+					IN UCHAR RequestAttribute)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->RequestAttribute = RequestAttribute;
-    } else {
-	((PSCSI_REQUEST_BLOCK)srb)->QueueAction = RequestAttribute;
-    }
+    Srb->RequestAttribute = RequestAttribute;
 }
 
-#define SrbSetQueueAction SrbSetRequestAttribute
-
-FORCEINLINE UCHAR SrbGetPathId(IN PVOID Srb)
+FORCEINLINE UCHAR SrbGetPathId(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
     UCHAR PathId = 0;
-    PSTOR_ADDRESS storAddr = NULL;
+    PSTOR_ADDRESS StorAddr = SrbGetAddress(Srb);
+    if (StorAddr) {
+	switch (StorAddr->Type) {
+	case STOR_ADDRESS_TYPE_BTL8:
+	    PathId = ((PSTOR_ADDR_BTL8)StorAddr)->Path;
+	    break;
 
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	storAddr = (PSTOR_ADDRESS)SrbGetAddress(srb);
-	if (storAddr) {
-	    switch (storAddr->Type) {
-	    case STOR_ADDRESS_TYPE_BTL8:
-		PathId = ((PSTOR_ADDR_BTL8)storAddr)->Path;
-		break;
-
-	    default:
-		SRBHELPER_ASSERT(FALSE);
-		break;
-	    }
+	default:
+	    SRBHELPER_ASSERT(FALSE);
+	    break;
 	}
-    } else {
-	PathId = ((PSCSI_REQUEST_BLOCK)srb)->PathId;
     }
     return PathId;
 }
 
-FORCEINLINE UCHAR SrbGetTargetId(IN PVOID Srb)
+FORCEINLINE UCHAR SrbGetTargetId(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
     UCHAR TargetId = 0;
-    PSTOR_ADDRESS storAddr = NULL;
+    PSTOR_ADDRESS StorAddr = SrbGetAddress(Srb);
+    if (StorAddr) {
+	switch (StorAddr->Type) {
+	case STOR_ADDRESS_TYPE_BTL8:
+	    TargetId = ((PSTOR_ADDR_BTL8)StorAddr)->Target;
+	    break;
 
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	storAddr = (PSTOR_ADDRESS)SrbGetAddress(srb);
-	if (storAddr) {
-	    switch (storAddr->Type) {
-	    case STOR_ADDRESS_TYPE_BTL8:
-		TargetId = ((PSTOR_ADDR_BTL8)storAddr)->Target;
-		break;
-
-	    default:
-		SRBHELPER_ASSERT(FALSE);
-		break;
-	    }
+	default:
+	    SRBHELPER_ASSERT(FALSE);
+	    break;
 	}
-    } else {
-	TargetId = ((PSCSI_REQUEST_BLOCK)srb)->TargetId;
     }
     return TargetId;
 }
 
-FORCEINLINE UCHAR SrbGetLun(IN PVOID Srb)
+FORCEINLINE UCHAR SrbGetLun(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
     UCHAR Lun = 0;
-    PSTOR_ADDRESS storAddr = NULL;
+    PSTOR_ADDRESS storAddr = SrbGetAddress(Srb);
+    if (storAddr) {
+	switch (storAddr->Type) {
+	case STOR_ADDRESS_TYPE_BTL8:
+	    Lun = ((PSTOR_ADDR_BTL8)storAddr)->Lun;
+	    break;
 
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	storAddr = (PSTOR_ADDRESS)SrbGetAddress(srb);
-	if (storAddr) {
-	    switch (storAddr->Type) {
-	    case STOR_ADDRESS_TYPE_BTL8:
-		Lun = ((PSTOR_ADDR_BTL8)storAddr)->Lun;
-		break;
-
-	    default:
-		SRBHELPER_ASSERT(FALSE);
-		break;
-	    }
+	default:
+	    SRBHELPER_ASSERT(FALSE);
+	    break;
 	}
-    } else {
-	Lun = ((PSCSI_REQUEST_BLOCK)srb)->Lun;
     }
     return Lun;
 }
 
-FORCEINLINE VOID SrbGetPathTargetLun(IN PVOID Srb,
+FORCEINLINE VOID SrbGetPathTargetLun(IN PSTORAGE_REQUEST_BLOCK Srb,
 				     IN OPTIONAL PUCHAR PathId,
 				     IN OPTIONAL PUCHAR TargetId,
 				     IN OPTIONAL PUCHAR Lun)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-    PSTOR_ADDRESS storAddr = NULL;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	storAddr = (PSTOR_ADDRESS)SrbGetAddress(srb);
-	if (storAddr) {
-	    switch (storAddr->Type) {
-	    case STOR_ADDRESS_TYPE_BTL8:
-		if (PathId != NULL) {
-		    *PathId = ((PSTOR_ADDR_BTL8)storAddr)->Path;
-		}
-
-		if (TargetId != NULL) {
-		    *TargetId = ((PSTOR_ADDR_BTL8)storAddr)->Target;
-		}
-
-		if (Lun != NULL) {
-		    *Lun = ((PSTOR_ADDR_BTL8)storAddr)->Lun;
-		}
-
-		break;
-
-	    default:
-		SRBHELPER_ASSERT(FALSE);
-		break;
+    PSTOR_ADDRESS StorAddr = SrbGetAddress(Srb);
+    if (StorAddr) {
+	switch (StorAddr->Type) {
+	case STOR_ADDRESS_TYPE_BTL8:
+	    if (PathId != NULL) {
+		*PathId = ((PSTOR_ADDR_BTL8)StorAddr)->Path;
 	    }
-	}
-    } else {
-	if (PathId != NULL) {
-	    *PathId = ((PSCSI_REQUEST_BLOCK)srb)->PathId;
-	}
 
-	if (TargetId != NULL) {
-	    *TargetId = ((PSCSI_REQUEST_BLOCK)srb)->TargetId;
-	}
+	    if (TargetId != NULL) {
+		*TargetId = ((PSTOR_ADDR_BTL8)StorAddr)->Target;
+	    }
 
-	if (Lun != NULL) {
-	    *Lun = ((PSCSI_REQUEST_BLOCK)srb)->Lun;
+	    if (Lun != NULL) {
+		*Lun = ((PSTOR_ADDR_BTL8)StorAddr)->Lun;
+	    }
+
+	    break;
+
+	default:
+	    SRBHELPER_ASSERT(FALSE);
+	    break;
 	}
     }
-
-    return;
 }
 
-FORCEINLINE PVOID SrbGetMiniportContext(IN PVOID Srb)
+FORCEINLINE VOID SrbSetPathId(IN PSTORAGE_REQUEST_BLOCK Srb,
+			      IN UCHAR PathId)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
+    PSTOR_ADDRESS StorAddr = SrbGetAddress(Srb);
+    if (StorAddr) {
+	switch (StorAddr->Type) {
+	case STOR_ADDRESS_TYPE_BTL8:
+	    ((PSTOR_ADDR_BTL8)StorAddr)->Path = PathId;
+	    break;
 
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return srb->MiniportContext;
-    } else {
-	return ((PSCSI_REQUEST_BLOCK)srb)->SrbExtension;
-    }
-}
-
-FORCEINLINE UCHAR SrbGetSrbStatus(IN PVOID Srb)
-{
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return srb->SrbStatus;
-    } else {
-	return ((PSCSI_REQUEST_BLOCK)srb)->SrbStatus;
-    }
-}
-
-FORCEINLINE VOID SrbSetSrbStatus(IN PVOID Srb, IN UCHAR status)
-{
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
-
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	if (srb->SrbStatus & SRB_STATUS_AUTOSENSE_VALID) {
-	    srb->SrbStatus = status | SRB_STATUS_AUTOSENSE_VALID;
-	} else {
-	    srb->SrbStatus = status;
-	}
-    } else {
-	if (((PSCSI_REQUEST_BLOCK)srb)->SrbStatus & SRB_STATUS_AUTOSENSE_VALID) {
-	    ((PSCSI_REQUEST_BLOCK)srb)->SrbStatus = status | SRB_STATUS_AUTOSENSE_VALID;
-	} else {
-	    ((PSCSI_REQUEST_BLOCK)srb)->SrbStatus = status;
+	default:
+	    SRBHELPER_ASSERT(FALSE);
+	    break;
 	}
     }
 }
 
-FORCEINLINE PVOID SrbGetPortContext(IN PVOID Srb)
+FORCEINLINE VOID SrbSetTargetId(IN PSTORAGE_REQUEST_BLOCK Srb,
+				IN UCHAR TargetId)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
+    PSTOR_ADDRESS StorAddr = SrbGetAddress(Srb);
+    if (StorAddr) {
+	switch (StorAddr->Type) {
+	case STOR_ADDRESS_TYPE_BTL8:
+	    ((PSTOR_ADDR_BTL8)StorAddr)->Target = TargetId;
+	    break;
 
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	return srb->PortContext;
-    } else {
-	SRBHELPER_ASSERT(FALSE);
-	return NULL;
+	default:
+	    SRBHELPER_ASSERT(FALSE);
+	    break;
+	}
     }
 }
 
-FORCEINLINE VOID SrbSetPortContext(IN PVOID Srb, IN PVOID PortContext)
+FORCEINLINE VOID SrbSetLun(IN PSTORAGE_REQUEST_BLOCK Srb,
+			   IN UCHAR Lun)
 {
-    PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)Srb;
+    PSTOR_ADDRESS StorAddr = SrbGetAddress(Srb);
+    if (StorAddr) {
+	switch (StorAddr->Type) {
+	case STOR_ADDRESS_TYPE_BTL8:
+	    ((PSTOR_ADDR_BTL8)StorAddr)->Lun = Lun;
+	    break;
 
-    if (srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	srb->PortContext = PortContext;
-    } else {
-	SRBHELPER_ASSERT(FALSE);
+	default:
+	    SRBHELPER_ASSERT(FALSE);
+	    break;
+	}
     }
 }
 
-#endif /* (NTDDI_VERSION >= NTDDI_WIN8) */
+FORCEINLINE VOID SrbSetPathTargetLun(IN PSTORAGE_REQUEST_BLOCK Srb,
+				     IN UCHAR PathId,
+				     IN UCHAR TargetId,
+				     IN UCHAR Lun)
+{
+    PSTOR_ADDRESS StorAddr = SrbGetAddress(Srb);
+    if (StorAddr) {
+	switch (StorAddr->Type) {
+	case STOR_ADDRESS_TYPE_BTL8:
+	    ((PSTOR_ADDR_BTL8)StorAddr)->Path = PathId;
+	    ((PSTOR_ADDR_BTL8)StorAddr)->Target = TargetId;
+	    ((PSTOR_ADDR_BTL8)StorAddr)->Lun = Lun;
+	    break;
+
+	default:
+	    SRBHELPER_ASSERT(FALSE);
+	    break;
+	}
+    }
+}
+
+FORCEINLINE PVOID SrbGetMiniportContext(IN PSTORAGE_REQUEST_BLOCK Srb)
+{
+    return Srb->MiniportContext;
+}
+
+FORCEINLINE UCHAR SrbGetSrbStatus(IN PSTORAGE_REQUEST_BLOCK Srb)
+{
+    return Srb->SrbStatus;
+}
+
+FORCEINLINE VOID SrbSetSrbStatus(IN PSTORAGE_REQUEST_BLOCK Srb,
+				 IN UCHAR Status)
+{
+    if (Srb->SrbStatus & SRB_STATUS_AUTOSENSE_VALID) {
+	Srb->SrbStatus = Status | SRB_STATUS_AUTOSENSE_VALID;
+    } else {
+	Srb->SrbStatus = Status;
+    }
+}
+
+FORCEINLINE PVOID SrbGetPortContext(IN PSTORAGE_REQUEST_BLOCK Srb)
+{
+    return Srb->PortContext;
+}
+
+FORCEINLINE VOID SrbSetPortContext(IN PSTORAGE_REQUEST_BLOCK Srb,
+				   IN PVOID PortContext)
+{
+    Srb->PortContext = PortContext;
+}
+
 #endif /* _SRBHELPER_H_ */

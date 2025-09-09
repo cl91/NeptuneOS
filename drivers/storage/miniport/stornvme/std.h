@@ -1053,7 +1053,7 @@ typedef struct _NVME_DEVICE_EXTENSION {
     /* Host memory buffer enable */
     BOOLEAN						HMBenabled;
     /* Current handling SRB (for disable HMB callback) */
-    PSCSI_REQUEST_BLOCK			pCurrentSrb;
+    PSTORAGE_REQUEST_BLOCK				pCurrentSrb;
 } NVME_DEVICE_EXTENSION, *PNVME_DEVICE_EXTENSION;
 
 #pragma pack(1)
@@ -1377,10 +1377,10 @@ NTAPI BOOLEAN NVMeInitialize(IN PVOID AdapterExtension);
 HW_TIMER_EX IsDeviceRemoved;
 
 BOOLEAN NVMeStartIo(IN PVOID AdapterExtension,
-		    IN PSCSI_REQUEST_BLOCK Srb);
+		    IN PSTORAGE_REQUEST_BLOCK Srb);
 
 BOOLEAN NVMeBuildIo(IN PVOID AdapterExtension,
-		    IN PSCSI_REQUEST_BLOCK Srb);
+		    IN PSTORAGE_REQUEST_BLOCK Srb);
 
 VOID NVMeStartIoProcessIoctl(IN PNVME_DEVICE_EXTENSION pAdapterExtension,
 			     IN PSTORAGE_REQUEST_BLOCK pSrb);

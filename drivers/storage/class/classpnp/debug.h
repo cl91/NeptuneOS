@@ -30,11 +30,11 @@ Revision History:
 #define DBGGETADSENSEQUALIFIERSTR(_pSrb) DbgGetAdditionalSenseCodeQualifierStr(_pSrb)
 
 char *DbgGetIoctlStr(ULONG ioctl);
-char *DbgGetScsiOpStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb);
-char *DbgGetSrbStatusStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb);
-char *DbgGetSenseCodeStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb);
-char *DbgGetAdditionalSenseCodeStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb);
-char *DbgGetAdditionalSenseCodeQualifierStr(PSTORAGE_REQUEST_BLOCK_HEADER Srb);
+char *DbgGetScsiOpStr(PSTORAGE_REQUEST_BLOCK Srb);
+char *DbgGetSrbStatusStr(PSTORAGE_REQUEST_BLOCK Srb);
+char *DbgGetSenseCodeStr(PSTORAGE_REQUEST_BLOCK Srb);
+char *DbgGetAdditionalSenseCodeStr(PSTORAGE_REQUEST_BLOCK Srb);
+char *DbgGetAdditionalSenseCodeQualifierStr(PSTORAGE_REQUEST_BLOCK Srb);
 
 #if DBG
 

@@ -389,60 +389,8 @@ __inline PCDB RequestGetSrbScsiData(_In_ PSTORAGE_REQUEST_BLOCK Srb,
 				    _In_opt_ PVOID *SenseInfoBuffer,
 				    _In_opt_ PUCHAR SenseInfoBufferLength)
 {
-    PCDB cdb = NULL;
-
-    if (Srb->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) {
-	//
-	// This is SrbEx - STORAGE_REQUEST_BLOCK
-	//
-	cdb = SrbGetScsiData(Srb, (PUCHAR)CdbLength, CdbLength, ScsiStatus,
-			     SenseInfoBuffer, SenseInfoBufferLength);
-
-    } else if (Srb->Function == SRB_FUNCTION_EXECUTE_SCSI) {
-	//
-	// This is legacy SCSI_REQUEST_BLOCK
-	//
-	PSCSI_REQUEST_BLOCK srb = (PSCSI_REQUEST_BLOCK)Srb;
-
-	if (CdbLength) {
-	    *CdbLength = srb->CdbLength;
-	}
-
-	if (srb->CdbLength > 0) {
-	    cdb = (PCDB)srb->Cdb;
-	}
-
-	if (ScsiStatus) {
-	    *ScsiStatus = srb->ScsiStatus;
-	}
-
-	if (SenseInfoBuffer) {
-	    *SenseInfoBuffer = srb->SenseInfoBuffer;
-	}
-
-	if (SenseInfoBufferLength) {
-	    *SenseInfoBufferLength = srb->SenseInfoBufferLength;
-	}
-
-    } else {
-	if (CdbLength) {
-	    *CdbLength = 0;
-	}
-
-	if (ScsiStatus) {
-	    *ScsiStatus = SCSISTAT_GOOD;
-	}
-
-	if (SenseInfoBuffer) {
-	    *SenseInfoBuffer = NULL;
-	}
-
-	if (SenseInfoBufferLength) {
-	    *SenseInfoBufferLength = 0;
-	}
-    }
-
-    return cdb;
+    return SrbGetScsiData(Srb, (PUCHAR)CdbLength, CdbLength, ScsiStatus,
+			  SenseInfoBuffer, SenseInfoBufferLength);
 }
 
 __inline ULONG64 GetLbaFromCdb(_In_ PCDB Cdb, _In_ ULONG CdbLength)

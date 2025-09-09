@@ -61,7 +61,7 @@ BOOLEAN NVMeAdapterControlPowerUp(IN PNVME_DEVICE_EXTENSION pAdapterExtension);
 BOOLEAN NVMeAdapterControlPowerDown(IN PNVME_DEVICE_EXTENSION pAdapterExtension);
 
 BOOLEAN NVMePowerControl(IN PNVME_DEVICE_EXTENSION pAdapterExtension,
-			 IN PSCSI_REQUEST_BLOCK Srb);
+			 IN PSTORAGE_REQUEST_BLOCK Srb);
 
 BOOLEAN NVMeAdapterPowerControl(IN PNVME_DEVICE_EXTENSION pAE,
 				IN ULONG DevicePowerState,

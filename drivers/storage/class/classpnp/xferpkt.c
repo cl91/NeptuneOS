@@ -64,35 +64,24 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
 		return NULL;
 	    }
 	    newPkt->AllocateNode = KeGetCurrentNodeNumber();
-	    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-		if ((fdoExt->MiniportDescriptor != NULL) &&
-		    (fdoExt->MiniportDescriptor->Size >=
-		     RTL_SIZEOF_THROUGH_FIELD(STORAGE_MINIPORT_DESCRIPTOR,
-					      ExtraIoInfoSupported)) &&
-		    (fdoExt->MiniportDescriptor->ExtraIoInfoSupported == TRUE)) {
-		    status = CreateStorageRequestBlock(
-			(PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
-			fdoExt->AdapterDescriptor->AddressType,
-			DefaultStorageRequestBlockAllocateRoutine, NULL, 2,
-			SrbExDataTypeScsiCdb16, SrbExDataTypeIoInfo);
-		} else {
-		    status = CreateStorageRequestBlock(
-			(PSTORAGE_REQUEST_BLOCK *)&newPkt->Srb,
-			fdoExt->AdapterDescriptor->AddressType,
-			DefaultStorageRequestBlockAllocateRoutine, NULL, 1,
-			SrbExDataTypeScsiCdb16);
-		}
+	    if ((fdoExt->MiniportDescriptor != NULL) &&
+		(fdoExt->MiniportDescriptor->Size >=
+		 RTL_SIZEOF_THROUGH_FIELD(STORAGE_MINIPORT_DESCRIPTOR, ExtraIoInfoSupported)) &&
+		fdoExt->MiniportDescriptor->ExtraIoInfoSupported) {
+		status = CreateStorageRequestBlock(&newPkt->Srb,
+						   fdoExt->AdapterDescriptor->AddressType,
+						   DefaultStorageRequestBlockAllocateRoutine,
+						   NULL, 2, SrbExDataTypeScsiCdb16,
+						   SrbExDataTypeIoInfo);
 	    } else {
-		newPkt->Srb = ExAllocatePoolWithTag(NonPagedPool,
-						    sizeof(SCSI_REQUEST_BLOCK), '-brs');
-		if (newPkt->Srb == NULL) {
-		    status = STATUS_INSUFFICIENT_RESOURCES;
-		}
+		status = CreateStorageRequestBlock(&newPkt->Srb,
+						   fdoExt->AdapterDescriptor->AddressType,
+						   DefaultStorageRequestBlockAllocateRoutine,
+						   NULL, 1, SrbExDataTypeScsiCdb16);
 	    }
 
 	    if (status != STATUS_SUCCESS) {
-		TracePrint(
-		    (TRACE_LEVEL_WARNING, TRACE_FLAG_RW, "Failed to allocate SRB."));
+		TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW, "Failed to allocate SRB."));
 		FREE_POOL(newPkt);
 	    }
 	}
@@ -360,43 +349,28 @@ NTSTATUS InitializeTransferPackets(PDEVICE_OBJECT Fdo)
     //
 
     if (NT_SUCCESS(status)) {
-	if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	    ULONG ByteSize = 0;
+	ULONG ByteSize = 0;
 
-	    if ((fdoExt->MiniportDescriptor != NULL) &&
-		(fdoExt->MiniportDescriptor->Size >=
-		 RTL_SIZEOF_THROUGH_FIELD(STORAGE_MINIPORT_DESCRIPTOR,
-					  ExtraIoInfoSupported)) &&
-		(fdoExt->MiniportDescriptor->ExtraIoInfoSupported == TRUE)) {
-		status = CreateStorageRequestBlock(
-		    (PSTORAGE_REQUEST_BLOCK *)&fdoData->SrbTemplate,
-		    fdoExt->AdapterDescriptor->AddressType,
-		    DefaultStorageRequestBlockAllocateRoutine, &ByteSize, 2,
-		    SrbExDataTypeScsiCdb16, SrbExDataTypeIoInfo);
-	    } else {
-		status = CreateStorageRequestBlock(
-		    (PSTORAGE_REQUEST_BLOCK *)&fdoData->SrbTemplate,
-		    fdoExt->AdapterDescriptor->AddressType,
-		    DefaultStorageRequestBlockAllocateRoutine, &ByteSize, 1,
-		    SrbExDataTypeScsiCdb16);
-	    }
-	    if (NT_SUCCESS(status)) {
-		((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbFunction =
-		    SRB_FUNCTION_EXECUTE_SCSI;
-	    } else {
-		NT_ASSERT(FALSE);
-	    }
+	if ((fdoExt->MiniportDescriptor != NULL) &&
+	    (fdoExt->MiniportDescriptor->Size >=
+	     RTL_SIZEOF_THROUGH_FIELD(STORAGE_MINIPORT_DESCRIPTOR,
+				      ExtraIoInfoSupported)) &&
+	    (fdoExt->MiniportDescriptor->ExtraIoInfoSupported == TRUE)) {
+	    status = CreateStorageRequestBlock(&fdoData->SrbTemplate,
+					       fdoExt->AdapterDescriptor->AddressType,
+					       DefaultStorageRequestBlockAllocateRoutine,
+					       &ByteSize, 2, SrbExDataTypeScsiCdb16,
+					       SrbExDataTypeIoInfo);
 	} else {
-	    fdoData->SrbTemplate = ExAllocatePoolWithTag(NonPagedPool,
-							 sizeof(SCSI_REQUEST_BLOCK),
-							 '-brs');
-	    if (fdoData->SrbTemplate == NULL) {
-		status = STATUS_INSUFFICIENT_RESOURCES;
-	    } else {
-		RtlZeroMemory(fdoData->SrbTemplate, sizeof(SCSI_REQUEST_BLOCK));
-		fdoData->SrbTemplate->Length = sizeof(SCSI_REQUEST_BLOCK);
-		fdoData->SrbTemplate->Function = SRB_FUNCTION_EXECUTE_SCSI;
-	    }
+	    status = CreateStorageRequestBlock(&fdoData->SrbTemplate,
+					       fdoExt->AdapterDescriptor->AddressType,
+					       DefaultStorageRequestBlockAllocateRoutine,
+					       &ByteSize, 1, SrbExDataTypeScsiCdb16);
+	}
+	if (NT_SUCCESS(status)) {
+	    fdoData->SrbTemplate->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
+	} else {
+	    NT_ASSERT(FALSE);
 	}
     }
 
@@ -670,8 +644,6 @@ VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt,
     UCHAR majorFunc = origCurSp->MajorFunction;
     LARGE_INTEGER logicalBlockAddr;
     ULONG numTransferBlocks;
-    PCDB pCdb;
-    ULONG srbLength;
     ULONG timeoutValue = fdoExt->TimeOutValue;
 
     logicalBlockAddr.QuadPart = Int64ShrlMod32(DiskLocation.QuadPart,
@@ -690,26 +662,12 @@ VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt,
      *  Tell lower drivers to sort the SRBs by the logical block address
      *  so that disk seeks are minimized.
      */
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    ULONG srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
     SrbSetDataBuffer(Pkt->Srb, Buf);
     SrbSetDataTransferLength(Pkt->Srb, Len);
-    SrbSetQueueSortKey(Pkt->Srb, logicalBlockAddr.LowPart);
-    if (logicalBlockAddr.QuadPart > 0xFFFFFFFF) {
-	//
-	// If the requested LBA is more than max ULONG set the
-	// QueueSortKey to the maximum value, so that these
-	// requests can be added towards the end of the queue.
-	//
-
-	SrbSetQueueSortKey(Pkt->Srb, 0xFFFFFFFF);
-    }
     SrbSetOriginalRequest(Pkt->Srb, Pkt->Irp);
     SrbSetSenseInfoBuffer(Pkt->Srb, &Pkt->SrbErrorSenseData);
 
@@ -718,7 +676,7 @@ VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt,
     /*
      *  Arrange values in CDB in big-endian format.
      */
-    pCdb = SrbGetCdb(Pkt->Srb);
+    PCDB pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
 	if (TEST_FLAG(fdoExt->DeviceFlags, DEV_USE_16BYTE_CDB)) {
 	    REVERSE_BYTES_QUAD(&pCdb->CDB16.LogicalBlock, &logicalBlockAddr);
@@ -752,7 +710,8 @@ VOID SetupReadWriteTransferPacket(PTRANSFER_PACKET Pkt,
      *  Allow caching only if this is not a write-through request.
      *  If write-through and caching is enabled on the device, force
      *  media access.
-     *  Ignore SL_WRITE_THROUGH for reads; it's only set because the file handle was opened with WRITE_THROUGH.
+     *  Ignore SL_WRITE_THROUGH for reads; it's only set because the file
+     *  handle was opened with WRITE_THROUGH.
      */
     if ((majorFunc == IRP_MJ_WRITE) && TEST_FLAG(origCurSp->Flags, SL_WRITE_THROUGH) &&
 	pCdb) {
@@ -805,7 +764,7 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt)
 
     nextSp = IoGetNextIrpStackLocation(Pkt->Irp);
     nextSp->MajorFunction = IRP_MJ_SCSI;
-    nextSp->Parameters.Scsi.Srb = (PSCSI_REQUEST_BLOCK)Pkt->Srb;
+    nextSp->Parameters.Scsi.Srb = Pkt->Srb;
 
     SrbSetScsiStatus(Pkt->Srb, 0);
     Pkt->Srb->SrbStatus = 0;
@@ -875,9 +834,6 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
     BOOLEAN packetDone = FALSE;
     BOOLEAN idleRequest = FALSE;
-    ULONG transferLength;
-    LARGE_INTEGER completionTime;
-    ULONGLONG lastIoCompletionTime;
 
     UNREFERENCED_PARAMETER(NullFdo);
 
@@ -888,7 +844,7 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
     DBGCHECKRETURNEDPKT(pkt);
     HISTORYLOGRETURNEDPACKET(pkt);
 
-    completionTime = ClasspGetCurrentTime();
+    LARGE_INTEGER completionTime = ClasspGetCurrentTime();
 
     //
     // Record the time at which the last IO completed while snapping the old
@@ -896,17 +852,8 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
     // could be overwritten with an older value. This is OK because this value
     // is maintained as a heuristic.
     //
-
-#ifdef _WIN64
-    lastIoCompletionTime = ReadULong64NoFence(
-	(volatile ULONG64 *)&fdoData->LastIoCompletionTime.QuadPart);
-    WriteULong64NoFence((volatile ULONG64 *)&fdoData->LastIoCompletionTime.QuadPart,
-			completionTime.QuadPart);
-#else
-    lastIoCompletionTime = InterlockedExchangeNoFence64(
-	(volatile LONG64 *)&fdoData->LastIoCompletionTime.QuadPart,
-	completionTime.QuadPart);
-#endif
+    InterlockedExchangeNoFence64((volatile LONG64 *)&fdoData->LastIoCompletionTime.QuadPart,
+				 completionTime.QuadPart);
 
     if (fdoData->IdlePrioritySupported == TRUE) {
 	idleRequest = ClasspIsIdleRequest(pkt->OriginalIrp);
@@ -923,7 +870,7 @@ NTAPI NTSTATUS TransferPktComplete(IN PDEVICE_OBJECT NullFdo,
     if (SRB_STATUS(pkt->Srb->SrbStatus) == SRB_STATUS_SUCCESS) {
 	NT_ASSERT(NT_SUCCESS(Irp->IoStatus.Status));
 
-	transferLength = SrbGetDataTransferLength(pkt->Srb);
+	ULONG transferLength = SrbGetDataTransferLength(pkt->Srb);
 
 	fdoData->LoggedTURFailureSinceLastIO = FALSE;
 
@@ -1188,15 +1135,9 @@ VOID SetupEjectionTransferPacket(TRANSFER_PACKET *Pkt,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    PCDB pCdb;
-    ULONG srbLength;
 
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    ULONG srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
 
@@ -1210,7 +1151,7 @@ VOID SetupEjectionTransferPacket(TRANSFER_PACKET *Pkt,
     SrbAssignSrbFlags(Pkt->Srb, fdoExt->SrbFlags | SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 				    SRB_FLAGS_NO_QUEUE_FREEZE);
 
-    pCdb = SrbGetCdb(Pkt->Srb);
+    PCDB pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
 	pCdb->MEDIA_REMOVAL.OperationCode = SCSIOP_MEDIUM_REMOVAL;
 	pCdb->MEDIA_REMOVAL.Prevent = PreventMediaRemoval;
@@ -1242,15 +1183,9 @@ VOID SetupModeSenseTransferPacket(TRANSFER_PACKET *Pkt,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    PCDB pCdb;
-    ULONG srbLength;
 
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    ULONG srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
 
@@ -1267,7 +1202,7 @@ VOID SetupModeSenseTransferPacket(TRANSFER_PACKET *Pkt,
 				    SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 				    SRB_FLAGS_NO_QUEUE_FREEZE);
 
-    pCdb = SrbGetCdb(Pkt->Srb);
+    PCDB pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
 	pCdb->MODE_SENSE.OperationCode = SCSIOP_MODE_SENSE;
 	pCdb->MODE_SENSE.PageCode = PageMode;
@@ -1300,15 +1235,9 @@ VOID SetupModeSelectTransferPacket(TRANSFER_PACKET *Pkt,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    PCDB pCdb;
-    ULONG srbLength;
 
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    ULONG srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
 
@@ -1325,7 +1254,7 @@ VOID SetupModeSelectTransferPacket(TRANSFER_PACKET *Pkt,
 				    SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 				    SRB_FLAGS_NO_QUEUE_FREEZE);
 
-    pCdb = SrbGetCdb(Pkt->Srb);
+    PCDB pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
 	pCdb->MODE_SELECT.OperationCode = SCSIOP_MODE_SELECT;
 	pCdb->MODE_SELECT.SPBit = SavePages;
@@ -1360,12 +1289,8 @@ VOID SetupDriveCapacityTransferPacket(TRANSFER_PACKET *Pkt,
     ULONG srbLength;
     ULONG timeoutValue = fdoExt->TimeOutValue;
 
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
 
@@ -1405,51 +1330,6 @@ VOID SetupDriveCapacityTransferPacket(TRANSFER_PACKET *Pkt,
     Pkt->SyncEventPtr = SyncEventPtr;
     Pkt->CompleteOriginalIrpWhenLastPacketCompletes = FALSE;
 }
-
-#if 0
-/*
- *  SetupSendStartUnitTransferPacket
- *
- *      Set up a transferPacket for a synchronous Send Start Unit transfer.
- */
-VOID SetupSendStartUnitTransferPacket(TRANSFER_PACKET *Pkt,
-				      PIRP OriginalIrp)
-{
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
-    PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    PCDB pCdb;
-
-    RtlZeroMemory(&Pkt->Srb, sizeof(SCSI_REQUEST_BLOCK));
-
-    /*
-     *  Initialize the SRB.
-     *  Use a very long timeout value to give the drive time to spin up.
-     */
-    Pkt->Srb->Length = sizeof(SCSI_REQUEST_BLOCK);
-    Pkt->Srb->Function = SRB_FUNCTION_EXECUTE_SCSI;
-    Pkt->Srb->TimeOutValue = START_UNIT_TIMEOUT;
-    Pkt->Srb->CdbLength = 6;
-    Pkt->Srb->OriginalRequest = Pkt->Irp;
-    Pkt->Srb->SenseInfoBuffer = &Pkt->SrbErrorSenseData;
-    Pkt->Srb->SenseInfoBufferLength = sizeof(Pkt->SrbErrorSenseData);
-    Pkt->Srb->Lun = 0;
-
-    SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_NO_DATA_TRANSFER);
-    SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_DISABLE_AUTOSENSE);
-    SET_FLAG(Pkt->Srb->SrbFlags, SRB_FLAGS_DISABLE_SYNCH_TRANSFER);
-
-    pCdb = (PCDB)Pkt->Srb->Cdb;
-    pCdb->START_STOP.OperationCode = SCSIOP_START_STOP_UNIT;
-    pCdb->START_STOP.Start = 1;
-    pCdb->START_STOP.Immediate = 0;
-    pCdb->START_STOP.LogicalUnitNumber = 0;
-
-    Pkt->OriginalIrp = OriginalIrp;
-    Pkt->NumRetries = 0;
-    Pkt->SyncEventPtr = NULL;
-    Pkt->CompleteOriginalIrpWhenLastPacketCompletes = FALSE;
-}
-#endif
 
 NTAPI VOID CleanupTransferPacketToWorkingSetSizeWorker(IN PVOID Fdo,
 						       IN OPTIONAL PVOID Context,
@@ -1573,25 +1453,16 @@ VOID ClasspSetupPopulateTokenTransferPacket(IN POFFLOAD_READ_CONTEXT OffloadRead
 					    IN PIRP OriginalIrp,
 					    IN ULONG ListIdentifier)
 {
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
-    PCLASS_PRIVATE_FDO_DATA fdoData;
-    PCDB pCdb;
-    ULONG srbLength;
-
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspSetupPopulateTokenTransferPacket (%p): Entering function. Irp "
 		"%p\n",
 		Pkt->Fdo, OriginalIrp));
 
-    fdoExt = Pkt->Fdo->DeviceExtension;
-    fdoData = fdoExt->PrivateFdoData;
+    PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
+    PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
 
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    ULONG srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
 
@@ -1608,7 +1479,7 @@ VOID ClasspSetupPopulateTokenTransferPacket(IN POFFLOAD_READ_CONTEXT OffloadRead
 				    SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 				    SRB_FLAGS_NO_QUEUE_FREEZE);
 
-    pCdb = SrbGetCdb(Pkt->Srb);
+    PCDB pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
 	pCdb->TOKEN_OPERATION.OperationCode = SCSIOP_POPULATE_TOKEN;
 	pCdb->TOKEN_OPERATION.ServiceAction = SERVICE_ACTION_POPULATE_TOKEN;
@@ -1664,8 +1535,6 @@ VOID ClasspSetupReceivePopulateTokenInformationTransferPacket(IN POFFLOAD_READ_C
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
     PCLASS_PRIVATE_FDO_DATA fdoData;
-    PCDB pCdb;
-    ULONG srbLength;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspSetupReceivePopulateTokenInformationTransferPacket (%p): Entering "
@@ -1675,12 +1544,8 @@ VOID ClasspSetupReceivePopulateTokenInformationTransferPacket(IN POFFLOAD_READ_C
     fdoExt = Pkt->Fdo->DeviceExtension;
     fdoData = fdoExt->PrivateFdoData;
 
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    ULONG srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
 
@@ -1696,7 +1561,7 @@ VOID ClasspSetupReceivePopulateTokenInformationTransferPacket(IN POFFLOAD_READ_C
     SrbAssignSrbFlags(Pkt->Srb, fdoExt->SrbFlags | SRB_FLAGS_DATA_IN |
 		      SRB_FLAGS_DISABLE_SYNCH_TRANSFER | SRB_FLAGS_NO_QUEUE_FREEZE);
 
-    pCdb = SrbGetCdb(Pkt->Srb);
+    PCDB pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
 	pCdb->RECEIVE_TOKEN_INFORMATION.OperationCode = SCSIOP_RECEIVE_ROD_TOKEN_INFORMATION;
 	pCdb->RECEIVE_TOKEN_INFORMATION.ServiceAction = SERVICE_ACTION_RECEIVE_TOKEN_INFORMATION;
@@ -1756,8 +1621,6 @@ VOID ClasspSetupWriteUsingTokenTransferPacket(IN POFFLOAD_WRITE_CONTEXT Ctx,
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
     PCLASS_PRIVATE_FDO_DATA fdoData;
-    PCDB pCdb;
-    ULONG srbLength;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspSetupWriteUsingTokenTransferPacket (%p): Entering function. Irp "
@@ -1767,12 +1630,8 @@ VOID ClasspSetupWriteUsingTokenTransferPacket(IN POFFLOAD_WRITE_CONTEXT Ctx,
     fdoExt = Pkt->Fdo->DeviceExtension;
     fdoData = fdoExt->PrivateFdoData;
 
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    ULONG srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
 
@@ -1789,7 +1648,7 @@ VOID ClasspSetupWriteUsingTokenTransferPacket(IN POFFLOAD_WRITE_CONTEXT Ctx,
 				    SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 				    SRB_FLAGS_NO_QUEUE_FREEZE);
 
-    pCdb = SrbGetCdb(Pkt->Srb);
+    PCDB pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
 	pCdb->TOKEN_OPERATION.OperationCode = SCSIOP_WRITE_USING_TOKEN;
 	pCdb->TOKEN_OPERATION.ServiceAction = SERVICE_ACTION_WRITE_USING_TOKEN;
@@ -1847,8 +1706,6 @@ VOID ClasspSetupReceiveWriteUsingTokenInformationTransferPacket(IN POFFLOAD_WRIT
 {
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
     PCLASS_PRIVATE_FDO_DATA fdoData;
-    PCDB pCdb;
-    ULONG srbLength;
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspSetupReceiveWriteUsingTokenInformationTransferPacket (%p): "
@@ -1858,12 +1715,8 @@ VOID ClasspSetupReceiveWriteUsingTokenInformationTransferPacket(IN POFFLOAD_WRIT
     fdoExt = Pkt->Fdo->DeviceExtension;
     fdoData = fdoExt->PrivateFdoData;
 
-    if (fdoExt->AdapterDescriptor->SrbType == SRB_TYPE_STORAGE_REQUEST_BLOCK) {
-	srbLength = ((PSTORAGE_REQUEST_BLOCK)fdoData->SrbTemplate)->SrbLength;
-	NT_ASSERT(((PSTORAGE_REQUEST_BLOCK)Pkt->Srb)->SrbLength >= srbLength);
-    } else {
-	srbLength = fdoData->SrbTemplate->Length;
-    }
+    ULONG srbLength = fdoData->SrbTemplate->SrbLength;
+    NT_ASSERT(Pkt->Srb->SrbLength >= srbLength);
     RtlCopyMemory(Pkt->Srb, fdoData->SrbTemplate,
 		  srbLength); // copies _contents_ of SRB blocks
 
@@ -1880,7 +1733,7 @@ VOID ClasspSetupReceiveWriteUsingTokenInformationTransferPacket(IN POFFLOAD_WRIT
 				    SRB_FLAGS_DISABLE_SYNCH_TRANSFER |
 				    SRB_FLAGS_NO_QUEUE_FREEZE);
 
-    pCdb = SrbGetCdb(Pkt->Srb);
+    PCDB pCdb = SrbGetCdb(Pkt->Srb);
     if (pCdb) {
 	pCdb->RECEIVE_TOKEN_INFORMATION.OperationCode =
 	    SCSIOP_RECEIVE_ROD_TOKEN_INFORMATION;

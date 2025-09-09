@@ -121,6 +121,11 @@ typedef struct _PDO_DEVICE_EXTENSION {
     BOOLEAN QueueFrozen;
 } PDO_DEVICE_EXTENSION, *PPDO_DEVICE_EXTENSION;
 
+typedef struct _SRB_PORT_CONTEXT {
+    PSTORAGE_REQUEST_BLOCK Srb;
+    PMDL Mdl;
+    PSCATTER_GATHER_LIST SgList;
+} SRB_PORT_CONTEXT, *PSRB_PORT_CONTEXT;
 
 /* fdo.c */
 
@@ -143,7 +148,7 @@ NTSTATUS MiniportHwInitialize(_In_ PMINIPORT Miniport);
 BOOLEAN MiniportHwInterrupt(_In_ PMINIPORT Miniport);
 
 BOOLEAN MiniportStartIo(_In_ PMINIPORT Miniport,
-			_In_ PSCSI_REQUEST_BLOCK Srb);
+			_In_ PSTORAGE_REQUEST_BLOCK Srb);
 
 /* misc.c */
 

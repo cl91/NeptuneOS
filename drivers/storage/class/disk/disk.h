@@ -114,7 +114,6 @@ typedef struct _DISK_GROUP_CONTEXT {
     // The srb associated with this group
     //
     union {
-	SCSI_REQUEST_BLOCK Srb;
 	STORAGE_REQUEST_BLOCK SrbEx;
 	UCHAR SrbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE];
     } Srb;
@@ -410,7 +409,7 @@ typedef struct {
 //
 typedef struct _DISK_VERIFY_WORKITEM_CONTEXT {
     PIRP Irp;
-    PSCSI_REQUEST_BLOCK Srb;
+    PSTORAGE_REQUEST_BLOCK Srb;
     PIO_WORKITEM WorkItem;
 
 } DISK_VERIFY_WORKITEM_CONTEXT, *PDISK_VERIFY_WORKITEM_CONTEXT;
@@ -460,7 +459,7 @@ NTAPI NTSTATUS DiskReadWriteVerification(IN PDEVICE_OBJECT DeviceObject, IN PIRP
 
 NTAPI NTSTATUS DiskDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT DeviceObject, PSCSI_REQUEST_BLOCK Srb,
+NTAPI VOID DiskFdoProcessError(PDEVICE_OBJECT DeviceObject, PSTORAGE_REQUEST_BLOCK Srb,
 			       NTSTATUS *Status, BOOLEAN *Retry);
 
 NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
@@ -705,8 +704,7 @@ FORCEINLINE PCDB GetSrbScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
     PSRBEX_DATA SrbExData = NULL;
     BOOLEAN FoundEntry = FALSE;
 
-    if ((SrbEx->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	(SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI)) {
+    if (SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI) {
 	NT_ASSERT(SrbEx->NumSrbExData > 0);
 
 	for (i = 0; i < SrbEx->NumSrbExData; i++) {
@@ -887,8 +885,7 @@ FORCEINLINE VOID SetSrbScsiData(IN PSTORAGE_REQUEST_BLOCK SrbEx,
     PSRBEX_DATA SrbExData = NULL;
     BOOLEAN FoundEntry = FALSE;
 
-    if ((SrbEx->Function == SRB_FUNCTION_STORAGE_REQUEST_BLOCK) &&
-	(SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI)) {
+    if (SrbEx->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI) {
 	NT_ASSERT(SrbEx->NumSrbExData > 0);
 
 	for (i = 0; i < SrbEx->NumSrbExData; i++) {
