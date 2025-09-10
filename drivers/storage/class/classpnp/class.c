@@ -2717,7 +2717,7 @@ Return Value:
     None.
 
 --*/
-NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
+NTAPI NTSTATUS ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 {
     PIO_STACK_LOCATION irpStack;
     PIRP irp;
@@ -2735,13 +2735,7 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
     context = ExAllocatePoolWithTag(NonPagedPool, sizeof(COMPLETION_CONTEXT), '6CcS');
 
     if (context == NULL) {
-	//
-	// ISSUE-2000/02/03-peterwie
-	// This code path was inheritted from the NT 4.0 class2.sys driver.
-	// It needs to be changed to survive low-memory conditions.
-	//
-
-	RtlRaiseStatus(STATUS_DRIVER_INTERNAL_ERROR);
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     //
@@ -2760,7 +2754,7 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 	if (!NT_SUCCESS(status)) {
 	    FREE_POOL(context);
 	    NT_ASSERT(FALSE);
-	    return;
+	    return status;
 	}
 
 	srbEx->SrbFunction = SRB_FUNCTION_EXECUTE_SCSI;
@@ -2813,13 +2807,8 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
     irp = IoAllocateIrp(Fdo->StackSize);
 
     if (irp == NULL) {
-	//
-	// ISSUE-2000/02/03-peterwie
-	// This code path was inheritted from the NT 4.0 class2.sys driver.
-	// It needs to be changed to survive low-memory conditions.
-	//
-
-	RtlRaiseStatus(STATUS_DRIVER_INTERNAL_ERROR);
+	FREE_POOL(context);
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     ClassAcquireRemoveLock(Fdo, irp);
@@ -2843,7 +2832,7 @@ NTAPI VOID ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 
     IoCallDriver(fdoExtension->CommonExtension.LowerDeviceObject, irp);
 
-    return;
+    return STATUS_SUCCESS;
 
 } // end StartUnit()
 
@@ -4258,8 +4247,7 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 
 		    case SCSI_SENSEQ_FORMAT_IN_PROGRESS: {
 			TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-				    "ClassInterpretSenseInfo: "
-				    "Format in progress\n"));
+				    "ClassInterpretSenseInfo: Format in progress\n"));
 			retry = FALSE;
 			break;
 		    }
@@ -4323,16 +4311,15 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 					"ClassInterpretSenseInfo: "
 					"not ready, cause unknown\n"));
 			    /*
-                                        Many non-WHQL certified drives (mostly CD-RW) return
-                                        this when they have no media instead of the obvious
-                                        choice of:
+			      Many non-WHQL certified drives (mostly CD-RW) return
+			      this when they have no media instead of the obvious
+			      choice of:
 
-                                        SCSI_SENSE_NOT_READY/SCSI_ADSENSE_NO_MEDIA_IN_DEVICE
+			      SCSI_SENSE_NOT_READY/SCSI_ADSENSE_NO_MEDIA_IN_DEVICE
 
-                                        These drives should not pass WHQL certification due
-                                        to this discrepency.
-
-                                        */
+			      These drives should not pass WHQL certification due
+			      to this discrepency.
+			    */
 			    retry = FALSE;
 			    break;
 
@@ -4358,9 +4345,12 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 			// is a disk device.
 			//
 			if (TEST_FLAG(fdoExtension->DeviceFlags, DEV_SAFE_START_UNIT) &&
-			    !TEST_FLAG(SrbGetSrbFlags(Srb),
-				       SRB_CLASS_FLAGS_LOW_PRIORITY)) {
-			    ClassSendStartUnit(Fdo);
+			    !TEST_FLAG(SrbGetSrbFlags(Srb), SRB_CLASS_FLAGS_LOW_PRIORITY)) {
+			    if (!NT_SUCCESS(ClassSendStartUnit(Fdo))) {
+				// ClassSendStartUnit can fail due to low-memory condition
+				*Status = STATUS_INSUFFICIENT_RESOURCES;
+				retry = FALSE;
+			    }
 			}
 			break;
 		    }
@@ -4388,10 +4378,11 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 
 		    if (addlSenseCodeQual == 0xCC) {
 			/*
-                                 *  The IMAPI filter returns this ASCQ value when it is burning CD-R media.
-                                 *  We want to indicate that the media is not present to most applications;
-                                 *  but RSM has to know that the media is still in the drive (i.e. the drive is not free).
-                                 */
+			 * The IMAPI filter returns this ASCQ value when it is burning
+			 * CD-R media. We want to indicate that the media is not present
+			 * to most applications; but RSM has to know that the media is
+			 * still in the drive (i.e. the drive is not free).
+			 */
 			ClassSetMediaChangeState(fdoExtension, MediaUnavailable, FALSE);
 		    } else {
 			ClassSetMediaChangeState(fdoExtension, MediaNotPresent, FALSE);
@@ -4554,9 +4545,10 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 		    //
 		    case SCSI_SENSEQ_OPERATION_IS_IN_PROGRESS: {
 			//
-			// XCOPY, READ BUFFER and CHANGE ALIASES return this sense combination under
-			// certain conditions. Since these commands aren't sent down natively by the
-			// Windows OS, return the default error for them and only handle this sense
+			// XCOPY, READ BUFFER and CHANGE ALIASES return this sense
+			// combination under certain conditions. Since these commands
+			// aren't sent down natively by the Windows OS, return the
+			// default error for them and only handle this sense
 			// combination for offload data transfer commands.
 			//
 			if (ClasspIsOffloadDataTransferCommand(cdb)) {
@@ -4569,7 +4561,8 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 			    NT_ASSERTMSG("Duplicate list identifier specified", FALSE);
 
 			    //
-			    // The host should ensure that it uses unique list id for each TokenOperation request.
+			    // The host should ensure that it uses unique list id
+			    // for each TokenOperation request.
 			    //
 			    *Status = STATUS_OPERATION_IN_PROGRESS;
 			}
@@ -4582,7 +4575,8 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 		case SCSI_ADSENSE_LUN_COMMUNICATION: {
 		    switch (addlSenseCodeQual) {
 		    //
-		    // 1. Source/Destination pairing can't communicate with each other or the copy manager.
+		    // 1. Source/Destination pairing can't communicate with each
+		    // other or the copy manager.
 		    //
 		    case SCSI_SENSEQ_UNREACHABLE_TARGET: {
 			TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4600,8 +4594,9 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 		case SCSI_ADSENSE_COPY_TARGET_DEVICE_ERROR: {
 		    switch (addlSenseCodeQual) {
 		    //
-		    // 1. Sum of logical block fields in all block device range descriptors is greater than number
-		    //    of logical blocks in the ROD minus block offset into ROD
+		    // 1. Sum of logical block fields in all block device range
+		    // descriptors is greater than number of logical blocks in
+		    // the ROD minus block offset into ROD
 		    //
 		    case SCSI_SENSEQ_DATA_UNDERRUN: {
 			TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4702,7 +4697,8 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 			    }
 			} else if (ClasspIsOffloadDataTransferCommand(cdb)) {
 			    //
-			    // 1. Number of logical blocks of block device range descriptor exceeds capacity of the medium
+			    // 1. Number of logical blocks of block device range
+			    // descriptor exceeds capacity of the medium
 			    //
 			    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 					"ClassInterpretSenseInfo (%p): LBA out of range "
@@ -4754,8 +4750,9 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 				    Fdo, cdbOpcode));
 
 			//
-			// The host should ensure that it sends TokenOperation and ReceiveTokenInformation for the same
-			// list Id using the same I_T nexus.
+			// The host should ensure that it sends TokenOperation and
+			// ReceiveTokenInformation for the same list Id using the
+			// same I_T nexus.
 			//
 			*Status = STATUS_INVALID_INITIATOR_TARGET_PATH;
 
@@ -4792,7 +4789,8 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 		case SCSI_ADSENSE_INVALID_FIELD_PARAMETER_LIST: {
 		    switch (addlSenseCodeQual) {
 		    //
-		    // 1. Alignment violation (e.g. copy manager is unable to copy because destination offset is NOT aligned to LUN's granularity/alignment)
+		    // 1. Alignment violation (e.g. copy manager is unable to copy because
+		    // destination offset is NOT aligned to LUN's granularity/alignment)
 		    //
 		    case SCSI_SENSEQ_INVALID_RELEASE_OF_PERSISTENT_RESERVATION: {
 			TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4809,7 +4807,8 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 		    }
 
 		    //
-		    // 1. Number of block device range descriptors is greater than maximum range descriptors
+		    // 1. Number of block device range descriptors is greater than
+		    // maximum range descriptors
 		    //
 		    case SCSI_SENSEQ_TOO_MANY_SEGMENT_DESCRIPTORS: {
 			TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4828,13 +4827,21 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 			if (ClasspIsOffloadDataTransferCommand(cdb)) {
 			    //
 			    // 1. (Various) Invalid parameter length
-			    // 2. Requested inactivity timeout is greater than maximum inactivity timeout
-			    // 3. Same LBA is included in more than one block device range descriptor (overlapping LBAs)
-			    // 4. Total number of logical blocks of all block range descriptors is greater than the maximum transfer size
-			    // 5. Total number of logical blocks of all block range descriptors is greater than maximum token transfer size
-			    //    (e.g. WriteUsingToken descriptors specify a cumulative total block count that exceeds the PopulateToken that created the token)
-			    // 6. Block offset into ROD specified an offset that is greater than or equal to the number of logical blocks in the ROD
-			    // 7. Number of logical blocks in a block device range descriptor is greater than maximum transfer length in blocks
+			    // 2. Requested inactivity timeout is greater than maximum
+			    //    inactivity timeout
+			    // 3. Same LBA is included in more than one block device range
+			    //    descriptor (overlapping LBAs)
+			    // 4. Total number of logical blocks of all block range descriptors
+			    //    is greater than the maximum transfer size
+			    // 5. Total number of logical blocks of all block range descriptors
+			    //    is greater than maximum token transfer size
+			    //    (e.g. WriteUsingToken descriptors specify a cumulative total
+			    //    block count that exceeds the PopulateToken that created the
+			    //    token)
+			    // 6. Block offset into ROD specified an offset that is greater
+			    //    than or equal to the number of logical blocks in the ROD
+			    // 7. Number of logical blocks in a block device range descriptor
+			    //    is greater than maximum transfer length in blocks
 			    //
 			    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
 					"ClassInterpretSenseInfo (%p): Illegal field in "
@@ -4982,7 +4989,8 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 			ClassQueueCapacityChangedEventWorker(Fdo);
 
 			//
-			// Retry with 1 second delay as ClassQueueCapacityChangedEventWorker may trigger a couple of commands sent to disk.
+			// Retry with 1 second delay as ClassQueueCapacityChangedEventWorker
+			// may trigger a couple of commands sent to disk.
 			//
 			retryInterval = 1;
 			retry = TRUE;
@@ -5044,12 +5052,11 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 			}
 
 			if (addlSenseCodeQual == SCSI_SENSEQ_INQUIRY_DATA_CHANGED ||
-			    addlSenseCodeQual ==
-				SCSI_SENSEQ_OPERATING_DEFINITION_CHANGED) {
+			    addlSenseCodeQual == SCSI_SENSEQ_OPERATING_DEFINITION_CHANGED) {
 			    //
-			    // Since either the LB provisioning type changed, or the block/slab size
-			    // changed, next time anyone trying to query the FunctionSupportInfo, we
-			    // will requery the device.
+			    // Since either the LB provisioning type changed, or the
+			    // block/slab size changed, next time anyone trying to query
+			    // the FunctionSupportInfo, we will requery the device.
 			    //
 			    InterlockedIncrement(
 				(volatile LONG *)&fdoExtension->FunctionSupportInfo
@@ -5263,8 +5270,9 @@ NTAPI BOOLEAN ClassInterpretSenseInfo(IN PDEVICE_OBJECT Fdo,
 		    case SCSI_ADSENSE_RESOURCE_FAILURE: {
 			switch (addlSenseCodeQual) {
 			//
-			// 1. Copy manager wasn't able to finish the operation because of insuffient resources
-			//    (e.g. microsnapshot failure on read, no space on write, etc.)
+			// 1. Copy manager wasn't able to finish the operation because of
+			//    insuffient resources (e.g. microsnapshot failure on read, no
+			//    space on write, etc.)
 			//
 			case SCSI_SENSEQ_INSUFFICIENT_RESOURCES: {
 			    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
