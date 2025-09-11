@@ -804,11 +804,6 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt)
     HISTORYLOGSENDPACKET(Pkt);
 
     //
-    // Set the original irp here for SFIO.
-    //
-    ClasspSrbSetOriginalIrp(Pkt->Srb, (PVOID)(Pkt->OriginalIrp));
-
-    //
     // No need to lock for IdlePrioritySupported, since it will
     // be modified only at initialization time.
     //

@@ -254,6 +254,10 @@ typedef union _ULARGE_INTEGER {
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
 
+#define SET_FLAG(Flags, Bit) ((Flags) |= (Bit))
+#define CLEAR_FLAG(Flags, Bit) ((Flags) &= ~(Bit))
+#define TEST_FLAG(Flags, Bit) (((Flags) & (Bit)) != 0)
+
 #define UNREFERENCED_PARAMETER(P) ((void)(P))
 #define ARGUMENT_PRESENT(ArgumentPointer)			\
     ((CHAR*)((ULONG_PTR)(ArgumentPointer)) != (CHAR*)NULL)

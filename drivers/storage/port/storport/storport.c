@@ -89,9 +89,6 @@ static VOID PortAcquireSpinLock(PFDO_DEVICE_EXTENSION DeviceExtension,
 				PVOID LockContext,
 				PSTOR_LOCK_HANDLE LockHandle)
 {
-    DPRINT1("PortAcquireSpinLock(%p %u %p %p)\n", DeviceExtension, SpinLock, LockContext,
-	    LockHandle);
-
     LockHandle->Lock = SpinLock;
 
     switch (SpinLock) {
@@ -117,8 +114,6 @@ static VOID PortAcquireSpinLock(PFDO_DEVICE_EXTENSION DeviceExtension,
 static VOID PortReleaseSpinLock(PFDO_DEVICE_EXTENSION DeviceExtension,
 				PSTOR_LOCK_HANDLE LockHandle)
 {
-    DPRINT1("PortReleaseSpinLock(%p %p)\n", DeviceExtension, LockHandle);
-
     switch (LockHandle->Lock) {
     case DpcLock:
 	DPRINT1("DpcLock\n");
@@ -523,7 +518,7 @@ NTAPI BOOLEAN StorPortSetDeviceQueueDepth(IN PVOID HwDeviceExtension,
 					  IN UCHAR Lun,
 					  IN ULONG Depth)
 {
-    DPRINT1("StorPortSetDeviceQueueDepth()\n");
+    DPRINT1("StorPortSetDeviceQueueDepth(%d:%d:%d, depth %d)\n", PathId, TargetId, Lun, Depth);
     UNIMPLEMENTED;
     return FALSE;
 }
@@ -816,8 +811,29 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
 	break;
     }
 
+    case ExtFunctionMarkDumpMemory:
+    {
+	UNIMPLEMENTED;
+	Status = STOR_STATUS_NOT_IMPLEMENTED;
+	break;
+    }
+
+    case ExtFunctionSetUnitAttributes:
+    {
+	UNIMPLEMENTED;
+	Status = STOR_STATUS_NOT_IMPLEMENTED;
+	break;
+    }
+
+    case ExtFunctionMiniportEtwEvent8:
+    {
+	UNIMPLEMENTED;
+	Status = STOR_STATUS_NOT_IMPLEMENTED;
+	break;
+    }
+
     default:
-	DPRINT1("StorPortPatchExtendedFunction: unimplemented function code %d\n",
+	DPRINT1("StorPortExtendedFunction: unimplemented function code %d\n",
 		FunctionCode);
 	Status = STOR_STATUS_NOT_IMPLEMENTED;
 	break;
@@ -1109,7 +1125,9 @@ NTAPI PVOID StorPortGetUncachedExtension(IN PVOID HwDeviceExtension,
     if (DeviceExtension->UncachedExtensionVirtualBase != NULL)
 	return DeviceExtension->UncachedExtensionVirtualBase;
 
-    // FIXME: Set DMA stuff here?
+    if (!NT_SUCCESS(PortFdoInitDma(DeviceExtension, ConfigInfo))) {
+	return NULL;
+    }
 
     /* Allocate the uncached extension */
     PHYSICAL_ADDRESS HighestAddress = { .QuadPart = 0x00000000FFFFFFFF };
@@ -1131,14 +1149,15 @@ NTAPI PVOID StorPortGetUncachedExtension(IN PVOID HwDeviceExtension,
 }
 
 /*
- * @unimplemented
+ * @implemented
  */
 NTAPI PSTOR_SCATTER_GATHER_LIST StorPortGetScatterGatherList(IN PVOID DeviceExtension,
 							     IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     DPRINT1("StorPortGetScatterGatherList()\n");
-    UNIMPLEMENTED;
-    return NULL;
+    UNREFERENCED_PARAMETER(DeviceExtension);
+    return (Srb && Srb->PortContext) ?
+	(PSTOR_SCATTER_GATHER_LIST)((PSRB_PORT_CONTEXT)Srb->PortContext)->SgList : NULL;
 }
 
 static ULONG StorPortReadWriteBusData(IN PVOID DeviceExtension,
@@ -1392,15 +1411,11 @@ static NTAPI VOID StorPortDpcWorkerRoutine(IN PDEVICE_OBJECT DeviceObject,
 VOID StorPortNotification(IN SCSI_NOTIFICATION_TYPE NotificationType,
 			  IN PVOID HwDeviceExtension, ...)
 {
-    DPRINT1("StorPortNotification(%x %p)\n", NotificationType, HwDeviceExtension);
-
     /* Get the miniport extension */
     assert(HwDeviceExtension != NULL);
     PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
 							       MINIPORT_DEVICE_EXTENSION,
 							       HwDeviceExtension);
-    DPRINT1("HwDeviceExtension %p  MiniportExtension %p\n", HwDeviceExtension,
-	    MiniportExt);
     PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
 
     va_list ap;
@@ -1409,12 +1424,9 @@ VOID StorPortNotification(IN SCSI_NOTIFICATION_TYPE NotificationType,
     switch (NotificationType) {
     case RequestComplete:
     {
-	DPRINT1("RequestComplete\n");
 	GET_VA_ARG(ap, PSTORAGE_REQUEST_BLOCK, Srb);
-	DPRINT1("Srb %p\n", Srb);
-	if (Srb->OriginalRequest != NULL) {
-	    DPRINT1("Need to complete the IRP!\n");
-	}
+	DPRINT1("RequestComplete Srb %p\n", Srb);
+	PortCompleteRequest(Srb);
 	break;
     }
 

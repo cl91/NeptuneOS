@@ -717,8 +717,7 @@ NTAPI NTSTATUS HalpAllocateAdapterChannel(IN PDMA_ADAPTER DmaAdapter,
 	assert(MapReg != NULL);
     }
 
-    ULONG Result = ExecutionRoutine(DeviceObject, DeviceObject->CurrentIrp,
-				    MapReg, Context);
+    ULONG Result = ExecutionRoutine(DeviceObject, MapReg, Context);
 
     /*
      * Possible return values:
@@ -1135,7 +1134,6 @@ typedef struct _SCATTER_GATHER_CONTEXT {
 } SCATTER_GATHER_CONTEXT, *PSCATTER_GATHER_CONTEXT;
 
 NTAPI IO_ALLOCATION_ACTION HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT DeviceObject,
-							   IN PIRP Irp,
 							   IN PVOID MapRegisterBase,
 							   IN PVOID Context)
 {
@@ -1159,7 +1157,7 @@ NTAPI IO_ALLOCATION_ACTION HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT Dev
 	if (TempElements[ElementCount].Length == 0)
 	    break;
 
-	DPRINT("Allocated one S/G element: 0x%llu with length: 0x%x\n",
+	DPRINT("Allocated one S/G element: 0x%llx with length: 0x%x\n",
 	       TempElements[ElementCount].Address.QuadPart,
 	       TempElements[ElementCount].Length);
 
@@ -1187,7 +1185,7 @@ NTAPI IO_ALLOCATION_ACTION HalpScatterGatherAdapterControl(IN PDEVICE_OBJECT Dev
 
     DPRINT("Initiating S/G DMA with %d element(s)\n", ElementCount);
 
-    AdapterControlContext->AdapterListControlRoutine(DeviceObject, Irp, ScatterGatherList,
+    AdapterControlContext->AdapterListControlRoutine(DeviceObject, ScatterGatherList,
 						     AdapterControlContext->AdapterListControlContext);
 
     return DeallocateObjectKeepRegisters;
@@ -1386,9 +1384,12 @@ NTAPI VOID HalpPutScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
 	AdapterControlContext->CurrentVa += ScatterGather->Elements[i].Length;
     }
 
-    HalpFreeMapRegisters(DmaAdapter,
-			 AdapterControlContext->MapRegisterBase,
-			 AdapterControlContext->MapRegisterCount);
+    if (AdapterControlContext->MapRegisterBase) {
+	assert(AdapterControlContext->MapRegisterCount);
+	HalpFreeMapRegisters(DmaAdapter,
+			     AdapterControlContext->MapRegisterBase,
+			     AdapterControlContext->MapRegisterCount);
+    }
 
     ExFreePoolWithTag(ScatterGather, TAG_DMA);
 

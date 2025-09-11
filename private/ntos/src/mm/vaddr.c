@@ -731,8 +731,10 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 	    PhyAddrStart = PhyAddr;
 	    PrevPageType = Page->Type;
 	}
-	if (!PageCount || (PhyAddrEnd == PhyAddr && Page->Type == PrevPageType)) {
-	    /* Page is physically contiguous with previous page. In this case
+	if (!PageCount || (PhyAddrEnd == PhyAddr && Page->Type == PrevPageType &&
+			   PageCount < ((1UL << MDL_PFN_PAGE_COUNT_BITS) - 1))) {
+	    /* Page is physically contiguous with previous page (and page count is
+	     * not larger than what can be stored in one PFN entry). In this case
 	     * we simply increase the page count in the current PFN. */
 	    PageCount++;
 	    PhyAddrEnd = PhyAddr + MiPagingWindowSize(Page->Type);

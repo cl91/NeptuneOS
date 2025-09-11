@@ -66,13 +66,11 @@
  *     KeepObject, because that's what the DDK says to do
  */
 static NTAPI IO_ALLOCATION_ACTION MapRegisterCallback(PDEVICE_OBJECT DeviceObject,
-						      PIRP Irp,
 						      PVOID MapRegisterBase,
 						      PVOID Context)
 {
     PCONTROLLER_INFO ControllerInfo = (PCONTROLLER_INFO)Context;
     UNREFERENCED_PARAMETER(DeviceObject);
-    UNREFERENCED_PARAMETER(Irp);
 
     TRACE_(FLOPPY, "MapRegisterCallback Called\n");
 

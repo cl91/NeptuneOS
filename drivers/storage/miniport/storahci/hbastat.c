@@ -454,25 +454,21 @@ BOOLEAN P_NotRunning(PAHCI_CHANNEL_EXTENSION ChannelExtension, PAHCI_PORT Px)
 
 VOID AhciAdapterRunAllPorts(_In_ PAHCI_ADAPTER_EXTENSION AdapterExtension)
 {
-    ULONG i;
 
     // only start with the first one. callback routine will go over all ports.
-    for (i = 0; i <= AdapterExtension->HighestPort; i++) {
+    for (ULONG i = 0; i <= AdapterExtension->HighestPort; i++) {
 	if (AdapterExtension->PortExtension[i] != NULL) {
 	    AdapterExtension->InRunningPortsProcess = TRUE;
 	    P_Running_StartAttempt(AdapterExtension->PortExtension[i], TRUE);
 	    return;
 	}
     }
-
-    return;
 }
 
 VOID RunNextPort(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension, _In_ BOOLEAN AtDIRQL)
 {
     PAHCI_ADAPTER_EXTENSION adapterExtension;
     PAHCI_CHANNEL_EXTENSION nextPortExtension;
-    ULONG i;
 
     adapterExtension = ChannelExtension->AdapterExtension;
     nextPortExtension = NULL;
@@ -483,8 +479,7 @@ VOID RunNextPort(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension, _In_ BOOLEAN AtD
     }
 
     // get next port extension
-    for (i = (ChannelExtension->PortNumber + 1); i <= adapterExtension->HighestPort;
-	 i++) {
+    for (ULONG i = ChannelExtension->PortNumber + 1; i <= adapterExtension->HighestPort; i++) {
 	if (adapterExtension->PortExtension[i] != NULL) {
 	    nextPortExtension = adapterExtension->PortExtension[i];
 	    break;
@@ -517,8 +512,6 @@ VOID RunNextPort(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension, _In_ BOOLEAN AtD
 	    AhciPortStartTelemetry(adapterExtension);
 	}
     }
-
-    return;
 }
 
 /*
@@ -602,8 +595,6 @@ VOID P_Running_Callback(_In_ PVOID AdapterExtension, _In_opt_ PVOID ChannelExten
     }
 
     P_Running(channelExtension, TRUE);
-
-    return;
 }
 
 /*
@@ -1245,8 +1236,7 @@ WaitOnBSYDRQ_Start:
 		    ChannelExtension->StartState.ChannelStateDET1Count +
 		    ChannelExtension->StartState.ChannelStateDET3Count +
 		    ChannelExtension->StartState.ChannelStateFRECount +
-		    (ChannelExtension->StartState.ChannelStateBSYDRQCount * 2)) *
-	    10;
+		    (ChannelExtension->StartState.ChannelStateBSYDRQCount * 2)) * 10;
 
 	// Start requests on this Port
 	ActivateQueue(ChannelExtension, TRUE);
@@ -1470,8 +1460,6 @@ VOID P_Running_StartFailed(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 
     RunNextPort(ChannelExtension,
 		(!TimerCallbackProcess && ChannelExtension->StartState.AtDIRQL));
-
-    return;
 }
 
 /*
@@ -1970,8 +1958,6 @@ VOID NcqErrorRecoveryCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 	RecordExecutionHistory(ChannelExtension,
 			       0x1000001b); // Exit NcqErrorRecoveryCompletion.
     }
-
-    return;
 }
 
 /*

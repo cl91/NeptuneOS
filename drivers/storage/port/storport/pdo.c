@@ -76,6 +76,8 @@ NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
 	PdoExtension->InquiryBuffer = NULL;
     }
 
+    KeClearEvent(&PdoExtension->QueueUnfrozen);
+
     // FIXME: More uninitialization
 
     /* Delete the PDO */
@@ -84,10 +86,93 @@ NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
     return STATUS_SUCCESS;
 }
 
-static VOID PortStartPacket(IN OUT PPDO_DEVICE_EXTENSION PdoExt,
-			    IN OUT PIRP Irp,
-			    IN OUT PSTORAGE_REQUEST_BLOCK Srb)
+static NTSTATUS SrbStatusToNtStatus(IN UCHAR SrbStatus)
 {
+    switch (SRB_STATUS(SrbStatus)) {
+    case SRB_STATUS_SUCCESS:
+	return STATUS_SUCCESS;
+    case SRB_STATUS_BUSY:
+	return STATUS_DEVICE_BUSY;
+    case SRB_STATUS_INVALID_LUN:
+    case SRB_STATUS_INVALID_TARGET_ID:
+    case SRB_STATUS_NO_DEVICE:
+    case SRB_STATUS_NO_HBA:
+	return STATUS_DEVICE_DOES_NOT_EXIST;
+    case SRB_STATUS_COMMAND_TIMEOUT:
+    case SRB_STATUS_TIMEOUT:
+	return STATUS_IO_TIMEOUT;
+    case SRB_STATUS_SELECTION_TIMEOUT:
+	return STATUS_DEVICE_NOT_CONNECTED;
+    case SRB_STATUS_BAD_FUNCTION:
+    case SRB_STATUS_BAD_SRB_BLOCK_LENGTH:
+	return STATUS_INVALID_DEVICE_REQUEST;
+    case SRB_STATUS_DATA_OVERRUN:
+	return STATUS_BUFFER_OVERFLOW;
+    default:
+	return STATUS_IO_DEVICE_ERROR;
+    }
+}
+
+VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb)
+{
+    PSRB_PORT_CONTEXT Ctx = Srb->PortContext;
+    if (!Ctx) {
+	return;
+    }
+    PIRP Irp = Ctx->Irp;
+    assert(Irp);
+    Irp->IoStatus.Status = SrbStatusToNtStatus(Srb->SrbStatus);
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    if (Ctx->DeallocateMdl) {
+	assert(Ctx->Mdl);
+	IoFreeMdl(Ctx->Mdl);
+    }
+    if (Ctx->SgList) {
+	HalPutScatterGatherList(Ctx->DmaAdapter, Ctx->SgList, Ctx->WriteToDevice);
+    }
+    ExFreePoolWithTag(Ctx, TAG_PORT_CONTEXT);
+    Srb->PortContext = NULL;
+    assert(Srb->MiniportContext);
+    ExFreePoolWithTag(Srb->MiniportContext, TAG_SRB_EXTENSION);
+    Srb->MiniportContext = NULL;
+}
+
+/*
+ * Set the scatter-gather list in the SRB_PORT_CONTEXT and call the
+ * BuildIo and StartIo routines of the miniport.
+ */
+static NTAPI VOID PortStartMiniportIo(IN PDEVICE_OBJECT DeviceObject,
+				      IN PSCATTER_GATHER_LIST SgList,
+				      IN PVOID Context)
+{
+    PSRB_PORT_CONTEXT Ctx = Context;
+    PSTORAGE_REQUEST_BLOCK Srb = Ctx->Srb;
+    assert(Srb);
+    assert(!Srb->PortContext);
+    Srb->PortContext = Ctx;
+    Ctx->SgList = SgList;
+    PFDO_DEVICE_EXTENSION FdoExt = DeviceObject->DeviceExtension;
+    assert(FdoExt->ExtensionType == FdoExtension);
+    PMINIPORT Miniport = &FdoExt->Miniport;
+    PHW_INITIALIZATION_DATA InitData = Miniport->InitData;
+    assert(InitData);
+    assert(InitData->HwBuildIo);
+    assert(InitData->HwStartIo);
+    assert(Srb->MiniportContext);
+    if (!MiniportBuildIo(Miniport, Srb) || !MiniportStartIo(Miniport, Srb)) {
+	Srb->SrbStatus = SRB_STATUS_ERROR;
+	PortCompleteRequest(Srb);
+    }
+}
+
+/*
+ * If the device is busy, queue the IRP. Otherwise, start the IO processing.
+ */
+static NTSTATUS PortStartPacket(IN OUT PPDO_DEVICE_EXTENSION PdoExt,
+				IN OUT PIRP Irp,
+				IN OUT PSTORAGE_REQUEST_BLOCK Srb)
+{
+    assert(!Srb->PortContext);
     BOOLEAN QueueFrozen = PdoExt->QueueFrozen;
     if (Srb->SrbFlags & SRB_FLAGS_BYPASS_FROZEN_QUEUE) {
 	/* Start IO directly without waiting for the queue to be unfrozen. */
@@ -98,8 +183,65 @@ static VOID PortStartPacket(IN OUT PPDO_DEVICE_EXTENSION PdoExt,
     if (QueueFrozen) {
 	KeWaitForSingleObject(&PdoExt->QueueUnfrozen, Executive, KernelMode, FALSE, NULL);
     }
-    // TODO
-    assert(FALSE);
+    /* Allocate a SRB_PORT_CONTEXT and build the scatter-gather list from the MDL.
+     * If the MDL is not set (but SRB has a data buffer), build one. */
+    PSRB_PORT_CONTEXT Ctx = ExAllocatePoolWithTag(NonPagedPool,
+						  sizeof(SRB_PORT_CONTEXT),
+						  TAG_PORT_CONTEXT);
+    if (!Ctx) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    Ctx->Srb = Srb;
+    Ctx->Irp = Irp;
+    Ctx->DeallocateMdl = FALSE;
+    NTSTATUS Status = STATUS_SUCCESS;
+    if (Irp->MdlAddress) {
+	Ctx->Mdl = Irp->MdlAddress;
+    } else if (Srb->DataBuffer) {
+	Ctx->Mdl = IoAllocateMdl(Srb->DataBuffer, Srb->DataTransferLength);
+	if (!Ctx->Mdl) {
+	    ULONG64 PhyAddr = MmGetPhysicalAddress(Srb->DataBuffer).QuadPart;
+	    Status = PhyAddr ? STATUS_INSUFFICIENT_RESOURCES : STATUS_INVALID_ADDRESS;
+	    goto done;
+	}
+	Ctx->DeallocateMdl = TRUE;
+    }
+    assert(!Ctx->Srb->MiniportContext);
+    ULONG SrbExtensionSize = PdoExt->FdoExtension->Miniport.InitData->SrbExtensionSize;
+    Ctx->Srb->MiniportContext = ExAllocatePoolWithTag(CachedDmaPool,
+						      SrbExtensionSize,
+						      TAG_SRB_EXTENSION);
+    if (!Ctx->Srb->MiniportContext) {
+	goto done;
+    }
+    PDMA_ADAPTER DmaAdapter = PdoExt->FdoExtension->DmaAdapter;
+    assert(DmaAdapter);
+    if (Ctx->Mdl) {
+	BOOLEAN WriteToDevice = TEST_FLAG(Srb->SrbFlags, SRB_FLAGS_DATA_OUT);
+	Ctx->DmaAdapter = DmaAdapter;
+	Ctx->WriteToDevice = WriteToDevice;
+	NTSTATUS Status = HalGetScatterGatherList(DmaAdapter, PdoExt->FdoExtension->Device,
+						  Ctx->Mdl, MmGetMdlVirtualAddress(Ctx->Mdl),
+						  Srb->DataTransferLength,
+						  PortStartMiniportIo,
+						  Ctx, WriteToDevice);
+	if (!NT_SUCCESS(Status)) {
+	    goto done;
+	}
+    }
+done:
+    if (!NT_SUCCESS(Status)) {
+	if (Ctx->DeallocateMdl) {
+	    IoFreeMdl(Ctx->Mdl);
+	}
+	assert(Ctx->Srb);
+	if (Ctx->Srb->MiniportContext) {
+	    ExFreePoolWithTag(Ctx->Srb->MiniportContext, TAG_SRB_EXTENSION);
+	}
+	ExFreePoolWithTag(Ctx, TAG_PORT_CONTEXT);
+	return Status;
+    }
+    return STATUS_SUCCESS;
 }
 
 VOID PortPdoSetBusy(IN PPDO_DEVICE_EXTENSION PdoExt)
@@ -165,7 +307,10 @@ NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
     submit:
 	/* Mark IRP as pending and start IO */
 	IoMarkIrpPending(Irp);
-	PortStartPacket(PdoExt, Irp, Srb);
+	Status = PortStartPacket(PdoExt, Irp, Srb);
+	if (!NT_SUCCESS(Status)) {
+	    goto done;
+	}
 	return STATUS_PENDING;
 
     case SRB_FUNCTION_CLAIM_DEVICE:

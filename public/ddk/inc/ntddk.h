@@ -1270,6 +1270,9 @@ NTAPI NTSYSAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,
 				      IN PVOID VirtualAddress,
 				      IN ULONG Length);
 
+NTAPI NTSYSAPI PMDL IoAllocateMdl(IN PVOID VirtualAddress,
+				  IN ULONG Length);
+
 NTAPI NTSYSAPI PIRP IoBuildDeviceIoControlRequest(IN ULONG IoControlCode,
 						  IN PDEVICE_OBJECT DeviceObject,
 						  IN PVOID InputBuffer,

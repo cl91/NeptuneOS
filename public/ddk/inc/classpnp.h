@@ -130,10 +130,6 @@
 
 #endif /* ALLOCATE_SRB_FROM_POOL */
 
-#define SET_FLAG(Flags, Bit) ((Flags) |= (Bit))
-#define CLEAR_FLAG(Flags, Bit) ((Flags) &= ~(Bit))
-#define TEST_FLAG(Flags, Bit) (((Flags) & (Bit)) != 0)
-
 #define CLASS_WORKING_SET_MAXIMUM 2048
 
 #define CLASS_INTERPRET_SENSE_INFO2_MAXIMUM_HISTORY_COUNT 30000

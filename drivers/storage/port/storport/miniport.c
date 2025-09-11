@@ -310,6 +310,14 @@ BOOLEAN MiniportHwInterrupt(IN PMINIPORT Miniport)
     return Miniport->InitData->HwInterrupt(&Miniport->MiniportExtension->HwDeviceExtension);
 }
 
+BOOLEAN MiniportBuildIo(IN PMINIPORT Miniport,
+			IN PSTORAGE_REQUEST_BLOCK Srb)
+{
+    DPRINT1("MiniportHwBuildIo(%p %p)\n", Miniport, Srb);
+    return Miniport->InitData->HwBuildIo(&Miniport->MiniportExtension->HwDeviceExtension,
+					 Srb);
+}
+
 BOOLEAN MiniportStartIo(IN PMINIPORT Miniport,
 			IN PSTORAGE_REQUEST_BLOCK Srb)
 {

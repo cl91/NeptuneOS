@@ -1778,12 +1778,6 @@ FORCEINLINE UCHAR ClasspTransferPacketGetSenseInfoBufferLength(IN PTRANSFER_PACK
     return SrbGetSenseInfoBufferLength(Pkt->Srb);
 }
 
-FORCEINLINE VOID ClasspSrbSetOriginalIrp(IN PSTORAGE_REQUEST_BLOCK Srb,
-					 IN PIRP Irp)
-{
-    Srb->MiniportContext = (PVOID)Irp;
-}
-
 FORCEINLINE BOOLEAN PORT_ALLOCATED_SENSE_EX(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 					    IN PSTORAGE_REQUEST_BLOCK Srb)
 {

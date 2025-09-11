@@ -73,7 +73,8 @@ __inline BOOLEAN IsPortStartCapable(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
 
 __inline PAHCI_SRB_EXTENSION GetSrbExtension(_In_ PSTORAGE_REQUEST_BLOCK Srb)
 {
-    PCHAR tempBuffer = (PCHAR)Srb->MiniportContext;
+    ASSERT(Srb->MiniportContext);
+    PCHAR tempBuffer = Srb->MiniportContext;
 
     //
     // Use lower 32bit is good enough for this calculation.

@@ -120,6 +120,36 @@ static NTSTATUS PortFdoStartMiniport(IN PFDO_DEVICE_EXTENSION DeviceExtension)
     return STATUS_SUCCESS;
 }
 
+NTSTATUS PortFdoInitDma(IN PFDO_DEVICE_EXTENSION FdoExt,
+			IN PPORT_CONFIGURATION_INFORMATION PortConfig)
+{
+    if (FdoExt->DmaAdapter) {
+	return STATUS_SUCCESS;
+    }
+    DEVICE_DESCRIPTION DevDesc = {
+	.Version = DEVICE_DESCRIPTION_VERSION,
+	.DmaChannel = PortConfig->DmaChannel,
+	.InterfaceType = PortConfig->AdapterInterfaceType,
+	.BusNumber = PortConfig->SystemIoBusNumber,
+	.DmaWidth = PortConfig->DmaWidth,
+	.DmaSpeed = PortConfig->DmaSpeed,
+	.ScatterGather = PortConfig->ScatterGather,
+	.Master = PortConfig->Master,
+	.DmaPort = PortConfig->DmaPort,
+	.Dma32BitAddresses = PortConfig->Dma32BitAddresses,
+	.AutoInitialize = FALSE,
+	.DemandMode = PortConfig->DemandMode,
+	.MaximumLength = PortConfig->MaximumTransferLength,
+	.Dma64BitAddresses = PortConfig->Dma64BitAddresses
+    };
+    FdoExt->DmaAdapter = HalGetAdapter(&DevDesc, &FdoExt->NumberOfMapRegisters);
+    if (!FdoExt->DmaAdapter) {
+	assert(FALSE);
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    return STATUS_SUCCESS;
+}
+
 static NTAPI NTSTATUS PortFdoStartDevice(IN PFDO_DEVICE_EXTENSION DeviceExtension,
 					 IN PIRP Irp)
 {
@@ -168,6 +198,13 @@ static NTAPI NTSTATUS PortFdoStartDevice(IN PFDO_DEVICE_EXTENSION DeviceExtensio
     Status = PortFdoStartMiniport(DeviceExtension);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("FdoStartMiniport() failed (Status 0x%08x)\n", Status);
+	DeviceExtension->PnpState = dsStopped;
+    }
+
+    /* Initialize the DMA adapter object if it hasn't been initialized yet. */
+    Status = PortFdoInitDma(DeviceExtension, &DeviceExtension->Miniport.PortConfig);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("PortFdoInitDma() failed (Status 0x%08x)\n", Status);
 	DeviceExtension->PnpState = dsStopped;
     }
 
@@ -477,7 +514,19 @@ static NTSTATUS PortFdoScanBus(IN PFDO_DEVICE_EXTENSION DeviceExtension)
 	    if (!NT_SUCCESS(Status)) {
 		break;
 	    }
-	    DPRINT("    Sending initial INQUIRY to %d:%d:0\n", Bus, Target);
+
+	    /* First send a REPORT-LUNS (to LUN 0) to get the list of valid LUNs. */
+	    DPRINT("    Sending REPORT-LUNS to %d:%d:0\n", Bus, Target);
+	    Status = PortSendReportLunsSrb(PdoExtension->Device, Bus, Target,
+					   ValidLuns, MaxLuns);
+	    /* REPORT-LUNS failed, so delete this PDO and try next target id. */
+	    if (!NT_SUCCESS(Status)) {
+		PortDeletePdo(PdoExtension);
+		continue;
+	    }
+
+	    /* Now ask LUN 0 to identify itself. */
+	    DPRINT("    Sending INQUIRY to %d:%d:0\n", Bus, Target);
 	    Status = PortSendInquirySrb(PdoExtension);
 	    DPRINT("PortSendInquiry returned 0x%08x\n", Status);
 	    if (!NT_SUCCESS(Status)) {
@@ -490,20 +539,8 @@ static NTSTATUS PortFdoScanBus(IN PFDO_DEVICE_EXTENSION DeviceExtension)
 		   PdoExtension->InquiryBuffer->ProductRevisionLevel);
 	    DPRINT("VendorSpecific: %.20s\n",
 		   PdoExtension->InquiryBuffer->VendorSpecific);
-	    InsertTailList(&DeviceExtension->AdapterListEntry, &PdoExtension->PdoListEntry);
 
-	    /* If target responded, we should send a REPORT-LUNS (to LUN 0) to get
-	     * the list of valid LUNs. */
-	    Status = PortSendReportLunsSrb(DeviceExtension->Device, Bus, Target,
-					   ValidLuns, MaxLuns);
-	    /* Adapter does not support REPORT-LUNS, so we try to scan all LUNs. */
-	    if (!NT_SUCCESS(Status)) {
-		for (ULONG i = 0; i < MaxLuns; i++) {
-		    ValidLuns[i] = TRUE;
-		}
-	    }
-
-            /* Scan all reported logical units */
+            /* Scan all remaining reported logical units */
             for (ULONG Lun = 1; Lun < MaxLuns; Lun++) {
 		if (!ValidLuns[Lun]) {
 		    continue;
@@ -522,7 +559,6 @@ static NTSTATUS PortFdoScanBus(IN PFDO_DEVICE_EXTENSION DeviceExtension)
                     PortDeletePdo(LunPdoExt);
 		    continue;
 		}
-		InsertTailList(&DeviceExtension->AdapterListEntry, &LunPdoExt->PdoListEntry);
             }
 	}
     }

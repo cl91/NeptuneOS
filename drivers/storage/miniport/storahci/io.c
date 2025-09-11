@@ -1553,10 +1553,9 @@ PSTORAGE_REQUEST_BLOCK BuildRequestSenseSrb(_In_ PAHCI_CHANNEL_EXTENSION Channel
 VOID AhciPortFailAllIos(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 			_In_ UCHAR SrbStatus, _In_ BOOLEAN AtDIRQL)
 {
-    UCHAR i;
 
     // Complete all requests in slots
-    for (i = 0; i <= ChannelExtension->AdapterExtension->CAP.NCS; i++) {
+    for (UCHAR i = 0; i <= ChannelExtension->AdapterExtension->CAP.NCS; i++) {
 	if (ChannelExtension->Slot[i].Srb != NULL) {
 	    ChannelExtension->Slot[i].Srb->SrbStatus = SrbStatus;
 	    AhciCompleteJustSlottedRequest(ChannelExtension,
@@ -1565,8 +1564,6 @@ VOID AhciPortFailAllIos(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     }
 
     // Requests in completion queue will be completed by AhciPortSrbCompletionDpcRoutine.
-
-    return;
 }
 
 VOID AhciPortSrbCompletionDpcRoutine(_In_ PSTOR_DPC Dpc, _In_ PVOID AdapterExtension,

@@ -1042,8 +1042,6 @@ VOID AhciCompleteJustSlottedRequest(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtensio
 
     // 3. Complete the command
     AhciCompleteRequest(ChannelExtension, srbToComplete, AtDIRQL);
-
-    return;
 }
 
 /*++

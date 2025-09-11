@@ -280,8 +280,6 @@ VOID AtapiInquiryCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 	    (PSTOR_ADDRESS)&ChannelExtension->DeviceExtension[0].DeviceAddress,
 	    attributes);
     }
-
-    return;
 }
 
 /*++
@@ -2060,8 +2058,8 @@ VOID AtaGenerateInquiryData(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     // if there is blank space in first 8 chars, use the part before blank space as
     // VendorId
     for (vendorIdLength = 8; vendorIdLength > 0; vendorIdLength--) {
-	if (ChannelExtension->DeviceExtension->DeviceParameters
-		.VendorId[vendorIdLength - 1] == ' ') {
+	if (ChannelExtension->DeviceExtension->DeviceParameters.VendorId[vendorIdLength-1]
+	    == ' ') {
 	    break;
 	}
     }
@@ -2080,13 +2078,11 @@ VOID AtaGenerateInquiryData(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     }
 
     prodLen = min(16,
-		  sizeof(ChannelExtension->DeviceExtension->DeviceParameters.VendorId) -
-		      len);
+		  sizeof(ChannelExtension->DeviceExtension->DeviceParameters.VendorId) - len);
 
     AhciFillMemory((PCHAR)InquiryData->ProductId, 16, ' ');
     StorPortCopyMemory(InquiryData->ProductId,
-		       (ChannelExtension->DeviceExtension->DeviceParameters.VendorId +
-			len),
+		       (ChannelExtension->DeviceExtension->DeviceParameters.VendorId + len),
 		       prodLen);
 
     len = min(4, sizeof(ChannelExtension->DeviceExtension->DeviceParameters.RevisionId));
@@ -2155,8 +2151,7 @@ VOID IssueIdentifyCommand(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     srbExtension->TaskFile.Previous.bReserved = 0;
 
     Srb->SrbStatus = SRB_STATUS_PENDING;
-    srbExtension->DataBuffer = (PVOID)
-				   ChannelExtension->DeviceExtension->IdentifyDeviceData;
+    srbExtension->DataBuffer = ChannelExtension->DeviceExtension->IdentifyDeviceData;
 
     srbExtension->LocalSgl.NumberOfElements = 1;
     srbExtension->LocalSgl.List[0].PhysicalAddress.LowPart =
@@ -3618,8 +3613,7 @@ VOID AtaFirmwareActivateCompletion(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension
 	UpdateFirmwareIoctlReturnCode(Srb);
 
 	StorPortEtwEvent8(ChannelExtension->AdapterExtension,
-			  (PSTOR_ADDRESS) &
-			      (ChannelExtension->DeviceExtension->DeviceAddress),
+			  (PSTOR_ADDRESS)&(ChannelExtension->DeviceExtension->DeviceAddress),
 			  AhciEtwEventUnitFirmwareActivateComplete,
 			  L"Firmware Activate Completion", STORPORT_ETW_EVENT_KEYWORD_IO,
 			  StorportEtwLevelError, StorportEtwEventOpcodeInfo,

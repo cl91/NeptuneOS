@@ -1891,7 +1891,7 @@ VOID AhciPortIdentifyDevice(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 	    InquiryComplete(ChannelExtension, Srb);
 	}
     } else if ((ChannelExtension->DeviceExtension->DeviceParameters.StateFlags
-		    .NeedUpdateIdentifyDeviceData == 1) &&
+		.NeedUpdateIdentifyDeviceData == 1) &&
 	       (cdb != NULL) && (cdb->CDB10.OperationCode == SCSIOP_INQUIRY)) {
 	//
 	// We are refreshing Identify information because of a firmware update.

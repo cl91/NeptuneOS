@@ -23,6 +23,9 @@
 #define TAG_GLOBAL_DATA     'DGtS'
 #define TAG_INIT_DATA       'DItS'
 #define TAG_MINIPORT_DATA   'DMtS'
+#define TAG_PORT_CONTEXT    'CPtS'
+#define TAG_MDL             'DMtS'
+#define TAG_SRB_EXTENSION   'EStS'
 #define TAG_ACCRESS_RANGE   'RAtS'
 #define TAG_RESOURCE_LIST   'LRtS'
 #define TAG_ADDRESS_MAPPING 'MAtS'
@@ -99,6 +102,9 @@ typedef struct _FDO_DEVICE_EXTENSION {
     PHW_PASSIVE_INITIALIZE_ROUTINE HwPassiveInitRoutine;
     PKINTERRUPT Interrupt;
     ULONG InterruptIrql;
+    PDMA_ADAPTER DmaAdapter;
+    ULONG NumberOfMapRegisters;
+    PVOID MapRegisterBase;
 
     LIST_ENTRY PdoListHead;
     ULONG PdoCount;
@@ -125,6 +131,10 @@ typedef struct _SRB_PORT_CONTEXT {
     PSTORAGE_REQUEST_BLOCK Srb;
     PMDL Mdl;
     PSCATTER_GATHER_LIST SgList;
+    PIRP Irp;
+    PDMA_ADAPTER DmaAdapter;
+    BOOLEAN DeallocateMdl;
+    BOOLEAN WriteToDevice;
 } SRB_PORT_CONTEXT, *PSRB_PORT_CONTEXT;
 
 /* fdo.c */
@@ -134,6 +144,9 @@ NTAPI NTSTATUS PortFdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 
 NTAPI NTSTATUS PortFdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
 			  _In_ PIRP Irp);
+
+NTSTATUS PortFdoInitDma(IN PFDO_DEVICE_EXTENSION FdoExt,
+			IN PPORT_CONFIGURATION_INFORMATION PortConfig);
 
 /* miniport.c */
 
@@ -146,6 +159,9 @@ NTSTATUS MiniportFindAdapter(_In_ PMINIPORT Miniport);
 NTSTATUS MiniportHwInitialize(_In_ PMINIPORT Miniport);
 
 BOOLEAN MiniportHwInterrupt(_In_ PMINIPORT Miniport);
+
+BOOLEAN MiniportBuildIo(_In_ PMINIPORT Miniport,
+			_In_ PSTORAGE_REQUEST_BLOCK Srb);
 
 BOOLEAN MiniportStartIo(_In_ PMINIPORT Miniport,
 			_In_ PSTORAGE_REQUEST_BLOCK Srb);
@@ -193,6 +209,8 @@ NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension);
 VOID PortPdoSetBusy(IN PPDO_DEVICE_EXTENSION PdoExt);
 
 VOID PortPdoSetReady(IN PPDO_DEVICE_EXTENSION PdoExt);
+
+VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb);
 
 NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 			   _In_ PIRP Irp);

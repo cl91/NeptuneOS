@@ -342,7 +342,6 @@ typedef VOID (NTAPI *PFREE_COMMON_BUFFER)(IN PDMA_ADAPTER DmaAdapter,
 					  IN BOOLEAN CacheEnabled);
 
 typedef IO_ALLOCATION_ACTION (NTAPI DRIVER_CONTROL)(IN PDEVICE_OBJECT DeviceObject,
-						    IN OUT PIRP Irp,
 						    IN PVOID MapRegisterBase,
 						    IN PVOID Context);
 typedef DRIVER_CONTROL *PDRIVER_CONTROL;
@@ -378,7 +377,6 @@ typedef ULONG (NTAPI *PGET_DMA_ALIGNMENT)(IN PDMA_ADAPTER DmaAdapter);
 typedef ULONG (NTAPI *PREAD_DMA_COUNTER)(IN PDMA_ADAPTER DmaAdapter);
 
 typedef VOID (NTAPI DRIVER_LIST_CONTROL)(IN PDEVICE_OBJECT DeviceObject,
-					 IN PIRP Irp,
 					 IN PSCATTER_GATHER_LIST ScatterGather,
 					 IN PVOID Context);
 typedef DRIVER_LIST_CONTROL *PDRIVER_LIST_CONTROL;
@@ -720,6 +718,57 @@ FORCEINLINE NTAPI ULONG HalGetDmaAlignment(IN PDMA_ADAPTER DmaAdapter)
     return GetDmaAlignment(DmaAdapter);
 }
 
+FORCEINLINE NTAPI NTSTATUS HalBuildScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
+						     IN PDEVICE_OBJECT DeviceObject,
+						     IN PMDL Mdl,
+						     IN PVOID CurrentVa,
+						     IN ULONG Length,
+						     IN PDRIVER_LIST_CONTROL ExecutionRoutine,
+						     IN PVOID Context,
+						     IN BOOLEAN WriteToDevice,
+						     IN PVOID ScatterGatherBuffer,
+						     IN ULONG ScatterGatherBufferLength)
+{
+    return DmaAdapter->DmaOperations->BuildScatterGatherList(DmaAdapter,
+							     DeviceObject,
+							     Mdl,
+							     CurrentVa,
+							     Length,
+							     ExecutionRoutine,
+							     Context,
+							     WriteToDevice,
+							     ScatterGatherBuffer,
+							     ScatterGatherBufferLength);
+}
+
+FORCEINLINE NTAPI NTSTATUS HalGetScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
+						   IN PDEVICE_OBJECT DeviceObject,
+						   IN PMDL Mdl,
+						   IN PVOID CurrentVa,
+						   IN ULONG Length,
+						   IN PDRIVER_LIST_CONTROL ExecutionRoutine,
+						   IN PVOID Context,
+						   IN BOOLEAN WriteToDevice)
+{
+    return DmaAdapter->DmaOperations->GetScatterGatherList(DmaAdapter,
+							   DeviceObject,
+							   Mdl,
+							   CurrentVa,
+							   Length,
+							   ExecutionRoutine,
+							   Context,
+							   WriteToDevice);
+}
+
+FORCEINLINE NTAPI VOID HalPutScatterGatherList(IN PDMA_ADAPTER DmaAdapter,
+					       IN PSCATTER_GATHER_LIST ScatterGather,
+					       IN BOOLEAN WriteToDevice)
+{
+    return DmaAdapter->DmaOperations->PutScatterGatherList(DmaAdapter,
+							   ScatterGather,
+							   WriteToDevice);
+}
+
 NTAPI NTSYSAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
 					  OUT PULONG NumberOfMapRegisters);
 
@@ -746,7 +795,7 @@ NTAPI NTSYSAPI VOID MmFreeContiguousMemorySpecifyCache(IN PVOID BaseAddress,
 						       IN SIZE_T NumberOfBytes,
 						       IN MEMORY_CACHING_TYPE CacheType);
 
-NTAPI NTSYSAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(PVOID Address);
+NTAPI NTSYSAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID Address);
 
 NTAPI NTSYSAPI PVOID MmGetVirtualForPhysical(IN PHYSICAL_ADDRESS PhysicalAddress);
 

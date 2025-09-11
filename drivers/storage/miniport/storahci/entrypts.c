@@ -957,8 +957,7 @@ BOOLEAN AhciHwInitialize(_In_ PVOID AdapterExtension)
 	    //
 	    if (adapterExtension->MessageGroupAffinity != NULL) {
 		AhciZeroMemory((PCHAR)adapterExtension->MessageGroupAffinity,
-			       sizeof(GROUP_AFFINITY) *
-				   (adapterExtension->HighestPort + 1));
+			       sizeof(GROUP_AFFINITY) * (adapterExtension->HighestPort + 1));
 
 		perfConfigData.Flags |= (STOR_PERF_INTERRUPT_MESSAGE_RANGES |
 					 STOR_PERF_ADV_CONFIG_LOCALITY);

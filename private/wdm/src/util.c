@@ -166,16 +166,26 @@ NTAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
     RtlFreeHeap(Heap, 0, Pointer);
 }
 
-NTAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(PVOID Address)
+static PHYSICAL_ADDRESS MiGetPhysicalAddress(IN PVOID Address,
+					     OUT OPTIONAL SIZE_T *MappedLength)
 {
     PHYSICAL_ADDRESS PhyAddr = {};
     PDMA_POOL DmaPool = IopPtrToDmaPool(Address);
     assert(DmaPool);
     if (DmaPool) {
-	PhyAddr.QuadPart = DmaPool->PhysicalAddress.QuadPart + (ULONG_PTR)Address -
-	    (ULONG_PTR)DmaPool->VirtualAddress;
+	SIZE_T Offset = (ULONG_PTR)Address - (ULONG_PTR)DmaPool->VirtualAddress;
+	PhyAddr.QuadPart = DmaPool->PhysicalAddress.QuadPart + Offset;
+	assert(DmaPool->Size > Offset);
+	if (MappedLength) {
+	    *MappedLength = DmaPool->Size - Offset;
+	}
     }
     return PhyAddr;
+}
+
+NTAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID Address)
+{
+    return MiGetPhysicalAddress(Address, NULL);
 }
 
 NTAPI PVOID MmGetVirtualForPhysical(IN PHYSICAL_ADDRESS PhysicalAddress)
@@ -203,6 +213,42 @@ NTAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,
     }
     UNIMPLEMENTED_DBGBREAK();
     return NULL;
+}
+
+NTAPI PMDL IoAllocateMdl(IN PVOID VirtualAddress,
+			 IN ULONG Length)
+{
+    SIZE_T MappedLength = 0;
+    ULONG64 PhyAddr = MiGetPhysicalAddress(VirtualAddress, &MappedLength).QuadPart;
+    if (Length > MappedLength) {
+	assert(FALSE);
+	return NULL;
+    }
+    if (!PhyAddr) {
+	return NULL;
+    }
+    /* For DMA memory we never allocate large pages. */
+    ULONG_PTR AlignedAddress = PAGE_ALIGN(PhyAddr);
+    ULONG_PTR AlignedEndAddress = PAGE_ALIGN_UP(PhyAddr + Length);
+    ULONG PageCount = (AlignedEndAddress - AlignedAddress) >> PAGE_SHIFT;
+    ULONG PfnEntryCount = ALIGN_UP_BY(PageCount, 1UL << MDL_PFN_PAGE_COUNT_BITS)
+	>> MDL_PFN_PAGE_COUNT_BITS;
+    ULONG_PTR PfnDb[PfnEntryCount] = {};
+    for (ULONG i = 0; i < PfnEntryCount; i++) {
+	ULONG MappedPages = min(PageCount, (1ULL << MDL_PFN_PAGE_COUNT_BITS) - 1);
+	PfnDb[i] = AlignedAddress | (MappedPages << MDL_PFN_ATTR_BITS);
+	AlignedAddress += MappedPages << PAGE_SHIFT;
+	assert(PageCount >= MappedPages);
+	PageCount -= MappedPages;
+    }
+    assert(!PageCount);
+    assert(AlignedAddress == AlignedEndAddress);
+    PMDL Mdl = NULL;
+    if (!NT_SUCCESS(IopAllocateMdl(VirtualAddress, Length, PfnDb, PfnEntryCount,
+				   TRUE, &Mdl))) {
+	return NULL;
+    }
+    return Mdl;
 }
 
 /*

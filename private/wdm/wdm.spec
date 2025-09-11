@@ -23,6 +23,7 @@
 @ stdcall IoStartPacket(ptr ptr ptr ptr)
 @ stdcall IoStartNextPacket(ptr long)
 @ stdcall IoBuildPartialMdl(ptr ptr long)
+@ stdcall IoAllocateMdl(ptr long)
 @ stdcall IoBuildDeviceIoControlRequest(long ptr ptr long ptr long long ptr)
 @ stdcall IoBuildAsynchronousFsdRequest(long ptr ptr long ptr ptr)
 @ stdcall IoBuildSynchronousFsdRequest(long ptr ptr long ptr ptr ptr)
