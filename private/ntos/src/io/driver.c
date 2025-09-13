@@ -418,7 +418,9 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
 }
 
 static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
+						IN ULONG IrqLine,
 						IN ULONG Vector,
+						IN ULONG Flags,
 						IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
 						IN PVOID ClientSideContext,
 						OUT PINTERRUPT_SERVICE *pSvc)
@@ -457,9 +459,19 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 		KeCreateNotificationEx(&Svc->InterruptMutex, DriverProcess->SharedCNode));
 
     /* Connect the given interrupt vector to the interrupt thread */
+    Svc->IrqHandler.Irq = IrqLine;
+    Svc->IrqHandler.Vector = Vector;
+    if (Flags & CM_RESOURCE_INTERRUPT_LATCHED) {
+	Svc->IrqHandler.Config.Level = 0;
+    } else {
+	/* Windows assumes the interrupt is level-sensitive by default. */
+	Svc->IrqHandler.Config.Level = 1;
+    }
+    Svc->IrqHandler.Config.Polarity = 0;
+    /* TODO: Msi */
     IF_ERR_GOTO(err, Status,
-		KeCreateIrqHandlerEx(&Svc->IrqHandler, Vector,
-				     Svc->IsrThread->CSpace));
+		KeCreateIrqHandlerCapEx(&Svc->IrqHandler,
+					Svc->IsrThread->CSpace));
 
     /* Assign a handle for the ISR thread in the driver process */
     IF_ERR_GOTO(err, Status, ObCreateHandle(DriverProcess, Svc->IsrThread, FALSE,
@@ -506,14 +518,16 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 	DbgTrace("WARNING: Interrupt sharing is disallowed.\n");
     }
     /* Check if the interrupt level has been connected. */
-    if (IopIsInterruptVectorAssigned(Thread->Process->DriverObject, Vector)) {
+    ULONG Irq = ULONG_MAX, Flags = 0;
+    if (!IopIsInterruptVectorAssigned(Thread->Process->DriverObject, Vector, &Irq, &Flags)) {
 	return STATUS_ACCESS_DENIED;
     }
+    assert(Irq != ULONG_MAX);
 
     /* Create the interrupt service thread, together with the interrupt notification
      * and interrupt mutex object */
     PINTERRUPT_SERVICE Svc = NULL;
-    RET_ERR(IopCreateInterruptServiceThread(Thread, Vector,
+    RET_ERR(IopCreateInterruptServiceThread(Thread, Irq, Vector, Flags,
 					    EntryPoint, ClientSideContext, &Svc));
     assert(Svc != NULL);
 

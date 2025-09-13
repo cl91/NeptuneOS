@@ -738,6 +738,23 @@ static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
 	    /* No parameters to marshal. Do nothing. */
 	    break;
 
+	case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+	    if (!Src->Request.FilterResourceRequirements.ListSize) {
+		Irp->IoStatus.Information = 0;
+		IoStack->Parameters.FilterResourceRequirements.IoResourceRequirementList = NULL;
+		break;
+	    }
+	    ULONG ListSize = Src->Request.FilterResourceRequirements.ListSize;
+	    PIO_RESOURCE_REQUIREMENTS_LIST ResList = ExAllocatePool(NonPagedPool,
+								    ListSize);
+	    if (!ResList) {
+		return STATUS_NO_MEMORY;
+	    }
+	    memcpy(ResList, Src->Request.FilterResourceRequirements.Data, ListSize);
+	    IoStack->Parameters.FilterResourceRequirements.IoResourceRequirementList = ResList;
+	    Irp->IoStatus.Information = (ULONG_PTR)ResList;
+	    break;
+
 	case IRP_MN_START_DEVICE:
 	    if (Src->Request.StartDevice.ResourceListSize != 0) {
 		IoStack->Parameters.StartDevice.AllocatedResources =
@@ -968,8 +985,15 @@ static VOID IopDeleteIrp(PIRP Irp)
 		IopFreePool(IoStack->Parameters.StartDevice.AllocatedResourcesTranslated);
 	    }
 	    break;
+	case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+	    if (!IoStack->Parameters.FilterResourceRequirements.IoResourceRequirementList) {
+		break;
+	    }
+	    IopFreePool(IoStack->Parameters.FilterResourceRequirements.IoResourceRequirementList);
+	    break;
+	default:
+	    break;
 	}
-	break;
     default:
 	break;
     }
@@ -1039,21 +1063,22 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	switch (IoSp->MinorFunction) {
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
 	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
-		PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
+		PDEVICE_RELATIONS Relations = (PVOID)Irp->IoStatus.Information;
 		Size += Relations->Count * sizeof(GLOBAL_HANDLE);
 	    }
 	    break;
 
 	case IRP_MN_QUERY_ID:
 	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
-		Size += IopGetQueryIdResponseDataSize((PWSTR)Irp->IoStatus.Information,
+		Size += IopGetQueryIdResponseDataSize((PVOID)Irp->IoStatus.Information,
 						      IoSp->Parameters.QueryId.IdType);
 	    }
 	    break;
 
 	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+	case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
 	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
-		PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
+		PIO_RESOURCE_REQUIREMENTS_LIST Res = (PVOID)Irp->IoStatus.Information;
 		if (Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE) {
 		    assert(FALSE);
 		    return FALSE;
@@ -1140,9 +1165,9 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 		/* Dest->...IoStatus.Information is DEVICE_RELATIONS.Count.
 		 * ResponseData[] are the GLOBAL_HANDLE of the device objects
 		 * in DEVICE_RELATIONS.Objects. */
-		PDEVICE_RELATIONS Relations = (PDEVICE_RELATIONS)Irp->IoStatus.Information;
+		PDEVICE_RELATIONS Relations = (PVOID)Irp->IoStatus.Information;
 		Dest->ClientMsg.IoCompleted.IoStatus.Information = Relations->Count;
-		PGLOBAL_HANDLE Data = (PGLOBAL_HANDLE)Dest->ClientMsg.IoCompleted.ResponseData;
+		PGLOBAL_HANDLE Data = (PVOID)Dest->ClientMsg.IoCompleted.ResponseData;
 		for (ULONG i = 0; i < Relations->Count; i++) {
 		    Data[i] = IopGetDeviceHandle(Relations->Objects[i]);
 		}
@@ -1174,17 +1199,21 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    break;
 
 	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
+	case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
 	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
 		/* ResponseData[] is the IO_RESOURCE_REQUIREMENTS_LIST, copied verbatim.
 		 * ResponseDataSize is its size in bytes.
 		 * Dest->...IoStatus.Information is cleared. */
-		PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
+		PIO_RESOURCE_REQUIREMENTS_LIST Res = (PVOID)Irp->IoStatus.Information;
 		ULONG ResponseDataSize = Res->ListSize;
 		Dest->ClientMsg.IoCompleted.IoStatus.Information = 0;
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = ResponseDataSize;
 		memcpy(Dest->ClientMsg.IoCompleted.ResponseData, Res, ResponseDataSize);
 		IopFreePool(Res);
 		Irp->IoStatus.Information = 0;
+		if (IoSp->MinorFunction == IRP_MN_FILTER_RESOURCE_REQUIREMENTS) {
+		    IoSp->Parameters.FilterResourceRequirements.IoResourceRequirementList = NULL;
+		}
 	    }
 	    break;
 
@@ -1193,7 +1222,7 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 		/* ResponseData[] is the PNP_BUS_INFORMATION, copied verbatim.
 		 * ResponseDataSize is its size in bytes.
 		 * Dest->...IoStatus.Information is cleared. */
-		PPNP_BUS_INFORMATION Info = (PPNP_BUS_INFORMATION)Irp->IoStatus.Information;
+		PPNP_BUS_INFORMATION Info = (PVOID)Irp->IoStatus.Information;
 		ULONG ResponseDataSize = sizeof(PNP_BUS_INFORMATION);
 		Dest->ClientMsg.IoCompleted.IoStatus.Information = 0;
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = ResponseDataSize;
@@ -1223,10 +1252,11 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	case IRP_MN_MOUNT_VOLUME:
 	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
-		PIO_RESPONSE_DATA Ptr = (PIO_RESPONSE_DATA)Dest->ClientMsg.IoCompleted.ResponseData;
+		PIO_RESPONSE_DATA Ptr = (PVOID)Dest->ClientMsg.IoCompleted.ResponseData;
 		Ptr->VolumeMounted.VolumeSize = IoSp->Parameters.MountVolume.Vpb->VolumeSize;
 		Ptr->VolumeMounted.ClusterSize = IoSp->Parameters.MountVolume.Vpb->ClusterSize;
-		Ptr->VolumeMounted.VolumeDeviceHandle = IopGetDeviceHandle(IoSp->Parameters.MountVolume.Vpb->DeviceObject);
+		Ptr->VolumeMounted.VolumeDeviceHandle =
+		    IopGetDeviceHandle(IoSp->Parameters.MountVolume.Vpb->DeviceObject);
 	    }
 	    break;
 	default:
@@ -1733,6 +1763,10 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	    break;
 	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
 	    DbgPrint("    PNP  QUERY-RESOURCE-REQUIREMENTS\n");
+	    break;
+	case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+	    DbgPrint("    PNP  FILTER-RESOURCE-REQUIREMENTS  ResourceList %p\n",
+		     Stack->Parameters.FilterResourceRequirements.IoResourceRequirementList);
 	    break;
 	case IRP_MN_QUERY_BUS_INFORMATION:
 	    DbgPrint("    PNP  QUERY-BUS-INFORMATION\n");

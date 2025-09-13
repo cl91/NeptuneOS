@@ -1061,6 +1061,18 @@ VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE VSpace,
     }
 }
 
+VOID MmUnmapPhysicalMemory(IN MWORD VirtAddr)
+{
+    PMMVAD Vad = MiVSpaceFindVadNode(&MiNtosVaddrSpace, VirtAddr);
+    if (!Vad) {
+	assert(FALSE);
+	return;
+    }
+    assert(MiVadNodeContainsAddr(Vad, VirtAddr));
+    assert(Vad->Flags.PhysicalMapping);
+    MmDeleteVad(Vad);
+}
+
 /*
  * Map the client page at the specified address into the hyperspace
  * so the server can access it. If the page is a large page, the large

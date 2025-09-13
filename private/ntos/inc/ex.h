@@ -18,6 +18,11 @@
 #define NTOS_EX_TAG				(EX_POOL_TAG('n','t','e','x'))
 
 /*
+ * System Timer Period (in units of 100ns)
+ */
+#define TIMER_RESOLUTION_IN_100NS	(100000ULL) /* 10ms */
+
+/*
  * Event object. This is the Executive object for KEVENT.
  */
 typedef struct _EVENT_OBJECT {

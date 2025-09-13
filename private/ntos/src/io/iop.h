@@ -349,7 +349,8 @@ typedef struct _DEVICE_NODE {
     PIO_DRIVER_OBJECT FunctionDriverObject;
     PIO_DRIVER_OBJECT *UpperFilterDrivers;
     PIO_DRIVER_OBJECT *LowerFilterDrivers;
-    PCM_RESOURCE_LIST Resources;
+    PCM_RESOURCE_LIST RawResources;
+    PCM_RESOURCE_LIST TranslatedResources;
     PPNP_BUS_INFORMATION BusInformation;
 } DEVICE_NODE, *PDEVICE_NODE;
 
@@ -427,6 +428,15 @@ FORCEINLINE PIO_DEVICE_OBJECT IopGetTopDevice(IN PIO_DEVICE_OBJECT Device)
     assert(Device != NULL);
     while (Device->AttachedDevice != NULL) {
 	Device = Device->AttachedDevice;
+    }
+    return Device;
+}
+
+FORCEINLINE PIO_DEVICE_OBJECT IopGetPhyDevObj(IN PIO_DEVICE_OBJECT Device)
+{
+    assert(Device != NULL);
+    while (Device->AttachedTo != NULL) {
+	Device = Device->AttachedTo;
     }
     return Device;
 }
@@ -600,7 +610,9 @@ VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb);
 
 /* pnp.c */
 BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
-				     IN ULONG Vector);
+				     IN ULONG Vector,
+				     OUT ULONG *Irq,
+				     OUT ULONG *Flags);
 
 /* volume.c */
 NTSTATUS IopInitFileSystem();

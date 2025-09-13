@@ -1,7 +1,9 @@
 #pragma once
 
 #include <nt.h>
+#include <services.h>
 #include <printf.h>
+#include <ke.h>
 
 #include <pshpack1.h>
 /* Multiboot2 Framebuffer */
@@ -28,24 +30,21 @@ typedef struct _HAL_ACPI_RSDP {
 } HAL_ACPI_RSDP, *PHAL_ACPI_RSDP;
 #include <poppack.h>
 
-/* TODO: This is for x86 and PIC only. We don't support IOAPIC yet. */
-#define TIMER_IRQ_LINE		0
-
-/* TODO: Most BIOS set the frequency divider to either 65535 or 0 (representing
- * 65536). We assume it is 65536. We should really be setting the frequency
- * divider ourselves. */
-#define TIMER_TICK_PER_SECOND	(1193182 >> 16)
-
-#define TIMER_RESOLUTION_IN_100NS	(10000000 / TIMER_TICK_PER_SECOND)
-
 /* init.c */
 NTSTATUS HalInitSystemPhase0(VOID);
 NTSTATUS HalInitSystemPhase1(VOID);
-NTSTATUS HalMaskUnusableInterrupts(VOID);
 
 /* acpi.c */
 VOID HalAcpiRegisterRsdp(IN PHAL_ACPI_RSDP Rsdp);
+ULONG64 HalAcpiGetRsdt(OUT ULONG *Length);
 VOID HalAcpiDumpRsdp(IN PHAL_ACPI_RSDP Rsdp, IN ULONG Indentation);
+NTSTATUS HalAllocateIrq(IN ULONG Irq);
+NTSTATUS HalDeallocateIrq(IN ULONG Irq);
+NTSTATUS HalGetIrqCap(IN PIRQ_HANDLER IrqHandler,
+		      MWORD Root, MWORD Index, UINT8 Depth);
+NTSTATUS HalEnableSystemTimer(OUT PIRQ_HANDLER IrqHandler,
+			      IN ULONG64 Period);
+NTSTATUS HalMaskUnusableInterrupts(VOID);
 
 /* cmos.c */
 BOOLEAN HalQueryRealTimeClock(OUT PTIME_FIELDS Time);

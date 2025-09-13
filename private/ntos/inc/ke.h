@@ -121,7 +121,7 @@ static inline VOID KeSignalNotification(IN PNOTIFICATION Notification)
 typedef struct _X86_IOPORT {
     CAP_TREE_NODE TreeNode; /* Must be first member */
     USHORT PortNum;	    /* Port number */
-    USHORT Count;	    /* This equals port size in bytes.  */
+    USHORT Count;	    /* This equals port size in bytes. */
     LIST_ENTRY Link;	    /* Links all enabled ports of a process */
 } X86_IOPORT, *PX86_IOPORT;
 #endif
@@ -131,20 +131,21 @@ typedef struct _X86_IOPORT {
  */
 typedef struct _IRQ_HANDLER {
     CAP_TREE_NODE TreeNode;	/* Must be first member */
-    MWORD Irq;
+    MWORD Irq;			/* Vector in the raw interrupt resource */
+    MWORD Vector;		/* Vector in the translated interrupt resource */
+    union {
+	struct {
+	    ULONG Polarity : 1;	/* High == 0. Low == 1 */
+	    ULONG Level : 1;	/* Edge-triggered = 0. Level-triggered = 1 */
+	    ULONG Msi : 1;	/* Whether the interrupt is a message interrupt */
+	    ULONG Bus : 8;	/* Only valid if interrupt is a message interrupt */
+	    ULONG Device : 5;	/* Only valid if interrupt is a message interrupt */
+	    ULONG Function : 3;	/* Only valid if interrupt is a message interrupt */
+	};
+	ULONG Word;
+    } Config;
+    MWORD Message;		/* Only valid if interrupt is a message interrupt */
 } IRQ_HANDLER, *PIRQ_HANDLER;
-
-static inline VOID KeInitializeIrqHandler(IN PIRQ_HANDLER Self,
-					  IN PCNODE CNode,
-					  IN MWORD Cap,
-					  IN MWORD Irq)
-{
-    assert(Self != NULL);
-    assert(CNode != NULL);
-    MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_IRQ_HANDLER, Cap,
-			    CNode, NULL);
-    Self->Irq = Irq;
-}
 
 /*
  * Asynchronous routine helpers
@@ -860,17 +861,15 @@ extern ULONG KeProcessorRevision;
 extern ULONG KeFeatureBits;
 
 /* irq.c */
-NTSTATUS KeCreateIrqHandlerEx(IN PIRQ_HANDLER IrqHandler,
-			      IN MWORD IrqLine,
-			      IN PCNODE CNode);
+NTSTATUS KeCreateIrqHandlerCapEx(IN OUT PIRQ_HANDLER IrqHandler,
+				 IN PCNODE CNode);
 NTSTATUS KeConnectIrqNotification(IN PIRQ_HANDLER IrqHandler,
 				  IN PNOTIFICATION Notification);
 
-NTSTATUS KeCreateIrqHandler(IN PIRQ_HANDLER IrqHandler,
-			    IN MWORD IrqLine)
+NTSTATUS KeCreateIrqHandlerCap(IN OUT PIRQ_HANDLER IrqHandler)
 {
     extern CNODE MiNtosCNode;
-    return KeCreateIrqHandlerEx(IrqHandler, IrqLine, &MiNtosCNode);
+    return KeCreateIrqHandlerCapEx(IrqHandler, &MiNtosCNode);
 }
 
 /* timer.c */

@@ -93,55 +93,34 @@ static PCHAR DbgDeviceIDString(BUS_QUERY_ID_TYPE Type)
 #define DbgDeviceIDString(Type) ""
 #endif
 
-static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
-			     IN PFDO_DEVICE_DATA FdoData, IN PIRP Irp,
-			     IN PCM_RESOURCE_LIST ResourceList,
-			     IN PCM_RESOURCE_LIST ResourceListTranslated)
+static NTSTATUS Bus_FilterResourcesFdo(IN PDEVICE_OBJECT Fdo,
+				       IN PFDO_DEVICE_DATA FdoData,
+				       IN PIRP Irp)
 {
     PAGED_CODE();
-    NTSTATUS Status;
-    if (ResourceList == NULL || ResourceListTranslated == NULL) {
-	DPRINT1("No allocated resources sent to driver\n");
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    PCM_PARTIAL_RESOURCE_LIST PartialList = &ResourceList->List[0].PartialResourceList;
-    if (ResourceList->Count != 1 || PartialList->Count != 1) {
-	DPRINT1("Wrong number of allocated resources sent to driver\n");
-	return STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    if (PartialList->Version != 1 || PartialList->Revision != 1 ||
-	ResourceListTranslated->List[0].PartialResourceList.Version != 1 ||
-	ResourceListTranslated->List[0].PartialResourceList.Revision != 1) {
-	DPRINT1("Revision mismatch: %u.%u != 1.1 or %u.%u != 1.1\n",
-		PartialList->Version, PartialList->Revision,
-		ResourceListTranslated->List[0].PartialResourceList.Version,
-		ResourceListTranslated->List[0].PartialResourceList.Revision);
-	return STATUS_REVISION_MISMATCH;
-    }
-
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = &PartialList->PartialDescriptors[0];
-    if (Res->Type != CmResourceTypeMemory) {
-	DPRINT1("Invalid resource type %d\n", Res->Type);
-	return STATUS_DEVICE_ENUMERATION_ERROR;
-    }
-    if (!Res->Memory.Start.QuadPart || !Res->Memory.Length) {
-	DPRINT1("Invalid IO memory 0x%llx length 0x%x\n",
-		Res->Memory.Start.QuadPart, Res->Memory.Length);
+    if (!Irp->IoStatus.Information) {
 	assert(FALSE);
-	return STATUS_DEVICE_ENUMERATION_ERROR;
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
+    PIO_RESOURCE_REQUIREMENTS_LIST Res = (PVOID)Irp->IoStatus.Information;
+    if (Res->ListSize < sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
+	sizeof(IO_RESOURCE_DESCRIPTOR)) {
+	assert(FALSE);
+	return STATUS_INVALID_BUFFER_SIZE;
+    }
+    if (!Res->List[0].Count) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    PIO_RESOURCE_DESCRIPTOR Desc = Res->List[0].Descriptors;
+    if (Desc->Type != CmResourceTypeMemory) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+
     AcpiOsSetBusFdo(Fdo);
-    AcpiOsSetRootSystemTable(Res->Memory.Start.QuadPart,
-			     Res->Memory.Length);
-
-    FdoData->Common.DevicePowerState = PowerDeviceD0;
-    POWER_STATE PowerState = { .DeviceState = PowerDeviceD0 };
-    PoSetPowerState(FdoData->Common.Self, DevicePowerState, PowerState);
-
-    SET_NEW_PNP_STATE(FdoData->Common, Started);
-
+    AcpiOsSetRootSystemTable(Desc->Memory.MinimumAddress.QuadPart,
+			     Desc->Memory.Length);
     ACPI_STATUS AcpiStatus = AcpiInitializeSubsystem();
     if (ACPI_FAILURE(AcpiStatus)) {
 	DPRINT1("Unable to AcpiInitializeSubsystem\n");
@@ -161,14 +140,111 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
 	return STATUS_UNSUCCESSFUL;
     }
 
-    Status = AcpiCreateVolatileRegistryTables();
+    /* Request the system control interrupt as an additional resource */
+    ULONG NewListSize = Res->ListSize + sizeof(IO_RESOURCE_DESCRIPTOR);
+    PIO_RESOURCE_REQUIREMENTS_LIST NewResList = ExAllocatePoolWithTag(NonPagedPool,
+								      NewListSize,
+								      ACPI_TAG);
+    if (!NewResList) {
+	AcpiTerminate();
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlCopyMemory(NewResList, Res, Res->ListSize);
+    NewResList->ListSize = NewListSize;
+    NewResList->List[0].Count++;
+    Desc = &NewResList->List[0].Descriptors[Res->List[0].Count];
+    Desc->Type = CmResourceTypeInterrupt;
+    Desc->Flags = CM_RESOURCE_INTERRUPT_LATCHED;
+    Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+    Desc->Interrupt.MinimumVector = AcpiGbl_FADT.SciInterrupt;
+    Desc->Interrupt.MaximumVector = AcpiGbl_FADT.SciInterrupt;
+    ExFreePool(Res);
+    Irp->IoStatus.Information = (ULONG_PTR)NewResList;
+    Irp->IoStatus.Status = STATUS_SUCCESS;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
+			     IN PFDO_DEVICE_DATA FdoData,
+			     IN PIRP Irp,
+			     IN PCM_RESOURCE_LIST RawList,
+			     IN PCM_RESOURCE_LIST TranslatedList)
+{
+    PAGED_CODE();
+    if (RawList == NULL || TranslatedList == NULL) {
+	DPRINT1("No allocated resources sent to driver\n");
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    PCM_PARTIAL_RESOURCE_LIST RawPartial = &RawList->List[0].PartialResourceList;
+    if (RawList->Count != 1 || RawPartial->Count != 2) {
+	DPRINT1("Wrong number of allocated resources sent to driver\n");
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    PCM_PARTIAL_RESOURCE_LIST TranslatedPartial = &TranslatedList->List[0].PartialResourceList;
+    if (TranslatedList->Count != 1 || TranslatedPartial->Count != 2) {
+	DPRINT1("Wrong number of allocated resources sent to driver\n");
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    if (TranslatedPartial->Version != 1 || TranslatedPartial->Revision != 1 ||
+	TranslatedList->List[0].PartialResourceList.Version != 1 ||
+	TranslatedList->List[0].PartialResourceList.Revision != 1) {
+	DPRINT1("Revision mismatch: %u.%u != 1.1 or %u.%u != 1.1\n",
+		TranslatedPartial->Version, TranslatedPartial->Revision,
+		TranslatedList->List[0].PartialResourceList.Version,
+		TranslatedList->List[0].PartialResourceList.Revision);
+	return STATUS_REVISION_MISMATCH;
+    }
+
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR TranslatedRes = &TranslatedPartial->PartialDescriptors[0];
+    if (TranslatedRes->Type != CmResourceTypeMemory) {
+	DPRINT1("Invalid resource type %d\n", TranslatedRes->Type);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
+    if (!TranslatedRes->Memory.Start.QuadPart || !TranslatedRes->Memory.Length) {
+	DPRINT1("Invalid IO memory 0x%llx length 0x%x\n",
+		TranslatedRes->Memory.Start.QuadPart, TranslatedRes->Memory.Length);
+	assert(FALSE);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
+    if (TranslatedRes->Memory.Start.QuadPart != AcpiOsGetRootSystemTable()) {
+	DPRINT1("RSDT address mismatch (got 0x%llx, expected 0x%llx)\n",
+		TranslatedRes->Memory.Start.QuadPart, AcpiOsGetRootSystemTable());
+	assert(FALSE);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
+    TranslatedRes++;
+    if (TranslatedRes->Type != CmResourceTypeInterrupt) {
+	DPRINT1("Invalid resource type %d\n", TranslatedRes->Type);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR RawRes = &RawPartial->PartialDescriptors[1];
+    if (RawRes->Type != CmResourceTypeInterrupt) {
+	DPRINT1("Invalid resource type %d\n", RawRes->Type);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
+    if (RawRes->Interrupt.Vector != AcpiGbl_FADT.SciInterrupt) {
+	DPRINT1("Invalid raw resource vector %d\n", RawRes->Interrupt.Vector);
+	return STATUS_DEVICE_ENUMERATION_ERROR;
+    }
+    AcpiOsRegisterInterruptMapping(RawRes->Interrupt.Vector,
+				   TranslatedRes->Interrupt.Vector);
+
+    FdoData->Common.DevicePowerState = PowerDeviceD0;
+    POWER_STATE PowerState = { .DeviceState = PowerDeviceD0 };
+    PoSetPowerState(FdoData->Common.Self, DevicePowerState, PowerState);
+    SET_NEW_PNP_STATE(FdoData->Common, Started);
+
+    NTSTATUS Status = AcpiCreateVolatileRegistryTables();
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Unable to create ACPI tables in registry\n");
     }
 
     DPRINT("Acpi subsystem init\n");
     /* Initialize ACPI bus manager */
-    AcpiStatus = AcpiBusInitializeManager();
+    ACPI_STATUS AcpiStatus = AcpiBusInitializeManager();
     if (!ACPI_SUCCESS(AcpiStatus)) {
 	DPRINT1("AcpiBusInitializeManager() failed with status 0x%X\n", AcpiStatus);
 	AcpiTerminate();
@@ -200,6 +276,9 @@ static NTSTATUS Bus_FDO_PnP(PDEVICE_OBJECT DeviceObject,
     PDEVICE_RELATIONS Relations, OldRelations;
 
     switch (IrpStack->MinorFunction) {
+    case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+	Status = Bus_FilterResourcesFdo(DeviceObject, DeviceData, Irp);
+	break;
     case IRP_MN_START_DEVICE:
 	Status = Bus_StartFdo(DeviceObject, DeviceData, Irp,
 			      IrpStack->Parameters.StartDevice.AllocatedResources,

@@ -155,6 +155,9 @@ FORCEINLINE NTSTATUS HalpInitCmos() { return STATUS_SUCCESS; }
     HalpAllocateArrayEx(Var, Type, Size, {})
 #define HalpFreePool(Var) ExFreePoolWithTag(Var, NTOS_HAL_TAG)
 
+/* acpi.c */
+NTSTATUS HalpInitAcpi(VOID);
+
 /* dma.c */
 NTSTATUS HalpInitDma(VOID);
 

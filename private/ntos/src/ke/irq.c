@@ -1,22 +1,20 @@
 #include "ki.h"
 
-NTSTATUS KeCreateIrqHandlerEx(IN PIRQ_HANDLER IrqHandler,
-			      IN MWORD IrqLine,
-			      IN PCNODE CNode)
+NTSTATUS KeCreateIrqHandlerCapEx(IN OUT PIRQ_HANDLER IrqHandler,
+				 IN PCNODE CNode)
 {
     assert(IrqHandler != NULL);
     MWORD Cap = 0;
     RET_ERR(MmAllocateCap(CNode, &Cap));
     assert(Cap != 0);
-    int Error = seL4_IRQControl_Get(seL4_CapIRQControl, IrqLine,
-				    CNode->TreeNode.Cap,
-				    Cap, MmCNodeGetDepth(CNode));
-    if (Error != 0) {
+    NTSTATUS Status = HalGetIrqCap(IrqHandler, CNode->TreeNode.Cap,
+				   Cap, MmCNodeGetDepth(CNode));
+    if (!NT_SUCCESS(Status)) {
 	MmDeallocateCap(CNode, Cap);
-	KeDbgDumpIPCError(Error);
-	return SEL4_ERROR(Error);
+	return Status;
     }
-    KeInitializeIrqHandler(IrqHandler, CNode, Cap, IrqLine);
+    MmInitializeCapTreeNode(&IrqHandler->TreeNode, CAP_TREE_NODE_IRQ_HANDLER, Cap,
+			    CNode, NULL);
     assert(Cap == IrqHandler->TreeNode.Cap);
     return STATUS_SUCCESS;
 }

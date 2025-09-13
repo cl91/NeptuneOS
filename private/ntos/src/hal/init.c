@@ -72,6 +72,7 @@ NTSTATUS HalInitSystemPhase0(VOID)
 #endif
     RET_ERR(HalpInitVga());
     RET_ERR(HalpInitCmos());
+    RET_ERR(HalpInitAcpi());
     return STATUS_SUCCESS;
 }
 
@@ -79,13 +80,5 @@ NTSTATUS HalInitSystemPhase1(VOID)
 {
     RET_ERR(HalpInitBeep());
     RET_ERR(HalpInitDma());
-    return STATUS_SUCCESS;
-}
-
-NTSTATUS HalMaskUnusableInterrupts(VOID)
-{
-    /* Mask timer IRQL and IRQL 2 (which is unusable on PIC systems). */
-    IoMaskInterrupt(TIMER_IRQ_LINE);
-    IoMaskInterrupt(2);
     return STATUS_SUCCESS;
 }

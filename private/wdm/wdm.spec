@@ -97,7 +97,6 @@
 @ stdcall ExAllocatePoolWithTag(long ptr long)
 @ stdcall ExFreePoolWithTag(ptr long)
 @ stdcall HalMakeBeep(long)
-@ stdcall HalAcpiGetRsdt(ptr ptr)
 @ stdcall HalGetAdapter(ptr ptr)
 @ stdcall HalExamineMBR(ptr long long ptr)
 @ stdcall CcInitializeCacheMap(ptr)

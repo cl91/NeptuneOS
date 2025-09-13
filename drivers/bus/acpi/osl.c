@@ -13,11 +13,20 @@ typedef struct _ACPI_ISR_CONTEXT {
     ULONG IrqNumber;
 } ACPI_ISR_CONTEXT, *PACPI_ISR_CONTEXT;
 
+typedef struct _ACPI_INTERRUPT_MAPPING {
+    ULONG Irq;
+    ULONG Vector;
+} ACPI_INTERRUPT_MAPPING, *PACPI_INTERRUPT_MAPPING;
+
+#define MAX_NUM_ACPI_INTERRUPT_MAPPINGS		16
+
 static PDEVICE_OBJECT AcpiBusFdo;
 static ACPI_PHYSICAL_ADDRESS AcpiRootSystemTable;
 static BOOLEAN AcpiRootSystemTableIsLegacy;
 static PKINTERRUPT AcpiInterrupt;
 static ACPI_ISR_CONTEXT AcpiIsrContext;
+static ULONG AcpiInterruptMappingCount;
+static ACPI_INTERRUPT_MAPPING AcpiInterruptMappingTable[MAX_NUM_ACPI_INTERRUPT_MAPPINGS];
 
 ACPI_STATUS AcpiOsInitialize(VOID)
 {
@@ -69,6 +78,18 @@ ACPI_PHYSICAL_ADDRESS AcpiOsGetRootSystemTable()
 INT AcpiOsIsRootSystemTableLegacy()
 {
     return AcpiRootSystemTableIsLegacy;
+}
+
+ACPI_STATUS AcpiOsRegisterInterruptMapping(IN ULONG Irq,
+					   IN ULONG Vector)
+{
+    if (AcpiInterruptMappingCount >= MAX_NUM_ACPI_INTERRUPT_MAPPINGS) {
+	return AE_ERROR;
+    }
+    AcpiInterruptMappingTable[AcpiInterruptMappingCount].Irq = Irq;
+    AcpiInterruptMappingTable[AcpiInterruptMappingCount].Vector = Vector;
+    AcpiInterruptMappingCount++;
+    return AE_OK;
 }
 
 ACPI_STATUS AcpiOsPredefinedOverride(const ACPI_PREDEFINED_NAMES *PredefinedObject,
@@ -295,14 +316,25 @@ UINT32 AcpiOsInstallInterruptHandler(UINT32 InterruptNumber,
 
     DPRINT("AcpiOsInstallInterruptHandler()\n");
 
+    /* Obtain the IRQ-to-CPU-vector mapping for the given IRQ number. */
+    ULONG Vector = ULONG_MAX;
+    for (ULONG i = 0; i < AcpiInterruptMappingCount; i++) {
+	if (InterruptNumber == AcpiInterruptMappingTable[i].Irq) {
+	    Vector = AcpiInterruptMappingTable[i].Vector;
+	    break;
+	}
+    }
+    if (Vector == ULONG_MAX) {
+	assert(FALSE);
+	return AE_ERROR;
+    }
+
     AcpiIsrContext.Handler = ServiceRoutine;
     AcpiIsrContext.Context = Context;
     AcpiIsrContext.IrqNumber = InterruptNumber;
 
-    /* We should really set ShareVector to TRUE but since interrupt sharing is not
-     * yet implemented, we set it to FALSE for now. */
     NTSTATUS Status = IoConnectInterrupt(&AcpiInterrupt, AcpiIsr, &AcpiIsrContext,
-					 InterruptNumber, InterruptNumber, InterruptNumber,
+					 Vector, Vector, Vector,
 					 LevelSensitive, FALSE, 0, FALSE);
 
     if (!NT_SUCCESS(Status)) {

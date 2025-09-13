@@ -64,6 +64,7 @@ NTSTATUS IoInitSystemPhase0()
     RET_ERR(ObCreateDirectory(DEVICE_OBJECT_DIRECTORY));
     RET_ERR(ObCreateDirectory(FILE_SYSTEM_OBJECT_DIRECTORY));
     RET_ERR(CcInitializeCacheManager());
+    RET_ERR(IopInitPnpManager());
 
     return STATUS_SUCCESS;
 }
@@ -71,7 +72,6 @@ NTSTATUS IoInitSystemPhase0()
 NTSTATUS IoInitSystemPhase1()
 {
     RET_ERR(IopInitFileSystem());
-    RET_ERR(IopInitPnpManager());
 
     return STATUS_SUCCESS;
 }

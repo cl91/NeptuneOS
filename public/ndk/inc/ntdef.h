@@ -451,14 +451,14 @@ typedef struct _OBJECT_ATTRIBUTES_ANSI {
 
 #ifdef __GNUC__
 #define RTL_NUMBER_OF(A)						\
-    (({ int _check_array_type[__builtin_types_compatible_p(typeof(A),	\
+    (({ int CheckArrayType[__builtin_types_compatible_p(typeof(A),	\
 		    typeof(&A[0])) ? -1 : 1];				\
-	    (void)_check_array_type; }),				\
+	    (void)CheckArrayType; }),					\
 	(sizeof(A)/sizeof((A)[0])))
 #elif defined(__cplusplus)
 extern "C++" {
     template <typename T, size_t N>
-	static char (& SAFE_RTL_NUMBER_OF(T (&)[N]))[N];
+    static char (&SAFE_RTL_NUMBER_OF(T (&)[N]))[N];
 }
 #define RTL_NUMBER_OF(A)	sizeof(SAFE_RTL_NUMBER_OF(A))
 #else

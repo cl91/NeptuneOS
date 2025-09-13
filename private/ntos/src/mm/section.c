@@ -984,6 +984,9 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_SUCCESS;
 }
 
+/*
+ * For MmUnmapPhysicalMemory, see vaddr.c
+ */
 NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
 			     IN MWORD VirtualBase,
 			     IN MWORD WindowSize,

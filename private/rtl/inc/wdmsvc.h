@@ -313,6 +313,10 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 			  * the non-translated list */
 	} StartDevice;
 	struct {
+	    ULONG ListSize;
+	    CHAR Data[];
+	} FilterResourceRequirements;
+	struct {
 	    ULONG WhichSpace;
 	    ULONG Offset;
 	} ReadWriteConfig;  /* For write, client buffer is in InputBuffer.
@@ -737,6 +741,10 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
 		DbgPrint("    PNP  QUERY-RESOURCE-REQUIREMENTS\n");
 		break;
+	    case IRP_MN_FILTER_RESOURCE_REQUIREMENTS:
+		DbgPrint("    PNP  FILTER-RESOURCE-REQUIREMENTS  ListSize %d\n",
+			 IoPacket->Request.FilterResourceRequirements.ListSize);
+		break;
 	    case IRP_MN_QUERY_BUS_INFORMATION:
 		DbgPrint("    PNP  QUERY-BUS-INFORMATION\n");
 		break;
@@ -754,6 +762,7 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		break;
 	    default:
 		DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");
+		assert(FALSE);
 	    }
 	    break;
 	default:

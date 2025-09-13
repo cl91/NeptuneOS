@@ -867,6 +867,9 @@ typedef struct _IO_STACK_LOCATION {
 	    PDEVICE_CAPABILITIES Capabilities;
 	} DeviceCapabilities;
 	struct {
+	    PIO_RESOURCE_REQUIREMENTS_LIST IoResourceRequirementList;
+	} FilterResourceRequirements;
+	struct {
 	    ULONG WhichSpace;
 	    PVOID Buffer;
 	    ULONG Offset;

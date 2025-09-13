@@ -849,6 +849,7 @@ NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
 			     IN MWORD VirtualBase,
 			     IN MWORD WindowSize,
 			     IN ULONG PageProtection);
+VOID MmUnmapPhysicalMemory(IN MWORD VirtAddr);
 
 /* vaddr.c */
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self);

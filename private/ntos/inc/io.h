@@ -301,7 +301,8 @@ NTSTATUS IoInitSystemPhase0();
 NTSTATUS IoInitSystemPhase1();
 
 /* pnp.c */
-NTSTATUS IoMaskInterrupt(IN ULONG Vector);
+NTSTATUS IoMaskInterruptVector(IN ULONG Vector);
+NTSTATUS IoAllocateInterruptVector(OUT ULONG *Vector);
 
 /*
  * Debug helper functions

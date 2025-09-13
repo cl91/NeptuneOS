@@ -143,7 +143,8 @@ static VOID KiTimerInterruptService()
 
 static NTSTATUS KiEnableTimerInterruptService()
 {
-    RET_ERR(KeCreateIrqHandler(&KiTimerIrqHandler, TIMER_IRQ_LINE));
+    RET_ERR(HalEnableSystemTimer(&KiTimerIrqHandler, TIMER_RESOLUTION_IN_100NS));
+    RET_ERR(KeCreateIrqHandlerCap(&KiTimerIrqHandler));
     RET_ERR_EX(KeCreateNotification(&KiTimerIrqNotification),
 	       MmCapTreeDeleteNode(&KiTimerIrqHandler.TreeNode));
     RET_ERR_EX(KeConnectIrqNotification(&KiTimerIrqHandler, &KiTimerIrqNotification),

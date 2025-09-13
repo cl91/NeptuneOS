@@ -105,8 +105,11 @@ static inline VOID IopFreeDeviceNode(IN PDEVICE_NODE DeviceNode)
     if (DeviceNode->InstanceId != NULL) {
 	IopFreePool(DeviceNode->InstanceId);
     }
-    if (DeviceNode->Resources != NULL) {
-	IopFreePool(DeviceNode->Resources);
+    if (DeviceNode->RawResources != NULL) {
+	IopFreePool(DeviceNode->RawResources);
+    }
+    if (DeviceNode->TranslatedResources != NULL) {
+	IopFreePool(DeviceNode->TranslatedResources);
     }
     IopFreePool(DeviceNode);
 }
@@ -821,6 +824,28 @@ static NTSTATUS IopQueueQueryResourceRequirementsRequest(IN PTHREAD Thread,
     return IopCallDriver(Thread, &Irp, PendingIrp);
 }
 
+static NTSTATUS IopQueueFilterResourceRequirementsRequest(IN PTHREAD Thread,
+							  IN PIO_DEVICE_OBJECT DevObj,
+							  IN PIO_RESOURCE_REQUIREMENTS_LIST Res,
+							  OUT PPENDING_IRP *PendingIrp)
+{
+    ULONG DataSize = Res ? Res->ListSize : 0;
+    PIO_REQUEST_PARAMETERS Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + DataSize,
+						       NTOS_IO_TAG);
+    if (!Irp) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    Irp->DataSize = DataSize;
+    Irp->MajorFunction = IRP_MJ_PNP;
+    Irp->MinorFunction = IRP_MN_FILTER_RESOURCE_REQUIREMENTS;
+    Irp->Device.Object = DevObj;
+    Irp->FilterResourceRequirements.ListSize = DataSize;
+    if (Res) {
+	memcpy(Irp->FilterResourceRequirements.Data, Res, DataSize);
+    }
+    return IopCallDriver(Thread, Irp, PendingIrp);
+}
+
 static inline ULONG IopGetPartialResourceCount(IN PIO_RESOURCE_DESCRIPTOR List,
 					       ULONG ListLength)
 {
@@ -872,11 +897,12 @@ FORCEINLINE NTSTATUS IopAllocateResource(IN PRTL_RANGE_LIST RangeList,
 	(Desc->Type == CmResourceTypePort || Desc->Type == CmResourceTypeMemory)) {
 	/* If the parent bus has been assigned this resource, also allow the child PDO
 	 * to have it. */
-	if (!DevNode->Parent || !DevNode->Parent->Resources) {
+	if (!DevNode->Parent || !DevNode->Parent->RawResources ||
+	    !DevNode->Parent->TranslatedResources) {
 	    return STATUS_CONFLICTING_ADDRESSES;
 	}
-	PCM_FULL_RESOURCE_DESCRIPTOR FullDesc = DevNode->Parent->Resources->List;
-	for (ULONG i = 0; i < DevNode->Parent->Resources->Count; i++) {
+	PCM_FULL_RESOURCE_DESCRIPTOR FullDesc = DevNode->Parent->RawResources->List;
+	for (ULONG i = 0; i < DevNode->Parent->RawResources->Count; i++) {
 	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
 		FullDesc->PartialResourceList.PartialDescriptors;
 	    for (ULONG j = 0; j < FullDesc->PartialResourceList.Count; j++) {
@@ -900,7 +926,8 @@ FORCEINLINE NTSTATUS IopAllocateResource(IN PRTL_RANGE_LIST RangeList,
  */
 static NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR Desc,
 				  IN PDEVICE_NODE DevNode,
-				  OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial)
+				  OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw,
+				  OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR Translated)
 {
     NTSTATUS Status = STATUS_SUCCESS;
     ULONGLONG Start = 0;
@@ -918,21 +945,32 @@ static NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR Desc,
 				     Desc->Port.Alignment,
 				     &Start);
 	if (NT_SUCCESS(Status)) {
-	    Partial->Port.Start.QuadPart = Start;
-	    Partial->Port.Length = Desc->Port.Length;
+	    Raw->Port.Start.QuadPart = Translated->Port.Start.QuadPart = Start;
+	    Raw->Port.Length = Translated->Port.Length = Desc->Port.Length;
 	}
 	break;
 
     case CmResourceTypeInterrupt:
-	/* Assign the first available interrupt vector */
-	Status = IopAllocateResource(&IopInterruptVectorsInUse, Desc, DevNode,
-				     Desc->Interrupt.MinimumVector,
-				     Desc->Interrupt.MaximumVector,
-				     1, 1, &Start);
-	if (NT_SUCCESS(Status)) {
-	    Partial->Interrupt.Vector = Start;
-	    Partial->Interrupt.Level = Start;
-	    Partial->Interrupt.Affinity = Desc->Interrupt.TargetedProcessors;
+	/* Ask the HAL to give us a free IRQ pin. Note this corresponds to the raw
+	 * IO resource. */
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	for (ULONG i = Desc->Interrupt.MinimumVector; i <= Desc->Interrupt.MaximumVector; i++) {
+	    if (!NT_SUCCESS(HalAllocateIrq(i))) {
+		continue;
+	    }
+	    /* Assign the first available CPU interrupt vector, which is the translated
+	     * interrupt resource. */
+	    Status = IopAllocateResource(&IopInterruptVectorsInUse, Desc, DevNode,
+					 0, ULONG_MAX, 1, 1, &Start);
+	    if (NT_SUCCESS(Status)) {
+		Raw->Interrupt.Level = Raw->Interrupt.Vector = i;
+		Translated->Interrupt.Level = Translated->Interrupt.Vector = Start;
+		Raw->Interrupt.Affinity = Translated->Interrupt.Affinity =
+		    Desc->Interrupt.TargetedProcessors;
+	    } else {
+		HalDeallocateIrq(i);
+	    }
+	    break;
 	}
 	break;
 
@@ -943,8 +981,8 @@ static NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR Desc,
 				     Desc->Dma.MaximumChannel,
 				     1, 1, &Start);
 	if (NT_SUCCESS(Status)) {
-	    Partial->Dma.Channel = Start;
-	    Partial->Dma.Port = 0;
+	    Raw->Dma.Channel = Translated->Dma.Channel = Start;
+	    Raw->Dma.Port = Translated->Dma.Port = 0;
 	}
 	break;
 
@@ -956,8 +994,8 @@ static NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR Desc,
 				     Desc->Memory.Length,
 				     Desc->Memory.Alignment, &Start);
 	if (NT_SUCCESS(Status)) {
-	    Partial->Memory.Start.QuadPart = Start;
-	    Partial->Memory.Length = Desc->Memory.Length;
+	    Raw->Memory.Start.QuadPart = Translated->Memory.Start.QuadPart = Start;
+	    Raw->Memory.Length = Translated->Memory.Length = Desc->Memory.Length;
 	}
 	break;
 
@@ -969,14 +1007,16 @@ static NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR Desc,
 				     Desc->BusNumber.Length,
 				     1, &Start);
 	if (NT_SUCCESS(Status)) {
-	    Partial->BusNumber.Start = Start;
-	    Partial->BusNumber.Length = Desc->BusNumber.Length;
+	    Raw->BusNumber.Start = Translated->BusNumber.Start = Start;
+	    Raw->BusNumber.Length = Translated->BusNumber.Length = Desc->BusNumber.Length;
 	}
 	break;
 
     case CmResourceTypeDevicePrivate:
 	/* Pass the device private verbatim */
-	RtlCopyMemory(&Partial->DevicePrivate, &Desc->DevicePrivate,
+	RtlCopyMemory(&Raw->DevicePrivate, &Desc->DevicePrivate,
+		      sizeof(Desc->DevicePrivate));
+	RtlCopyMemory(&Translated->DevicePrivate, &Desc->DevicePrivate,
 		      sizeof(Desc->DevicePrivate));
 	break;
 
@@ -986,9 +1026,9 @@ static NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR Desc,
     }
 
     if (NT_SUCCESS(Status)) {
-	Partial->Type = Desc->Type;
-	Partial->ShareDisposition = Desc->ShareDisposition;
-	Partial->Flags = Desc->Flags;
+	Raw->Type = Translated->Type = Desc->Type;
+	Raw->ShareDisposition = Raw->ShareDisposition = Desc->ShareDisposition;
+	Raw->Flags = Translated->Flags = Desc->Flags;
 	return STATUS_SUCCESS;
     } else {
 	return STATUS_CONFLICTING_ADDRESSES;
@@ -1015,19 +1055,34 @@ static NTSTATUS IopAssignResourcesForList(IN PDEVICE_NODE DeviceNode,
 							ResList->Count);
     ULONG Size = sizeof(CM_RESOURCE_LIST) + sizeof(CM_FULL_RESOURCE_DESCRIPTOR) +
 	PartialDescCount * sizeof(CM_PARTIAL_RESOURCE_DESCRIPTOR);
-    assert(!DeviceNode->Resources);
-    DeviceNode->Resources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size, NTOS_IO_TAG);
-    if (DeviceNode->Resources == NULL) {
+    assert(!DeviceNode->RawResources);
+    DeviceNode->RawResources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size, NTOS_IO_TAG);
+    if (DeviceNode->RawResources == NULL) {
 	return STATUS_NO_MEMORY;
     }
-    DeviceNode->Resources->Count = 1;
-    DeviceNode->Resources->List[0].InterfaceType = Header->InterfaceType;
-    DeviceNode->Resources->List[0].BusNumber = Header->BusNumber;
-    DeviceNode->Resources->List[0].PartialResourceList.Version = ResList->Version;
-    DeviceNode->Resources->List[0].PartialResourceList.Revision = ResList->Revision;
-    DeviceNode->Resources->List[0].PartialResourceList.Count = PartialDescCount;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
-	DeviceNode->Resources->List[0].PartialResourceList.PartialDescriptors;
+    DeviceNode->TranslatedResources = (PCM_RESOURCE_LIST)ExAllocatePoolWithTag(Size,
+									       NTOS_IO_TAG);
+    if (DeviceNode->TranslatedResources == NULL) {
+	ExFreePoolWithTag(DeviceNode->RawResources, NTOS_IO_TAG);
+	DeviceNode->RawResources = NULL;
+	return STATUS_NO_MEMORY;
+    }
+    DeviceNode->RawResources->Count = 1;
+    DeviceNode->RawResources->List[0].InterfaceType = Header->InterfaceType;
+    DeviceNode->RawResources->List[0].BusNumber = Header->BusNumber;
+    DeviceNode->RawResources->List[0].PartialResourceList.Version = ResList->Version;
+    DeviceNode->RawResources->List[0].PartialResourceList.Revision = ResList->Revision;
+    DeviceNode->RawResources->List[0].PartialResourceList.Count = PartialDescCount;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw =
+	DeviceNode->RawResources->List[0].PartialResourceList.PartialDescriptors;
+    DeviceNode->TranslatedResources->Count = 1;
+    DeviceNode->TranslatedResources->List[0].InterfaceType = Header->InterfaceType;
+    DeviceNode->TranslatedResources->List[0].BusNumber = Header->BusNumber;
+    DeviceNode->TranslatedResources->List[0].PartialResourceList.Version = ResList->Version;
+    DeviceNode->TranslatedResources->List[0].PartialResourceList.Revision = ResList->Revision;
+    DeviceNode->TranslatedResources->List[0].PartialResourceList.Count = PartialDescCount;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Translated =
+	DeviceNode->TranslatedResources->List[0].PartialResourceList.PartialDescriptors;
     BOOLEAN Failed = FALSE;
     for (ULONG i = 0; i < ResList->Count; i++) {
 	PIO_RESOURCE_DESCRIPTOR Desc = &ResList->Descriptors[i];
@@ -1052,14 +1107,17 @@ static NTSTATUS IopAssignResourcesForList(IN PDEVICE_NODE DeviceNode,
 	    }
 	}
     assign:
-	Failed = !NT_SUCCESS(IopAssignResource(Desc, DeviceNode, Partial));
+	Failed = !NT_SUCCESS(IopAssignResource(Desc, DeviceNode, Raw, Translated));
 	if (!Failed) {
-	    Partial++;
+	    Raw++;
+	    Translated++;
 	}
     }
     if (Failed) {
-	IopFreePool(DeviceNode->Resources);
-	DeviceNode->Resources = NULL;
+	IopFreePool(DeviceNode->RawResources);
+	DeviceNode->RawResources = NULL;
+	IopFreePool(DeviceNode->TranslatedResources);
+	DeviceNode->TranslatedResources = NULL;
 	return STATUS_CONFLICTING_ADDRESSES;
     }
     return STATUS_SUCCESS;
@@ -1071,9 +1129,15 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
 {
     NTSTATUS Status;
     ASYNC_BEGIN(AsyncState, Locals, {
-	    PPENDING_IRP PendingIrp;
+	    PPENDING_IRP QueryResPendingIrp;
+	    PPENDING_IRP FilterResPendingIrp;
+	    PIO_RESOURCE_REQUIREMENTS_LIST Res;
+	    BOOLEAN FreeResList;
 	});
-    Locals.PendingIrp = NULL;
+    Locals.QueryResPendingIrp = NULL;
+    Locals.FilterResPendingIrp = NULL;
+    Locals.Res = NULL;
+    Locals.FreeResList = FALSE;
 
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeDevicesAdded) {
 	DbgTrace("Device node state is %d. Not assigning resources.\n",
@@ -1081,12 +1145,48 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
 	ASYNC_RETURN(AsyncState, STATUS_INVALID_DEVICE_STATE);
     }
 
+    /* If we are assigning resources for the root PnP enumerator, do not send the
+     * QUERY-RESOURCE-REQUIREMENTS request (because it's supposed to be sent to
+     * the device node's parent bus driver, and root PnP enumerator has no parent).
+     * Instead, manually construct a resource requirement list with one memory range
+     * resource for the ACPI XSDT. */
+    if (DeviceNode == IopRootDeviceNode) {
+	ULONG Length = 0;
+	ULONG64 Address = HalAcpiGetRsdt(&Length);
+	if (!Address) {
+	    Status = STATUS_SUCCESS;
+	    goto filter;
+	}
+	assert(Length);
+	ULONG ListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
+	    sizeof(IO_RESOURCE_DESCRIPTOR);
+	Locals.Res = ExAllocatePoolWithTag(ListSize, NTOS_IO_TAG);
+	if (!Locals.Res) {
+	    Status = STATUS_NO_MEMORY;
+	    goto out;
+	}
+	Locals.Res->ListSize = ListSize;
+	Locals.Res->InterfaceType = Internal;
+	Locals.Res->AlternativeLists = 1;
+	Locals.Res->List[0].Count = 1;
+	Locals.Res->List[0].Version = 1;
+	Locals.Res->List[0].Revision = 1;
+	Locals.Res->List[0].Descriptors[0].Type = CmResourceTypeMemory;
+	Locals.Res->List[0].Descriptors[0].ShareDisposition = CmResourceShareDeviceExclusive;
+	Locals.Res->List[0].Descriptors[0].Memory.Length = Length;
+	Locals.Res->List[0].Descriptors[0].Memory.Alignment = 1;
+	Locals.Res->List[0].Descriptors[0].Memory.MinimumAddress.QuadPart = Address;
+	Locals.Res->List[0].Descriptors[0].Memory.MaximumAddress.QuadPart = Address+Length-1;
+	Locals.FreeResList = TRUE;
+	goto filter;
+    }
+
     IF_ERR_GOTO(out, Status,
 		IopQueueQueryResourceRequirementsRequest(Thread, DeviceNode->PhyDevObj,
-							 &Locals.PendingIrp));
+							 &Locals.QueryResPendingIrp));
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
-	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
+	     &Locals.QueryResPendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Status = Locals.QueryResPendingIrp->IoResponseStatus.Status;
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Failed to query device resource requirements for %s\\%s. Status = 0x%x\n",
 		 DeviceNode->DeviceId, DeviceNode->InstanceId,
@@ -1094,35 +1194,69 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
 	goto out;
     }
 
-    PIO_RESOURCE_REQUIREMENTS_LIST Res = (PIO_RESOURCE_REQUIREMENTS_LIST)Locals.PendingIrp->IoResponseData;
-    if (Res == NULL) {
+    Locals.Res = Locals.QueryResPendingIrp->IoResponseData;
+    if (Locals.Res == NULL) {
 	Status = STATUS_SUCCESS;
-	goto out;
+	goto filter;
     }
-    if (DeviceNode->Resources != NULL) {
-	IopFreePool(DeviceNode->Resources);
-    }
-    if (Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE) {
+    if (Locals.Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE ||
+	Locals.Res->ListSize > Locals.QueryResPendingIrp->IoResponseDataSize) {
 	Status = STATUS_INVALID_PARAMETER;
 	goto out;
     }
+
+filter:
+    /* Queue a FILTER-RESOURCE-REQUIREMENTS request to the function driver so it can
+     * modify the resource requirements supplied by the bus driver, if needed. */
+    IF_ERR_GOTO(out, Status,
+		IopQueueFilterResourceRequirementsRequest(Thread,
+							  IopGetTopDevice(DeviceNode->PhyDevObj),
+							  Locals.Res,
+							  &Locals.FilterResPendingIrp));
+    AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
+	     &Locals.FilterResPendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Status = Locals.FilterResPendingIrp->IoResponseStatus.Status;
+    if (NT_SUCCESS(Status) && Locals.FilterResPendingIrp->IoResponseData &&
+	Locals.Res->ListSize > MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE &&
+	Locals.Res->ListSize <= Locals.FilterResPendingIrp->IoResponseDataSize) {
+	Locals.Res = Locals.FilterResPendingIrp->IoResponseData;
+	Locals.FreeResList = FALSE;
+    }
+
+    /* Free the resource lists in case a previous attempt to assign resources failed. */
+    if (DeviceNode->RawResources != NULL) {
+	IopFreePool(DeviceNode->RawResources);
+	DeviceNode->RawResources = NULL;
+    }
+    if (DeviceNode->TranslatedResources != NULL) {
+	IopFreePool(DeviceNode->TranslatedResources);
+	DeviceNode->TranslatedResources = NULL;
+    }
+
+    if (!Locals.Res) {
+	DbgTrace("Device node %s\\%s does not require any IO resource\n",
+		 DeviceNode->DeviceId, DeviceNode->InstanceId);
+	Status = STATUS_SUCCESS;
+	goto out;
+    }
+
     DbgTrace("Trying to satisfy the following resource requirements for "
 	     "device node %s\\%s:\n", DeviceNode->DeviceId, DeviceNode->InstanceId);
-    IoDbgPrintResouceRequirementsList(Res);
-    assert(Res->AlternativeLists);
+    IoDbgPrintResouceRequirementsList(Locals.Res);
+    assert(Locals.Res->AlternativeLists);
 
     /* For each alternative list, see if we can satisfy its resource requirements.
      * Each list represents a set of resources that must be satisfied simultaneously,
      * and we need at least one list satisfied for the resource arbitration to succeed. */
-    PIO_RESOURCE_LIST List = Res->List;
-    for (ULONG i = 0; i < Res->AlternativeLists; i++) {
+    PIO_RESOURCE_LIST List = Locals.Res->List;
+    for (ULONG i = 0; i < Locals.Res->AlternativeLists; i++) {
 	if (!List->Count) {
 	    assert(FALSE);
 	    Status = STATUS_INVALID_PARAMETER;
 	    goto out;
 	}
 	DbgTrace("Trying to assign resources for list %d\n", i);
-	Status = IopAssignResourcesForList(DeviceNode, Res, &List);
+	Status = IopAssignResourcesForList(DeviceNode, Locals.Res, &List);
 	if (NT_SUCCESS(Status)) {
 	    DbgTrace("Successfully assigned resources for list %d\n", i);
 	    break;
@@ -1132,6 +1266,15 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
     }
 
 out:
+    if (Locals.FreeResList) {
+	IopFreePool(Locals.Res);
+    }
+    if (Locals.QueryResPendingIrp) {
+	IopCleanupPendingIrp(Locals.QueryResPendingIrp);
+    }
+    if (Locals.FilterResPendingIrp) {
+	IopCleanupPendingIrp(Locals.FilterResPendingIrp);
+    }
     if (!NT_SUCCESS(Status)) {
 	DbgTrace("Failed to assign resources for device node %s\\%s. Status = 0x%x\n",
 		 DeviceNode->DeviceId, DeviceNode->InstanceId, Status);
@@ -1147,26 +1290,32 @@ static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
 					   IN PDEVICE_NODE DeviceNode,
 					   OUT PPENDING_IRP *PendingIrp)
 {
-    PCM_RESOURCE_LIST Res = DeviceNode->Resources;
-    ULONG ResSize = CmGetResourceListSize(Res);
-    PIO_REQUEST_PARAMETERS Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + ResSize*2,
+    PCM_RESOURCE_LIST Raw = DeviceNode->RawResources;
+    PCM_RESOURCE_LIST Translated = DeviceNode->TranslatedResources;
+    ULONG RawSize = CmGetResourceListSize(Raw);
+    ULONG TranslatedSize = CmGetResourceListSize(Translated);
+    assert(RawSize == TranslatedSize);
+    ULONG DataSize = RawSize + TranslatedSize;
+    PIO_REQUEST_PARAMETERS Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + DataSize,
 						       NTOS_IO_TAG);
     if (!Irp) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
-    Irp->DataSize = ResSize * 2;
+    Irp->DataSize = DataSize;
     Irp->MajorFunction = IRP_MJ_PNP;
     Irp->MinorFunction = IRP_MN_START_DEVICE;
     Irp->Device.Object = IopGetTopDevice(DeviceNode->PhyDevObj);
-    Irp->StartDevice.ResourceListSize = ResSize;
-    Irp->StartDevice.TranslatedListSize = ResSize;
-    if (ResSize) {
-	memcpy(Irp->StartDevice.Data, Res, ResSize);
-	memcpy(&Irp->StartDevice.Data[ResSize], Res, ResSize);
+    Irp->StartDevice.ResourceListSize = RawSize;
+    Irp->StartDevice.TranslatedListSize = TranslatedSize;
+    if (RawSize) {
+	memcpy(Irp->StartDevice.Data, Raw, RawSize);
+	memcpy(&Irp->StartDevice.Data[RawSize], Translated, TranslatedSize);
     }
-    DbgTrace("Starting device node %s\\%s with the following assigned resources\n",
+    DbgTrace("Starting device node %s\\%s with the following raw resources\n",
 	     DeviceNode->DeviceId, DeviceNode->InstanceId);
-    CmDbgPrintResourceList(Res);
+    CmDbgPrintResourceList(Raw);
+    DbgTrace("and the following translated resources\n");
+    CmDbgPrintResourceList(Translated);
     return IopCallDriver(Thread, Irp, PendingIrp);
 }
 
@@ -1754,38 +1903,55 @@ static NTSTATUS IopGetRelatedDevice(IN OUT PIO_PNP_CONTROL_RELATED_DEVICE_DATA D
 }
 
 BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
-				     IN ULONG Vector)
+				     IN ULONG Vector,
+				     OUT ULONG *Irq,
+				     OUT ULONG *Flags)
 {
     BOOLEAN Available = FALSE;
     RtlIsRangeAvailable(&IopInterruptVectorsInUse, Vector, Vector,
 			0, 0, NULL, NULL, &Available);
     if (Available) {
+	DbgTrace("Vector %d not assigned\n", Vector);
 	return FALSE;
     }
     /* Check the device objects created by the driver object and see if
-     * one of them has been assigned the interrupt resource. If none,
+     * one of them has been assigned the given interrupt resource. If none,
      * return FALSE. */
     LoopOverList(Device, &DriverObject->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
-	if (!Device->DeviceNode || !Device->DeviceNode->Resources) {
+	PDEVICE_NODE DevNode = IopGetPhyDevObj(Device)->DeviceNode;
+	if (!DevNode || !DevNode->RawResources || !DevNode->TranslatedResources) {
 	    continue;
 	}
-	PCM_FULL_RESOURCE_DESCRIPTOR Desc = Device->DeviceNode->Resources->List;
-	for (ULONG i = 0; i < Device->DeviceNode->Resources->Count; i++) {
-	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
-		Desc->PartialResourceList.PartialDescriptors;
-	    for (ULONG j = 0; j < Desc->PartialResourceList.Count; j++) {
-		if (Partial->Type == CmResourceTypeInterrupt &&
-		    Partial->Interrupt.Vector == Vector) {
+	DbgTrace("Dev node %p raw res\n", DevNode);
+	CmDbgPrintResourceList(DevNode->RawResources);
+	DbgTrace("Dev node %p trans res\n", DevNode);
+	CmDbgPrintResourceList(DevNode->TranslatedResources);
+	PCM_FULL_RESOURCE_DESCRIPTOR RawDesc = DevNode->RawResources->List;
+	PCM_FULL_RESOURCE_DESCRIPTOR TranslatedDesc =
+	    DevNode->TranslatedResources->List;
+	for (ULONG i = 0; i < DevNode->RawResources->Count; i++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw =
+		RawDesc->PartialResourceList.PartialDescriptors;
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Translated =
+		TranslatedDesc->PartialResourceList.PartialDescriptors;
+	    for (ULONG j = 0; j < TranslatedDesc->PartialResourceList.Count; j++) {
+		if (Translated->Type == CmResourceTypeInterrupt &&
+		    Translated->Interrupt.Vector == Vector) {
+		    *Irq = Raw->Interrupt.Vector;
+		    *Flags = Raw->Flags;
 		    return TRUE;
 		}
+		Raw = CmGetNextPartialDescriptor(Raw);
+		Translated = CmGetNextPartialDescriptor(Translated);
 	    }
-	    Desc = CmGetNextResourceDescriptor(Desc);
+	    RawDesc = CmGetNextResourceDescriptor(RawDesc);
+	    TranslatedDesc = CmGetNextResourceDescriptor(TranslatedDesc);
 	}
     }
     return FALSE;
 }
 
-NTSTATUS IoMaskInterrupt(IN ULONG Vector)
+NTSTATUS IoMaskInterruptVector(IN ULONG Vector)
 {
     BOOLEAN Available = FALSE;
     RtlIsRangeAvailable(&IopInterruptVectorsInUse, Vector, Vector,
@@ -1794,6 +1960,21 @@ NTSTATUS IoMaskInterrupt(IN ULONG Vector)
 	return RtlAddRange(&IopInterruptVectorsInUse, Vector, Vector, 1, 0, NULL, NULL);
     }
     return STATUS_SUCCESS;
+}
+
+NTSTATUS IoAllocateInterruptVector(OUT ULONG *pVector)
+{
+    ULONGLONG Vector;
+    NTSTATUS Status = RtlFindRange(&IopInterruptVectorsInUse, 0, ULONG_MAX - 1, 1,
+				   1, 0, 0, NULL, NULL, &Vector);
+    if (NT_SUCCESS(Status)) {
+	Status = RtlAddRange(&IopInterruptVectorsInUse, Vector, Vector, 1, 0, NULL, NULL);
+	if (NT_SUCCESS(Status)) {
+	    *pVector = Vector;
+	}
+	return Status;
+    }
+    return STATUS_INSUFFICIENT_RESOURCES;
 }
 
 NTSTATUS IopInitPnpManager()

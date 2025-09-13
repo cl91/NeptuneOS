@@ -768,44 +768,6 @@ static NTSTATUS PnpBuildDeviceRequirementLists(IN PPNP_DEVICE PnpDevice)
     return STATUS_SUCCESS;
 }
 
-/*
- * Get the ACPI RSDP from the NT executive and request the address and size
- * of the XSDT (eXtended System Descriptor Table) be available to us.
- */
-static NTSTATUS PnpRootQueryResourceRequirements(IN PDEVICE_OBJECT DeviceObject,
-						 IN PIRP Irp)
-{
-    ULONG64 XsdtAddress = 0;
-    ULONG XsdtLength = 0;
-    HalAcpiGetRsdt(&XsdtAddress, &XsdtLength);
-    if (!XsdtAddress || !XsdtLength) {
-	/* On systems without ACPI, we return an empty resource list. */
-	Irp->IoStatus.Information = 0;
-	return STATUS_SUCCESS;
-    }
-    ULONG ListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
-	sizeof(IO_RESOURCE_DESCRIPTOR);
-    PIO_RESOURCE_REQUIREMENTS_LIST Dest =  ExAllocatePool(NonPagedPool, ListSize);
-    if (!Dest) {
-	return STATUS_NO_MEMORY;
-    }
-    Dest->ListSize = ListSize;
-    Dest->InterfaceType = Internal;
-    Dest->AlternativeLists = 1;
-    Dest->List[0].Count = 1;
-    Dest->List[0].Version = 1;
-    Dest->List[0].Revision = 1;
-    Dest->List[0].Descriptors[0].Type = CmResourceTypeMemory;
-    Dest->List[0].Descriptors[0].Option = IO_RESOURCE_PREFERRED;
-    Dest->List[0].Descriptors[0].ShareDisposition = CmResourceShareDeviceExclusive;
-    Dest->List[0].Descriptors[0].Memory.Length = XsdtLength;
-    Dest->List[0].Descriptors[0].Memory.Alignment = 1;
-    Dest->List[0].Descriptors[0].Memory.MinimumAddress.QuadPart = XsdtAddress;
-    Dest->List[0].Descriptors[0].Memory.MaximumAddress.QuadPart = XsdtAddress + XsdtLength - 1;
-    Irp->IoStatus.Information = (ULONG_PTR)Dest;
-    return STATUS_SUCCESS;
-}
-
 static NTSTATUS PnpRootStartDevice(IN PDEVICE_OBJECT DeviceObject,
 				   IN PCM_RESOURCE_LIST ResourceList,
 				   IN PCM_RESOURCE_LIST ResourceListTranslated)
@@ -886,10 +848,6 @@ static NTSTATUS PnpRootDispatch(IN PDEVICE_OBJECT DeviceObject,
 
     case IRP_MN_QUERY_DEVICE_RELATIONS:
 	Status = PnpRootQueryDeviceRelations(DeviceObject, Irp);
-	break;
-
-    case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
-	Status = PnpRootQueryResourceRequirements(DeviceObject, Irp);
 	break;
 
     default:

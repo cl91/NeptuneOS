@@ -560,7 +560,13 @@ out:
         Res->ShareDisposition = CmResourceShareShared;
         Res->Option = 0;
         Res->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+#if defined(_M_IX86) || defined(_M_AMD64)
+	/* On i386/amd64 we skip the first 16 IRQ pins as these are for
+	 * the legacy PIC, and on Intel platforms we always enable IO APIC. */
+        Res->Interrupt.MinimumVector = 16;
+#else
         Res->Interrupt.MinimumVector = 0;
+#endif
         Res->Interrupt.MaximumVector = MAXULONG;
         Res++;
     }
