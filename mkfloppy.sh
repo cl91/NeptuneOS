@@ -43,7 +43,7 @@ if [[ -e $FLOPPYIMG ]]; then
     rm $FLOPPYIMG
 fi
 SYSLINUXCFGTMP=$(mktemp /tmp/syslinux.XXXXXXXX)
-mkfs.msdos -C $FLOPPYIMG $FLPSIZE -n NT${ARCH^^}${BUILD_TAG}
+mkfs.msdos -C $FLOPPYIMG $FLPSIZE -s 1 -n NT${ARCH^^}${BUILD_TAG}
 syslinux --install $FLOPPYIMG
 cat <<EOF > $SYSLINUXCFGTMP
 DEFAULT neptune

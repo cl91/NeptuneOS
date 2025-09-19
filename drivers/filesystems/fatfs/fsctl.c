@@ -260,13 +260,22 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 	goto CheckFatX;
     }
 
-    /* We have a valid FAT12/16/32 file system! */
-    *RecognizedFS = TRUE;
+    /* We have a valid FAT12/16/32 file system! However, due to the way that our
+     * cache manager works, the data area of the volume must be cluster-aligned.
+     * Some small FAT12/16 volumes may have a non-cluster-aligned (but sector-aligned)
+     * data area. Since this is a small likelihood we do not support mounting these
+     * volumes. The user is advised to reformat the volume to have a cluster-aligned
+     * data area, or set the cluster size to the sector size, or switch to FAT32. */
+    *RecognizedFS = !(FatInfo.DataStart & (FatInfo.SectorsPerCluster - 1));
+    if (!(*RecognizedFS)) {
+	DPRINT("Data area not cluster-aligned. Rejecting mount. Reformat the volume "
+	       "with cluster-aligned data area, or set cluster size to sector size.\n");
+    }
     if (pFatInfo) {
 	*pFatInfo = FatInfo;
     }
     ExFreePoolWithTag(Boot, TAG_BUFFER);
-    return STATUS_SUCCESS;
+    return *RecognizedFS ? STATUS_SUCCESS : STATUS_UNRECOGNIZED_VOLUME;
 
 CheckFatX:
     ExFreePoolWithTag(Boot, TAG_BUFFER);
@@ -336,7 +345,12 @@ CheckFatX:
 	FatInfo.SectorsPerCluster;
 
     /* We have a valid FATX file system! */
-    *RecognizedFS = TRUE;
+    *RecognizedFS = !(FatInfo.DataStart & (FatInfo.SectorsPerCluster - 1));
+    if (!(*RecognizedFS)) {
+	DPRINT("Data area not cluster-aligned. Rejecting mount. Reformat the volume "
+	       "with cluster-aligned data area, or set cluster size to sector size.\n");
+	Status = STATUS_UNRECOGNIZED_VOLUME;
+    }
     if (pFatInfo) {
 	*pFatInfo = FatInfo;
     }
