@@ -199,13 +199,17 @@ static NTSTATUS FatReadWriteDisk(IN PFAT_IRP_CONTEXT IrpContext,
 	/* For MDL read we should call Cc to complete the read. Note this is
 	 * synchronous, so we should free the associated IRPs we have allocated. */
 	if (!Write && Stack->MinorFunction == IRP_MN_MDL) {
+	    /* FatForwardReadIrp expects IRP stack location to be pointing to the
+	     * current one, but the IRP built by IoBuildAsynchronousFsdRequest has
+	     * the IO stack pointing to the location above the current one, so advance
+	     * the IO stack pointer. */
+	    IoSetNextIrpStackLocation(Req->Irp);
 	    IoGetCurrentIrpStackLocation(Req->Irp)->MinorFunction = IRP_MN_MDL;
 	    Status = FatForwardReadIrp(DeviceExt, Req->Irp);
 	    if (!NT_SUCCESS(Status)) {
 		break;
 	    }
 	} else {
-	    IoSkipCurrentIrpStackLocation(Req->Irp);
 	    IoCallDriver(DeviceExt->StorageDevice, Req->Irp);
 	    Req->Irp = NULL;
 	}
