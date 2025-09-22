@@ -91,7 +91,7 @@
 @ stdcall KeResetEvent(ptr)
 @ stdcall KeClearEvent(ptr)
 @ stdcall KeWaitForSingleObject(ptr long long long ptr)
-@ stdcall -arch=arm KeFlushIoBuffers(ptr long long)
+@ stdcall -arch=arm64 KeFlushIoBuffers(ptr long long)
 @ stdcall ObReferenceObject(ptr)
 @ stdcall ObDereferenceObject(ptr)
 @ stdcall ExAllocatePoolWithTag(long ptr long)
