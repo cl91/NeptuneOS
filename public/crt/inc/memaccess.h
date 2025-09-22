@@ -32,22 +32,42 @@ __forceinline void MemoryBarrier(void)
 }
 #define PrefetchForWrite(p)
 #define ReadForWriteAccess(p)                 (*(p))
+
 #elif defined(_M_AMD64)
 #define MemoryBarrier                         __faststorefence
 #define PrefetchForWrite(p)                   _m_prefetchw(p)
 #define ReadForWriteAccess(p)                 (_m_prefetchw(p), *(p))
+
 #elif defined(_M_ARM)
 # define MemoryBarrier()                      __dmb(_ARM_BARRIER_SY)
 # define _AcquireBarrier()                    __dmb(_ARM_BARRIER_ISH)
 # define _ReleaseBarrier()                    __dmb(_ARM_BARRIER_ISH)
 # define _DataSynchronizationBarrier()        __dsb(_ARM_BARRIER_SY)
 # define _InstructionSynchronizationBarrier() __isb(_ARM_BARRIER_SY)
+
 #elif defined(_M_ARM64)
+
+typedef enum _ARM64INTR_BARRIER_TYPE {
+    _ARM64_BARRIER_SY     = 0xF,
+    _ARM64_BARRIER_ST     = 0xE,
+    _ARM64_BARRIER_LD     = 0xD,
+    _ARM64_BARRIER_ISH    = 0xB,
+    _ARM64_BARRIER_ISHST  = 0xA,
+    _ARM64_BARRIER_ISHLD  = 0x9,
+    _ARM64_BARRIER_NSH    = 0x7,
+    _ARM64_BARRIER_NSHST  = 0x6,
+    _ARM64_BARRIER_NSHLD  = 0x5,
+    _ARM64_BARRIER_OSH    = 0x3,
+    _ARM64_BARRIER_OSHST  = 0x2,
+    _ARM64_BARRIER_OSHLD  = 0x1
+} _ARM64INTR_BARRIER_TYPE;
+
 # define MemoryBarrier()                      __dmb(_ARM64_BARRIER_SY)
 # define _AcquireBarrier()                    __dmb(_ARM64_BARRIER_ISH)
 # define _ReleaseBarrier()                    __dmb(_ARM64_BARRIER_ISH)
 # define _DataSynchronizationBarrier()        __dsb(_ARM64_BARRIER_SY)
 # define _InstructionSynchronizationBarrier() __isb(_ARM64_BARRIER_SY)
+
 #else
 #error Unsupported architecture
 #endif /* _M_ARM */
