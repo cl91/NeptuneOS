@@ -1490,7 +1490,9 @@ FORCEINLINE NTAPI VOID StorPortReadPortBufferUchar(IN PVOID HwDeviceExtension,
 						   IN PUCHAR Buffer,
 						   IN ULONG Count)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     READ_PORT_BUFFER_UCHAR(Port, Buffer, Count);
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortReadPortBufferUlong(IN PVOID HwDeviceExtension,
@@ -1498,7 +1500,9 @@ FORCEINLINE NTAPI VOID StorPortReadPortBufferUlong(IN PVOID HwDeviceExtension,
 						   IN PULONG Buffer,
 						   IN ULONG Count)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     READ_PORT_BUFFER_ULONG(Port, Buffer, Count);
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortReadPortBufferUshort(IN PVOID HwDeviceExtension,
@@ -1506,25 +1510,42 @@ FORCEINLINE NTAPI VOID StorPortReadPortBufferUshort(IN PVOID HwDeviceExtension,
 						    IN PUSHORT Buffer,
 						    IN ULONG Count)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     READ_PORT_BUFFER_USHORT(Port, Buffer, Count);
+#endif
 }
 
 FORCEINLINE NTAPI UCHAR StorPortReadPortUchar(IN PVOID HwDeviceExtension,
 					      IN PUCHAR Port)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     return READ_PORT_UCHAR(Port);
+#else
+    assert(FALSE);
+    return 0;
+#endif
 }
 
 FORCEINLINE NTAPI ULONG StorPortReadPortUlong(IN PVOID HwDeviceExtension,
 					      IN PULONG Port)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     return READ_PORT_ULONG(Port);
+#else
+    assert(FALSE);
+    return 0;
+#endif
 }
 
 FORCEINLINE NTAPI USHORT StorPortReadPortUshort(IN PVOID HwDeviceExtension,
 						IN PUSHORT Port)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     return READ_PORT_USHORT(Port);
+#else
+    assert(FALSE);
+    return 0;
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortReadRegisterBufferUchar(IN PVOID HwDeviceExtension,
@@ -1574,7 +1595,9 @@ FORCEINLINE NTAPI VOID StorPortWritePortBufferUchar(IN PVOID HwDeviceExtension,
 						    IN PUCHAR Buffer,
 						    IN ULONG Count)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     WRITE_PORT_BUFFER_UCHAR(Port, Buffer, Count);
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortWritePortBufferUlong(IN PVOID HwDeviceExtension,
@@ -1582,7 +1605,9 @@ FORCEINLINE NTAPI VOID StorPortWritePortBufferUlong(IN PVOID HwDeviceExtension,
 						    IN PULONG Buffer,
 						    IN ULONG Count)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     WRITE_PORT_BUFFER_ULONG(Port, Buffer, Count);
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortWritePortBufferUshort(IN PVOID HwDeviceExtension,
@@ -1590,28 +1615,36 @@ FORCEINLINE NTAPI VOID StorPortWritePortBufferUshort(IN PVOID HwDeviceExtension,
 						     IN PUSHORT Buffer,
 						     IN ULONG Count)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     WRITE_PORT_BUFFER_USHORT(Port, Buffer, Count);
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortWritePortUchar(IN PVOID HwDeviceExtension,
 					      IN PUCHAR Port,
 					      IN UCHAR Value)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     WRITE_PORT_UCHAR(Port, Value);
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortWritePortUlong(IN PVOID HwDeviceExtension,
 					      IN PULONG Port,
 					      IN ULONG Value)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     WRITE_PORT_ULONG(Port, Value);
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortWritePortUshort(IN PVOID HwDeviceExtension,
 					       IN PUSHORT Port,
 					       IN USHORT Value)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     WRITE_PORT_USHORT(Port, Value);
+#endif
 }
 
 FORCEINLINE NTAPI VOID StorPortWriteRegisterBufferUchar(IN PVOID HwDeviceExtension,
