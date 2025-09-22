@@ -1,5 +1,5 @@
 /*
- * PC Speaker support (beeping)
+ * Programmable Interval Timer support, including support for the pc speaker
  */
 
 /* INCLUDES ******************************************************************/
@@ -9,6 +9,9 @@
 /* FUNCTIONS *****************************************************************/
 
 #if defined(_M_IX86) || defined(_M_AMD64)
+
+extern ULONG HalpNumInterruptSourceOverride;
+extern HAL_INTERRUPT_SOURCE_OVERRIDE HalpInterruptSourceOverrideTable[];
 
 /*
  * @implemented
@@ -95,11 +98,75 @@ NTSTATUS WdmHalMakeBeep(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS HalpInitBeep()
+NTSTATUS HalpInitPit()
 {
-    RET_ERR(HalpEnableIoPort(SYSTEM_CONTROL_PORT_B, 1));
-    RET_ERR(HalpEnableIoPort(TIMER_CONTROL_PORT, 1));
+    RET_ERR(HalpEnableIoPort(TIMER_CHANNEL0_DATA_PORT, 1));
     RET_ERR(HalpEnableIoPort(TIMER_CHANNEL2_DATA_PORT, 1));
+    RET_ERR(HalpEnableIoPort(TIMER_CONTROL_PORT, 1));
+    RET_ERR(HalpEnableIoPort(SYSTEM_CONTROL_PORT_B, 1));
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
+		       IN ULONG64 Period)
+{
+    ULONG TableIndex = 0;
+    while (TableIndex < HalpNumInterruptSourceOverride) {
+	if (HalpInterruptSourceOverrideTable[TableIndex].IrqSource == 0) {
+	    break;
+	}
+	TableIndex++;
+    }
+    assert(TableIndex <= HalpNumInterruptSourceOverride);
+    if (TableIndex >= HalpNumInterruptSourceOverride) {
+	assert(FALSE);
+	return STATUS_NO_SUCH_DEVICE;
+    }
+    ULONG PitGlobalInterrupt = HalpInterruptSourceOverrideTable[TableIndex].GlobalIrq;
+
+    NTSTATUS Status = HalAllocateIrq(PitGlobalInterrupt);
+    if (!NT_SUCCESS(Status)) {
+	assert(FALSE);
+	DbgTrace("Failed to mask the IRQ pin for PIT\n");
+	return Status;
+    }
+
+    ULONG Vector = ULONG_MAX;
+    Status = IoAllocateInterruptVector(&Vector);
+    if (!NT_SUCCESS(Status)) {
+	assert(FALSE);
+	HalDeallocateIrq(PitGlobalInterrupt);
+	DbgTrace("Failed to allocate an IRQ vector for PIT\n");
+	return Status;
+    }
+    assert(Vector != ULONG_MAX);
+    /*
+     * Program the PIT for binary mode, periodic, low-high byte writing, and on channel 0
+     */
+    TIMER_CONTROL_PORT_REGISTER TimerControl = {
+	.BcdMode = FALSE,
+	.OperatingMode = PitOperatingMode2,
+	.AccessMode = PitAccessModeLowHigh,
+	.Channel = PitChannel0
+    };
+    assert(TimerControl.Bits == 0x34);
+    ULONG ReloadValue = Period * PIT_FREQUENCY / 10000000;
+    if (ReloadValue < 1) {
+	ReloadValue = 1;
+    }
+    if (ReloadValue > 0xFFFF) {
+	ReloadValue = 0xFFFF;
+    }
+    __outbyte(TIMER_CONTROL_PORT, TimerControl.Bits);
+    __outbyte(TIMER_CHANNEL0_DATA_PORT, ReloadValue & 0xFF);
+    __outbyte(TIMER_CHANNEL0_DATA_PORT, (ReloadValue >> 8) & 0xFF);
+
+    IrqHandler->Irq = PitGlobalInterrupt;
+    IrqHandler->Vector = Vector;
+    IrqHandler->Config.Word = 0;
+    IrqHandler->Config.Level = HalpInterruptSourceOverrideTable[TableIndex].LevelSensitive;
+    IrqHandler->Config.Polarity = HalpInterruptSourceOverrideTable[TableIndex].ActiveLow;
+    IrqHandler->Message = 0;
     return STATUS_SUCCESS;
 }
 

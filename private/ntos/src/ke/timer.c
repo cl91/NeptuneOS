@@ -213,7 +213,7 @@ NTSTATUS KiInitTimer()
     RET_ERR(KiEnableTimerInterruptService());
     RET_ERR(PsSetSystemThreadPriority(KiTimerIrqThread, TIMER_INTERRUPT_LEVEL));
     if (!RtcTimeOk || (ClockTime.Weekday < 0) || (ClockTime.Weekday > 6)) {
-	HalVgaPrint("Corrupt CMOS clock: %d-%02d-%02d %02d:%02d:%02d\n\n",
+	HalVgaPrint("Corrupt RTC: %d-%02d-%02d %02d:%02d:%02d\n\n",
 		   ClockTime.Year, ClockTime.Month, ClockTime.Day, ClockTime.Hour,
 		   ClockTime.Minute, ClockTime.Second);
     } else {

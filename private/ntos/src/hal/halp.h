@@ -7,8 +7,8 @@
 /* Conversion functions */
 #define BCD_INT(bcd)				\
     (((bcd & 0xF0) >> 4) * 10 + (bcd & 0x0F))
-#define INT_BCD(int)				\
-    (UCHAR)(((int / 10) << 4) + (int % 10))
+#define INT_BCD(i)				\
+    (UCHAR)(((i / 10) << 4) + (i % 10))
 
 #if defined(SARCH_XBOX)
 /*
@@ -125,11 +125,53 @@ typedef union _SYSTEM_CONTROL_PORT_B_REGISTER {
 #define READ_PORT_UCHAR(PortNum)	__inbyte((ULONG_PTR)(PortNum))
 #define WRITE_PORT_UCHAR(PortNum, Data)	__outbyte((ULONG_PTR)(PortNum), Data)
 
-/* beep.c */
-NTSTATUS HalpInitBeep(VOID);
+#define MAX_NUM_IOAPIC_PINS	256
 
-/* cmos.c */
-NTSTATUS HalpInitCmos(VOID);
+typedef struct _HAL_IO_APIC {
+    ULONG GlobalIrqBase;
+    MWORD AssignedPins[MAX_NUM_IOAPIC_PINS / MWORD_BITS];
+} HAL_IO_APIC, *PHAL_IO_APIC;
+
+extern HAL_IO_APIC HalpIoApicTable[];
+
+FORCEINLINE BOOLEAN HalpIsApicPinAssigned(IN ULONG ApicIndex,
+					  IN ULONG Pin)
+{
+    assert(Pin < MAX_NUM_IOAPIC_PINS);
+    if (Pin >= MAX_NUM_IOAPIC_PINS) {
+	return FALSE;
+    }
+    return GetBit(HalpIoApicTable[ApicIndex].AssignedPins, Pin);
+}
+
+FORCEINLINE VOID HalpSetApicPinAssigned(IN ULONG ApicIndex,
+					IN ULONG Pin)
+{
+    assert(Pin < MAX_NUM_IOAPIC_PINS);
+    assert(!HalpIsApicPinAssigned(ApicIndex, Pin));
+    if (Pin < MAX_NUM_IOAPIC_PINS) {
+	SetBit(HalpIoApicTable[ApicIndex].AssignedPins, Pin);
+    }
+}
+
+typedef struct _HAL_HPET {
+    ULONG64 BaseAddress;  /* Base physical address of the MMIO region */
+    BOOLEAN SystemTimer;  /* TRUE if this HPET is assigned as the system timer */
+    UCHAR NumComparators; /* Total number of comparators of this timer */
+    UCHAR ComparatorId;   /* Comparator ID in this HPET that is assigned as the system timer */
+    ULONG TimerTick;	  /* Timer tick in units of femtoseconds (1e-15s) */
+    ULONG64 Period;	  /* Period in units of femtoseconds (1e-15s) */
+} HAL_HPET, *PHAL_HPET;
+
+typedef struct _HAL_INTERRUPT_SOURCE_OVERRIDE {
+    ULONG IrqSource;
+    ULONG GlobalIrq;
+    BOOLEAN LevelSensitive;
+    BOOLEAN ActiveLow;
+} HAL_INTERRUPT_SOURCE_OVERRIDE, *PHAL_INTERRUPT_SOURCE_OVERRIDE;
+
+/* acpi.c */
+NTSTATUS HalpInitAcpi(VOID);
 
 /* init.c */
 NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count);
@@ -137,12 +179,16 @@ UCHAR __inbyte(IN USHORT PortNum);
 VOID __outbyte(IN USHORT PortNum,
 	       IN UCHAR Data);
 
-#else
+/* hpet.c */
+NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
+			IN ULONG64 Period);
 
-FORCEINLINE NTSTATUS HalpInitBeep() { return STATUS_SUCCESS; }
-FORCEINLINE NTSTATUS HalpInitCmos() { return STATUS_SUCCESS; }
+/* pit.c */
+NTSTATUS HalpInitPit(VOID);
+NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
+		       IN ULONG64 Period);
 
-#endif
+#endif	/* defined(_M_IX86) || defined(_M_AMD64) */
 
 #define NTOS_HAL_TAG	(EX_POOL_TAG('n','h','a','l'))
 
@@ -155,11 +201,11 @@ FORCEINLINE NTSTATUS HalpInitCmos() { return STATUS_SUCCESS; }
     HalpAllocateArrayEx(Var, Type, Size, {})
 #define HalpFreePool(Var) ExFreePoolWithTag(Var, NTOS_HAL_TAG)
 
-/* acpi.c */
-NTSTATUS HalpInitAcpi(VOID);
-
 /* dma.c */
 NTSTATUS HalpInitDma(VOID);
+
+/* rtc.c */
+NTSTATUS HalpInitRtc(VOID);
 
 /* vga.c */
 NTSTATUS HalpInitVga(VOID);

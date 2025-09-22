@@ -2509,9 +2509,6 @@ static inline NTSTATUS HalpInitVgaIoPort()
     RET_ERR(HalpEnableIoPort(VGA_CURSOR_DATA_PORT, 1));
     return STATUS_SUCCESS;
 }
-#else
-FORCEINLINE VOID HalpVgaDisableCursor() {}
-FORCEINLINE NTSTATUS HalpInitVgaIoPort() { return STATUS_SUCCESS; }
 #endif
 
 NTSTATUS HalpInitVga()
@@ -2534,12 +2531,16 @@ NTSTATUS HalpInitVga()
 	HalpVgaCursorMaxRows = HalpFramebuffer.Height / HalpVgaFont->Height;
     } else {
     TryVga:
+#if defined(_M_IX86) || defined(_M_AMD64)
 	RET_ERR(MmMapPhysicalMemory(VGA_VIDEO_PAGE_PADDR,
 				    FRAMEBUFFER_VADDR_START, PAGE_SIZE, 0));
 	RET_ERR(HalpInitVgaIoPort());
 	HalpVgaDisableCursor();
 	HalpVgaCursorMaxColumns = VGA_MODE_COLUMNS;
 	HalpVgaCursorMaxRows = VGA_MODE_ROWS;
+#else
+	return STATUS_NOT_SUPPORTED;
+#endif
     }
     ULONG BufferSize = HalpVgaCursorMaxColumns * HalpVgaCursorMaxRows;
     if (BufferSize > sizeof(HalpVgaConsoleBuffer)) {

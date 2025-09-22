@@ -136,7 +136,7 @@ typedef struct _IRQ_HANDLER {
     union {
 	struct {
 	    ULONG Polarity : 1;	/* High == 0. Low == 1 */
-	    ULONG Level : 1;	/* Edge-triggered = 0. Level-triggered = 1 */
+	    ULONG Level : 1;	/* Edge-triggered = 0. Level-sensitive = 1 */
 	    ULONG Msi : 1;	/* Whether the interrupt is a message interrupt */
 	    ULONG Bus : 8;	/* Only valid if interrupt is a message interrupt */
 	    ULONG Device : 5;	/* Only valid if interrupt is a message interrupt */

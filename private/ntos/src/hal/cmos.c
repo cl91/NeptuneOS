@@ -117,7 +117,7 @@ static ULONG HalpSetCmosData(IN ULONG BusNumber,
     return Length - Len;
 }
 
-NTSTATUS HalpInitCmos()
+NTSTATUS HalpInitRtc()
 {
     RET_ERR(HalpEnableIoPort(CMOS_CONTROL_PORT, 1));
     RET_ERR(HalpEnableIoPort(CMOS_DATA_PORT, 1));
@@ -177,6 +177,11 @@ BOOLEAN HalSetRealTimeClock(IN PTIME_FIELDS Time)
 }
 
 #elif defined(_M_ARM64)
+
+NTSTATUS HalpInitCmos()
+{
+    return STATUS_SUCCESS;
+}
 
 BOOLEAN HalQueryRealTimeClock(OUT PTIME_FIELDS Time)
 {
