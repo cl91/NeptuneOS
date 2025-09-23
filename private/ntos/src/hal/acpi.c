@@ -165,6 +165,28 @@ static VOID HalpAcpiRegisterMadt(IN PACPI_MADT Madt)
 		    Table->IrqSource;
 		HalpInterruptSourceOverrideTable[HalpNumInterruptSourceOverride].GlobalIrq =
 		    Table->GlobalIrq;
+		/*
+		 * Advanced Configuration and Power Interface Specification, Release 6.5
+		 * Section 5.2.12.5 Interrupt Source Override Structure
+		 * Table 5.26: MPS INTI Flags
+		 * ----------------------------------------------------------------
+		 * Local APIC	Bit	Bit	Description
+		 * Flags	Length	Offset
+		 * ----------------------------------------------------------------
+		 * Polarity	2	0	Polarity of the APIC I/O input signals:
+		 *				00 Conforms to the specifications of the
+		 *				   bus (for example, EISA is active-low
+		 *				   for level-triggered interrupts).
+		 *				01 Active high
+		 *				10 Reserved
+		 *				11 Active low
+		 * Trigger	2	2	Trigger mode of the APIC I/O input signals:
+		 * Mode				00 Conforms to specifications of the bus
+		 *				   (For example, ISA is edge-triggered).
+		 *				01 Edge-triggered
+		 *				10 Reserved
+		 *				11 Level-triggered
+		 */
 		HalpInterruptSourceOverrideTable[HalpNumInterruptSourceOverride].LevelSensitive =
 		    Table->Flags & 8;
 		HalpInterruptSourceOverrideTable[HalpNumInterruptSourceOverride].ActiveLow =

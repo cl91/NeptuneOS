@@ -135,7 +135,7 @@ typedef struct _IRQ_HANDLER {
     MWORD Vector;		/* Vector in the translated interrupt resource */
     union {
 	struct {
-	    ULONG Polarity : 1;	/* High == 0. Low == 1 */
+	    ULONG Polarity : 1;	/* Low == 0. High == 1 */
 	    ULONG Level : 1;	/* Edge-triggered = 0. Level-sensitive = 1 */
 	    ULONG Msi : 1;	/* Whether the interrupt is a message interrupt */
 	    ULONG Bus : 8;	/* Only valid if interrupt is a message interrupt */

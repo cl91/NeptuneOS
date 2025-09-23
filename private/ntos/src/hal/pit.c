@@ -165,7 +165,7 @@ NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
     IrqHandler->Vector = Vector;
     IrqHandler->Config.Word = 0;
     IrqHandler->Config.Level = HalpInterruptSourceOverrideTable[TableIndex].LevelSensitive;
-    IrqHandler->Config.Polarity = HalpInterruptSourceOverrideTable[TableIndex].ActiveLow;
+    IrqHandler->Config.Polarity = !HalpInterruptSourceOverrideTable[TableIndex].ActiveLow;
     IrqHandler->Message = 0;
     return STATUS_SUCCESS;
 }

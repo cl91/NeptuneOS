@@ -205,6 +205,8 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    assert(Vector != ULONG_MAX);
 	    IrqHandler->Vector = Vector;
 	    IrqHandler->Config.Word = 0;
+	    /* HPET interrupts are always active-high. */
+	    IrqHandler->Config.Polarity = 1;
 	    IrqHandler->Message = 0;
 	    if (HalpHpetUseMsi) {
 		IrqHandler->Irq = Irq;
