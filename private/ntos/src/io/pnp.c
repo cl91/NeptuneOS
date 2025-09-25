@@ -954,6 +954,34 @@ static NTSTATUS IopAssignResource(IN PIO_RESOURCE_DESCRIPTOR Desc,
 	/* Ask the HAL to give us a free IRQ pin. Note this corresponds to the raw
 	 * IO resource. */
 	Status = STATUS_INSUFFICIENT_RESOURCES;
+
+	/* Check if the device wants message interrupts and assign resources accordingly */
+	if (Desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE) {
+	    LONG MsgCount = Desc->Interrupt.MaximumVector - Desc->Interrupt.MinimumVector + 1;
+	    if (MsgCount <= 0 || MsgCount > USHORT_MAX) {
+		assert(FALSE);
+		Status = STATUS_INVALID_PARAMETER;
+		break;
+	    }
+	    Status = IopAllocateResource(&IopInterruptVectorsInUse, Desc, DevNode,
+					 0, ULONG_MAX, MsgCount, 1, &Start);
+	    if (!NT_SUCCESS(Status)) {
+		break;
+	    }
+	    ULONG_PTR MessageAddress = HalComputeInterruptMessageAddress(0);
+	    ULONG MessageData = HalComputeInterruptMessageData(Start);
+	    Raw->MessageInterrupt.Raw.MessageCount = MsgCount;
+	    Raw->MessageInterrupt.Raw.MessageData = MessageData;
+	    Raw->MessageInterrupt.Raw.MessageAddress = MessageAddress;
+	    Translated->MessageInterrupt.Translated.Level =
+		Translated->MessageInterrupt.Translated.Vector = Start;
+	    /* TODO: Implement interrupt affinity policy */
+	    Translated->MessageInterrupt.Translated.Affinity = (KAFFINITY)-1;
+	    Status = STATUS_SUCCESS;
+	    break;
+	}
+
+	/* Assign regular IRQ lines */
 	for (ULONG i = Desc->Interrupt.MinimumVector; i <= Desc->Interrupt.MaximumVector; i++) {
 	    if (!NT_SUCCESS(HalAllocateIrq(i))) {
 		continue;
@@ -1261,6 +1289,9 @@ filter:
 	Status = IopAssignResourcesForList(DeviceNode, Locals.Res, &List);
 	if (NT_SUCCESS(Status)) {
 	    DbgTrace("Successfully assigned resources for list %d\n", i);
+	    DeviceNode->BusInformation.LegacyBusType = Locals.Res->InterfaceType;
+	    DeviceNode->BusInformation.BusNumber = Locals.Res->BusNumber;
+	    DeviceNode->SlotNumber = Locals.Res->SlotNumber;
 	    break;
 	} else {
 	    DbgTrace("Failed to assign resources for list %d, error 0x%x\n", i, Status);
@@ -1485,10 +1516,8 @@ static NTSTATUS IopDeviceNodeEnumerate(IN ASYNC_STATE AsyncState,
 		   PendingIrp->IoResponseDataSize == sizeof(PNP_BUS_INFORMATION));
 	    if (PendingIrp->IoResponseData &&
 		PendingIrp->IoResponseDataSize == sizeof(PNP_BUS_INFORMATION)) {
-		DeviceNode->BusInformation = PendingIrp->IoResponseData;
-		/* Detach the IO response data from the PENDING_IRP so it won't get freed. */
-		PendingIrp->IoResponseData = NULL;
-		PendingIrp->IoResponseDataSize = 0;
+		memcpy(&DeviceNode->BusInformation, PendingIrp->IoResponseData,
+		       sizeof(PNP_BUS_INFORMATION));
 	    }
 	}
     }
@@ -1906,8 +1935,9 @@ static NTSTATUS IopGetRelatedDevice(IN OUT PIO_PNP_CONTROL_RELATED_DEVICE_DATA D
 
 BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
 				     IN ULONG Vector,
-				     OUT ULONG *Irq,
-				     OUT ULONG *Flags)
+				     OUT PNP_BUS_INFORMATION *BusInfo,
+				     OUT ULONG *SlotNumber,
+				     OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR *pRaw)
 {
     BOOLEAN Available = FALSE;
     RtlIsRangeAvailable(&IopInterruptVectorsInUse, Vector, Vector,
@@ -1939,8 +1969,9 @@ BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
 	    for (ULONG j = 0; j < TranslatedDesc->PartialResourceList.Count; j++) {
 		if (Translated->Type == CmResourceTypeInterrupt &&
 		    Translated->Interrupt.Vector == Vector) {
-		    *Irq = Raw->Interrupt.Vector;
-		    *Flags = Raw->Flags;
+		    *BusInfo = DevNode->BusInformation;
+		    *SlotNumber = DevNode->SlotNumber;
+		    *pRaw = Raw;
 		    return TRUE;
 		}
 		Raw = CmGetNextPartialDescriptor(Raw);
@@ -2278,12 +2309,8 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 
     switch (DeviceProperty) {
     case DevicePropertyBusTypeGuid:
-	if (DeviceNode->BusInformation) {
-	    Data = &DeviceNode->BusInformation->BusTypeGuid;
-	    ResultLength = sizeof(GUID);
-	} else {
-	    return STATUS_OBJECT_NAME_NOT_FOUND;
-	}
+	Data = &DeviceNode->BusInformation.BusTypeGuid;
+	ResultLength = sizeof(GUID);
 	break;
 
     case DevicePropertyLegacyBusType:

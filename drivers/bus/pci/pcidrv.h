@@ -160,14 +160,6 @@ typedef struct _PCI_POWER_STATE {
 } PCI_POWER_STATE, *PPCI_POWER_STATE;
 
 /*
- * Internal PCI Lock Structure
- */
-typedef struct _PCI_LOCK {
-    LONG Atom;
-    BOOLEAN OldIrql;
-} PCI_LOCK, *PPCI_LOCK;
-
-/*
  * Device Extension for a Bus FDO
  */
 typedef struct _PCI_FDO_EXTENSION {
@@ -189,7 +181,6 @@ typedef struct _PCI_FDO_EXTENSION {
     SINGLE_LIST_ENTRY SecondaryExtension;
     LONG ChildWaitWakeCount;
     PPCI_COMMON_CONFIG PreservedConfig;
-    PCI_LOCK Lock;
     struct {
 	BOOLEAN Acquired;
 	BOOLEAN CacheLineSize;
@@ -206,6 +197,11 @@ typedef struct _PCI_FUNCTION_RESOURCES {
     IO_RESOURCE_DESCRIPTOR Limit[PCI_MAX_RESOURCE_COUNT];
     CM_PARTIAL_RESOURCE_DESCRIPTOR Current[PCI_MAX_RESOURCE_COUNT];
 } PCI_FUNCTION_RESOURCES, *PPCI_FUNCTION_RESOURCES;
+
+typedef struct _PCI_INTERRUPT_RESOURCE {
+    CM_PARTIAL_RESOURCE_DESCRIPTOR Raw;
+    CM_PARTIAL_RESOURCE_DESCRIPTOR Translated;
+} PCI_INTERRUPT_RESOURCE, *PPCI_INTERRUPT_RESOURCE;
 
 typedef union _PCI_HEADER_TYPE_DEPENDENT {
     struct {
@@ -225,6 +221,25 @@ typedef union _PCI_HEADER_TYPE_DEPENDENT {
 	UCHAR Spare[4];
     } Type2;
 } PCI_HEADER_TYPE_DEPENDENT, *PPCI_HEADER_TYPE_DEPENDENT;
+
+typedef struct _PCI_MSI_INFO {
+    BOOLEAN ExtendedMessage;	/* TRUE if device supports MSI-X */
+    UCHAR CapabilityOffset;	/* Offset of MSI(X) capability in config space */
+    union {
+	struct {
+	    PCI_MSI_MESSAGE_CONTROL MessageControl;
+	    LARGE_INTEGER MessageAddress;
+	    USHORT MessageData;
+	    ULONG MaskBits;
+	    ULONG PendingBits;
+	} MessageInfo;
+	struct {
+	    PCI_MSIX_MESSAGE_CONTROL MessageControl;
+	    ULONG MessageTable;
+	    ULONG PendingBitArray;
+	} ExtendedMessageInfo;
+    };
+} PCI_MSI_INFO, *PPCI_MSI_INFO;
 
 typedef struct _PCI_PDO_EXTENSION {
     PVOID Next;
@@ -248,9 +263,6 @@ typedef struct _PCI_PDO_EXTENSION {
     UCHAR SubClass;
     UCHAR BaseClass;
     UCHAR AdditionalResourceCount;
-    UCHAR AdjustedInterruptLine;
-    UCHAR InterruptPin;
-    UCHAR RawInterruptLine;
     UCHAR CapabilitiesPtr;
     UCHAR SavedLatencyTimer;
     UCHAR SavedCacheLineSize;
@@ -259,9 +271,6 @@ typedef struct _PCI_PDO_EXTENSION {
     BOOLEAN ReportedMissing;
     UCHAR ExpectedWritebackFailure;
     BOOLEAN NoTouchPmeEnable;
-    BOOLEAN LegacyDriver;
-    BOOLEAN UpdateHardware;
-    BOOLEAN MovedDevice;
     BOOLEAN DisablePowerDown;
     BOOLEAN NeedsHotPlugConfiguration;
     BOOLEAN IDEInNativeMode;
@@ -272,12 +281,14 @@ typedef struct _PCI_PDO_EXTENSION {
     PCI_HARDWARE_INTERFACE InterfaceType;
     PCI_POWER_STATE PowerState;
     PCI_HEADER_TYPE_DEPENDENT Dependent;
+    PCI_MSI_INFO MsiInfo;
     ULONGLONG HackFlags;
-    PCI_FUNCTION_RESOURCES *Resources;
-    PCI_FDO_EXTENSION *BridgeFdoExtension;
+    ULONG InterruptResourceCount;
+    PPCI_INTERRUPT_RESOURCE InterruptResources;
+    PPCI_FUNCTION_RESOURCES Resources;
+    PPCI_FDO_EXTENSION BridgeFdoExtension;
     struct _PCI_PDO_EXTENSION *NextBridge;
     struct _PCI_PDO_EXTENSION *NextHashEntry;
-    PCI_LOCK Lock;
     PCI_PMC PowerCapabilities;
     UCHAR TargetAgpCapabilityId;
     USHORT CommandEnables;
@@ -391,22 +402,6 @@ typedef struct _PCI_IPI_CONTEXT {
 } PCI_IPI_CONTEXT, *PPCI_IPI_CONTEXT;
 
 /*
- * PCI Legacy Device Location Cache
- */
-typedef struct _PCI_LEGACY_DEVICE {
-    struct _PCI_LEGACY_DEVICE *Next;
-    PDEVICE_OBJECT DeviceObject;
-    ULONG BusNumber;
-    ULONG SlotNumber;
-    UCHAR InterruptLine;
-    UCHAR InterruptPin;
-    UCHAR BaseClass;
-    UCHAR SubClass;
-    PDEVICE_OBJECT PhysicalDeviceObject;
-    PPCI_PDO_EXTENSION PdoExtension;
-} PCI_LEGACY_DEVICE, *PPCI_LEGACY_DEVICE;
-
-/*
  * Device private data types in the IO resource descriptor
  */
 typedef enum _PCI_DEVICE_PRIVATE_TYPE {
@@ -466,8 +461,6 @@ VOID PciPdoDestroy(IN PDEVICE_OBJECT Pdo);
  * Utility Routines
  */
 BOOLEAN PciStringToUSHORT(IN PWCHAR String, OUT PUSHORT Value);
-
-BOOLEAN PciIsDatacenter(VOID);
 
 NTSTATUS PciBuildDefaultExclusionLists(VOID);
 
@@ -551,8 +544,6 @@ VOID PciWriteDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer
 VOID PciReadDeviceConfig(IN PPCI_PDO_EXTENSION DeviceExtension, IN PVOID Buffer,
 			 IN ULONG Offset, IN ULONG Length);
 
-UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension);
-
 /*
  * State Machine Logic Transition Routines
  */
@@ -611,10 +602,12 @@ NTSTATUS PciQueryEjectionRelations(IN PPCI_PDO_EXTENSION PdoExtension,
 NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
 			      IN OUT PIO_RESOURCE_REQUIREMENTS_LIST *RequirementsList);
 
-BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-				     IN PCM_RESOURCE_LIST ResourceList);
+NTSTATUS PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				      IN PCM_RESOURCE_LIST ResourceList,
+				      IN PCM_RESOURCE_LIST TranslatedList);
 
-NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset);
+NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
+			 IN BOOLEAN DoReset);
 
 /*
  * Identification Functions
@@ -704,7 +697,5 @@ extern PDRIVER_OBJECT PciDriverObject;
 extern PPCI_HACK_ENTRY PciHackTable;
 extern BOOLEAN PciLockDeviceResources;
 extern BOOLEAN PciAssignBusNumbers;
-extern PPCI_IRQ_ROUTING_TABLE PciIrqRoutingTable;
-extern BOOLEAN PciRunningDatacenter;
 
 #endif /* _PCIDRV_H_ */

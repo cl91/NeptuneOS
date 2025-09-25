@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ntddk.h>
+#include <pshpack1.h>
 
 /*
  * PCI/PCIE data types and routines
@@ -163,6 +164,57 @@ typedef struct _PCI_CAPABILITIES_HEADER {
     UCHAR CapabilityID;
     UCHAR Next;
 } PCI_CAPABILITIES_HEADER, *PPCI_CAPABILITIES_HEADER;
+
+typedef struct _PCI_MSI_MESSAGE_CONTROL {
+    USHORT Enable : 1;
+    USHORT MaxMsgCountShift : 3;
+    USHORT EnabledMsgCountShift : 3;
+    USHORT Is64Bit : 1;
+    USHORT PerVectorMasking : 1;
+    USHORT Reserved : 7;
+} PCI_MSI_MESSAGE_CONTROL, *PPCI_MSI_MESSAGE_CONTROL;
+
+typedef struct _PCI_MSI_CAPABILITY {
+    PCI_CAPABILITIES_HEADER Header;
+    PCI_MSI_MESSAGE_CONTROL MessageControl;
+    ULONG MessageAddress;
+    union {
+	struct {
+	    ULONG MessageUpperAddress;
+	    USHORT MessageData;
+	    USHORT Reserved;
+	    ULONG MaskBits;
+	    ULONG PendingBits;
+	} Data64;
+	struct {
+	    USHORT MessageData;
+	    ULONG Unused;
+	} Data32;
+    };	/* This union depends on Is64Bit in MessageControl */
+} PCI_MSI_CAPABILITY, *PPCI_PCI_CAPABILITY;
+
+typedef struct _PCI_MSIX_MESSAGE_CONTROL {
+    USHORT TableSize : 10;
+    USHORT Reserved : 3;
+    USHORT FunctionMask : 1;
+    USHORT Enable : 1;
+} PCI_MSIX_MESSAGE_CONTROL, *PPCI_MSIX_MESSAGE_CONTROL;
+
+#define PCI_MSIX_MESSAGE_TABLE_OFFSET_MASK	(~0x7UL)
+#define PCI_MSIX_MESSAGE_TABLE_BAR_INDEX_MASK	(0x7UL)
+
+typedef struct _PCI_MSIX_CAPABILITY {
+    PCI_CAPABILITIES_HEADER Header;
+    PCI_MSIX_MESSAGE_CONTROL MessageControl;
+    ULONG MessageTable;
+    ULONG PendingBitArray;
+} PCI_MSIX_CAPABILITY, *PPCI_MSIX_CAPABILITY;
+
+typedef struct _PCI_MSIX_TABLE_ENTRY {
+    LARGE_INTEGER MessageAddress;
+    ULONG MessageData;
+    ULONG VectorControl;       /* Vector is masked if bit 0 is set. */
+} PCI_MSIX_TABLE_ENTRY, *PPCI_MSIX_TABLE_ENTRY;
 
 typedef struct _PCI_AGP_CAPABILITY {
     PCI_CAPABILITIES_HEADER Header;
@@ -1015,38 +1067,6 @@ typedef struct _PCI_EXPRESS_SRIOV_CAPABILITY {
 #define PCI_ENABLE_BRIDGE_VGA_16BIT 0x0010
 
 //
-// PCI IRQ Routing Table in BIOS/Registry (Signature: PIR$)
-//
-#include <pshpack1.h>
-typedef struct _PIN_INFO {
-    UCHAR Link;
-    USHORT InterruptMap;
-} PIN_INFO, *PPIN_INFO;
-
-typedef struct _SLOT_INFO {
-    UCHAR BusNumber;
-    UCHAR DeviceNumber;
-    PIN_INFO PinInfo[4];
-    UCHAR SlotNumber;
-    UCHAR Reserved;
-} SLOT_INFO, *PSLOT_INFO;
-
-typedef struct _PCI_IRQ_ROUTING_TABLE {
-    ULONG Signature;
-    USHORT Version;
-    USHORT TableSize;
-    UCHAR RouterBus;
-    UCHAR RouterDevFunc;
-    USHORT ExclusiveIRQs;
-    ULONG CompatibleRouter;
-    ULONG MiniportData;
-    UCHAR Reserved[11];
-    UCHAR Checksum;
-    SLOT_INFO Slot[ANYSIZE_ARRAY];
-} PCI_IRQ_ROUTING_TABLE, *PPCI_IRQ_ROUTING_TABLE;
-#include <poppack.h>
-
-//
 // PCI Registry Information
 //
 typedef struct _PCI_REGISTRY_INFO {
@@ -1068,6 +1088,8 @@ typedef struct _PCI_CARD_DESCRIPTOR {
     USHORT SubsystemID;
     USHORT Reserved;
 } PCI_CARD_DESCRIPTOR, *PPCI_CARD_DESCRIPTOR;
+
+#include <poppack.h>
 
 /*
  * Helper functions to read or write the PCI config space

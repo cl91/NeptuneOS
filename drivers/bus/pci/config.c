@@ -16,22 +16,6 @@ BOOLEAN PciAssignBusNumbers;
 
 /* FUNCTIONS ******************************************************************/
 
-UCHAR PciGetAdjustedInterruptLine(IN PPCI_PDO_EXTENSION PdoExtension)
-{
-    UCHAR InterruptLine = 0;
-
-    /* Does the device have an interrupt pin? */
-    if (PdoExtension->InterruptPin) {
-	/* Find the associated line on the parent bus */
-	PciReadDeviceConfig(PdoExtension, &InterruptLine,
-			    FIELD_OFFSET(PCI_COMMON_HEADER, Type0.InterruptLine),
-			    sizeof(UCHAR));
-    }
-
-    /* Either keep the original interrupt line, or the one on the master bus */
-    return InterruptLine ? PdoExtension->RawInterruptLine : InterruptLine;
-}
-
 #define CFG_SHIFT	12
 
 static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,

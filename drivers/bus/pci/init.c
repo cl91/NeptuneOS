@@ -12,154 +12,12 @@
 
 /* GLOBALS ********************************************************************/
 
-BOOLEAN PciRunningDatacenter;
 PDRIVER_OBJECT PciDriverObject;
 BOOLEAN PciLockDeviceResources;
 ULONG PciSystemWideHackFlags;
-PPCI_IRQ_ROUTING_TABLE PciIrqRoutingTable;
 PPCI_HACK_ENTRY PciHackTable;
 
 /* FUNCTIONS ******************************************************************/
-
-static NTSTATUS
-PciGetIrqRoutingTableFromRegistry(OUT PPCI_IRQ_ROUTING_TABLE *PciRoutingTable)
-{
-    BOOLEAN Result;
-    NTSTATUS Status;
-    HANDLE KeyHandle = NULL, SubKey = NULL;
-    ULONG NumberOfBytes, i, Length;
-    PKEY_FULL_INFORMATION FullInfo = NULL;
-    PKEY_BASIC_INFORMATION KeyInfo = NULL;
-    PKEY_VALUE_PARTIAL_INFORMATION ValueInfo = NULL;
-    UNICODE_STRING ValueName;
-    struct {
-	CM_FULL_RESOURCE_DESCRIPTOR Descriptor;
-    } *Package = NULL;
-
-    /* Open the BIOS key */
-    Result = PciOpenKey(L"\\Registry\\Machine\\HARDWARE\\DESCRIPTION\\"
-			L"System\\MultiFunctionAdapter",
-			NULL, KEY_QUERY_VALUE, &KeyHandle, &Status);
-    if (!Result)
-	goto out;
-
-    /* Query how much space should be allocated for the key information */
-    Status = NtQueryKey(KeyHandle, KeyFullInformation, NULL, sizeof(ULONG),
-			&NumberOfBytes);
-    if (Status != STATUS_BUFFER_TOO_SMALL)
-	goto out;
-
-    /* Allocate the space required */
-    Status = STATUS_INSUFFICIENT_RESOURCES;
-    FullInfo = ExAllocatePoolWithTag(NonPagedPool, NumberOfBytes, PCI_POOL_TAG);
-    if (!FullInfo)
-	goto out;
-
-    /* Now query the key information that's needed */
-    Status = NtQueryKey(KeyHandle, KeyFullInformation, FullInfo, NumberOfBytes,
-			&NumberOfBytes);
-    if (!NT_SUCCESS(Status))
-	goto out;
-
-    /* Allocate enough space to hold the value information plus the name */
-    Status = STATUS_INSUFFICIENT_RESOURCES;
-    Length = FullInfo->MaxNameLen + 26;
-    KeyInfo = ExAllocatePoolWithTag(NonPagedPool, Length, PCI_POOL_TAG);
-    if (!KeyInfo)
-	goto out;
-
-    /* Allocate the value information and name we expect to find */
-    ValueInfo = ExAllocatePoolWithTag(NonPagedPool,
-				      sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
-				      sizeof(L"PCI BIOS"),
-				      PCI_POOL_TAG);
-    if (!ValueInfo)
-	goto out;
-
-    /* Loop each sub-key */
-    i = 0;
-    while (TRUE) {
-	/* Query each sub-key */
-	Status = NtEnumerateKey(KeyHandle, i++, KeyBasicInformation, KeyInfo, Length,
-				&NumberOfBytes);
-	if (Status == STATUS_NO_MORE_ENTRIES)
-	    break;
-
-	/* Null-terminate the keyname, because the kernel does not */
-	KeyInfo->Name[KeyInfo->NameLength / sizeof(WCHAR)] = UNICODE_NULL;
-
-	/* Open this subkey */
-	Result = PciOpenKey(KeyInfo->Name, KeyHandle, KEY_QUERY_VALUE, &SubKey,
-			    &Status);
-	if (Result) {
-	    /* Query the identifier value for this subkey */
-	    RtlInitUnicodeString(&ValueName, L"Identifier");
-	    Status = NtQueryValueKey(SubKey, &ValueName, KeyValuePartialInformation,
-				     ValueInfo,
-				     sizeof(KEY_VALUE_PARTIAL_INFORMATION) +
-				     sizeof(L"PCI BIOS"),
-				     &NumberOfBytes);
-	    if (NT_SUCCESS(Status)) {
-		/* Check if this is the PCI BIOS subkey */
-		if (!wcsncmp((PWCHAR)ValueInfo->Data, L"PCI BIOS",
-			     ValueInfo->DataLength)) {
-		    /* It is, proceed to query the PCI IRQ routing table */
-		    Status = PciGetRegistryValue(L"Configuration Data",
-						 L"RealModeIrqRoutingTable\\0",
-						 SubKey, REG_FULL_RESOURCE_DESCRIPTOR,
-						 (PVOID *)&Package, &NumberOfBytes);
-		    NtClose(SubKey);
-		    break;
-		}
-	    }
-
-	    /* Close the subkey and try the next one */
-	    NtClose(SubKey);
-	}
-    }
-
-    /* Check if we got here because the routing table was found */
-    if (!NT_SUCCESS(Status))
-	goto out;
-
-    /* Check if a descriptor was found */
-    if (!Package)
-	goto out;
-
-    /* Make sure the buffer is large enough to hold the table */
-    PPCI_IRQ_ROUTING_TABLE Table = (PVOID)(Package + 1);
-    if ((NumberOfBytes < sizeof(*Package)) ||
-	(Table->TableSize > (NumberOfBytes - sizeof(CM_FULL_RESOURCE_DESCRIPTOR)))) {
-	/* Invalid package size */
-	Status = STATUS_UNSUCCESSFUL;
-	goto out;
-    }
-
-    /* Allocate space for the table */
-    Status = STATUS_INSUFFICIENT_RESOURCES;
-    *PciRoutingTable = ExAllocatePoolWithTag(NonPagedPool, NumberOfBytes, PCI_POOL_TAG);
-    if (!*PciRoutingTable)
-	goto out;
-
-    /* Copy the registry data */
-    RtlCopyMemory(*PciRoutingTable, Table,
-		  NumberOfBytes - sizeof(CM_FULL_RESOURCE_DESCRIPTOR));
-    Status = STATUS_SUCCESS;
-
-    /* Close any opened keys, free temporary allocations, and return status */
-out:
-    if (Package)
-	ExFreePoolWithTag(Package, 0);
-    if (ValueInfo)
-	ExFreePoolWithTag(ValueInfo, 0);
-    if (KeyInfo)
-	ExFreePoolWithTag(KeyInfo, 0);
-    if (FullInfo)
-	ExFreePoolWithTag(FullInfo, 0);
-    if (KeyHandle)
-	NtClose(KeyHandle);
-    return Status;
-}
 
 static NTSTATUS PciBuildHackTable(IN HANDLE KeyHandle)
 {
@@ -459,14 +317,6 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     Status = PciBuildDefaultExclusionLists();
     if (!NT_SUCCESS(Status))
 	goto out;
-
-    /* Read the PCI IRQ Routing Table that the loader put in the registry */
-    PciGetIrqRoutingTableFromRegistry(&PciIrqRoutingTable);
-
-    /* Check if this is a Datacenter SKU, which impacts IRQ alignment */
-    PciRunningDatacenter = PciIsDatacenter();
-    if (PciRunningDatacenter)
-	DPRINT1("PCI running on datacenter build\n");
 
     Status = STATUS_SUCCESS;
 

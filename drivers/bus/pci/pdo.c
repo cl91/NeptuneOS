@@ -60,19 +60,13 @@ static NTSTATUS PciPdoIrpQueryPower(IN PIRP Irp,
 }
 
 static NTSTATUS PciPdoStartDevice(IN PIRP Irp,
-				  IN PIO_STACK_LOCATION IoStackLocation,
+				  IN PIO_STACK_LOCATION IoStack,
 				  IN PPCI_PDO_EXTENSION DeviceExtension)
 {
-    NTSTATUS Status;
-    BOOLEAN Changed, DoReset;
-    POWER_STATE PowerState;
-
     UNREFERENCED_PARAMETER(Irp);
 
-    DoReset = FALSE;
-
     /* Begin entering the start phase */
-    Status = PciBeginStateTransition((PVOID)DeviceExtension, PciStarted);
+    NTSTATUS Status = PciBeginStateTransition((PVOID)DeviceExtension, PciStarted);
     if (!NT_SUCCESS(Status))
 	return Status;
 
@@ -96,17 +90,15 @@ static NTSTATUS PciPdoStartDevice(IN PIRP Irp,
     DeviceExtension->CommandEnables |= PCI_ENABLE_BUS_MASTER;
 
     /* Check if the OS assigned resources differ from the PCI configuration */
-    Changed = PciComputeNewCurrentSettings(
-	DeviceExtension, IoStackLocation->Parameters.StartDevice.AllocatedResources);
-    if (Changed) {
-	/* Remember this for later */
-	DeviceExtension->MovedDevice = TRUE;
-    } else {
-	/* All good */
-	DPRINT1("PCI - START not changing resource settings.\n");
+    Status = PciComputeNewCurrentSettings(DeviceExtension,
+					  IoStack->Parameters.StartDevice.AllocatedResources,
+					  IoStack->Parameters.StartDevice.AllocatedResourcesTranslated);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
     }
 
     /* Check if the device was sleeping */
+    BOOLEAN DoReset = FALSE;
     if (DeviceExtension->PowerState.CurrentDeviceState != PowerDeviceD0) {
 	/* Power it up */
 	Status = PciSetPowerManagedDevicePowerState(DeviceExtension, PowerDeviceD0,
@@ -118,7 +110,9 @@ static NTSTATUS PciPdoStartDevice(IN PIRP Irp,
 	}
 
 	/* Tell the power manager that the device is powered up */
-	PowerState.DeviceState = PowerDeviceD0;
+	POWER_STATE PowerState = {
+	    .DeviceState = PowerDeviceD0
+	};
 	PoSetPowerState(DeviceExtension->PhysicalDeviceObject, DevicePowerState,
 			PowerState);
 
@@ -131,6 +125,7 @@ static NTSTATUS PciPdoStartDevice(IN PIRP Irp,
 
     /* Update resource information now that the device is powered up and active */
     Status = PciSetResources(DeviceExtension, DoReset);
+out:
     if (!NT_SUCCESS(Status)) {
 	/* That failed, so cancel the transition */
 	PciCancelStateTransition((PVOID)DeviceExtension, PciStarted);

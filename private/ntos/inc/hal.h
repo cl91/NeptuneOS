@@ -46,6 +46,8 @@ NTSTATUS HalGetIrqCap(IN PIRQ_HANDLER IrqHandler,
 NTSTATUS HalEnableSystemTimer(OUT PIRQ_HANDLER IrqHandler,
 			      IN ULONG64 Period);
 NTSTATUS HalMaskUnusableInterrupts(VOID);
+ULONG_PTR HalComputeInterruptMessageAddress(IN ULONG ProcessorId);
+ULONG HalComputeInterruptMessageData(IN ULONG Vector);
 
 /* cmos.c */
 BOOLEAN HalQueryRealTimeClock(OUT PTIME_FIELDS Time);

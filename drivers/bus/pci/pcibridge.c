@@ -186,7 +186,6 @@ static BOOLEAN PciBridgeIsSubtractiveDecode(IN PPCI_CONFIGURATOR_CONTEXT Context
 
     /* If we found subtractive decode, we'll need a resource update later */
     DPRINT1("PCI : Subtractive decode on 0x%x\n", Current->Type1.SecondaryBus);
-    PdoExtension->UpdateHardware = TRUE;
     return TRUE;
 }
 

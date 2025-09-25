@@ -351,7 +351,8 @@ typedef struct _DEVICE_NODE {
     PIO_DRIVER_OBJECT *LowerFilterDrivers;
     PCM_RESOURCE_LIST RawResources;
     PCM_RESOURCE_LIST TranslatedResources;
-    PPNP_BUS_INFORMATION BusInformation;
+    PNP_BUS_INFORMATION BusInformation;
+    ULONG SlotNumber;
 } DEVICE_NODE, *PDEVICE_NODE;
 
 /*
@@ -611,8 +612,9 @@ VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb);
 /* pnp.c */
 BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
 				     IN ULONG Vector,
-				     OUT ULONG *Irq,
-				     OUT ULONG *Flags);
+				     OUT PNP_BUS_INFORMATION *BusInfo,
+				     OUT ULONG *SlotNumber,
+				     OUT PCM_PARTIAL_RESOURCE_DESCRIPTOR *pRaw);
 
 /* volume.c */
 NTSTATUS IopInitFileSystem();

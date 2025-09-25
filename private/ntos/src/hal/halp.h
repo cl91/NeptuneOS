@@ -126,6 +126,11 @@ typedef union _SYSTEM_CONTROL_PORT_B_REGISTER {
 #define READ_PORT_UCHAR(PortNum)	__inbyte((ULONG_PTR)(PortNum))
 #define WRITE_PORT_UCHAR(PortNum, Data)	__outbyte((ULONG_PTR)(PortNum), Data)
 
+/* On an i386/amd64 system, the seL4 kernel uses the first 32 interrupt vectors
+ * for internal purposes (eg. invalid instruction faults, page faults, etc).
+ * The start of the device IRQ vectors is 0x20. */
+#define IRQ0_CPU_VECTOR	0x20
+
 #define MAX_NUM_IOAPIC_PINS	256
 
 typedef struct _HAL_IO_APIC {

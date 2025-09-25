@@ -858,8 +858,8 @@ typedef struct _CM_PARTIAL_RESOURCE_DESCRIPTOR {
 		struct {
 		    USHORT Reserved;
 		    USHORT MessageCount;
-		    ULONG Vector;
-		    KAFFINITY Affinity;
+		    ULONG MessageData;
+		    ULONG_PTR MessageAddress;
 		} Raw;
 		struct {
 		    ULONG Level;

@@ -34,6 +34,13 @@ typedef struct _ACPI_MADT {
     ACPI_SUBTABLE_HEADER Subtables[];
 } ACPI_MADT, *PACPI_MADT;
 
+typedef struct _ACPI_MADT_LOCAL_APIC {
+    ACPI_SUBTABLE_HEADER Header;
+    UCHAR ProcessorId;		/* ACPI Processor Id */
+    UCHAR Id;			/* Local APIC Id */
+    ULONG Flags;		/* Bit 0 = Processor Enabled. Bit 1 = Online Capable. */
+} ACPI_MADT_LOCAL_APIC, *PACPI_MADT_LOCAL_APIC;
+
 typedef struct _ACPI_MADT_IO_APIC {
     ACPI_SUBTABLE_HEADER Header;
     UCHAR Id;			/* IO APIC Id */
@@ -50,8 +57,18 @@ typedef struct _ACPI_MADT_INTERRUPT_SOURCE_OVERRIDE {
     USHORT Flags;
 } ACPI_MADT_INTERRUPT_SOURCE_OVERRIDE, *PACPI_MADT_INTERRUPT_SOURCE_OVERRIDE;
 
+typedef struct _ACPI_MADT_LOCAL_X2APIC {
+    ACPI_SUBTABLE_HEADER Header;
+    USHORT Reserved;
+    ULONG Id;			/* Processor's local x2APIC Id */
+    ULONG Flags;		/* Bit 0 = Processor Enabled. Bit 1 = Online Capable. */
+    ULONG ProcessorId;		/* ACPI Processor Id */
+} ACPI_MADT_LOCAL_X2APIC, *PACPI_MADT_LOCAL_X2APIC;
+
+#define ACPI_MADT_TYPE_LOCAL_APIC 0
 #define ACPI_MADT_TYPE_IO_APIC 1
 #define ACPI_MADT_TYPE_INTERRUPT_SOURCE_OVERRIDE 2
+#define ACPI_MADT_TYPE_LOCAL_X2APIC 9
 
 typedef struct _ACPI_GENERIC_ADDRESS {
     UCHAR SpaceId;	    /* Address space (memory or IO port) */
@@ -85,8 +102,15 @@ typedef struct _ACPI_HPET_TABLE {
 
 #define MAX_NUM_INTERRUPT_SOURCE_OVERRIDE	NUM_PIC_IRQS
 
+typedef struct _HAL_LOCAL_APIC {
+    ULONG ApicId;
+    ULONG AcpiId;
+} HAL_LOCAL_APIC, *PHAL_LOCAL_APIC;
+
 static ULONG HalpNumIoApic;
 HAL_IO_APIC HalpIoApicTable[CONFIG_MAX_NUM_IOAPIC];
+static ULONG HalpNumProcessors;
+static HAL_LOCAL_APIC HalpLocalApicTable[CONFIG_MAX_NUM_NODES];
 ULONG HalpNumHpetTables;
 HAL_HPET HalpHpetTable[MAX_NUM_HPET_TABLES];
 ULONG HalpNumInterruptSourceOverride;
@@ -151,6 +175,16 @@ static VOID HalpAcpiRegisterMadt(IN PACPI_MADT Madt)
 	PACPI_SUBTABLE_HEADER Subtable = (PVOID)((PCHAR)Madt + LengthProcessed);
 	LengthProcessed += Subtable->Length;
 	switch (Subtable->Type) {
+	case ACPI_MADT_TYPE_LOCAL_APIC:
+	{
+	    PACPI_MADT_LOCAL_APIC LocalApic = (PACPI_MADT_LOCAL_APIC)Subtable;
+	    if (LocalApic->Flags == 1) {
+		HalpLocalApicTable[HalpNumProcessors].ApicId = LocalApic->Id;
+		HalpLocalApicTable[HalpNumProcessors].AcpiId = LocalApic->ProcessorId;
+		HalpNumProcessors++;
+	    }
+	    break;
+	}
 	case ACPI_MADT_TYPE_IO_APIC:
 	    if (HalpNumIoApic < CONFIG_MAX_NUM_IOAPIC) {
 		HalpIoApicTable[HalpNumIoApic].GlobalIrqBase =
@@ -194,6 +228,16 @@ static VOID HalpAcpiRegisterMadt(IN PACPI_MADT Madt)
 		HalpNumInterruptSourceOverride++;
 	    }
 	    break;
+	case ACPI_MADT_TYPE_LOCAL_X2APIC:
+	{
+	    PACPI_MADT_LOCAL_X2APIC LocalApic = (PACPI_MADT_LOCAL_X2APIC)Subtable;
+	    if (LocalApic->Flags == 1) {
+		HalpLocalApicTable[HalpNumProcessors].ApicId = LocalApic->Id;
+		HalpLocalApicTable[HalpNumProcessors].AcpiId = LocalApic->ProcessorId;
+		HalpNumProcessors++;
+	    }
+	    break;
+	}
 	default:
 	    continue;
 	}
@@ -387,6 +431,21 @@ NTSTATUS HalMaskUnusableInterrupts(VOID)
 	IoMaskInterruptVector(i);
     }
     return STATUS_SUCCESS;
+}
+
+ULONG_PTR HalComputeInterruptMessageAddress(IN ULONG ProcessorId)
+{
+    assert(HalpNumProcessors);
+    if (ProcessorId >= HalpNumProcessors) {
+	assert(FALSE);
+	ProcessorId = 0;
+    }
+    return 0xFEE00000ULL | (HalpLocalApicTable[ProcessorId].ApicId << 12);
+}
+
+ULONG HalComputeInterruptMessageData(IN ULONG Vector)
+{
+    return Vector + IRQ0_CPU_VECTOR;
 }
 
 /* Inform the caller of whether we got an RSDT or an XSDT. If we are running

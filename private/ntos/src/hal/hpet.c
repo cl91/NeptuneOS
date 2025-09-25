@@ -95,11 +95,6 @@ enum {
     FIXED = 20
 };
 
-/* On an i386/amd64 system, the seL4 kernel uses the first 32 interrupt vectors
- * for internal purposes (eg. invalid instruction faults, page faults, etc).
- * The start of the device IRQ vectors is 0x20. */
-#define IRQ0_CPU_VECTOR	0x20
-
 static BOOLEAN HalpHpetUseMsi;	/* Set this to TRUE to enable MSI for HPET */
 extern ULONG HalpNumHpetTables;
 extern HAL_HPET HalpHpetTable[];

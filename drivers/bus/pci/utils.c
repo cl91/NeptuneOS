@@ -94,49 +94,6 @@ BOOLEAN PciStringToUSHORT(IN PWCHAR String, OUT PUSHORT Value)
     }
 }
 
-BOOLEAN PciIsSuiteVersion(IN USHORT SuiteMask)
-{
-    ULONGLONG Mask = 0;
-    RTL_OSVERSIONINFOEX VersionInfo;
-
-    /* Initialize the version information */
-    RtlZeroMemory(&VersionInfo, sizeof(RTL_OSVERSIONINFOEX));
-    VersionInfo.dwOSVersionInfoSize = sizeof(RTL_OSVERSIONINFOEX);
-    VersionInfo.wSuiteMask = SuiteMask;
-
-    /* Set the comparison mask and return if the passed suite mask matches */
-    VER_SET_CONDITION(Mask, VER_SUITENAME, VER_AND);
-    return NT_SUCCESS(RtlVerifyVersionInfo(&VersionInfo, VER_SUITENAME, Mask));
-}
-
-BOOLEAN PciIsDatacenter(VOID)
-{
-    BOOLEAN Result;
-    PVOID Value;
-    ULONG ResultLength;
-    NTSTATUS Status;
-
-    /* Assume this isn't Datacenter */
-    Result = FALSE;
-
-    /* First, try opening the setup key */
-    Status = PciGetRegistryValue(L"",
-				 L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\Services"
-				 L"\\setupdd",
-				 0, REG_BINARY, &Value, &ResultLength);
-    if (!NT_SUCCESS(Status)) {
-	/* This is not an in-progress Setup boot, so query the suite version */
-	Result = PciIsSuiteVersion(VER_SUITE_DATACENTER);
-    } else {
-	/* This scenario shouldn't happen yet, since SetupDD isn't used */
-	UNIMPLEMENTED_FATAL("ReactOS doesn't use SetupDD for its installation program. "
-			    "Therefore this scenario must not happen!\n");
-    }
-
-    /* Return if this is Datacenter or not */
-    return Result;
-}
-
 BOOLEAN PciOpenKey(IN PWCHAR KeyName, IN HANDLE RootKey,
 		   IN ACCESS_MASK DesiredAccess, OUT PHANDLE KeyHandle,
 		   OUT PNTSTATUS KeyStatus)
@@ -822,8 +779,9 @@ ULONG PciGetLengthFromBar(IN ULONG Bar)
     return Length;
 }
 
-BOOLEAN PciCreateIoDescriptorFromBarLimit(
-    PIO_RESOURCE_DESCRIPTOR ResourceDescriptor, IN PULONG BarArray, IN BOOLEAN Rom)
+BOOLEAN PciCreateIoDescriptorFromBarLimit(PIO_RESOURCE_DESCRIPTOR ResourceDescriptor,
+					  IN PULONG BarArray,
+					  IN BOOLEAN Rom)
 {
     ULONG CurrentBar, BarLength, BarMask;
     BOOLEAN Is64BitBar = FALSE;
@@ -959,43 +917,10 @@ NTSTATUS PciQueryBusInformation(IN PPCI_PDO_EXTENSION PdoExtension,
 static NTSTATUS PciDetermineSlotNumber(IN PPCI_PDO_EXTENSION PdoExtension,
 				       OUT PULONG SlotNumber)
 {
-    PPCI_FDO_EXTENSION ParentExtension;
-    PSLOT_INFO SlotInfo;
-
-    /* Check if a $PIR from the BIOS is used (legacy IRQ routing) */
-    ParentExtension = PdoExtension->ParentFdoExtension;
-    DPRINT1("Slot lookup for %d.%u.%u\n", ParentExtension ? ParentExtension->BaseBus : -1,
-	    PdoExtension->Slot.Bits.DeviceNumber,
-	    PdoExtension->Slot.Bits.FunctionNumber);
-    if (PciIrqRoutingTable && ParentExtension) {
-	/* Read every slot information entry */
-	SlotInfo = &PciIrqRoutingTable->Slot[0];
-	DPRINT1("PIR$ %p is %x bytes, slot 0 is at: %p\n", PciIrqRoutingTable,
-		PciIrqRoutingTable->TableSize, SlotInfo);
-	while (SlotInfo < (PSLOT_INFO)((ULONG_PTR)PciIrqRoutingTable +
-				       PciIrqRoutingTable->TableSize)) {
-	    DPRINT1("Slot Info: %u.%u->#%u\n", SlotInfo->BusNumber,
-		    SlotInfo->DeviceNumber, SlotInfo->SlotNumber);
-
-	    /* Check if this slot information matches the PDO being queried */
-	    if (ParentExtension->BaseBus == SlotInfo->BusNumber &&
-		PdoExtension->Slot.Bits.DeviceNumber == (SlotInfo->DeviceNumber >> 3) &&
-		SlotInfo->SlotNumber) {
-		/* We found it, return it and return success */
-		*SlotNumber = SlotInfo->SlotNumber;
-		return STATUS_SUCCESS;
-	    }
-
-	    /* Try the next slot */
-	    SlotInfo++;
-	}
-    }
-
-    /* Since there is generally no universal mapping between the slot number
-     * (which we take to be the UI number) and the PCI device, if the BIOS
-     * didn't tell us about the slot number, there is nothing we can do other
-     * than returning failure. */
-    return STATUS_UNSUCCESSFUL;
+    /* We should call the ACPI driver to evaluate the _SUN method. So far this
+     * is unimplemented. The slot number is used purely as a human-friendly UI
+     * number so an operator can, say, replace a broken PCI device on slot 3. */
+    return STATUS_NOT_IMPLEMENTED;
 }
 
 static NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,

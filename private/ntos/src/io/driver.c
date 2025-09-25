@@ -419,9 +419,10 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
 }
 
 static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
-						IN ULONG IrqLine,
+						IN PPNP_BUS_INFORMATION BusInfo,
+						IN ULONG SlotNumber,
+						IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw,
 						IN ULONG Vector,
-						IN ULONG Flags,
 						IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
 						IN PVOID ClientSideContext,
 						OUT PINTERRUPT_SERVICE *pSvc)
@@ -460,19 +461,31 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 		KeCreateNotificationEx(&Svc->InterruptMutex, DriverProcess->SharedCNode));
 
     /* Connect the given interrupt vector to the interrupt thread */
-    Svc->IrqHandler.Irq = IrqLine;
+    Svc->IrqHandler.Config.Word = 0;
     Svc->IrqHandler.Vector = Vector;
-    if (Flags & CM_RESOURCE_INTERRUPT_LATCHED) {
-	Svc->IrqHandler.Config.Level = 0;
+    if (Raw->Flags & CM_RESOURCE_INTERRUPT_MESSAGE) {
+	Svc->IrqHandler.Irq = 0;
+	Svc->IrqHandler.Config.Msi = 1;
+	Svc->IrqHandler.Message = Raw->MessageInterrupt.Raw.MessageData;
+	if (BusInfo->LegacyBusType == PCIBus) {
+	    PCI_SLOT_NUMBER Slot = { .AsULONG = SlotNumber };
+	    Svc->IrqHandler.Config.Bus = BusInfo->BusNumber;
+	    Svc->IrqHandler.Config.Device = Slot.Bits.DeviceNumber;
+	    Svc->IrqHandler.Config.Function = Slot.Bits.FunctionNumber;
+	}
     } else {
-	Svc->IrqHandler.Config.Level = 1;
+	Svc->IrqHandler.Irq = Raw->Interrupt.Vector;
+	if (Raw->Flags & CM_RESOURCE_INTERRUPT_LATCHED) {
+	    Svc->IrqHandler.Config.Level = 0;
+	} else {
+	    Svc->IrqHandler.Config.Level = 1;
+	}
+	if (Raw->Flags & CM_RESOURCE_INTERRUPT_ACTIVE_LOW) {
+	    Svc->IrqHandler.Config.Polarity = 1;
+	} else {
+	    Svc->IrqHandler.Config.Polarity = 0;
+	}
     }
-    if (Flags & CM_RESOURCE_INTERRUPT_ACTIVE_LOW) {
-	Svc->IrqHandler.Config.Polarity = 1;
-    } else {
-	Svc->IrqHandler.Config.Polarity = 0;
-    }
-    /* TODO: Msi */
     IF_ERR_GOTO(err, Status,
 		KeCreateIrqHandlerCapEx(&Svc->IrqHandler,
 					Svc->IsrThread->CSpace));
@@ -517,17 +530,20 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
     assert(Thread->Process != NULL);
     assert(Thread->Process->DriverObject != NULL);
     assert(Thread == Thread->Process->DriverObject->MainEventLoopThread);
-    /* Check if the interrupt level has been connected. */
-    ULONG Irq = ULONG_MAX, Flags = 0;
-    if (!IopIsInterruptVectorAssigned(Thread->Process->DriverObject, Vector, &Irq, &Flags)) {
+    /* Check if the interrupt resource has been assigned by the PnP manager. */
+    PNP_BUS_INFORMATION BusInfo = {};
+    ULONG SlotNumber = 0;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw = NULL;
+    if (!IopIsInterruptVectorAssigned(Thread->Process->DriverObject, Vector,
+				      &BusInfo, &SlotNumber, &Raw)) {
 	return STATUS_ACCESS_DENIED;
     }
-    assert(Irq != ULONG_MAX);
+    assert(Raw);
 
     /* Create the interrupt service thread, together with the interrupt notification
      * and interrupt mutex object */
     PINTERRUPT_SERVICE Svc = NULL;
-    RET_ERR(IopCreateInterruptServiceThread(Thread, Irq, Vector, Flags,
+    RET_ERR(IopCreateInterruptServiceThread(Thread, &BusInfo, SlotNumber, Raw, Vector,
 					    EntryPoint, ClientSideContext, &Svc));
     assert(Svc != NULL);
 

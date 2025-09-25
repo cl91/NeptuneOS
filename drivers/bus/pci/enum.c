@@ -26,23 +26,25 @@ PCI_CONFIGURATOR PciConfigurators[] = {
 
 /* FUNCTIONS ******************************************************************/
 
-BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-				     IN PCM_RESOURCE_LIST ResourceList)
+NTSTATUS PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				      IN PCM_RESOURCE_LIST RawList,
+				      IN PCM_RESOURCE_LIST TranslatedList)
 {
     PAGED_CODE();
-    BOOLEAN RangeChange = FALSE;
 
     /* Make sure we have either no resources, or at least one */
-    ASSERT((ResourceList == NULL) || (ResourceList->Count == 1));
+    ASSERT((RawList == NULL) || (RawList->Count == 1));
 
     /* Check if there's not actually any resources */
-    if (!ResourceList || !ResourceList->Count) {
-	/* Then just return the hardware update state */
-	return PdoExtension->UpdateHardware;
+    if (!RawList || !RawList->Count || !TranslatedList || !TranslatedList->Count) {
+	return STATUS_SUCCESS;
     }
 
     /* Print the new specified resource list */
-    PciDebugPrintCmResList(ResourceList);
+    DPRINT("Raw list:\n");
+    PciDebugPrintCmResList(RawList);
+    DPRINT("Translated list:\n");
+    PciDebugPrintCmResList(TranslatedList);
 
     /* Clear the temporary resource array */
     CM_PARTIAL_RESOURCE_DESCRIPTOR ResourceArray[PCI_MAX_RESOURCE_COUNT];
@@ -51,39 +53,36 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
     }
 
     /* Copy the caller supplied resource list into ResourceArray, making sure
-     * the order is the same as the current settings in PCI_FUNCTION_RESOURCES. */
-    PCM_FULL_RESOURCE_DESCRIPTOR FullList = ResourceList->List;
-    for (ULONG i = 0; i < ResourceList->Count; i++) {
+     * the order is the same as the current settings in PCI_FUNCTION_RESOURCES.
+     * Also record how many interrupt resources we have got. If more than one,
+     * interrupt resources must be contiguous. */
+    PCM_FULL_RESOURCE_DESCRIPTOR FullRawList = RawList->List;
+    ULONG InterruptCount = 0;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR RawInterrupt = NULL;
+    for (ULONG i = 0; i < RawList->Count; i++) {
 	/* Loop the partial descriptors */
 	PCM_PARTIAL_RESOURCE_DESCRIPTOR Prev = NULL, Partial =
-	    FullList->PartialResourceList.PartialDescriptors;
-	for (ULONG j = 0; j < FullList->PartialResourceList.Count; j++) {
+	    FullRawList->PartialResourceList.PartialDescriptors;
+	for (ULONG j = 0; j < FullRawList->PartialResourceList.Count; j++) {
 	    /* Check what kind of descriptor this was */
 	    switch (Partial->Type) {
 	    /* Base BAR resources */
 	    case CmResourceTypePort:
 	    case CmResourceTypeMemory:
-		/* We don't need to do anything for base BAR resources */
+		/* We don't need to do anything for BAR resources */
 		break;
 
 	    /* Interrupt resource */
 	    case CmResourceTypeInterrupt:
-
-		/* Make sure it's a compatible (and the only) PCI interrupt */
-		ASSERT(Partial->Interrupt.Level == Partial->Interrupt.Vector);
-
-		/* For the legacy IRQL field, some firmware might write 0xFF or garbage
-		 * data, so make sure we don't use that. */
+		/* Skip legacy PIN-based interrupt resources, but assert in debug build. */
 		if (!(Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)) {
-		    if (Partial->Interrupt.Level < 256) {
-			/* Use the passed interrupt line */
-			PdoExtension->AdjustedInterruptLine = Partial->Interrupt.Level;
-		    } else {
-			/* Invalid vector, so ignore it */
-			PdoExtension->AdjustedInterruptLine = 0;
-		    }
+		    assert(FALSE);
+		    break;
 		}
-
+		if (!RawInterrupt) {
+		    RawInterrupt = Partial;
+		}
+		InterruptCount++;
 		break;
 
 	    /* Check for specific device data */
@@ -107,7 +106,7 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 		     * changed below. */
 		    assert(Partial->DevicePrivate.Data[1]);
 		    ULONG NumberToSkip = min(Partial->DevicePrivate.Data[1],
-					     FullList->PartialResourceList.Count-j-1);
+					     FullRawList->PartialResourceList.Count-j-1);
 		    j += NumberToSkip;
 		    for (ULONG k = 0; k < NumberToSkip; k++) {
 			Partial = CmGetNextPartialDescriptor(Partial);
@@ -129,13 +128,15 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	}
 
 	/* We should be starting a new list now */
-	FullList = (PVOID)Partial;
+	FullRawList = (PVOID)Partial;
     }
 
     /* Check the current assigned PCI resources */
     PPCI_FUNCTION_RESOURCES PciResources = PdoExtension->Resources;
-    if (!PciResources)
-	return FALSE;
+    if (!PciResources) {
+	assert(FALSE);
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
 
     /* Loop all the PCI function resources */
     for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
@@ -152,9 +153,6 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	    ((Partial->Generic.Start.QuadPart !=
 	      CurrentDescriptor->Generic.Start.QuadPart) ||
 	     (Partial->Generic.Length != CurrentDescriptor->Generic.Length))) {
-	    /* Record a change */
-	    RangeChange = TRUE;
-
 	    /* Was there a range before? */
 	    if (CurrentDescriptor->Type != CmResourceTypeNull) {
 		/* Print it */
@@ -177,8 +175,54 @@ BOOLEAN PciComputeNewCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	}
     }
 
-    /* Either the hardware was updated, or a resource range changed */
-    return RangeChange || PdoExtension->UpdateHardware;
+    /* Now check if the PnP manager has given us any interrupt resources and
+     * copy the raw and translated resources into the PDO extension. */
+    ULONG BufferSize = sizeof(PCI_INTERRUPT_RESOURCE) * InterruptCount;
+    PdoExtension->InterruptResources = ExAllocatePoolWithTag(NonPagedPool, BufferSize,
+							     PCI_POOL_TAG);
+    if (!PdoExtension->InterruptResources) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    PdoExtension->InterruptResourceCount = InterruptCount;
+    FullRawList = RawList->List;
+    InterruptCount = 0;
+    for (ULONG i = 0; i < RawList->Count; i++) {
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
+	    FullRawList->PartialResourceList.PartialDescriptors;
+	for (ULONG j = 0; j < FullRawList->PartialResourceList.Count; j++) {
+	    if (Partial->Type == CmResourceTypeInterrupt &&
+		(Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)) {
+		PdoExtension->InterruptResources[InterruptCount++].Raw = *Partial;
+	    }
+	    Partial = CmGetNextPartialDescriptor(Partial);
+	}
+	FullRawList = (PVOID)Partial;
+    }
+    assert(InterruptCount == PdoExtension->InterruptResourceCount);
+
+    ULONG TranslatedInterruptCount = 0;
+    PCM_FULL_RESOURCE_DESCRIPTOR FullTranslatedList = TranslatedList->List;
+    for (ULONG i = 0; i < TranslatedList->Count; i++) {
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
+	    FullTranslatedList->PartialResourceList.PartialDescriptors;
+	for (ULONG j = 0; j < FullTranslatedList->PartialResourceList.Count; j++) {
+	    if (Partial->Type == CmResourceTypeInterrupt &&
+		(Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)) {
+		PdoExtension->InterruptResources[TranslatedInterruptCount++].Translated =
+		    *Partial;
+	    }
+	    Partial = CmGetNextPartialDescriptor(Partial);
+	}
+	FullTranslatedList = (PVOID)Partial;
+    }
+    if (TranslatedInterruptCount != InterruptCount) {
+	assert(FALSE);
+	ExFreePoolWithTag(PdoExtension->InterruptResources, PCI_POOL_TAG);
+	PdoExtension->InterruptResources = NULL;
+	return STATUS_INTERNAL_ERROR;
+    }
+
+    return STATUS_SUCCESS;
 }
 
 static VOID PciUpdateHardware(IN PPCI_PDO_EXTENSION PdoExtension,
@@ -260,7 +304,6 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
     USHORT BridgeControl, PciCommand;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, Resource, LastResource;
     PCM_RESOURCE_LIST ResourceList;
-    CHAR InterruptLine;
 
     /* Assume failure */
     ULONG Count = 0;
@@ -291,13 +334,8 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	}
     }
 
-    /* If there's an interrupt pin associated, check at least one decode is on */
-    if (PdoExtension->InterruptPin && (HaveMemSpace || HaveIoSpace)) {
-	/* Read the interrupt line for the pin, add a descriptor if it's valid */
-	InterruptLine = PdoExtension->AdjustedInterruptLine;
-	if (InterruptLine && InterruptLine != -1)
-	    Count++;
-    }
+    /* If the device has interrupt enabled, add the interrupt resource(s) */
+    Count += PdoExtension->InterruptResourceCount;
 
     /* Check for PCI bridge */
     if (PdoExtension->HeaderType == PCI_BRIDGE_TYPE) {
@@ -375,22 +413,13 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	}
     }
 
-    /* If there's an interrupt pin associated, check at least one decode is on */
-    if (PdoExtension->InterruptPin && (HaveMemSpace || HaveIoSpace)) {
-	/* Read the interrupt line for the pin, check if it's valid */
-	InterruptLine = PdoExtension->AdjustedInterruptLine;
-	if (InterruptLine && InterruptLine != -1) {
-	    /* Make sure there's still space */
-	    ASSERT(Resource < LastResource);
+    /* If device has interrupt(s) enabled, add the interrupt resource(s) */
+    for (ULONG i = 0; i < PdoExtension->InterruptResourceCount; i++) {
+	/* Make sure there's still space */
+	ASSERT(&Resource[i] < LastResource);
 
-	    /* Add the interrupt descriptor */
-	    Resource->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
-	    Resource->Type = CmResourceTypeInterrupt;
-	    Resource->ShareDisposition = CmResourceShareShared;
-	    Resource->Interrupt.Affinity = -1;
-	    Resource->Interrupt.Level = InterruptLine;
-	    Resource->Interrupt.Vector = InterruptLine;
-	}
+	/* Add the interrupt descriptor */
+	Resource[i] = PdoExtension->InterruptResources[i].Raw;
     }
 
     /* Return the resource list */
@@ -488,9 +517,15 @@ static NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
 	    }
 	}
     }
-    if (PdoExtension->InterruptPin) {
-        ResCount++;
+    ULONG InterruptCount = 0;
+    if (PdoExtension->MsiInfo.CapabilityOffset) {
+	if (PdoExtension->MsiInfo.ExtendedMessage) {
+	    InterruptCount = PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.TableSize;
+	} else {
+	    InterruptCount = 1;
+	}
     }
+    ResCount += InterruptCount;
     ResCount += PdoExtension->AdditionalResourceCount;
 
 out:
@@ -555,19 +590,20 @@ out:
 	Res++;
     }
 
-    if (PdoExtension->InterruptPin) {
-        Res->Type = CmResourceTypeInterrupt;
-        Res->ShareDisposition = CmResourceShareShared;
-        Res->Option = 0;
-        Res->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
-#if defined(_M_IX86) || defined(_M_AMD64)
-	/* On i386/amd64 we skip the first 16 IRQ pins as these are for
-	 * the legacy PIC, and on Intel platforms we always enable IO APIC. */
-        Res->Interrupt.MinimumVector = 16;
-#else
-        Res->Interrupt.MinimumVector = 0;
-#endif
-        Res->Interrupt.MaximumVector = MAXULONG;
+    ULONG MessageCount = 1;
+    if (!PdoExtension->MsiInfo.ExtendedMessage) {
+	MessageCount = 1UL << PdoExtension->MsiInfo.MessageInfo.MessageControl.MaxMsgCountShift;
+    }
+    for (ULONG i = 0; i < InterruptCount; i++) {
+	Res->Type = CmResourceTypeInterrupt;
+	Res->ShareDisposition = CmResourceShareDeviceExclusive;
+	Res->Option = 0;
+	Res->Flags = CM_RESOURCE_INTERRUPT_MESSAGE | CM_RESOURCE_INTERRUPT_POLICY_INCLUDED;
+	Res->Interrupt.MinimumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN - MessageCount + 1;
+	Res->Interrupt.MaximumVector = CM_RESOURCE_INTERRUPT_MESSAGE_TOKEN;
+	Res->Interrupt.AffinityPolicy = IrqPolicyOneCloseProcessor;
+	Res->Interrupt.PriorityPolicy = IrqPriorityUndefined;
+	Res->Interrupt.TargetedProcessors = (KAFFINITY)-1;
         Res++;
     }
 
@@ -597,8 +633,8 @@ NTSTATUS PciQueryRequirements(IN PPCI_PDO_EXTENSION PdoExtension,
     PAGED_CODE();
     *RequirementsList = NULL;
 
-    /* Check if the PDO has any resources, or at least an interrupt pin */
-    if (PdoExtension->Resources || PdoExtension->InterruptPin) {
+    /* Check if the PDO has any resources, or at least an interrupt */
+    if (PdoExtension->Resources || PdoExtension->MsiInfo.CapabilityOffset) {
 	/* Read the current PCI header */
 	PCI_COMMON_HEADER PciHeader;
 	PciReadDeviceConfig(PdoExtension, &PciHeader, 0, PCI_COMMON_HDR_LENGTH);
@@ -1070,10 +1106,6 @@ static VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 				       IN PPCI_COMMON_HEADER PciData)
 {
     PAGED_CODE();
-    ULONG HeaderType, CapPtr, TargetAgpCapabilityId;
-    DEVICE_POWER_STATE WakeLevel;
-    PCI_CAPABILITIES_HEADER AgpCapability;
-    PCI_PM_CAPABILITY PowerCapabilities;
 
     /* Assume no known wake level */
     PdoExtension->PowerState.DeviceWakeLevel = PowerDeviceUnspecified;
@@ -1083,99 +1115,129 @@ static VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
 	/* If it doesn't, there will be no power management */
 	PdoExtension->CapabilitiesPtr = 0;
 	PdoExtension->HackFlags |= PCI_HACK_NO_PM_CAPS;
+	goto done;
+    }
+
+    /* There are capabilities. Need to figure out where to get the offset */
+    ULONG HeaderType = PCI_CONFIGURATION_TYPE(PciData);
+    ULONG CapPtr;
+    if (HeaderType == PCI_CARDBUS_BRIDGE_TYPE) {
+	/* Use the bridge's header */
+	CapPtr = PciData->Type2.CapabilitiesPtr;
     } else {
-	/* There's capabilities, need to figure out where to get the offset */
-	HeaderType = PCI_CONFIGURATION_TYPE(PciData);
-	if (HeaderType == PCI_CARDBUS_BRIDGE_TYPE) {
-	    /* Use the bridge's header */
-	    CapPtr = PciData->Type2.CapabilitiesPtr;
-	} else {
-	    /* Use the device header */
-	    ASSERT(HeaderType <= PCI_CARDBUS_BRIDGE_TYPE);
-	    CapPtr = PciData->Type0.CapabilitiesPtr;
-	}
+	/* Use the device header */
+	ASSERT(HeaderType <= PCI_CARDBUS_BRIDGE_TYPE);
+	CapPtr = PciData->Type0.CapabilitiesPtr;
+    }
 
-	/* Skip garbage capabilities pointer */
-	if (((CapPtr & 0x3) != 0) || (CapPtr < PCI_COMMON_HDR_LENGTH)) {
-	    /* Report no extended capabilities */
-	    PdoExtension->CapabilitiesPtr = 0;
-	    PdoExtension->HackFlags |= PCI_HACK_NO_PM_CAPS;
-	} else {
-	    DPRINT1("Device has capabilities at: %x\n", CapPtr);
-	    PdoExtension->CapabilitiesPtr = CapPtr;
+    /* Skip garbage capabilities pointer */
+    if (((CapPtr & 0x3) != 0) || (CapPtr < PCI_COMMON_HDR_LENGTH)) {
+	/* Report no extended capabilities */
+	PdoExtension->CapabilitiesPtr = 0;
+	PdoExtension->HackFlags |= PCI_HACK_NO_PM_CAPS;
+	goto done;
+    }
 
-	    /* Check for PCI-to-PCI Bridges and AGP bridges */
-	    if ((PdoExtension->BaseClass == PCI_CLASS_BRIDGE_DEV) &&
-		((PdoExtension->SubClass == PCI_SUBCLASS_BR_HOST) ||
-		 (PdoExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI))) {
-		/* Query either the raw AGP capabilitity, or the Target AGP one */
-		TargetAgpCapabilityId = (PdoExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI) ?
-		    PCI_CAPABILITY_ID_AGP_TARGET : PCI_CAPABILITY_ID_AGP;
-		if (PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
-					    TargetAgpCapabilityId, &AgpCapability,
-					    sizeof(PCI_CAPABILITIES_HEADER))) {
-		    /* AGP target ID was found, store it */
-		    DPRINT1("AGP ID: %x\n", TargetAgpCapabilityId);
-		    PdoExtension->TargetAgpCapabilityId = TargetAgpCapabilityId;
-		}
-	    }
+    DPRINT1("Device has capabilities at: %x\n", CapPtr);
+    PdoExtension->CapabilitiesPtr = CapPtr;
 
-	    /* Check if the device is a PCI express device. */
-	    PCI_CAPABILITIES_HEADER CapHeader = {};
-	    if (PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
-					PCI_CAPABILITY_ID_PCI_EXPRESS, &CapHeader,
-					sizeof(PCI_CAPABILITIES_HEADER))) {
-		assert(CapHeader.CapabilityID == PCI_CAPABILITY_ID_PCI_EXPRESS);
-		PdoExtension->InterfaceType = PciExpress;
-	    } else if (PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
-					PCI_CAPABILITY_ID_PCIX, &CapHeader,
-					sizeof(PCI_CAPABILITIES_HEADER))) {
-		assert(CapHeader.CapabilityID == PCI_CAPABILITY_ID_PCIX);
-		/* We won't bother detecting whether it's PCI-X Mode1 or Mode2.
-		 * PCI-X is incredibly rare as of 2025, and Mode2 is even rarer. */
-		PdoExtension->InterfaceType = PciXMode1;
-	    } else {
-		PdoExtension->InterfaceType = PciConventional;
-	    }
-
-	    /* Check for devices that are known not to have proper power management */
-	    if (!(PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS)) {
-		/* Query if this device supports power management */
-		if (!PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
-					     PCI_CAPABILITY_ID_POWER_MANAGEMENT,
-					     &PowerCapabilities.Header,
-					     sizeof(PCI_PM_CAPABILITY))) {
-		    /* No power management, so act as if it had the hackflag set */
-		    DPRINT1("No PM caps, disabling PM\n");
-		    PdoExtension->HackFlags |= PCI_HACK_NO_PM_CAPS;
-		} else {
-		    /* Otherwise, pick the highest wake level that is supported */
-		    WakeLevel = PowerDeviceUnspecified;
-		    if (PowerCapabilities.PMC.Capabilities.Support.PMED0)
-			WakeLevel = PowerDeviceD0;
-		    if (PowerCapabilities.PMC.Capabilities.Support.PMED1)
-			WakeLevel = PowerDeviceD1;
-		    if (PowerCapabilities.PMC.Capabilities.Support.PMED2)
-			WakeLevel = PowerDeviceD2;
-		    if (PowerCapabilities.PMC.Capabilities.Support.PMED3Hot)
-			WakeLevel = PowerDeviceD3;
-		    if (PowerCapabilities.PMC.Capabilities.Support.PMED3Cold)
-			WakeLevel = PowerDeviceD3;
-		    PdoExtension->PowerState.DeviceWakeLevel = WakeLevel;
-
-		    /* Convert the PCI power state to the NT power state */
-		    PdoExtension->PowerState.CurrentDeviceState =
-			PowerCapabilities.PMCSR.ControlStatus.PowerState + 1;
-
-		    /* Save all the power capabilities */
-		    PdoExtension->PowerCapabilities = PowerCapabilities.PMC.Capabilities;
-		    DPRINT1("PM Caps Found! Wake Level: %d Power State: %d\n", WakeLevel,
-			    PdoExtension->PowerState.CurrentDeviceState);
-		}
-	    }
+    /* Check for PCI-to-PCI Bridges and AGP bridges */
+    if ((PdoExtension->BaseClass == PCI_CLASS_BRIDGE_DEV) &&
+	((PdoExtension->SubClass == PCI_SUBCLASS_BR_HOST) ||
+	 (PdoExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI))) {
+	/* Query either the raw AGP capabilitity, or the Target AGP one */
+	ULONG TargetAgpCapabilityId = (PdoExtension->SubClass == PCI_SUBCLASS_BR_PCI_TO_PCI) ?
+	    PCI_CAPABILITY_ID_AGP_TARGET : PCI_CAPABILITY_ID_AGP;
+	PCI_CAPABILITIES_HEADER AgpCapability;
+	if (PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
+				    TargetAgpCapabilityId, &AgpCapability,
+				    sizeof(PCI_CAPABILITIES_HEADER))) {
+	    /* AGP target ID was found, store it */
+	    DPRINT1("AGP ID: %x\n", TargetAgpCapabilityId);
+	    PdoExtension->TargetAgpCapabilityId = TargetAgpCapabilityId;
 	}
     }
 
+    /* Check if the device is a PCI express device. */
+    PCI_CAPABILITIES_HEADER CapHeader = {};
+    UCHAR Offset = PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
+					   PCI_CAPABILITY_ID_PCI_EXPRESS, &CapHeader,
+					   sizeof(PCI_CAPABILITIES_HEADER));
+    if (Offset) {
+	assert(CapHeader.CapabilityID == PCI_CAPABILITY_ID_PCI_EXPRESS);
+	PdoExtension->InterfaceType = PciExpress;
+    } else if ((Offset = PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
+						 PCI_CAPABILITY_ID_PCIX, &CapHeader,
+						 sizeof(PCI_CAPABILITIES_HEADER)))) {
+	assert(CapHeader.CapabilityID == PCI_CAPABILITY_ID_PCIX);
+	/* We won't bother detecting whether it's PCI-X Mode1 or Mode2.
+	 * PCI-X is incredibly rare as of 2025, and Mode2 is even rarer. */
+	PdoExtension->InterfaceType = PciXMode1;
+    } else {
+	PdoExtension->InterfaceType = PciConventional;
+    }
+
+    /* Check for devices that are known not to have proper power management */
+    if (!(PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS)) {
+	/* Query if this device supports power management */
+	PCI_PM_CAPABILITY PowerCapabilities;
+	if (!PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
+				     PCI_CAPABILITY_ID_POWER_MANAGEMENT,
+				     &PowerCapabilities.Header,
+				     sizeof(PCI_PM_CAPABILITY))) {
+	    /* No power management, so act as if it had the hackflag set */
+	    DPRINT1("No PM caps, disabling PM\n");
+	    PdoExtension->HackFlags |= PCI_HACK_NO_PM_CAPS;
+	} else {
+	    /* Otherwise, pick the highest wake level that is supported */
+	    DEVICE_POWER_STATE WakeLevel = PowerDeviceUnspecified;
+	    if (PowerCapabilities.PMC.Capabilities.Support.PMED0)
+		WakeLevel = PowerDeviceD0;
+	    if (PowerCapabilities.PMC.Capabilities.Support.PMED1)
+		WakeLevel = PowerDeviceD1;
+	    if (PowerCapabilities.PMC.Capabilities.Support.PMED2)
+		WakeLevel = PowerDeviceD2;
+	    if (PowerCapabilities.PMC.Capabilities.Support.PMED3Hot)
+		WakeLevel = PowerDeviceD3;
+	    if (PowerCapabilities.PMC.Capabilities.Support.PMED3Cold)
+		WakeLevel = PowerDeviceD3;
+	    PdoExtension->PowerState.DeviceWakeLevel = WakeLevel;
+
+	    /* Convert the PCI power state to the NT power state */
+	    PdoExtension->PowerState.CurrentDeviceState =
+		PowerCapabilities.PMCSR.ControlStatus.PowerState + 1;
+
+	    /* Save all the power capabilities */
+	    PdoExtension->PowerCapabilities = PowerCapabilities.PMC.Capabilities;
+	    DPRINT1("PM Caps Found! Wake Level: %d Power State: %d\n", WakeLevel,
+		    PdoExtension->PowerState.CurrentDeviceState);
+	}
+    }
+
+    /* Check if the device supports MSI-X or MSI. Prefer MSI-X if it is supported. */
+    PCI_MSI_CAPABILITY MsiCap = {};
+    PCI_MSIX_CAPABILITY MsiXCap = {};
+    if ((PdoExtension->MsiInfo.CapabilityOffset =
+	 PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
+				 PCI_CAPABILITY_ID_MSIX, &MsiXCap.Header,
+				 sizeof(PCI_MSIX_CAPABILITY)))) {
+	assert(MsiXCap.Header.CapabilityID == PCI_CAPABILITY_ID_MSIX);
+	PdoExtension->MsiInfo.ExtendedMessage = TRUE;
+	PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl = MsiXCap.MessageControl;
+	PdoExtension->MsiInfo.ExtendedMessageInfo.MessageTable = MsiXCap.MessageTable;
+	PdoExtension->MsiInfo.ExtendedMessageInfo.PendingBitArray = MsiXCap.PendingBitArray;
+    } else if ((PdoExtension->MsiInfo.CapabilityOffset =
+		PciReadDeviceCapability(PdoExtension, PdoExtension->CapabilitiesPtr,
+					PCI_CAPABILITY_ID_MSI, &MsiCap.Header,
+					FIELD_OFFSET(PCI_MSI_CAPABILITY, Data32.Unused)))) {
+	assert(MsiCap.Header.CapabilityID == PCI_CAPABILITY_ID_MSI);
+	PdoExtension->MsiInfo.ExtendedMessage = FALSE;
+	PdoExtension->MsiInfo.MessageInfo.MessageControl = MsiCap.MessageControl;
+    } else {
+	DPRINT1("Device does not support MSI or MSI-X. Interrupt will be disabled.\n");
+    }
+
+done:
     /* At the very end of all this, does this device not have power management? */
     if (PdoExtension->HackFlags & PCI_HACK_NO_PM_CAPS) {
 	/* Then guess the current state based on whether the decodes are on */
@@ -1200,6 +1262,8 @@ static VOID PciDumpCapabilities(IN PPCI_PDO_EXTENSION NewExtension)
 	union {
 	    PCI_PM_CAPABILITY PmCap;
 	    PCI_AGP_CAPABILITY AgpCap;
+	    PCI_MSI_CAPABILITY MsiCap;
+	    PCI_MSIX_CAPABILITY MsiXCap;
 	    PCI_CAPABILITIES_HEADER Header;
 	} Cap;
 	USHORT TempOffset = PciReadDeviceCapability(NewExtension, CapOffset, 0,
@@ -1231,6 +1295,15 @@ static VOID PciDumpCapabilities(IN PPCI_PDO_EXTENSION NewExtension)
 	    Name = "AGP";
 	    Size = sizeof(PCI_AGP_CAPABILITY);
 	    break;
+
+	case PCI_CAPABILITY_ID_MSI:
+	    Name = "MSI";
+	    Size = FIELD_OFFSET(PCI_MSI_CAPABILITY, Data32.Unused);
+	    break;
+
+	case PCI_CAPABILITY_ID_MSIX:
+	    Name = "MSI-X";
+	    Size = sizeof(PCI_MSIX_CAPABILITY);
 
 	    /* This driver doesn't really use anything other than that */
 	default:
@@ -1657,8 +1730,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 					     sizeof(UCHAR));
 		    }
 
-		    /* Save the BIOS interrupt line and the initial command */
-		    NewExtension->RawInterruptLine = BiosData->Type0.InterruptLine;
+		    /* Save the initial command from the BIOS */
 		    NewExtension->InitialCommand = BiosData->Command;
 		}
 	    }
@@ -1669,8 +1741,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 		Status = PciSaveBiosConfig(NewExtension, PciData);
 		ASSERT(NT_SUCCESS(Status));
 
-		/* Save the interrupt line and command from the device */
-		NewExtension->RawInterruptLine = PciData->Type0.InterruptLine;
+		/* Save the command from the device */
 		NewExtension->InitialCommand = PciData->Command;
 	    }
 
@@ -1696,18 +1767,6 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    /* Apply any device hacks required for enumeration */
 	    PciApplyHacks(DeviceExtension, PciData, PciSlot,
 			  PCI_HACK_FIXUP_AFTER_CONFIGURATION, NewExtension);
-
-	    /* Save interrupt pin */
-	    NewExtension->InterruptPin = PciData->Type0.InterruptPin;
-
-	    /*
-             * Use either this device's actual IRQ line or, if it's connected on
-             * a master bus whose IRQ line is actually connected to the host, use
-             * the HAL to query the bus' IRQ line and store that as the adjusted
-             * interrupt line instead
-             */
-	    NewExtension->AdjustedInterruptLine = PciGetAdjustedInterruptLine(
-		NewExtension);
 
 	    /* Check if this device is used for PCI debugger cards */
 	    NewExtension->OnDebugPath = PciIsDeviceOnDebugPath(NewExtension);
@@ -1883,7 +1942,8 @@ NTSTATUS PciQueryDeviceRelations(IN PPCI_FDO_EXTENSION DeviceExtension,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset)
+NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
+			 IN BOOLEAN DoReset)
 {
     PPCI_FDO_EXTENSION FdoExtension;
     UCHAR NewCacheLineSize, NewLatencyTimer;
@@ -1924,22 +1984,119 @@ NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset)
 	UNIMPLEMENTED_DBGBREAK();
     }
 
+    /* Disable interrupts (MSI or MSI-X) since we might modify the BAR ranges below. */
+    if (PdoExtension->InterruptResourceCount) {
+	if (PdoExtension->MsiInfo.ExtendedMessage) {
+	    if (PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.Enable ||
+		!PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.FunctionMask) {
+		PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.Enable = 0;
+		PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.FunctionMask = 1;
+		PciWriteDeviceConfig(PdoExtension,
+				     &PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl,
+				     PdoExtension->MsiInfo.CapabilityOffset +
+				     FIELD_OFFSET(PCI_MSIX_CAPABILITY, MessageControl),
+				     sizeof(PCI_MSIX_MESSAGE_CONTROL));
+	    }
+	} else {
+	    if (PdoExtension->MsiInfo.MessageInfo.MessageControl.Enable) {
+		PdoExtension->MsiInfo.MessageInfo.MessageControl.Enable = 0;
+		PciWriteDeviceConfig(PdoExtension,
+				     &PdoExtension->MsiInfo.MessageInfo.MessageControl,
+				     PdoExtension->MsiInfo.CapabilityOffset +
+				     FIELD_OFFSET(PCI_MSI_CAPABILITY, MessageControl),
+				     sizeof(PCI_MSI_MESSAGE_CONTROL));
+	    }
+	}
+    }
+
     /* Locate the correct resource configurator for this type of device */
     Configurator = &PciConfigurators[PdoExtension->HeaderType];
 
     /* Apply the settings change */
     Configurator->ChangeResourceSettings(PdoExtension, &PciData);
 
-    /* Assume no update needed */
-    PdoExtension->UpdateHardware = FALSE;
-
     /* Check if a reset is needed */
     if (DoReset) {
 	/* Reset resources */
 	Configurator->ResetDevice(PdoExtension, &PciData);
-	PciData.Type0.InterruptLine = PdoExtension->RawInterruptLine;
     }
 
+    /* Enable MSI/MSI-X if we are supplied interrupt resources */
+    if (!PdoExtension->InterruptResourceCount) {
+	goto done;
+    }
+    assert(PdoExtension->MsiInfo.CapabilityOffset);
+    /* If the device supports MSI-X, map the message table and program the table entries. */
+    if (PdoExtension->MsiInfo.ExtendedMessage) {
+	ULONG TableOffset = PdoExtension->MsiInfo.ExtendedMessageInfo.MessageTable;
+	UCHAR TableIndex = TableOffset & PCI_MSIX_MESSAGE_TABLE_BAR_INDEX_MASK;
+	TableOffset &= PCI_MSIX_MESSAGE_TABLE_OFFSET_MASK;
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = PdoExtension->Resources[TableIndex].Current;
+	assert(Res);
+	assert(Res->Type == CmResourceTypeMemory);
+	assert(Res->Memory.Start.QuadPart);
+	assert(Res->Memory.Length > TableOffset);
+	if (!Res || Res->Type != CmResourceTypeMemory || !Res->Memory.Start.QuadPart ||
+	    Res->Memory.Length <= TableOffset) {
+	    return STATUS_DEVICE_CONFIGURATION_ERROR;
+	}
+	PHYSICAL_ADDRESS TableAddress = { .QuadPart = Res->Memory.Start.QuadPart + TableOffset };
+	ULONG LengthToMap = PdoExtension->InterruptResourceCount * sizeof(PCI_MSIX_TABLE_ENTRY);
+	PPCI_MSIX_TABLE_ENTRY Table = MmMapIoSpace(TableAddress, LengthToMap, MmNonCached);
+	if (!Table) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	for (ULONG i = 0; i < PdoExtension->InterruptResourceCount; i++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw = &PdoExtension->InterruptResources[i].Raw;
+	    assert(Raw->Type == CmResourceTypeInterrupt);
+	    assert(Raw->Flags & CM_RESOURCE_INTERRUPT_MESSAGE);
+	    assert(Raw->MessageInterrupt.Raw.MessageCount == 1);
+	    Table[i].MessageAddress.QuadPart = Raw->MessageInterrupt.Raw.MessageAddress;
+	    Table[i].MessageData = Raw->MessageInterrupt.Raw.MessageData;
+	    Table[i].VectorControl = 0;
+	}
+	MmUnmapIoSpace(Table, LengthToMap);
+    } else {
+	/* Else, program the MSI capability. */
+	assert(PdoExtension->InterruptResourceCount == 1);
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw = &PdoExtension->InterruptResources[0].Raw;
+	assert(Raw->Type == CmResourceTypeInterrupt);
+	assert(Raw->Flags & CM_RESOURCE_INTERRUPT_MESSAGE);
+	PdoExtension->MsiInfo.MessageInfo.MessageAddress.QuadPart =
+	    Raw->MessageInterrupt.Raw.MessageAddress;
+	PciWriteDeviceConfig(PdoExtension,
+			     &PdoExtension->MsiInfo.MessageInfo.MessageAddress.LowPart,
+			     PdoExtension->MsiInfo.CapabilityOffset +
+			     FIELD_OFFSET(PCI_MSI_CAPABILITY, MessageAddress),
+			     sizeof(ULONG));
+	PdoExtension->MsiInfo.MessageInfo.MessageData =
+	    Raw->MessageInterrupt.Raw.MessageData;
+	if (PdoExtension->MsiInfo.MessageInfo.MessageControl.Is64Bit) {
+	    PciWriteDeviceConfig(PdoExtension,
+				 &PdoExtension->MsiInfo.MessageInfo.MessageAddress.HighPart,
+				 PdoExtension->MsiInfo.CapabilityOffset +
+				 FIELD_OFFSET(PCI_MSI_CAPABILITY, Data64.MessageUpperAddress),
+				 sizeof(ULONG));
+	    PciWriteDeviceConfig(PdoExtension,
+				 &PdoExtension->MsiInfo.MessageInfo.MessageData,
+				 PdoExtension->MsiInfo.CapabilityOffset +
+				 FIELD_OFFSET(PCI_MSI_CAPABILITY, Data64.MessageData),
+				 sizeof(USHORT));
+	} else {
+	    PciWriteDeviceConfig(PdoExtension,
+				 &PdoExtension->MsiInfo.MessageInfo.MessageData,
+				 PdoExtension->MsiInfo.CapabilityOffset +
+				 FIELD_OFFSET(PCI_MSI_CAPABILITY, Data32.MessageData),
+				 sizeof(USHORT));
+	}
+	assert(Raw->MessageInterrupt.Raw.MessageCount <=
+	       (1UL << PdoExtension->MsiInfo.MessageInfo.MessageControl.MaxMsgCountShift));
+	PdoExtension->MsiInfo.MessageInfo.MessageControl.EnabledMsgCountShift =
+	    PdoExtension->MsiInfo.MessageInfo.MessageControl.MaxMsgCountShift;
+    }
+    MemoryBarrier();
+
+done:
     /* Check if the latency timer changed */
     NewLatencyTimer = PdoExtension->SavedLatencyTimer;
     if (PciData.LatencyTimer != NewLatencyTimer) {
@@ -1959,7 +2116,6 @@ NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset)
     /* Inherit data from PDO extension */
     PciData.LatencyTimer = PdoExtension->SavedLatencyTimer;
     PciData.CacheLineSize = PdoExtension->SavedCacheLineSize;
-    PciData.Type0.InterruptLine = PdoExtension->RawInterruptLine;
 
     /* Apply any resource hacks required */
     PciApplyHacks(FdoExtension, &PciData, PdoExtension->Slot,
@@ -1971,11 +2127,46 @@ NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension, IN BOOLEAN DoReset)
 	PdoExtension->CommandEnables &= ~PCI_ENABLE_IO_SPACE;
     }
 
+    /* Disable legacy interrupts */
+    PdoExtension->CommandEnables |= PCI_DISABLE_LEVEL_INTERRUPT;
+
     /* Update the device with the new settings */
     PciUpdateHardware(PdoExtension, &PciData);
 
+    /* Enable interrupts (MSI or MSI-X) */
+    if (PdoExtension->InterruptResourceCount) {
+	if (PdoExtension->MsiInfo.ExtendedMessage) {
+	    PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.Enable = 1;
+	    PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.FunctionMask = 0;
+	    PciWriteDeviceConfig(PdoExtension,
+				 &PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl,
+				 PdoExtension->MsiInfo.CapabilityOffset +
+				 FIELD_OFFSET(PCI_MSIX_CAPABILITY, MessageControl),
+				 sizeof(PCI_MSIX_MESSAGE_CONTROL));
+	} else {
+	    /* At this point the message address and message data should have been programmed. */
+	    assert(PdoExtension->MsiInfo.MessageInfo.MessageAddress.QuadPart);
+	    assert(PdoExtension->MsiInfo.MessageInfo.MessageData);
+	    PdoExtension->MsiInfo.MessageInfo.MessageControl.Enable = 1;
+	    PciWriteDeviceConfig(PdoExtension,
+				 &PdoExtension->MsiInfo.MessageInfo.MessageControl,
+				 PdoExtension->MsiInfo.CapabilityOffset +
+				 FIELD_OFFSET(PCI_MSI_CAPABILITY, MessageControl),
+				 sizeof(PCI_MSI_MESSAGE_CONTROL));
+	    if (PdoExtension->MsiInfo.MessageInfo.MessageControl.Is64Bit) {
+		ULONG MessageCount =
+		    PdoExtension->InterruptResources[0].Raw.MessageInterrupt.Raw.MessageCount;
+		PdoExtension->MsiInfo.MessageInfo.MaskBits |= (1UL << MessageCount) - 1;
+		PciWriteDeviceConfig(PdoExtension,
+				     &PdoExtension->MsiInfo.MessageInfo.MaskBits,
+				     PdoExtension->MsiInfo.CapabilityOffset +
+				     FIELD_OFFSET(PCI_MSI_CAPABILITY, Data64.MaskBits),
+				     sizeof(ULONG));
+	    }
+	}
+    }
+
     /* Update complete */
-    PdoExtension->RawInterruptLine = PciData.Type0.InterruptLine;
     PdoExtension->NeedsHotPlugConfiguration = FALSE;
     return STATUS_SUCCESS;
 }
