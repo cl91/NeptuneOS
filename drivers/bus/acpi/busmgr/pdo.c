@@ -240,6 +240,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 	for (ULONG i = 0; i < Length; i++) {
 	    DbgPrint("%wc", Buffer[i]);
 	}
+	DbgPrint("\n");
 	Status = STATUS_SUCCESS;
 	break;
 
