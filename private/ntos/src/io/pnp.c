@@ -1108,7 +1108,9 @@ static NTSTATUS IopAssignResourcesForList(IN PDEVICE_NODE DeviceNode,
 	}
     assign:
 	Failed = !NT_SUCCESS(IopAssignResource(Desc, DeviceNode, Raw, Translated));
-	if (!Failed) {
+	if (Failed) {
+	    DbgTrace("Resource assignment failed for descriptor %d\n", i);
+	} else {
 	    Raw++;
 	    Translated++;
 	}
@@ -1261,7 +1263,7 @@ filter:
 	    DbgTrace("Successfully assigned resources for list %d\n", i);
 	    break;
 	} else {
-	    DbgTrace("Failed to resources for list %d, error 0x%x\n", i, Status);
+	    DbgTrace("Failed to assign resources for list %d, error 0x%x\n", i, Status);
 	}
     }
 
