@@ -1,5 +1,11 @@
 #include "cmp.h"
 
+#ifdef CMDBG
+#define CmpDbgPrintIndentation RtlDbgPrintIndentation
+#else
+#define CmpDbgPrintIndentation(...)
+#endif
+
 VOID CmpFreeValue(IN PCM_REG_VALUE Value)
 {
     assert(Value);
@@ -326,10 +332,10 @@ static PCSTR CmpDbgInterfaceTypeToStr(IN INTERFACE_TYPE Type)
 static VOID CmpDbgDumpPartialResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc,
 						IN ULONG Indent)
 {
-    RtlDbgPrintIndentation(Indent);
+    CmpDbgPrintIndentation(Indent);
     CmDbgPrint("TYPE %d SHARE-DISPOSITION %d FLAGS 0x%x\n",
 	       Desc->Type, Desc->ShareDisposition, Desc->Flags);
-    RtlDbgPrintIndentation(Indent + 2);
+    CmpDbgPrintIndentation(Indent + 2);
     switch (Desc->Type) {
     case CmResourceTypeNull:
 	CmDbgPrint("NULL-RESOURCE\n");
@@ -384,10 +390,10 @@ static VOID CmpDbgDumpPartialResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPT
 static VOID CmpDbgDumpFullResourceDescriptor(IN PCM_FULL_RESOURCE_DESCRIPTOR Desc,
 					     IN ULONG Indent)
 {
-    RtlDbgPrintIndentation(Indent);
+    CmpDbgPrintIndentation(Indent);
     CmDbgPrint("INTERFACE-TYPE %s BUS-NUMBER %d\n",
 	       CmpDbgInterfaceTypeToStr(Desc->InterfaceType), Desc->BusNumber);
-    RtlDbgPrintIndentation(Indent);
+    CmpDbgPrintIndentation(Indent);
     CmDbgPrint("PARTIAL-RESOURCE-LIST Version %d Revision %d Count %d\n",
 	       Desc->PartialResourceList.Version,
 	       Desc->PartialResourceList.Revision,
