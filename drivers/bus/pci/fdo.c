@@ -57,11 +57,10 @@ static NTSTATUS PciFdoStartDevice(IN PIRP Irp,
 		       Desc->Memory.Length);
 		DeviceExtension->ConfigBase = Desc->Memory.Start;
 		break;
-	    case CmResourceTypeBusNumber:
-		DPRINT("PCI Root Bus Number: 0x%x (0x%x)\n",
-		       Desc->BusNumber.Start,
-		       Desc->BusNumber.Length);
-		DeviceExtension->BaseBus = Desc->BusNumber.Start;
+	    case CmResourceTypeDevicePrivate:
+		DPRINT("PCI Root Bus Number: 0x%x\n",
+		       Desc->DevicePrivate.Data[0]);
+		DeviceExtension->BaseBus = Desc->DevicePrivate.Data[0];
 		break;
 	    }
 	}

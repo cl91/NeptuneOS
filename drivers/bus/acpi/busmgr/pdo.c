@@ -765,8 +765,7 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Type = CmResourceTypeBusNumber;
 		ResourceDescriptor->ShareDisposition = CmResourceShareShared;
 		ResourceDescriptor->Flags = 0;
-		ResourceDescriptor->BusNumber.Start = (ULONG)
-							    Addr64Data->Address.Minimum;
+		ResourceDescriptor->BusNumber.Start = (ULONG)Addr64Data->Address.Minimum;
 		ResourceDescriptor->BusNumber.Length =
 		    Addr64Data->Address.AddressLength;
 	    } else if (Addr64Data->ResourceType == ACPI_IO_RANGE) {
@@ -1481,11 +1480,9 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 	RequirementDescriptor->Memory.MaximumAddress.QuadPart =
 	    RequirementDescriptor->Memory.MinimumAddress.QuadPart + PCI_SEGMENT_ECMA_SIZE - 1;
 	RequirementDescriptor++;
-	RequirementDescriptor->Type = CmResourceTypeBusNumber;
+	RequirementDescriptor->Type = CmResourceTypeDevicePrivate;
 	RequirementDescriptor->ShareDisposition = CmResourceShareDeviceExclusive;
-	RequirementDescriptor->BusNumber.MinBusNumber = BusNumber;
-	RequirementDescriptor->BusNumber.MaxBusNumber = BusNumber;
-	RequirementDescriptor->BusNumber.Length = 1;
+	RequirementDescriptor->DevicePrivate.Data[0] = BusNumber;
     }
 
     Irp->IoStatus.Information = (ULONG_PTR)RequirementsList;
