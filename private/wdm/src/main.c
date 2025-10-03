@@ -41,7 +41,7 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     InitializeListHead(&IopSignaledObjectList);
     InitializeListHead(&IopPendingTimerList);
 #if defined(_M_IX86) || defined(_M_AMD64)
-    InitializeListHead(&IopX86PortList);
+    RtlInitializeSListHead(&IopX86PortList);
     KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
 #elif defined(_M_ARM64)
     ULONG64 KiStallScaleFactor64;

@@ -2,15 +2,23 @@
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 
-LIST_ENTRY IopX86PortList;
+/* This list is accessed by both the ISR and non-ISR code, so we must synchronize access. */
+SLIST_HEADER IopX86PortList;
 
 static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
 {
     Len /= 8;
-    LoopOverList(Entry, &IopX86PortList, X86_IOPORT, Link) {
-	if (Entry->PortNum == PortNum && Entry->Count == Len) {
-	    return Entry;
+    PSLIST_ENTRY Entry = RtlFirstEntrySList(&IopX86PortList);
+    while (Entry) {
+	PX86_IOPORT Port = CONTAINING_RECORD(Entry, X86_IOPORT, Link);
+	if (Port->PortNum == PortNum && Port->Count == Len) {
+	    return Port;
 	}
+	Entry = Entry->Next;
+    }
+    if (!IoThreadIsAtPassiveLevel()) {
+	assert(FALSE);
+	return NULL;
     }
     PX86_IOPORT IoPort = ExAllocatePool(NonPagedPool, sizeof(X86_IOPORT));
     if (!IoPort) {
@@ -25,7 +33,7 @@ static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
     IoPort->Cap = Cap;
     IoPort->PortNum = PortNum;
     IoPort->Count = Len;
-    InsertTailList(&IopX86PortList, &IoPort->Link);
+    RtlInterlockedPushEntrySList(&IopX86PortList, &IoPort->Link);
     return IoPort;
 }
 
