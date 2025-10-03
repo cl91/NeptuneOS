@@ -307,6 +307,13 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
     }
     Status = Bus_EnumerateDevices(FdoData);
 
+    /* We will access the PM1a registers to trigger port enabling, so
+     * the ACPI ISR can access them later (ISRs cannot enable IO ports). */
+    UINT32 FixedStatus;
+    UINT32 FixedEnable;
+    AcpiHwRegisterRead(ACPI_REGISTER_PM1_STATUS, &FixedStatus);
+    AcpiHwRegisterRead(ACPI_REGISTER_PM1_ENABLE, &FixedEnable);
+
     return Status;
 }
 
