@@ -93,6 +93,43 @@ static PCHAR DbgDeviceIDString(BUS_QUERY_ID_TYPE Type)
 #define DbgDeviceIDString(Type) ""
 #endif
 
+typedef struct _ACPI_FADT_REGISTER_BLOCK {
+    PACPI_GENERIC_ADDRESS Address;
+    UINT8 *BlockLength;
+} ACPI_FADT_REGISTER_BLOCK, *PACPI_FADT_REGISTER_BLOCK;
+static ACPI_FADT_REGISTER_BLOCK AcpiFadtRegisterBlocks[] = {
+    { &AcpiGbl_XPm1aStatus, &AcpiGbl_FADT.Pm1EventLength },
+    { &AcpiGbl_XPm1bStatus, &AcpiGbl_FADT.Pm1EventLength },
+    { &AcpiGbl_FADT.XPm1aControlBlock, &AcpiGbl_FADT.Pm1ControlLength },
+    { &AcpiGbl_FADT.XPm1bControlBlock, &AcpiGbl_FADT.Pm1ControlLength },
+    { &AcpiGbl_FADT.XPm2ControlBlock,  &AcpiGbl_FADT.Pm2ControlLength },
+    { &AcpiGbl_FADT.XPmTimerBlock, &AcpiGbl_FADT.PmTimerLength },
+    { &AcpiGbl_FADT.XGpe0Block, &AcpiGbl_FADT.Gpe0BlockLength },
+    { &AcpiGbl_FADT.XGpe1Block, &AcpiGbl_FADT.Gpe1BlockLength },
+};
+
+FORCEINLINE ULONG AcpiAddressIdToResourceType(IN UINT8 SpaceId)
+{
+    if (SpaceId == ACPI_ADR_SPACE_SYSTEM_IO) {
+	return CmResourceTypePort;
+    } else {
+	assert(SpaceId == ACPI_ADR_SPACE_SYSTEM_MEMORY);
+	return CmResourceTypeMemory;
+    }
+}
+
+FORCEINLINE ULONG AcpiGetAdditionalResourceCount()
+{
+    ULONG ResCount = 1;
+    for (ULONG i = 0; i < ARRAYSIZE(AcpiFadtRegisterBlocks); i++) {
+	if (AcpiFadtRegisterBlocks[i].Address->Address &&
+	    *AcpiFadtRegisterBlocks[i].BlockLength) {
+	    ResCount++;
+	}
+    }
+    return ResCount;
+}
+
 static NTSTATUS Bus_FilterResourcesFdo(IN PDEVICE_OBJECT Fdo,
 				       IN PFDO_DEVICE_DATA FdoData,
 				       IN PIRP Irp)
@@ -140,8 +177,10 @@ static NTSTATUS Bus_FilterResourcesFdo(IN PDEVICE_OBJECT Fdo,
 	return STATUS_UNSUCCESSFUL;
     }
 
-    /* Request the system control interrupt as an additional resource */
-    ULONG NewListSize = Res->ListSize + sizeof(IO_RESOURCE_DESCRIPTOR);
+    /* Request the system control interrupt and the register blocks from FADT
+     * as additional resources */
+    ULONG ResCount = AcpiGetAdditionalResourceCount();
+    ULONG NewListSize = Res->ListSize + ResCount * sizeof(IO_RESOURCE_DESCRIPTOR);
     PIO_RESOURCE_REQUIREMENTS_LIST NewResList = ExAllocatePoolWithTag(NonPagedPool,
 								      NewListSize,
 								      ACPI_TAG);
@@ -151,13 +190,28 @@ static NTSTATUS Bus_FilterResourcesFdo(IN PDEVICE_OBJECT Fdo,
     }
     RtlCopyMemory(NewResList, Res, Res->ListSize);
     NewResList->ListSize = NewListSize;
-    NewResList->List[0].Count++;
+    NewResList->List[0].Count += ResCount;
     Desc = &NewResList->List[0].Descriptors[Res->List[0].Count];
     Desc->Type = CmResourceTypeInterrupt;
     Desc->Flags = CM_RESOURCE_INTERRUPT_LATCHED;
     Desc->ShareDisposition = CmResourceShareDeviceExclusive;
     Desc->Interrupt.MinimumVector = AcpiGbl_FADT.SciInterrupt;
     Desc->Interrupt.MaximumVector = AcpiGbl_FADT.SciInterrupt;
+    Desc++;
+    for (ULONG i = 0; i < ARRAYSIZE(AcpiFadtRegisterBlocks); i++) {
+	if (!(AcpiFadtRegisterBlocks[i].Address->Address &&
+	      *AcpiFadtRegisterBlocks[i].BlockLength)) {
+	    continue;
+	}
+	Desc->Type = AcpiAddressIdToResourceType(AcpiFadtRegisterBlocks[i].Address->SpaceId);
+	Desc->ShareDisposition = CmResourceShareDeviceExclusive;
+	Desc->Generic.Length = *AcpiFadtRegisterBlocks[i].BlockLength;
+	Desc->Generic.Alignment = 1;
+	Desc->Generic.MinimumAddress.QuadPart = AcpiFadtRegisterBlocks[i].Address->Address;
+	Desc->Generic.MaximumAddress.QuadPart =
+	    Desc->Generic.MinimumAddress.QuadPart + Desc->Generic.Length - 1;
+	Desc++;
+    }
     ExFreePool(Res);
     Irp->IoStatus.Information = (ULONG_PTR)NewResList;
     Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -177,13 +231,14 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
     }
 
     PCM_PARTIAL_RESOURCE_LIST RawPartial = &RawList->List[0].PartialResourceList;
-    if (RawList->Count != 1 || RawPartial->Count != 2) {
+    ULONG ResCount = 1 + AcpiGetAdditionalResourceCount();
+    if (RawList->Count != 1 || RawPartial->Count != ResCount) {
 	DPRINT1("Wrong number of allocated resources sent to driver\n");
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
     PCM_PARTIAL_RESOURCE_LIST TranslatedPartial = &TranslatedList->List[0].PartialResourceList;
-    if (TranslatedList->Count != 1 || TranslatedPartial->Count != 2) {
+    if (TranslatedList->Count != 1 || TranslatedPartial->Count != ResCount) {
 	DPRINT1("Wrong number of allocated resources sent to driver\n");
 	return STATUS_INSUFFICIENT_RESOURCES;
     }

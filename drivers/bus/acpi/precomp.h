@@ -24,6 +24,8 @@ extern UNICODE_STRING ProcessorHardwareIds;
 extern LPWSTR ProcessorIdString;
 extern LPWSTR ProcessorNameString;
 
+typedef ACPI_GENERIC_ADDRESS *PACPI_GENERIC_ADDRESS;
+
 typedef enum _DEVICE_PNP_STATE {
     NotStarted = 0, // Not started yet
     Started, // Device has received the START_DEVICE IRP
