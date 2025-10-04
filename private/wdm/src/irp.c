@@ -2253,10 +2253,13 @@ VOID IopInitIrpProcessing()
 /*
  * This is the main IO packet processing routine of the driver event loop. This
  * routine examines the incoming IO packet buffer and processes them, producing
- * the reply IO packets and sending them to the outgoing IO packet buffer.
+ * the reply IO packets and sending them to the outgoing IO packet buffer. This
+ * routine returns TRUE if at the end of the IO processing, there are remaining
+ * outgoing IO packets waiting to be sent to the server (due to the finite size
+ * of the outgoing IO packet buffer).
  */
-VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
-			 IN ULONG NumRequests)
+BOOLEAN IopProcessIoPackets(OUT ULONG *pNumResponses,
+			    IN ULONG NumRequests)
 {
     ULONG ResponseCount = 0;
     PIO_PACKET SrcIoPacket = IopIncomingIoPacketBuffer;
@@ -2473,6 +2476,7 @@ delete:
     IopSignalDpcNotification();
 
     *pNumResponses = ResponseCount;
+    return !IsListEmpty(&IopReplyIrpList);
 }
 
 /*

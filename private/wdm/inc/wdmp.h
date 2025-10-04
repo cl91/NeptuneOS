@@ -227,8 +227,8 @@ NTSTATUS IopAllocateMdl(IN PVOID Buffer,
 			IN BOOLEAN BufferMapped,
 			OUT PMDL *pMdl);
 VOID IopInitIrpProcessing();
-VOID IopProcessIoPackets(OUT ULONG *pNumResponses,
-			 IN ULONG NumRequests);
+BOOLEAN IopProcessIoPackets(OUT ULONG *pNumResponses,
+			    IN ULONG NumRequests);
 VOID IoDbgDumpIrp(IN PIRP Irp);
 
 /* isr.c */

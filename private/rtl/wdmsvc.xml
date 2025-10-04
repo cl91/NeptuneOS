@@ -36,6 +36,7 @@
   <svc name="WdmRequestIoPackets">
     <parameter annotation="in" type="ULONG" name="NumDriverResponsePackets" />
     <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />
+    <parameter annotation="in" type="BOOLEAN" name="MoreResponseToCome" />
   </svc>
 
   <svc name="WdmEnableX86Port">

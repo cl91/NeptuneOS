@@ -1320,7 +1320,8 @@ static NTSTATUS IopHandleFlushCacheMessage(IN PIO_PACKET Msg,
 NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 			     IN PTHREAD Thread,
 			     IN ULONG NumCliMsgs,
-			     OUT ULONG *pNumSrvMsgs)
+			     OUT ULONG *pNumSrvMsgs,
+			     IN BOOLEAN MoreResponseToCome)
 {
     assert(Thread != NULL);
     assert(pNumSrvMsgs != NULL);
@@ -1407,9 +1408,10 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	CliMsg = (PIO_PACKET)((MWORD)CliMsg + CliMsg->Size);
     }
 
-    /* Wait for other threads to queue an IO packet on this driver. */
-    AWAIT_EX(Status, KeWaitForSingleObject, State, _, Thread,
-	     &DriverObject->IoPacketQueuedEvent.Header, TRUE, NULL);
+    /* Wait for other threads to queue an IO packet on this driver. Note if the
+     * client told us that it has more response packets to come, we do not wait. */
+    AWAIT_EX_IF(!MoreResponseToCome, Status, KeWaitForSingleObject, State, _, Thread,
+		&DriverObject->IoPacketQueuedEvent.Header, TRUE, NULL);
 
     /* Now process the driver's queued IO packets and send them to the driver's incoming
      * IO packet buffer, which contains the server's messages to the client driver. */

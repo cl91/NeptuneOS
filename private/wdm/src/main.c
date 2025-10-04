@@ -13,12 +13,14 @@ ULONG InitSafeBootMode = 0;
 static NTSTATUS IopDriverEventLoop()
 {
     ULONG NumResponsePackets = 0;
+    BOOLEAN MoreResponseToCome = FALSE;
     while (TRUE) {
 	ULONG NumRequestPackets = 0;
 	/* This should never return error. If it did, something is seriously
 	 * wrong and we should terminate the driver process. */
-	RET_ERR(WdmRequestIoPackets(NumResponsePackets, &NumRequestPackets));
-	IopProcessIoPackets(&NumResponsePackets, NumRequestPackets);
+	RET_ERR(WdmRequestIoPackets(NumResponsePackets, &NumRequestPackets,
+				    MoreResponseToCome));
+	MoreResponseToCome = IopProcessIoPackets(&NumResponsePackets, NumRequestPackets);
     }
 }
 
