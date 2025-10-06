@@ -244,7 +244,7 @@ typedef struct _PCI_PDO_EXTENSION {
     USHORT SubsystemVendorId;
     USHORT SubsystemId;
     UCHAR RevisionId;
-    BOOLEAN ProgIf;
+    UCHAR ProgIf;
     UCHAR SubClass;
     UCHAR BaseClass;
     UCHAR AdditionalResourceCount;
