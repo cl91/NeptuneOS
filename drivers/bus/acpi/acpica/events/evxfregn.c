@@ -245,7 +245,7 @@ AcpiInstallAddressSpaceHandler(ACPI_HANDLE Device, ACPI_ADR_SPACE_TYPE SpaceId,
 ACPI_EXPORT_SYMBOL(AcpiInstallAddressSpaceHandler)
 
 ACPI_STATUS
-AcpiInstallAddressSpaceHandlerNo_Reg(ACPI_HANDLE Device, ACPI_ADR_SPACE_TYPE SpaceId,
+AcpiInstallAddressSpaceHandlerNoReg(ACPI_HANDLE Device, ACPI_ADR_SPACE_TYPE SpaceId,
 				     ACPI_ADR_SPACE_HANDLER Handler,
 				     ACPI_ADR_SPACE_SETUP Setup, void *Context)
 {
@@ -253,7 +253,7 @@ AcpiInstallAddressSpaceHandlerNo_Reg(ACPI_HANDLE Device, ACPI_ADR_SPACE_TYPE Spa
 						  Context, FALSE);
 }
 
-ACPI_EXPORT_SYMBOL(AcpiInstallAddressSpaceHandlerNo_Reg)
+ACPI_EXPORT_SYMBOL(AcpiInstallAddressSpaceHandlerNoReg)
 
 /*******************************************************************************
  *

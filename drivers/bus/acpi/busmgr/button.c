@@ -32,8 +32,8 @@
 #define _COMPONENT ACPI_BUTTON_COMPONENT
 ACPI_MODULE_NAME("acpi_button")
 
-static INT AcpiButtonAdd(PACPI_DEVICE Device);
-static INT AcpiButtonRemove(PACPI_DEVICE Device, INT Type);
+static ACPI_STATUS AcpiButtonAdd(IN PDEVICE_OBJECT DeviceObject, PACPI_DEVICE Device);
+static ACPI_STATUS AcpiButtonRemove(PACPI_DEVICE Device, INT Type);
 
 static ACPI_BUSMGR_COMPONENT AcpiButtonDriver = {
     { 0, 0 }, ACPI_BUTTON_DRIVER_NAME, ACPI_BUTTON_CLASS, 0, 0,
@@ -44,6 +44,7 @@ static ACPI_BUSMGR_COMPONENT AcpiButtonDriver = {
 typedef struct _ACPI_BUTTON {
     ACPI_HANDLE Handle;
     PACPI_DEVICE Device; /* Fixed button kludge */
+    IO_WORKITEM IrpWorkItem;
     UINT8 Type;
     ULONG64 Pushed;
 } ACPI_BUTTON, *PACPI_BUTTON;
@@ -68,30 +69,23 @@ static NTAPI VOID ButtonEventWorkItemRoutine(IN PDEVICE_OBJECT DeviceObject,
 {
     PIRP Irp = Ctx;
     ULONG ButtonEvent = Irp->IoStatus.Status;
-    PIO_WORKITEM Workitem = (PVOID)Irp->IoStatus.Information;
     RtlCopyMemory(Irp->SystemBuffer, &ButtonEvent, sizeof(ButtonEvent));
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = sizeof(ULONG);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-
-    IoFreeWorkItem(Workitem);
 }
 
 /*
  * Note this function is called in the interrupt thread, so we need to
  * synchronize access with the main thread.
  */
-static INT HandleButtonEvent(PACPI_DEVICE Device, UINT8 Type, INT Data)
+static INT HandleButtonEvent(PACPI_BUTTON Button, UINT8 Type, INT Data)
 {
-    DPRINT("acpi_bus_generate_event\n");
+    DPRINT("AcpiBusGenerateEvent\n");
 
+    PACPI_DEVICE Device = Button->Device;
     if (!Device)
 	return_VALUE(AE_BAD_PARAMETER);
-
-    PIO_WORKITEM Workitem = IoAllocateWorkItem(AcpiOsGetBusFdo());
-    if (!Workitem) {
-	return_VALUE(AE_NO_MEMORY);
-    }
 
     ULONG ButtonEvent = 0;
     if (strstr(Device->Pnp.BusId, "PWRF"))
@@ -101,11 +95,11 @@ static INT HandleButtonEvent(PACPI_DEVICE Device, UINT8 Type, INT Data)
 
     PSLIST_ENTRY Entry = RtlInterlockedPopEntrySList(&GetButtonEventIrpList);
     PIRP Irp = CONTAINING_RECORD(Entry, IRP, Tail.SListEntry);
-    /* We pass ButtonEvent and WorkItem in the IoStatus field of the IRP object
+    /* We pass ButtonEvent in the IoStatus field of the IRP object
      * so we don't have to define and allocate a context for the work item. */
     Irp->IoStatus.Status = ButtonEvent;
-    Irp->IoStatus.Information = (ULONG_PTR)Workitem;
-    IoQueueWorkItem(Workitem, ButtonEventWorkItemRoutine, DelayedWorkQueue, Irp);
+    IoQueueWorkItem(&Button->IrpWorkItem, ButtonEventWorkItemRoutine,
+		    DelayedWorkQueue, Irp);
     return_VALUE(AE_OK);
 }
 
@@ -117,14 +111,14 @@ static VOID AcpiButtonNotify(ACPI_HANDLE Handle, UINT32 Event, PVOID Data)
 {
     PACPI_BUTTON Button = (PACPI_BUTTON )Data;
 
-    ACPI_FUNCTION_TRACE("acpi_button_notify");
+    ACPI_FUNCTION_TRACE("AcpiButtonNotify");
 
     if (!Button || !Button->Device)
 	return_VOID;
 
     switch (Event) {
     case ACPI_BUTTON_NOTIFY_STATUS:
-	HandleButtonEvent(Button->Device, Event, ++Button->Pushed);
+	HandleButtonEvent(Button, Event, ++Button->Pushed);
 	break;
     default:
 	ACPI_DEBUG_PRINT((ACPI_DB_INFO, "Unsupported event [0x%x]\n", Event));
@@ -138,7 +132,7 @@ static ACPI_STATUS AcpiButtonNotifyFixed(PVOID Data)
 {
     PACPI_BUTTON Button = (PACPI_BUTTON )Data;
 
-    ACPI_FUNCTION_TRACE("acpi_button_notify_fixed");
+    ACPI_FUNCTION_TRACE("AcpiButtonNotifyFixed");
 
     if (!Button)
 	return_ACPI_STATUS(AE_BAD_PARAMETER);
@@ -148,13 +142,13 @@ static ACPI_STATUS AcpiButtonNotifyFixed(PVOID Data)
     return_ACPI_STATUS(AE_OK);
 }
 
-static INT AcpiButtonAdd(PACPI_DEVICE Device)
+static ACPI_STATUS AcpiButtonAdd(IN PDEVICE_OBJECT BusFdo, PACPI_DEVICE Device)
 {
     INT Result = 0;
     ACPI_STATUS Status = AE_OK;
     PACPI_BUTTON Button = NULL;
 
-    ACPI_FUNCTION_TRACE("acpi_button_add");
+    ACPI_FUNCTION_TRACE("AcpiButtonAdd");
 
     if (!Device)
 	return_VALUE(-1);
@@ -166,6 +160,7 @@ static INT AcpiButtonAdd(PACPI_DEVICE Device)
 
     Button->Device = Device;
     Button->Handle = Device->Handle;
+    IoInitializeWorkItem(BusFdo, &Button->IrpWorkItem);
     ACPI_BUSMGR_COMPONENT_DATA(Device) = Button;
 
     /*
@@ -198,8 +193,8 @@ static INT AcpiButtonAdd(PACPI_DEVICE Device)
 	sprintf(ACPI_DEVICE_CLASS(Device), "%s/%s", ACPI_BUTTON_CLASS,
 		ACPI_BUTTON_SUBCLASS_LID);
     } else {
-	ACPI_DEBUG_PRINT(
-	    (ACPI_DB_ERROR, "Unsupported hid [%s]\n", ACPI_DEVICE_HID(Device)));
+	ACPI_DEBUG_PRINT((ACPI_DB_ERROR,
+			  "Unsupported hid [%s]\n", ACPI_DEVICE_HID(Device)));
 	Result = -15;
 	goto end;
     }
@@ -237,16 +232,14 @@ static INT AcpiButtonAdd(PACPI_DEVICE Device)
     }
 
     switch (Button->Type) {
+    case ACPI_BUTTON_TYPE_POWER:
     case ACPI_BUTTON_TYPE_POWERF:
 	Status = AcpiInstallFixedEventHandler(ACPI_EVENT_POWER_BUTTON,
 					      AcpiButtonNotifyFixed, Button);
 	break;
+    case ACPI_BUTTON_TYPE_SLEEP:
     case ACPI_BUTTON_TYPE_SLEEPF:
 	Status = AcpiInstallFixedEventHandler(ACPI_EVENT_SLEEP_BUTTON,
-					      AcpiButtonNotifyFixed, Button);
-	break;
-    case ACPI_BUTTON_TYPE_LID:
-	Status = AcpiInstallFixedEventHandler(ACPI_BUTTON_TYPE_LID,
 					      AcpiButtonNotifyFixed, Button);
 	break;
     default:
@@ -256,8 +249,13 @@ static INT AcpiButtonAdd(PACPI_DEVICE Device)
     }
 
     if (ACPI_FAILURE(Status)) {
-	ACPI_DEBUG_PRINT((ACPI_DB_ERROR, "Error installing notify handler\n"));
-	Result = -15;
+	ACPI_DEBUG_PRINT((ACPI_DB_ERROR,
+			  "Error installing notify handler for button device handle %p, "
+			  "type %d, hid %s (%s), class %s, status = 0x%x\n",
+			  Button->Handle, Button->Type, ACPI_DEVICE_HID(Device),
+			  ACPI_DEVICE_NAME(Device), ACPI_DEVICE_CLASS(Device),
+			  Status));
+	Result = Status;
 	goto end;
     }
 
@@ -271,12 +269,12 @@ end:
     return_VALUE(Result);
 }
 
-static INT AcpiButtonRemove(PACPI_DEVICE Device, INT Type)
+static ACPI_STATUS AcpiButtonRemove(PACPI_DEVICE Device, INT Type)
 {
     ACPI_STATUS Status = 0;
     PACPI_BUTTON Button = NULL;
 
-    ACPI_FUNCTION_TRACE("acpi_button_remove");
+    ACPI_FUNCTION_TRACE("AcpiButtonRemove");
 
     if (!Device || !ACPI_BUSMGR_COMPONENT_DATA(Device))
 	return_VALUE(-1);
@@ -311,14 +309,14 @@ static INT AcpiButtonRemove(PACPI_DEVICE Device, INT Type)
     return_VALUE(0);
 }
 
-INT AcpiButtonInit(void)
+INT AcpiButtonInit(IN PDEVICE_OBJECT DeviceObject)
 {
     INT Result = 0;
 
     ACPI_FUNCTION_TRACE("AcpiButtonInit");
 
     RtlInitializeSListHead(&GetButtonEventIrpList);
-    Result = AcpiBusRegisterDriver(&AcpiButtonDriver);
+    Result = AcpiBusRegisterDriver(DeviceObject, &AcpiButtonDriver);
     if (Result < 0) {
 	return_VALUE(-15);
     }
@@ -326,11 +324,11 @@ INT AcpiButtonInit(void)
     return_VALUE(0);
 }
 
-VOID AcpiButtonExit(void)
+VOID AcpiButtonExit(IN PDEVICE_OBJECT DeviceObject)
 {
     ACPI_FUNCTION_TRACE("AcpiButtonExit");
 
-    AcpiBusUnregisterDriver(&AcpiButtonDriver);
+    AcpiBusUnregisterDriver(DeviceObject, &AcpiButtonDriver);
 
     return_VOID;
 }

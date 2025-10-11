@@ -185,22 +185,16 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
  *     pInterruptObject - A pointer to the PKINTERRUPT object to be connected.
  *     ServiceRoutine   - Interrupt service routine
  *     ServiceContext   - Optional context for the interrupt service routine
- *     Vector           - Interrupt vector to connect to. This is what the ACPI
- *                        specification refers to as the "system vector", which
- *                        on x86 systems with the 8259A interrupt controller is
- *                        simply the IRQ number. On x88 systems with IOAPIC,
- *                        this is the Global System Interrupt (GSI) vector.
- *     Irql             - Device IRQ level. Caller should generally set this to
- *                        Vector, or use whatever value the PnP manager supplies.
- *     SynchronizeIrql  - Synchronization IRQ level, which the system uses to
- *                        determine the scheduling priority of the interrupt
- *                        service thread. Caller should generally set this to
- *                        Irql.
- *     InterruptMode    - Whether the interrupt is LevelSensitive or Latched.
- *     ShareVector      - Whether the device allows the interrupt to be shared.
+ *     Vector           - The CPU interrupt vector to connect to. Caller should
+ *                        set this to the Vector member of the translated
+ *                        interrupt resource supplied by the PnP manager.
  *
  * The following arguments are ignored and are kept for compatibility reason.
  *
+ *     Irql                - Device IRQ level.
+ *     SynchronizeIrql     - Synchronization IRQ level.
+ *     InterruptMode       - Whether the interrupt is LevelSensitive or Latched.
+ *     ShareVector         - Whether the device allows the interrupt to be shared.
  *     ProcessorEnableMask - Specifies the process affinity of the ISR.
  *     FloatingSave        - Whether the floating point states should be saved
  *                           for the ISR.
@@ -230,13 +224,9 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
     InterruptObject->ServiceRoutine = ServiceRoutine;
     InterruptObject->ServiceContext = ServiceContext;
     InterruptObject->Vector = Vector;
-    InterruptObject->Irql = Irql;
-    InterruptObject->SynchronizeIrql = SynchronizeIrql;
-    InterruptObject->InterruptMode = InterruptMode;
 
     MWORD MutexCap = 0;
     RET_ERR(WdmConnectInterrupt(Vector,
-				ShareVector,
 				IopInterruptServiceThreadEntry,
 				InterruptObject,
 				&InterruptObject->ThreadHandle,
@@ -260,7 +250,7 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
     assert(PsCapIsProcessShared(MutexCap));
 
     DbgTrace("Created interrupt object %p ThreadHandle %p "
-	     "IrqHandler %zd Notification %zd Mutex %zd\n",
+	     "IrqHandler 0x%zx Notification 0x%zx Mutex 0x%zx\n",
 	     InterruptObject, InterruptObject->ThreadHandle,
 	     InterruptObject->IrqHandlerCap,
 	     InterruptObject->NotificationCap,

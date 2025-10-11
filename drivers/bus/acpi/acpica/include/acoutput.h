@@ -497,12 +497,12 @@
 
 #ifndef ACPI_SIMPLE_RETURN_MACROS
 
-#define ACPI_TRACE_EXIT(Function, Type, Param)   \
-    ACPI_DO_WHILE0({                             \
-	register Type _Param = (Type)(Param);    \
-	Function(ACPI_DEBUG_PARAMETERS, _Param); \
-	return (_Param);                         \
-    })
+#define ACPI_TRACE_EXIT(Function, Type, Param)			\
+    ACPI_DO_WHILE0({						\
+	    Type TypedParam = (Type)(Param);			\
+	    Function(ACPI_DEBUG_PARAMETERS, TypedParam);	\
+	    return (TypedParam);				\
+	})
 
 #else /* Use original less-safe macros */
 

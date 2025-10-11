@@ -95,8 +95,6 @@ typedef struct _FDO_DEVICE_DATA {
 NTSTATUS Bus_PDO_EvalMethod(IN PPDO_DEVICE_DATA DeviceData, IN OUT PIRP Irp);
 
 /* osl.c */
-VOID AcpiOsSetBusFdo(IN PDEVICE_OBJECT Fdo);
-PDEVICE_OBJECT AcpiOsGetBusFdo();
 VOID AcpiOsSetRootSystemTable(ACPI_PHYSICAL_ADDRESS Rsdt,
 			      ULONG Length);
 ACPI_STATUS AcpiOsRegisterInterruptMapping(IN ULONG Irq,
@@ -115,13 +113,17 @@ NTAPI NTSTATUS Bus_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 NTAPI NTSTATUS Bus_Power(PDEVICE_OBJECT DeviceObject, PIRP Irp);
 
 /* busmgr/bus.c */
-int AcpiBusInitializeManager();
+INT AcpiBusInitializeManager(IN PDEVICE_OBJECT BusFdo);
 VOID AcpiBusTerminateManager();
-int AcpiBusSetPower(ACPI_HANDLE handle, int state);
-BOOLEAN AcpiBusPowerManageable(ACPI_HANDLE handle);
+int AcpiBusSetPower(ACPI_HANDLE Handle, int State);
+BOOLEAN AcpiBusPowerManageable(ACPI_HANDLE Handle);
 
 /* busmgr/button.c */
 VOID AcpiBusQueueGetButtonEventIrp(IN PIRP Irp);
+
+/* busmgr/ec.c */
+ACPI_STATUS EcRead(UCHAR Addr, PUCHAR Data);
+ACPI_STATUS EcWrite(UCHAR Addr, UCHAR Val);
 
 /* busmgr/enum.c */
 NTSTATUS Bus_EnumerateDevices(PFDO_DEVICE_DATA DeviceExtension);

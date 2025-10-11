@@ -179,7 +179,7 @@
  * Exception info table. The "Description" field is used only by the
  * ACPICA help application (acpihelp).
  */
-typedef struct acpi_exception_info {
+typedef struct _ACPI_EXCEPTION_INFO {
     char *Name;
 
 #if defined(ACPI_HELP_APP) || defined(ACPI_ASL_COMPILER)

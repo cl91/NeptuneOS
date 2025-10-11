@@ -50,6 +50,7 @@
 @ stdcall IoRegisterPlugPlayNotification(long long ptr ptr ptr ptr ptr)
 @ stdcall IoAllocateErrorLogEntry(ptr long)
 @ stdcall IoWriteErrorLogEntry(ptr)
+@ stdcall IoEnablePort(long long)
 @ stdcall IoWMIRegistrationControl(ptr long)
 @ stdcall IoWMIDeviceObjectToProviderId(ptr)
 @ stdcall IoWMIWriteEvent(ptr)

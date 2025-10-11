@@ -66,6 +66,9 @@ __cdecl NTSYSAPI VOID __outdwordstring(IN USHORT PortNum,
 #define WRITE_PORT_ULONG(Port, Data)	RtlRaiseStatus(STATUS_NOT_SUPPORTED)
 #endif
 
+NTAPI NTSYSAPI NTSTATUS IoEnablePort(IN USHORT PortNum,
+				     IN USHORT Len);
+
 /*
  * The READ/WRITE_REGISTER_Xxx macros need compiler and memory barriers.
  */

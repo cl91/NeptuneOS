@@ -45,7 +45,7 @@ ACPI_MODULE_NAME("acpi_bus")
 
 extern VOID AcpiPicSciSetTrigger(ULONG Irq, UINT16 Trigger);
 
-typedef INT (*ACPI_BUS_WALK_CALLBACK)(PACPI_DEVICE , int, PVOID );
+typedef INT (*ACPI_BUS_WALK_CALLBACK)(PDEVICE_OBJECT, PACPI_DEVICE, int, PVOID);
 
 PACPI_DEVICE AcpiRoot;
 
@@ -405,7 +405,8 @@ static INT AcpiBusGetPerfFlags(PACPI_DEVICE Device)
  * Direction:	direction to parse (up or down)
  * @Data:	context for this search operation
  */
-static INT AcpiBusWalk(PACPI_DEVICE Start, ACPI_BUS_WALK_CALLBACK Callback,
+static INT AcpiBusWalk(IN PDEVICE_OBJECT BusFdo,
+		       PACPI_DEVICE Start, ACPI_BUS_WALK_CALLBACK Callback,
 		       INT Direction, PVOID Data)
 {
     INT Result = 0;
@@ -428,7 +429,7 @@ static INT AcpiBusWalk(PACPI_DEVICE Start, ACPI_BUS_WALK_CALLBACK Callback,
 
     while (Device) {
 	if (Direction == WALK_DOWN)
-	    if (-249 == Callback(Device, Level, Data))
+	    if (-249 == Callback(BusFdo, Device, Level, Data))
 		break;
 
 	/* Depth First */
@@ -440,7 +441,7 @@ static INT AcpiBusWalk(PACPI_DEVICE Start, ACPI_BUS_WALK_CALLBACK Callback,
 	}
 
 	if (Direction == WALK_UP)
-	    if (-249 == Callback(Device, Level, Data))
+	    if (-249 == Callback(BusFdo, Device, Level, Data))
 		break;
 
 	/* Now Breadth */
@@ -462,7 +463,7 @@ static INT AcpiBusWalk(PACPI_DEVICE Start, ACPI_BUS_WALK_CALLBACK Callback,
     }
 
     if ((Direction == WALK_UP) && (Result == 0))
-	Callback(Start, Level, Data);
+	Callback(BusFdo, Start, Level, Data);
 
     return Result;
 }
@@ -652,9 +653,11 @@ Done:
  * AcpiBusDriverInit
  * --------------------
  * Used to initialize a device via its device driver.  Called whenever a
- * driver is bound to a device.  Invokes the driver's add() and start() Ops.
+ * driver is bound to a device.  Invokes the driver's Add() and Start() Ops.
  */
-static INT AcpiBusDriverInit(PACPI_DEVICE Device, PACPI_BUSMGR_COMPONENT Driver)
+static INT AcpiBusDriverInit(IN PDEVICE_OBJECT BusFdo,
+			     IN PACPI_DEVICE Device,
+			     IN PACPI_BUSMGR_COMPONENT Driver)
 {
     INT Result = 0;
 
@@ -662,10 +665,10 @@ static INT AcpiBusDriverInit(PACPI_DEVICE Device, PACPI_BUSMGR_COMPONENT Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
     if (!Driver->Ops.Add)
-	return_VALUE(-38);
+	return_VALUE(AE_NOT_EXIST);
 
-    Result = Driver->Ops.Add(Device);
-    if (Result) {
+    Result = Driver->Ops.Add(BusFdo, Device);
+    if (!ACPI_SUCCESS(Result)) {
 	Device->Driver = NULL;
 	return_VALUE(Result);
     }
@@ -679,7 +682,7 @@ static INT AcpiBusDriverInit(PACPI_DEVICE Device, PACPI_BUSMGR_COMPONENT Driver)
 
     if (Driver->Ops.Start) {
 	Result = Driver->Ops.Start(Device);
-	if (Result && Driver->Ops.Remove)
+	if (!ACPI_SUCCESS(Result) && Driver->Ops.Remove)
 	    Driver->Ops.Remove(Device, ACPI_BUS_REMOVAL_NORMAL);
 	return_VALUE(Result);
     }
@@ -699,7 +702,10 @@ static INT AcpiBusDriverInit(PACPI_DEVICE Device, PACPI_BUSMGR_COMPONENT Driver)
  * Callback for AcpiBusWalk() used to find devices that match a specific
  * driver's criteria and then attach the driver.
  */
-static INT AcpiBusAttach(PACPI_DEVICE Device, INT Level, PVOID Data)
+static INT AcpiBusAttach(IN PDEVICE_OBJECT BusFdo,
+			 IN PACPI_DEVICE Device,
+			 IN INT Level,
+			 IN PVOID Data)
 {
     INT Result = 0;
     PACPI_BUSMGR_COMPONENT Driver = NULL;
@@ -721,7 +727,7 @@ static INT AcpiBusAttach(PACPI_DEVICE Device, INT Level, PVOID Data)
 
     DPRINT("Found driver [%s] for device [%s]\n", Driver->Name, Device->Pnp.BusId);
 
-    Result = AcpiBusDriverInit(Device, Driver);
+    Result = AcpiBusDriverInit(BusFdo, Device, Driver);
     if (Result)
 	return_VALUE(Result);
 
@@ -736,10 +742,11 @@ static INT AcpiBusAttach(PACPI_DEVICE Device, INT Level, PVOID Data)
  * Callback for AcpiBusWalk() used to find devices that match a specific
  * driver's criteria and unattach the driver.
  */
-static INT AcpiBusUnattach(PACPI_DEVICE Device, INT Level, PVOID Data)
+static INT AcpiBusUnattach(IN PDEVICE_OBJECT BusFdo,
+			   PACPI_DEVICE Device, INT Level, PVOID Data)
 {
     INT Result = 0;
-    PACPI_BUSMGR_COMPONENT Driver = (PACPI_BUSMGR_COMPONENT )Data;
+    PACPI_BUSMGR_COMPONENT Driver = (PACPI_BUSMGR_COMPONENT)Data;
 
     if (!Device || !Driver)
 	return_VALUE(AE_BAD_PARAMETER);
@@ -768,20 +775,21 @@ static INT AcpiBusUnattach(PACPI_DEVICE Device, INT Level, PVOID Data)
  * Parses the list of registered drivers looking for a driver applicable for
  * the specified device.
  */
-static INT AcpiBusFindDriver(PACPI_DEVICE Device)
+static INT AcpiBusFindDriver(IN PDEVICE_OBJECT BusFdo,
+			     IN PACPI_DEVICE Device)
 {
     INT Result = AE_NOT_FOUND;
 
     if (!Device || Device->Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
-    LoopOverList(driver, &AcpiBusDrivers, ACPI_BUSMGR_COMPONENT, Node) {
-	if (AcpiBusMatch(Device, driver))
+    LoopOverList(Driver, &AcpiBusDrivers, ACPI_BUSMGR_COMPONENT, Node) {
+	if (AcpiBusMatch(Device, Driver))
 	    continue;
 
-	Result = AcpiBusDriverInit(Device, driver);
+	Result = AcpiBusDriverInit(BusFdo, Device, Driver);
 	if (!Result)
-	    ++driver->References;
+	    ++Driver->References;
 
 	break;
     }
@@ -795,14 +803,15 @@ static INT AcpiBusFindDriver(PACPI_DEVICE Device)
  * Registers a driver with the ACPI bus.  Searches the namespace for all
  * devices that match the driver's criteria and binds.
  */
-INT AcpiBusRegisterDriver(PACPI_BUSMGR_COMPONENT Driver)
+INT AcpiBusRegisterDriver(IN PDEVICE_OBJECT BusFdo,
+			  PACPI_BUSMGR_COMPONENT Driver)
 {
     if (!Driver)
 	return_VALUE(AE_BAD_PARAMETER);
 
     InsertTailList(&AcpiBusDrivers, &Driver->Node);
 
-    AcpiBusWalk(AcpiRoot, AcpiBusAttach, WALK_DOWN, Driver);
+    AcpiBusWalk(BusFdo, AcpiRoot, AcpiBusAttach, WALK_DOWN, Driver);
 
     return_VALUE(Driver->References);
 }
@@ -813,12 +822,13 @@ INT AcpiBusRegisterDriver(PACPI_BUSMGR_COMPONENT Driver)
  * Unregisters a driver with the ACPI bus.  Searches the namespace for all
  * devices that match the driver's criteria and unbinds.
  */
-VOID AcpiBusUnregisterDriver(PACPI_BUSMGR_COMPONENT Driver)
+VOID AcpiBusUnregisterDriver(IN PDEVICE_OBJECT BusFdo,
+			     PACPI_BUSMGR_COMPONENT Driver)
 {
     if (!Driver)
 	return;
 
-    AcpiBusWalk(AcpiRoot, AcpiBusUnattach, WALK_UP, Driver);
+    AcpiBusWalk(BusFdo, AcpiRoot, AcpiBusUnattach, WALK_UP, Driver);
 
     if (Driver->References)
 	return;
@@ -879,7 +889,8 @@ static INT AcpiBusGetFlags(PACPI_DEVICE Device)
     return_VALUE(0);
 }
 
-static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
+static INT AcpiBusAdd(IN PDEVICE_OBJECT BusFdo,
+		      PACPI_DEVICE *Child, PACPI_DEVICE Parent,
 		      ACPI_HANDLE Handle, INT Type)
 {
     INT Result = 0;
@@ -898,7 +909,6 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
 
     Device = ExAllocatePoolWithTag(NonPagedPool, sizeof(ACPI_DEVICE), 'DpcA');
     if (!Device) {
-	DPRINT1("Memory allocation error\n");
 	return_VALUE(AE_NO_MEMORY);
     }
     memset(Device, 0, sizeof(ACPI_DEVICE));
@@ -945,7 +955,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
     /*
      * Flags
      * -----
-     * Get prior to calling acpi_bus_get_status() so we know whether
+     * Get prior to calling AcpiBusGetStatus() so we know whether
      * or not _STA is present.  Note that we only look for object
      * handles -- cannot evaluate objects until we know the device is
      * present and properly initialized.
@@ -1113,7 +1123,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
      * Context
      * -------
      * Attach this 'ACPI_DEVICE' to the ACPI object.  This makes
-     * resolutions from handle->device very efficient.  Note that we need
+     * resolutions from handle to device very efficient.  Note that we need
      * to be careful with fixed-feature devices as they all attach to the
      * root object.
      */
@@ -1173,7 +1183,7 @@ static INT AcpiBusAdd(PACPI_DEVICE *Child, PACPI_DEVICE Parent,
      * TBD: Assumes LDM provides driver hot-plug capability.
      */
     if (Device->Flags.HardwareId || Device->Flags.CompatibleIds)
-	AcpiBusFindDriver(Device);
+	AcpiBusFindDriver(BusFdo, Device);
 
 end:
     if (Info != NULL)
@@ -1212,7 +1222,8 @@ static INT AcpiBusRemove(PACPI_DEVICE Device, INT Type)
     return_VALUE(0);
 }
 
-INT AcpiBusScan(PACPI_DEVICE Start)
+static INT AcpiBusScan(IN PDEVICE_OBJECT BusFdo,
+		       PACPI_DEVICE Start)
 {
     ACPI_STATUS Status = AE_OK;
     PACPI_DEVICE Parent = NULL;
@@ -1281,7 +1292,7 @@ INT AcpiBusScan(PACPI_DEVICE Start)
 	    continue;
 	}
 
-	Status = AcpiBusAdd(&Child, Parent, Chandle, Type);
+	Status = AcpiBusAdd(BusFdo, &Child, Parent, Chandle, Type);
 	if (ACPI_FAILURE(Status))
 	    continue;
 
@@ -1309,7 +1320,8 @@ INT AcpiBusScan(PACPI_DEVICE Start)
     return_VALUE(0);
 }
 
-static INT AcpiBusScanFixed(PACPI_DEVICE Root)
+static INT AcpiBusScanFixed(IN PDEVICE_OBJECT BusFdo,
+			    IN PACPI_DEVICE Root)
 {
     INT Result = 0;
     PACPI_DEVICE Device = NULL;
@@ -1322,12 +1334,14 @@ static INT AcpiBusScanFixed(PACPI_DEVICE Root)
      * power button is present.
      */
     if (AcpiGbl_FADT.Flags & ACPI_FADT_POWER_BUTTON)
-	Result = AcpiBusAdd(&Device, AcpiRoot, NULL, ACPI_BUS_TYPE_POWER_BUTTON);
+	Result = AcpiBusAdd(BusFdo, &Device, AcpiRoot,
+			    NULL, ACPI_BUS_TYPE_POWER_BUTTON);
     else {
 	/* Enable the fixed power button so we get notified if it is pressed */
 	AcpiWriteBitRegister(ACPI_BITREG_POWER_BUTTON_ENABLE, 1);
 
-	Result = AcpiBusAdd(&Device, AcpiRoot, NULL, ACPI_BUS_TYPE_POWER_BUTTONF);
+	Result = AcpiBusAdd(BusFdo, &Device, AcpiRoot,
+			    NULL, ACPI_BUS_TYPE_POWER_BUTTONF);
     }
 
     /* This one is a bit more complicated and we do it wrong
@@ -1338,12 +1352,14 @@ static INT AcpiBusScanFixed(PACPI_DEVICE Root)
      * the we have a control method button just like above.
      */
     if (AcpiGbl_FADT.Flags & ACPI_FADT_SLEEP_BUTTON)
-	Result = AcpiBusAdd(&Device, AcpiRoot, NULL, ACPI_BUS_TYPE_SLEEP_BUTTON);
+	Result = AcpiBusAdd(BusFdo, &Device, AcpiRoot,
+			    NULL, ACPI_BUS_TYPE_SLEEP_BUTTON);
     else {
 	/* Enable the fixed sleep button so we get notified if it is pressed */
 	AcpiWriteBitRegister(ACPI_BITREG_SLEEP_BUTTON_ENABLE, 1);
 
-	Result = AcpiBusAdd(&Device, AcpiRoot, NULL, ACPI_BUS_TYPE_SLEEP_BUTTONF);
+	Result = AcpiBusAdd(BusFdo, &Device, AcpiRoot,
+			    NULL, ACPI_BUS_TYPE_SLEEP_BUTTONF);
     }
 
     return_VALUE(Result);
@@ -1353,7 +1369,7 @@ static INT AcpiBusScanFixed(PACPI_DEVICE Root)
    Initialization/Cleanup
    -------------------------------------------------------------------------- */
 
-INT AcpiBusInitializeManager(void)
+INT AcpiBusInitializeManager(IN PDEVICE_OBJECT BusFdo)
 {
     DPRINT("AcpiBusInitializeManager\n");
 
@@ -1361,12 +1377,30 @@ INT AcpiBusInitializeManager(void)
 
     ACPI_STATUS Status = AE_OK;
 
+    /*
+     * ACPI 2.0 requires the EC driver to be loaded and work before the EC
+     * device is found in the namespace.
+     *
+     * This is accomplished by looking for the ECDT table and getting the EC
+     * parameters out of that.
+     *
+     * Do that before calling AcpiInitializeObjects() which may trigger EC
+     * address space accesses.
+     */
+    AcpiEcProbeEcdt(BusFdo);
+
     Status = AcpiEnableSubsystem(ACPI_FULL_INITIALIZATION);
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("Unable to start the ACPI Interpreter\n");
 	goto error1;
     }
     DPRINT1("AcpiEnableSubsystem OK\n");
+
+    /*
+     * Maybe EC region is required at BusScan/AcpiGetDevices. So it
+     * is necessary to enable it as early as possible.
+     */
+    AcpiEcProbeDsdt(BusFdo);
 
     Status = AcpiInitializeObjects(ACPI_FULL_INITIALIZATION);
     if (ACPI_FAILURE(Status)) {
@@ -1390,7 +1424,8 @@ INT AcpiBusInitializeManager(void)
     /*
      * Create the root device in the bus's device tree
      */
-    Status = AcpiBusAdd(&AcpiRoot, NULL, ACPI_ROOT_OBJECT, ACPI_BUS_TYPE_SYSTEM);
+    Status = AcpiBusAdd(BusFdo, &AcpiRoot, NULL,
+			ACPI_ROOT_OBJECT, ACPI_BUS_TYPE_SYSTEM);
     if (ACPI_FAILURE(Status))
 	goto error2;
     DPRINT1("AcpiBusAdd OK\n");
@@ -1398,13 +1433,13 @@ INT AcpiBusInitializeManager(void)
     /*
      * Enumerate devices in the ACPI namespace.
      */
-    Status = AcpiBusScanFixed(AcpiRoot);
+    Status = AcpiBusScanFixed(BusFdo, AcpiRoot);
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("AcpiBusScanFixed failed\n");
     } else {
 	DPRINT1("AcpiBusScanFixed OK\n");
     }
-    Status = AcpiBusScan(AcpiRoot);
+    Status = AcpiBusScan(BusFdo, AcpiRoot);
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("AcpiBusScan failed\n");
     } else {
@@ -1415,18 +1450,20 @@ INT AcpiBusInitializeManager(void)
      * Install drivers required for proper enumeration of the
      * ACPI namespace.
      */
-    Status = AcpiPowerInit(); /* ACPI Bus Power Management */
+    Status = AcpiPowerInit(BusFdo); /* ACPI Bus Power Management */
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("AcpiPowerInit failed\n");
     } else {
 	DPRINT1("AcpiPowerInit OK\n");
     }
-    Status = AcpiButtonInit();
+    Status = AcpiButtonInit(BusFdo);
     if (ACPI_FAILURE(Status)) {
 	DPRINT1("AcpiButtonInit failed\n");
     } else {
 	DPRINT1("AcpiButtonInit OK\n");
     }
+
+    AcpiEcInit(BusFdo);
 
     DPRINT1("AcpiBusInitializeManager OK\n");
     return_VALUE(AE_OK);
@@ -1439,7 +1476,7 @@ error1:
     return Status;
 }
 
-VOID AcpiBusTerminateManager(void)
+VOID AcpiBusTerminateManager(VOID)
 {
     ACPI_STATUS Status = AE_OK;
 

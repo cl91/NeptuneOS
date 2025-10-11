@@ -155,7 +155,6 @@ static NTSTATUS Bus_FilterResourcesFdo(IN PDEVICE_OBJECT Fdo,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    AcpiOsSetBusFdo(Fdo);
     AcpiOsSetRootSystemTable(Desc->Memory.MinimumAddress.QuadPart,
 			     Desc->Memory.Length);
     ACPI_STATUS AcpiStatus = AcpiInitializeSubsystem();
@@ -193,7 +192,7 @@ static NTSTATUS Bus_FilterResourcesFdo(IN PDEVICE_OBJECT Fdo,
     NewResList->List[0].Count += ResCount;
     Desc = &NewResList->List[0].Descriptors[Res->List[0].Count];
     Desc->Type = CmResourceTypeInterrupt;
-    Desc->Flags = CM_RESOURCE_INTERRUPT_LATCHED;
+    Desc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE | CM_RESOURCE_INTERRUPT_ACTIVE_LOW;
     Desc->ShareDisposition = CmResourceShareDeviceExclusive;
     Desc->Interrupt.MinimumVector = AcpiGbl_FADT.SciInterrupt;
     Desc->Interrupt.MaximumVector = AcpiGbl_FADT.SciInterrupt;
@@ -287,6 +286,15 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
     AcpiOsRegisterInterruptMapping(RawRes->Interrupt.Vector,
 				   TranslatedRes->Interrupt.Vector);
 
+    /* Enable the PM1a registers here, so the ACPI ISR can access them later
+     * (ISRs cannot enable IO ports). */
+    if (AcpiGbl_XPm1aStatus.SpaceId == ACPI_ADR_SPACE_SYSTEM_IO) {
+	IoEnablePort(AcpiGbl_XPm1aStatus.Address, AcpiGbl_XPm1aStatus.BitWidth);
+    }
+    if (AcpiGbl_XPm1aEnable.SpaceId == ACPI_ADR_SPACE_SYSTEM_IO) {
+	IoEnablePort(AcpiGbl_XPm1aEnable.Address, AcpiGbl_XPm1aEnable.BitWidth);
+    }
+
     FdoData->Common.DevicePowerState = PowerDeviceD0;
     POWER_STATE PowerState = { .DeviceState = PowerDeviceD0 };
     PoSetPowerState(FdoData->Common.Self, DevicePowerState, PowerState);
@@ -299,20 +307,13 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
 
     DPRINT("Acpi subsystem init\n");
     /* Initialize ACPI bus manager */
-    ACPI_STATUS AcpiStatus = AcpiBusInitializeManager();
+    ACPI_STATUS AcpiStatus = AcpiBusInitializeManager(Fdo);
     if (!ACPI_SUCCESS(AcpiStatus)) {
 	DPRINT1("AcpiBusInitializeManager() failed with status 0x%X\n", AcpiStatus);
 	AcpiTerminate();
 	return STATUS_UNSUCCESSFUL;
     }
     Status = Bus_EnumerateDevices(FdoData);
-
-    /* We will access the PM1a registers to trigger port enabling, so
-     * the ACPI ISR can access them later (ISRs cannot enable IO ports). */
-    UINT32 FixedStatus;
-    UINT32 FixedEnable;
-    AcpiHwRegisterRead(ACPI_REGISTER_PM1_STATUS, &FixedStatus);
-    AcpiHwRegisterRead(ACPI_REGISTER_PM1_ENABLE, &FixedEnable);
 
     return Status;
 }

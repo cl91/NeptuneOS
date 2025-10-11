@@ -47,7 +47,6 @@
 
   <svc name="WdmConnectInterrupt">
     <parameter annotation="in" type="ULONG" name="Vector" />
-    <parameter annotation="in" type="BOOLEAN" name="ShareVector" />
     <parameter annotation="in" type="PIO_INTERRUPT_SERVICE_THREAD_ENTRY" name="EntryPoint" />
     <parameter annotation="in" type="PVOID" name="ClientSideContext" />
     <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />

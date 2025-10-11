@@ -5,36 +5,44 @@
 /* This list is accessed by both the ISR and non-ISR code, so we must synchronize access. */
 SLIST_HEADER IopX86PortList;
 
-static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
+static NTSTATUS IopEnableIoPort(IN USHORT PortNum,
+				IN USHORT Len,
+				OUT PX86_IOPORT *pIoPort)
 {
     Len /= 8;
     PSLIST_ENTRY Entry = RtlFirstEntrySList(&IopX86PortList);
     while (Entry) {
 	PX86_IOPORT Port = CONTAINING_RECORD(Entry, X86_IOPORT, Link);
-	if (Port->PortNum == PortNum && Port->Count == Len) {
-	    return Port;
+	if (Port->PortNum == PortNum) {
+	    if (Port->Count == Len) {
+		*pIoPort = Port;
+		return STATUS_SUCCESS;
+	    } else {
+		return STATUS_ALREADY_INITIALIZED;
+	    }
 	}
 	Entry = Entry->Next;
     }
     if (!IoThreadIsAtPassiveLevel()) {
 	assert(FALSE);
-	return NULL;
+	return STATUS_INVALID_THREAD;
     }
     PX86_IOPORT IoPort = ExAllocatePool(NonPagedPool, sizeof(X86_IOPORT));
     if (!IoPort) {
-	return NULL;
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
     MWORD Cap = 0;
     NTSTATUS Status = WdmEnableX86Port(PortNum, Len, &Cap);
     if (!NT_SUCCESS(Status)) {
 	IopFreePool(IoPort);
-	return NULL;
+	return Status;
     }
     IoPort->Cap = Cap;
     IoPort->PortNum = PortNum;
     IoPort->Count = Len;
     RtlInterlockedPushEntrySList(&IopX86PortList, &IoPort->Link);
-    return IoPort;
+    *pIoPort = IoPort;
+    return STATUS_SUCCESS;
 }
 
 #define DEFINE_READ_PORT_HELPER(Len, Type)			\
@@ -75,14 +83,15 @@ static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
 #define DEFINE_PORT_IN_FUNC(Name, Len, Type)			\
     __cdecl Type __in##Name(IN USHORT PortNum)			\
     {								\
-	PX86_IOPORT Port = IopEnableIoPort(PortNum, Len);	\
+	PX86_IOPORT Port = NULL;				\
+	NTSTATUS Status = IopEnableIoPort(PortNum, Len, &Port);	\
 	if (Port == NULL) {					\
-	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
+	    RtlRaiseStatus(Status);				\
 	}							\
 	Type Value;						\
-	NTSTATUS Status = IopReadPort##Len(Port, &Value);	\
+	Status = IopReadPort##Len(Port, &Value);		\
 	if (!NT_SUCCESS(Status)) {				\
-	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
+	    RtlRaiseStatus(Status);				\
 	}							\
 	return Value;						\
     }
@@ -91,13 +100,14 @@ static PX86_IOPORT IopEnableIoPort(USHORT PortNum, USHORT Len)
     __cdecl VOID __out##Name(IN USHORT PortNum,			\
 			     IN Type Data)			\
     {								\
-	PX86_IOPORT Port = IopEnableIoPort(PortNum, Len);	\
+	PX86_IOPORT Port = NULL;				\
+	NTSTATUS Status = IopEnableIoPort(PortNum, Len, &Port);	\
 	if (Port == NULL) {					\
-	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
+	    RtlRaiseStatus(Status);				\
 	}							\
-	NTSTATUS Status = IopWritePort##Len(Port, Data);	\
+	Status = IopWritePort##Len(Port, Data);			\
 	if (!NT_SUCCESS(Status)) {				\
-	    RtlRaiseStatus(STATUS_UNSUCCESSFUL);		\
+	    RtlRaiseStatus(Status);				\
 	}							\
     }
 
@@ -113,5 +123,23 @@ DEFINE_READ_PORT_HELPER(32, ULONG);
 DEFINE_WRITE_PORT_HELPER(32, ULONG);
 DEFINE_PORT_IN_FUNC(dword, 32, ULONG);
 DEFINE_PORT_OUT_FUNC(dword, 32, ULONG);
+
+NTAPI NTSTATUS IoEnablePort(IN USHORT PortNum,
+			    IN USHORT Len)
+{
+    if (!(Len == 8 || Len == 16 || Len == 32)) {
+	return STATUS_INVALID_PARAMETER_2;
+    }
+    PX86_IOPORT Port = NULL;
+    return IopEnableIoPort(PortNum, Len, &Port);
+}
+
+#else
+
+NTAPI NTSTATUS IoEnablePort(IN USHORT PortNum,
+			    IN USHORT Len)
+{
+    return STATUS_NOT_SUPPORTED;
+}
 
 #endif

@@ -164,9 +164,6 @@ static inline VOID KeReleaseMutex(IN PKMUTEX Mutex)
  */
 typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
     ULONG Vector;
-    KIRQL Irql;
-    KIRQL SynchronizeIrql;
-    KINTERRUPT_MODE InterruptMode;
     KMUTEX Mutex;
     PKSERVICE_ROUTINE ServiceRoutine;
     PVOID ServiceContext;

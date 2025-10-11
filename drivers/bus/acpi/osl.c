@@ -48,16 +48,6 @@ ACPI_STATUS AcpiOsTerminate(VOID)
     return AE_OK;
 }
 
-VOID AcpiOsSetBusFdo(IN PDEVICE_OBJECT Fdo)
-{
-    AcpiBusFdo = Fdo;
-}
-
-PDEVICE_OBJECT AcpiOsGetBusFdo()
-{
-    return AcpiBusFdo;
-}
-
 VOID AcpiOsSetRootSystemTable(ACPI_PHYSICAL_ADDRESS Rsdt,
 			      ULONG Length)
 {
@@ -248,7 +238,7 @@ VOID AcpiOsSleep(UINT64 Milliseconds)
     DPRINT("AcpiOsSleep %llu\n", Milliseconds);
     LARGE_INTEGER Delay = {
 	/* Unit is 100ns. */
-	.QuadPart = Milliseconds * 1000 * 10
+	.QuadPart = -((LONGLONG)Milliseconds) * 1000 * 10
     };
     KeDelayExecutionThread(FALSE, &Delay);
 }
@@ -259,43 +249,61 @@ VOID AcpiOsStall(UINT32 Microseconds)
     KeStallExecutionProcessor(Microseconds);
 }
 
+static LONG OslLockDepth;
+
+static VOID OslAcquireLock()
+{
+    /* The system automatically acquires the interrupt lock in the ISR,
+     * so make sure we don't try to acquire it (otherwise we will deadlock). */
+    if (NtCurrentTeb()->Wdm.IsIsrThread) {
+	return;
+    }
+    if (!(OslLockDepth++) && AcpiInterrupt) {
+	IoAcquireInterruptMutex(AcpiInterrupt);
+    }
+}
+
+static VOID OslReleaseLock()
+{
+    if (NtCurrentTeb()->Wdm.IsIsrThread) {
+	return;
+    }
+    if (!(--OslLockDepth) && AcpiInterrupt) {
+	IoReleaseInterruptMutex(AcpiInterrupt);
+    }
+    assert(OslLockDepth >= 0);
+}
+
 ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE Handle,
 				UINT32 Units,
 				UINT16 Timeout)
 {
-    if (AcpiInterrupt) {
-	IoAcquireInterruptMutex(AcpiInterrupt);
-    }
+    OslAcquireLock();
     return AE_OK;
 }
 
 ACPI_STATUS AcpiOsSignalSemaphore(ACPI_SEMAPHORE Handle,
 				  UINT32 Units)
 {
-    if (AcpiInterrupt) {
-	IoReleaseInterruptMutex(AcpiInterrupt);
-    }
+    OslReleaseLock();
     return AE_OK;
 }
 
 ACPI_CPU_FLAGS AcpiOsAcquireLock(ACPI_SPINLOCK Handle)
 {
-    if (AcpiInterrupt) {
-	IoAcquireInterruptMutex(AcpiInterrupt);
-    }
+    OslAcquireLock();
     return 0;
 }
 
 VOID AcpiOsReleaseLock(ACPI_SPINLOCK Handle,
 		       ACPI_CPU_FLAGS Flags)
 {
-    if (AcpiInterrupt) {
-	IoReleaseInterruptMutex(AcpiInterrupt);
-    }
+    OslReleaseLock();
 }
 
 static NTAPI BOOLEAN AcpiIsr(PKINTERRUPT Interrupt, PVOID ServiceContext)
 {
+    DPRINT("ACPI Interrupt Service Routine\n");
     PACPI_ISR_CONTEXT Context = ServiceContext;
     return Context->Handler(Context->Context) == ACPI_INTERRUPT_HANDLED;
 }
@@ -396,12 +404,13 @@ ACPI_STATUS AcpiOsReadMemory(ACPI_PHYSICAL_ADDRESS Address,
 			     UINT64 *Value,
 			     UINT32 Width)
 {
-    DPRINT("AcpiOsReadMemory 0x%llx\n", Address);
     PVOID MappedAddress = AcpiOsMapMemory(Address, Width);
     if (!MappedAddress) {
 	return AE_ERROR;
     }
     OslReadMemory(MappedAddress, Value, Width);
+    DPRINT("Read %d-bit value 0x%llx from physical address 0x%llx mapped at %p\n",
+	   Width, *Value, Address, MappedAddress);
     return AE_OK;
 }
 
@@ -436,12 +445,13 @@ ACPI_STATUS AcpiOsWriteMemory(ACPI_PHYSICAL_ADDRESS Address,
 			      UINT64 Value,
 			      UINT32 Width)
 {
-    DPRINT("AcpiOsWriteMemory 0x%llx\n", Address);
     PVOID MappedAddress = AcpiOsMapMemory(Address, Width);
     if (!MappedAddress) {
 	return AE_ERROR;
     }
 
+    DPRINT("Writing %d-bit value 0x%llx to physical address 0x%llx mapped at %p\n",
+	   Width, Value, Address, MappedAddress);
     OslWriteMemory(MappedAddress, Value, Width);
     return AE_OK;
 }
@@ -450,8 +460,6 @@ ACPI_STATUS AcpiOsReadPort(ACPI_IO_ADDRESS Address,
 			   UINT32 *Value,
 			   UINT32 Width)
 {
-    DPRINT("AcpiOsReadPort 0x%llx, width %d\n", Address, Width);
-
 #if defined(_M_IX86) || defined(_M_AMD64)
     switch (Width) {
     case 8:
@@ -471,6 +479,7 @@ ACPI_STATUS AcpiOsReadPort(ACPI_IO_ADDRESS Address,
 	return AE_BAD_PARAMETER;
 	break;
     }
+    DPRINT("AcpiOsReadPort 0x%llx, width %d, value = 0x%x\n", Address, Width, *Value);
     return AE_OK;
 #else
     return AE_NOT_IMPLEMENTED;
@@ -482,7 +491,7 @@ ACPI_STATUS AcpiOsWritePort(ACPI_IO_ADDRESS Address,
 			    UINT32 Width)
 {
 #if defined(_M_IX86) || defined(_M_AMD64)
-    DPRINT("AcpiOsWritePort 0x%llx, width %d\n", Address, Width);
+    DPRINT("AcpiOsWritePort 0x%llx, width %d, value 0x%x\n", Address, Width, Value);
     switch (Width) {
     case 8:
 	WRITE_PORT_UCHAR((PUCHAR)(ULONG_PTR)Address, Value);

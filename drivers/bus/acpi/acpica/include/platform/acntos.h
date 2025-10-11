@@ -52,8 +52,8 @@ typedef UCHAR UINT8;
 #define AcpiOsReleaseMutex(Handle) ({ (VOID)(Handle); ; })
 
 /* Likewise, since there is only one thread (ie. the main thread) beside
- * the ISR thread, acquiring a semaphore or a spinlock can simply be
- * defined as acquiring the interrupt mutex. */
+ * the ISR thread, we can implement a semaphore or spinlock as the interrupt
+ * mutex plus a recursion depth. */
 #define ACPI_SEMAPHORE PVOID
 #define ACPI_SPINLOCK PVOID
 #define ACPI_USE_ALTERNATE_PROTOTYPE_AcpiOsCreateSemaphore

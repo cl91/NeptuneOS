@@ -63,14 +63,15 @@ struct _ACPI_DEVICE;
  * -----------
  */
 
-typedef INT (*ACPI_OP_ADD)(struct _ACPI_DEVICE *Device);
-typedef INT (*ACPI_OP_REMOVE)(struct _ACPI_DEVICE *Device, INT Type);
-typedef INT (*ACPI_OP_START)(struct _ACPI_DEVICE *Device);
-typedef INT (*ACPI_OP_SUSPEND)(struct _ACPI_DEVICE *Device, INT State);
-typedef INT (*ACPI_OP_RESUME)(struct _ACPI_DEVICE *Device, INT State);
-typedef INT (*ACPI_OP_SCAN)(struct _ACPI_DEVICE *Device);
-typedef INT (*ACPI_OP_BIND)(struct _ACPI_DEVICE *Device);
-typedef INT (*ACPI_OP_UNBIND)(struct _ACPI_DEVICE *Device);
+typedef ACPI_STATUS (*ACPI_OP_ADD)(IN PDEVICE_OBJECT DeviceObject,
+				   struct _ACPI_DEVICE *Device);
+typedef ACPI_STATUS (*ACPI_OP_REMOVE)(struct _ACPI_DEVICE *Device, ACPI_BUS_REMOVAL_TYPE Type);
+typedef ACPI_STATUS (*ACPI_OP_START)(struct _ACPI_DEVICE *Device);
+typedef ACPI_STATUS (*ACPI_OP_SUSPEND)(struct _ACPI_DEVICE *Device, INT State);
+typedef ACPI_STATUS (*ACPI_OP_RESUME)(struct _ACPI_DEVICE *Device, INT State);
+typedef ACPI_STATUS (*ACPI_OP_SCAN)(struct _ACPI_DEVICE *Device);
+typedef ACPI_STATUS (*ACPI_OP_BIND)(struct _ACPI_DEVICE *Device);
+typedef ACPI_STATUS (*ACPI_OP_UNBIND)(struct _ACPI_DEVICE *Device);
 typedef VOID (*ACPI_OP_NOTIFY)(struct _ACPI_DEVICE *Device, UINT32 Event);
 
 typedef struct _ACPI_DEVICE_OPS {
@@ -257,9 +258,25 @@ typedef struct _ACPI_DEVICE {
 /* bus.c */
 INT AcpiBusGetPower(ACPI_HANDLE Handle, INT *State);
 INT AcpiBusGenerateEvent(PACPI_DEVICE Device, UINT8 Type, INT Data);
-INT AcpiBusRegisterDriver(PACPI_BUSMGR_COMPONENT Driver);
-VOID AcpiBusUnregisterDriver(PACPI_BUSMGR_COMPONENT Driver);
+INT AcpiBusRegisterDriver(IN PDEVICE_OBJECT BusFdo,
+			  PACPI_BUSMGR_COMPONENT Driver);
+VOID AcpiBusUnregisterDriver(IN PDEVICE_OBJECT BusFdo,
+			     PACPI_BUSMGR_COMPONENT Driver);
 INT AcpiBusGetDevice(ACPI_HANDLE Handle, PACPI_DEVICE *Device);
+
+/* button.c */
+INT AcpiButtonInit(IN PDEVICE_OBJECT BusFdo);
+VOID AcpiButtonExit(IN PDEVICE_OBJECT BusFdo);
+
+/* ec.c */
+VOID AcpiEcProbeEcdt(IN PDEVICE_OBJECT BusFdo);
+VOID AcpiEcProbeDsdt(IN PDEVICE_OBJECT BusFdo);
+VOID AcpiEcInit(IN PDEVICE_OBJECT BusFdo);
+
+/* power.c */
+INT AcpiPowerGetInferredState(PACPI_DEVICE Device);
+INT AcpiPowerTransition(PACPI_DEVICE Device, INT State);
+INT AcpiPowerInit(IN PDEVICE_OBJECT BusFdo);
 
 /* utils.c */
 ACPI_STATUS AcpiEvaluateInteger(ACPI_HANDLE Handle,

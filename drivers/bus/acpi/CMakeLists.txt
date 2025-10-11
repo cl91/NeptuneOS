@@ -174,6 +174,7 @@ add_library(acpica ${ACPICA_SOURCE} $<$<CONFIG:Debug>:${ACPICA_SOURCE_DEBUG}>)
 list(APPEND ACPI_SOURCE
     busmgr/bus.c
     busmgr/button.c
+    busmgr/ec.c
     busmgr/enum.c
     busmgr/pdo.c
     busmgr/power.c

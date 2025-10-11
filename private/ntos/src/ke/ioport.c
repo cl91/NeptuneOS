@@ -9,6 +9,7 @@ NTSTATUS KeEnableIoPortEx(IN PCNODE CNode,
 {
     assert(CNode != NULL);
     assert(IoPort != NULL);
+    assert(Count == 1 || Count == 2 || Count == 4);
     MWORD Cap = 0;
     RET_ERR(MmAllocateCap(CNode, &Cap));
     assert(Cap != 0);

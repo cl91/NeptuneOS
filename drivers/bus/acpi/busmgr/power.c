@@ -53,27 +53,27 @@ ACPI_MODULE_NAME("acpi_power")
 
 INT AcpiPowerNocheck;
 
-static INT AcpiPowerAdd(PACPI_DEVICE Device);
-static INT AcpiPowerRemove(PACPI_DEVICE Device, INT Type);
-static INT AcpiPowerResume(PACPI_DEVICE Device, INT State);
+static ACPI_STATUS AcpiPowerAdd(IN PDEVICE_OBJECT BusFdo, PACPI_DEVICE Device);
+static ACPI_STATUS AcpiPowerRemove(PACPI_DEVICE Device, INT Type);
+static ACPI_STATUS AcpiPowerResume(PACPI_DEVICE Device, INT State);
 
 static ACPI_BUSMGR_COMPONENT AcpiPowerDriver = {
     { 0, 0 }, ACPI_POWER_DRIVER_NAME, ACPI_POWER_CLASS, 0, 0, ACPI_POWER_HID,
     { AcpiPowerAdd, AcpiPowerRemove, NULL, NULL, AcpiPowerResume }
 };
 
-struct acpi_power_reference {
+typedef struct _ACPI_POWER_REFERENCE {
     LIST_ENTRY Node;
     PACPI_DEVICE Device;
-};
+} ACPI_POWER_REFERENCE, *PACPI_POWER_REFERENCE;
 
-struct acpi_power_resource {
+typedef struct _ACPI_POWER_RESOURCE {
     PACPI_DEVICE Device;
     ACPI_BUS_ID Name;
     UINT32 SystemLevel;
     UINT32 Order;
     LIST_ENTRY Reference;
-};
+} ACPI_POWER_RESOURCE, *PACPI_POWER_RESOURCE;
 
 static LIST_ENTRY AcpiPowerResourceList;
 
@@ -82,7 +82,7 @@ static LIST_ENTRY AcpiPowerResourceList;
    -------------------------------------------------------------------------- */
 
 static INT AcpiPowerGetContext(ACPI_HANDLE Handle,
-			       struct acpi_power_resource **Resource)
+			       PACPI_POWER_RESOURCE *Resource)
 {
     INT Result = 0;
     PACPI_DEVICE Device = NULL;
@@ -96,7 +96,7 @@ static INT AcpiPowerGetContext(ACPI_HANDLE Handle,
 	return_VALUE(Result);
     }
 
-    *Resource = (struct acpi_power_resource *)ACPI_BUSMGR_COMPONENT_DATA(Device);
+    *Resource = (PACPI_POWER_RESOURCE)ACPI_BUSMGR_COMPONENT_DATA(Device);
     if (!*Resource)
 	return_VALUE(-15);
 
@@ -162,13 +162,13 @@ static INT AcpiPowerOn(ACPI_HANDLE Handle, PACPI_DEVICE Dev)
     INT Result = 0;
     INT Found = 0;
     ACPI_STATUS Status = AE_OK;
-    struct acpi_power_resource *Resource = NULL;
+    PACPI_POWER_RESOURCE Resource = NULL;
 
     Result = AcpiPowerGetContext(Handle, &Resource);
     if (Result)
 	return Result;
 
-    LoopOverList(ref, &Resource->Reference, struct acpi_power_reference, Node) {
+    LoopOverList(ref, &Resource->Reference, ACPI_POWER_REFERENCE, Node) {
 	if (Dev->Handle == ref->Device->Handle) {
 	    ACPI_DEBUG_PRINT((ACPI_DB_INFO,
 			      "Device [%s] already referenced by resource [%s]\n",
@@ -179,9 +179,9 @@ static INT AcpiPowerOn(ACPI_HANDLE Handle, PACPI_DEVICE Dev)
     }
 
     if (!Found) {
-	struct acpi_power_reference *Ref = ExAllocatePoolWithTag(NonPagedPool,
-								 sizeof(struct acpi_power_reference),
-								 ACPI_TAG);
+	PACPI_POWER_REFERENCE Ref = ExAllocatePoolWithTag(NonPagedPool,
+							  sizeof(ACPI_POWER_REFERENCE),
+							  ACPI_TAG);
 	if (!Ref) {
 	    ACPI_DEBUG_PRINT((ACPI_DB_INFO, "kmalloc() failed\n"));
 	    return -1; // -ENOMEM;
@@ -206,13 +206,13 @@ static INT AcpiPowerOffDevice(ACPI_HANDLE Handle, PACPI_DEVICE Dev)
 {
     INT Result = 0;
     ACPI_STATUS Status = AE_OK;
-    struct acpi_power_resource *Resource = NULL;
+    PACPI_POWER_RESOURCE Resource = NULL;
 
     Result = AcpiPowerGetContext(Handle, &Resource);
     if (Result)
 	return Result;
 
-    LoopOverList(ref, &Resource->Reference, struct acpi_power_reference, Node) {
+    LoopOverList(ref, &Resource->Reference, ACPI_POWER_REFERENCE, Node) {
 	if (Dev->Handle == ref->Device->Handle) {
 	    RemoveEntryList(&ref->Node);
 	    ExFreePool(ref);
@@ -486,18 +486,18 @@ end:
    Driver Interface
    -------------------------------------------------------------------------- */
 
-INT AcpiPowerAdd(PACPI_DEVICE Device)
+static ACPI_STATUS AcpiPowerAdd(IN PDEVICE_OBJECT BusFdo, PACPI_DEVICE Device)
 {
     INT Result = 0, State;
     ACPI_STATUS Status = AE_OK;
-    struct acpi_power_resource *Resource = NULL;
+    PACPI_POWER_RESOURCE Resource = NULL;
     union acpi_object AcpiObject;
     ACPI_BUFFER Buffer = { sizeof(ACPI_OBJECT), &AcpiObject };
 
     if (!Device)
 	return_VALUE(-1);
 
-    Resource = ExAllocatePoolWithTag(NonPagedPool, sizeof(struct acpi_power_resource),
+    Resource = ExAllocatePoolWithTag(NonPagedPool, sizeof(ACPI_POWER_RESOURCE),
 				     ACPI_TAG);
     if (!Resource)
 	return_VALUE(-4);
@@ -545,16 +545,16 @@ end:
     return Result;
 }
 
-INT AcpiPowerRemove(PACPI_DEVICE Device, INT Type)
+ACPI_STATUS AcpiPowerRemove(PACPI_DEVICE Device, INT Type)
 {
-    struct acpi_power_resource *Resource = NULL;
+    PACPI_POWER_RESOURCE Resource = NULL;
 
     if (!Device || !ACPI_BUSMGR_COMPONENT_DATA(Device))
 	return_VALUE(-1);
 
     Resource = ACPI_BUSMGR_COMPONENT_DATA(Device);
 
-    LoopOverList(ref, &Resource->Reference, struct acpi_power_reference, Node) {
+    LoopOverList(ref, &Resource->Reference, ACPI_POWER_REFERENCE, Node) {
 	RemoveEntryList(&ref->Node);
 	ExFreePool(ref);
     }
@@ -563,11 +563,11 @@ INT AcpiPowerRemove(PACPI_DEVICE Device, INT Type)
     return_VALUE(0);
 }
 
-static INT AcpiPowerResume(PACPI_DEVICE Device, INT State)
+static ACPI_STATUS AcpiPowerResume(PACPI_DEVICE Device, INT State)
 {
     INT Result = 0;
-    struct acpi_power_resource *Resource = NULL;
-    struct acpi_power_reference *Ref;
+    PACPI_POWER_RESOURCE Resource = NULL;
+    PACPI_POWER_REFERENCE Ref;
 
     if (!Device || !ACPI_BUSMGR_COMPONENT_DATA(Device))
 	return -1;
@@ -579,7 +579,7 @@ static INT AcpiPowerResume(PACPI_DEVICE Device, INT State)
 	return Result;
 
     if (State == ACPI_POWER_RESOURCE_STATE_OFF && !IsListEmpty(&Resource->Reference)) {
-	Ref = CONTAINING_RECORD(Resource->Reference.Flink, struct acpi_power_reference, Node);
+	Ref = CONTAINING_RECORD(Resource->Reference.Flink, ACPI_POWER_REFERENCE, Node);
 	Result = AcpiPowerOn(Device->Handle, Ref->Device);
 	return Result;
     }
@@ -587,15 +587,15 @@ static INT AcpiPowerResume(PACPI_DEVICE Device, INT State)
     return 0;
 }
 
-INT AcpiPowerInit(void)
+INT AcpiPowerInit(IN PDEVICE_OBJECT BusFdo)
 {
     INT Result = 0;
 
-    DPRINT("acpi_power_init\n");
+    DPRINT("AcpiPowerInit\n");
 
     InitializeListHead(&AcpiPowerResourceList);
 
-    Result = AcpiBusRegisterDriver(&AcpiPowerDriver);
+    Result = AcpiBusRegisterDriver(BusFdo, &AcpiPowerDriver);
     if (Result < 0) {
 	return_VALUE(-15);
     }

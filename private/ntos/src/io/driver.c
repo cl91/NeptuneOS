@@ -401,6 +401,7 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
 #if defined(_M_IX86) || defined(_M_AMD64)
     assert(Thread != NULL);
     assert(Cap != NULL);
+    assert(Count == 1 || Count == 2 || Count == 4);
     PPROCESS Process = Thread->Process;
     assert(Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Process->DriverObject;
@@ -464,10 +465,13 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
     if (Flags & CM_RESOURCE_INTERRUPT_LATCHED) {
 	Svc->IrqHandler.Config.Level = 0;
     } else {
-	/* Windows assumes the interrupt is level-sensitive by default. */
 	Svc->IrqHandler.Config.Level = 1;
     }
-    Svc->IrqHandler.Config.Polarity = 0;
+    if (Flags & CM_RESOURCE_INTERRUPT_ACTIVE_LOW) {
+	Svc->IrqHandler.Config.Polarity = 1;
+    } else {
+	Svc->IrqHandler.Config.Polarity = 0;
+    }
     /* TODO: Msi */
     IF_ERR_GOTO(err, Status,
 		KeCreateIrqHandlerCapEx(&Svc->IrqHandler,
@@ -502,7 +506,6 @@ err:
 NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 			     IN PTHREAD Thread,
 			     IN ULONG Vector,
-			     IN BOOLEAN ShareVector,
 			     IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
 			     IN PVOID ClientSideContext, /* Context as in EntryPoint(Context) */
 			     OUT HANDLE *ThreadHandle,
@@ -514,9 +517,6 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
     assert(Thread->Process != NULL);
     assert(Thread->Process->DriverObject != NULL);
     assert(Thread == Thread->Process->DriverObject->MainEventLoopThread);
-    if (ShareVector) {
-	DbgTrace("WARNING: Interrupt sharing is disallowed.\n");
-    }
     /* Check if the interrupt level has been connected. */
     ULONG Irq = ULONG_MAX, Flags = 0;
     if (!IopIsInterruptVectorAssigned(Thread->Process->DriverObject, Vector, &Irq, &Flags)) {

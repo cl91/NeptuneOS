@@ -578,6 +578,9 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags = (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 					     CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 					     CM_RESOURCE_INTERRUPT_LATCHED);
+		if (IrqData->Polarity == ACPI_ACTIVE_LOW) {
+		    ResourceDescriptor->Flags |= CM_RESOURCE_INTERRUPT_ACTIVE_LOW;
+		}
 		ResourceDescriptor->Interrupt.Level =
 		    ResourceDescriptor->Interrupt.Vector = IrqData->Interrupts[i];
 		ResourceDescriptor->Interrupt.Affinity = (KAFFINITY)(-1);
@@ -597,6 +600,9 @@ static NTSTATUS Bus_PDO_QueryResources(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 		ResourceDescriptor->Flags = (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 					     CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 					     CM_RESOURCE_INTERRUPT_LATCHED);
+		if (IrqData->Polarity == ACPI_ACTIVE_LOW) {
+		    ResourceDescriptor->Flags |= CM_RESOURCE_INTERRUPT_ACTIVE_LOW;
+		}
 		ResourceDescriptor->Interrupt.Level =
 		    ResourceDescriptor->Interrupt.Vector = IrqData->Interrupts[i];
 		ResourceDescriptor->Interrupt.Affinity = (KAFFINITY)(-1);
@@ -1079,6 +1085,9 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 			 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 			 CM_RESOURCE_INTERRUPT_LATCHED);
+		if (IrqData->Polarity == ACPI_ACTIVE_LOW) {
+		    RequirementDescriptor->Flags |= CM_RESOURCE_INTERRUPT_ACTIVE_LOW;
+		}
 		RequirementDescriptor->Interrupt.MinimumVector =
 		    RequirementDescriptor->Interrupt.MaximumVector =
 			IrqData->Interrupts[i];
@@ -1101,6 +1110,9 @@ static NTSTATUS Bus_PDO_QueryResourceRequirements(PPDO_DEVICE_DATA DeviceData, P
 		    (IrqData->Triggering == ACPI_LEVEL_SENSITIVE ?
 			 CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE :
 			 CM_RESOURCE_INTERRUPT_LATCHED);
+		if (IrqData->Polarity == ACPI_ACTIVE_LOW) {
+		    RequirementDescriptor->Flags |= CM_RESOURCE_INTERRUPT_ACTIVE_LOW;
+		}
 		RequirementDescriptor->Interrupt.MinimumVector =
 		    RequirementDescriptor->Interrupt.MaximumVector =
 			IrqData->Interrupts[i];

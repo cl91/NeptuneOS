@@ -132,6 +132,7 @@
 @ stdcall RtlAppendUnicodeToString(ptr wstr)
 @ stdcall RtlFindCharInUnicodeString(long ptr ptr ptr)
 @ stdcall RtlIntegerToChar(long long long ptr)
+@ stdcall RtlCharToInteger(ptr long ptr)
 @ stdcall RtlIntegerToUnicodeString(long long ptr)
 @ stdcall RtlUnicodeStringToInteger(ptr long ptr)
 @ stdcall RtlUTF8ToUnicodeN(ptr long ptr ptr long)

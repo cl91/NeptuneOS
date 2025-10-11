@@ -76,8 +76,8 @@ VOID IopProcessTimerList()
 
 /*
  * Call the server to set the timer. If the timer was set before, it will
- * be set to the new due time. If specified, returns the previous state of
- * the timer (ie. TRUE if timer was set before the call).
+ * be set to the new due time. The previous state of the timer is returned
+ * (ie. returns TRUE if timer was set before the call).
  *
  * This routine must be called at DISPATCH_LEVEL and below.
  */
@@ -89,6 +89,7 @@ static BOOLEAN KiSetTimer(IN OUT PKTIMER Timer,
 			  IN OPTIONAL PVOID WorkerContext,
 			  IN BOOLEAN LowPriorityTimer)
 {
+    BOOLEAN PreviousState = KeCancelTimer(Timer);
     /* Compute the absolute due time of the timer. */
     ULARGE_INTEGER AbsoluteDueTime = {
 	.QuadPart = DueTime.QuadPart
@@ -104,25 +105,19 @@ static BOOLEAN KiSetTimer(IN OUT PKTIMER Timer,
     Timer->AbsoluteDueTime = AbsoluteDueTime.QuadPart;
     Timer->Period = Period;
     Timer->LowPriority = LowPriorityTimer;
-    NTSTATUS Status = WdmSetTimer(Timer->Header.Header.GlobalHandle, &AbsoluteDueTime, Period);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
     IopAcquireDpcMutex();
-    /* If the timer has expired (but hasn't been processed by the main event loop), we
-     * need to remove it from the signaled object list. */
-    if (Timer->Header.Signaled) {
-	KiCancelWaitableObject(&Timer->Header, FALSE);
-    }
-    BOOLEAN PreviousState = Timer->State;
-    if (!PreviousState) {
-	Timer->State = TRUE;
-	assert(!Timer->Header.Signaled);
-	assert(!ListHasEntry(&IopSignaledObjectList, &Timer->Header.QueueListEntry));
-	assert(!ListHasEntry(&IopPendingTimerList, &Timer->Header.QueueListEntry));
-	InsertHeadList(&IopPendingTimerList, &Timer->Header.QueueListEntry);
-    }
+    assert(!Timer->Header.Signaled);
+    assert(!ListHasEntry(&IopSignaledObjectList, &Timer->Header.QueueListEntry));
+    assert(!ListHasEntry(&IopPendingTimerList, &Timer->Header.QueueListEntry));
+    Timer->State = TRUE;
+    InsertHeadList(&IopPendingTimerList, &Timer->Header.QueueListEntry);
     IopReleaseDpcMutex();
+
+    NTSTATUS Status = WdmSetTimer(Timer->Header.Header.GlobalHandle,
+				  &AbsoluteDueTime, Period);
+    if (!NT_SUCCESS(Status)) {
+	RtlRaiseStatus(Status);
+    }
     return PreviousState;
 }
 
@@ -277,6 +272,7 @@ NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
 {
     PAGED_CODE();
     assert(Interval);
+    assert(Interval->QuadPart);
     KTIMER Timer;
     NTSTATUS Status = KiInitializeTimer(&Timer, SynchronizationEvent);
     if (!NT_SUCCESS(Status)) {

@@ -105,9 +105,6 @@
 #define ACPI_BUTTON_DEVICE_NAME_LID "Lid Switch"
 #define ACPI_BUTTON_TYPE_LID 0x05
 
-INT AcpiButtonInit(void);
-VOID AcpiButtonExit(void);
-
 /* --------------------------------------------------------------------------
                                 Embedded Controller
    -------------------------------------------------------------------------- */
@@ -145,11 +142,6 @@ VOID AcpiButtonExit(void);
 #define ACPI_POWER_RESOURCE_STATE_OFF 0x00
 #define ACPI_POWER_RESOURCE_STATE_ON 0x01
 #define ACPI_POWER_RESOURCE_STATE_UNKNOWN 0xFF
-
-INT AcpiPowerGetInferredState(PACPI_DEVICE Device);
-INT AcpiPowerTransition(PACPI_DEVICE Device, INT State);
-INT AcpiPowerInit(void);
-VOID AcpiPowerExit(void);
 
 /* --------------------------------------------------------------------------
                                     Processor

@@ -3229,11 +3229,11 @@ BOOLEAN RtlpValidateHeapEntry(PHEAP Heap, PHEAP_ENTRY HeapEntry)
 
     /* Perform various consistency checks of this entry */
     if (!HeapEntry)
-	goto invalid_entry;
+	goto InvalidEntry;
     if ((ULONG_PTR) HeapEntry & (HEAP_ENTRY_SIZE - 1))
-	goto invalid_entry;
+	goto InvalidEntry;
     if (!(HeapEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY))
-	goto invalid_entry;
+	goto InvalidEntry;
 
     BigAllocation = HeapEntry->CommonEntry.Flags & HEAP_ENTRY_VIRTUAL_ALLOC;
     Segment = Heap->Segments[HeapEntry->CommonEntry.SegmentOffset];
@@ -3241,17 +3241,17 @@ BOOLEAN RtlpValidateHeapEntry(PHEAP Heap, PHEAP_ENTRY HeapEntry)
     if (BigAllocation &&
 	(((ULONG_PTR) HeapEntry & (PAGE_SIZE - 1)) !=
 	 FIELD_OFFSET(HEAP_VIRTUAL_ALLOC_ENTRY, BusyBlock)))
-	goto invalid_entry;
+	goto InvalidEntry;
 
     if (!BigAllocation && (HeapEntry->CommonEntry.SegmentOffset >= HEAP_SEGMENTS ||
 			   !Segment ||
 			   HeapEntry < Segment->FirstEntry ||
 			   HeapEntry >= Segment->LastValidEntry))
-	goto invalid_entry;
+	goto InvalidEntry;
 
     if ((HeapEntry->CommonEntry.Flags & HEAP_ENTRY_FILL_PATTERN) &&
 	!RtlpCheckInUsePattern(HeapEntry))
-	goto invalid_entry;
+	goto InvalidEntry;
 
     /* Checks are done, if this is a virtual entry, that's all */
     if (HeapEntry->CommonEntry.Flags & HEAP_ENTRY_VIRTUAL_ALLOC)
@@ -3274,7 +3274,7 @@ BOOLEAN RtlpValidateHeapEntry(PHEAP Heap, PHEAP_ENTRY HeapEntry)
     /* Return our result of finding entry in the segments */
     return EntryFound;
 
-invalid_entry:
+InvalidEntry:
     DPRINT1("HEAP: Invalid heap entry %p in heap %p\n", HeapEntry, Heap);
     return FALSE;
 }
