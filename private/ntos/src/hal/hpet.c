@@ -14,7 +14,6 @@ typedef volatile struct _HPET_MMIO_REGISTERS {
     ULONG64 FsbInterruptRoute;
     CHAR Padding[8];
 } HPET_MMIO_REGISTERS, *PHPET_MMIO_REGISTERS;
-#include <poppack.h>
 
 /* Offsets from the base address of the HPET MMIO region */
 #define CAP_ID_REG 0x0
@@ -170,7 +169,7 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 		    DbgTrace("Skipping HPET %d because it does not support MSI.\n", j);
 		    continue;
 		}
-		Irq = ULONG_PTR_MAX; /* Irq is unused for MSI */
+		Irq = ULONG_MAX; /* Irq is unused for MSI */
 	    } else {
 		/* Get the allowed IO APIC pins for this HPET, subject to the constraint
 		 * given by the IRQ mask in TN_INT_ROUTE_CAP. HPETs are always assumed to
