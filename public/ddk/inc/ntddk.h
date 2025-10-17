@@ -1930,6 +1930,14 @@ NTAPI NTSYSAPI ULONG IoWMIDeviceObjectToProviderId(IN PDEVICE_OBJECT DeviceObjec
 
 NTAPI NTSYSAPI NTSTATUS IoWMIWriteEvent(IN OUT PVOID WnodeEventItem);
 
+NTAPI NTSYSAPI NTSTATUS IoWMIOpenBlock(IN LPCGUID DataBlockGuid,
+				       IN ULONG DesiredAccess,
+				       OUT HANDLE *DataBlockObject);
+
+NTAPI NTSYSAPI NTSTATUS IoWMIQueryAllData(IN HANDLE DataBlockObject,
+					  IN OUT ULONG *InOutBufferSize,
+					  OUT PVOID OutBuffer);
+
 NTAPI NTSYSAPI NTSTATUS EtwRegister(IN LPCGUID ProviderId,
 				    IN OPTIONAL PETWENABLECALLBACK EnableCallback,
 				    IN OPTIONAL PVOID CallbackContext,

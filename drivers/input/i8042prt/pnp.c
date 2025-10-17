@@ -440,14 +440,11 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	/* HACK: the mouse has already been reset in i8042DetectMouse. This second
 	   reset prevents some touchpads/mice from working (Dell D531, D600).
 	   See CORE-6901 */
-	/* This is disabled for now. */
-#if 0
 	IoAcquireInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
 	if (!(i8042HwFlags & FL_INITHACK)) {
 	    i8042IsrWritePort(DeviceExtension, MOU_CMD_RESET, CTRL_WRITE_MOUSE);
 	}
 	IoReleaseInterruptMutex(DeviceExtension->HighestDIRQLInterrupt);
-#endif
     }
 
     return Status;

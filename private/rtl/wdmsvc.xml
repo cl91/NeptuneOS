@@ -95,6 +95,11 @@
     <parameter annotation="in" type="MWORD" name="WindowSize" />
   </svc>
 
+  <svc name="WdmWmiQueryRawSmbiosTables">
+    <parameter annotation="in out" type="ptr::ULONG" name="InOutBufferSize" />
+    <parameter annotation="in" type="PVOID" name="OutBuffer" />
+  </svc>
+
   <svc name="WdmHalMakeBeep">
     <parameter annotation="in" type="ULONG" name="Frequency" />
   </svc>

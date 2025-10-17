@@ -4,6 +4,7 @@
 #include <services.h>
 #include <printf.h>
 #include <ke.h>
+#include <wmidata.h>
 
 #include <pshpack1.h>
 /* Multiboot2 Framebuffer */
@@ -52,6 +53,7 @@ BOOLEAN HalSetRealTimeClock(IN PTIME_FIELDS Time);
 
 /* smbios.c */
 VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr);
+PMSSmBios_RawSMBiosTables HalGetRawSmbiosTables();
 
 /* vga.c */
 VOID HalRegisterFramebuffer(IN PHAL_FRAMEBUFFER Fb);

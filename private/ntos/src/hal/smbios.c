@@ -288,14 +288,14 @@ NTSTATUS HalpInitSmbios(VOID)
 	TablePhyAddr.QuadPart = EntryPoint->TableAddress;
 	SmbiosMajorVersion = EntryPoint->MajorVersion;
 	SmbiosMinorVersion = EntryPoint->MinorVersion;
-	DmiRevision = EntryPoint->Revision;
+	DmiRevision = 3;
 	SmbiosTableSize = EntryPoint->TableMaxSize;
     } else {
 	PSMBIOS21_ENTRY_POINT EntryPoint = EntryPointStructure;
 	TablePhyAddr.QuadPart = EntryPoint->TableAddress;
 	SmbiosMajorVersion = EntryPoint->MajorVersion;
 	SmbiosMinorVersion = EntryPoint->MinorVersion;
-	DmiRevision = EntryPoint->EntryPointRevision;
+	DmiRevision = 2;
 	SmbiosTableSize = EntryPoint->TableLength;
     }
     ULONG RawSmbiosTableLength = SmbiosTableSize + FIELD_OFFSET(MSSmBios_RawSMBiosTables,
@@ -328,4 +328,9 @@ out:
     /* Not being able to map the SMBIOS table is not a fatal error, so we always
      * return SUCCESS */
     return STATUS_SUCCESS;
+}
+
+PMSSmBios_RawSMBiosTables HalGetRawSmbiosTables()
+{
+    return HalpRawSmbiosTables;
 }

@@ -362,8 +362,7 @@ NTSTATUS ReadRegistryEntries(IN PUNICODE_STRING RegistryPath,
 			     OUT PI8042_SETTINGS Settings);
 
 /* hwhacks.c */
-#if 0
-NTAPI VOID i8042InitializeHwHacks(VOID);
+VOID i8042InitializeHwHacks(VOID);
 
 enum _FLAGS {
     FL_NOLOOP = 0x01,
@@ -371,7 +370,6 @@ enum _FLAGS {
 };
 
 extern ULONG i8042HwFlags;
-#endif
 
 #define LoopOverList(Entry, ListHead, Type, Field)                      \
     for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \

@@ -121,10 +121,6 @@ BOOLEAN AcpiBusPowerManageable(ACPI_HANDLE Handle);
 /* busmgr/button.c */
 VOID AcpiBusQueueGetButtonEventIrp(IN PIRP Irp);
 
-/* busmgr/ec.c */
-ACPI_STATUS EcRead(UCHAR Addr, PUCHAR Data);
-ACPI_STATUS EcWrite(UCHAR Addr, UCHAR Val);
-
 /* busmgr/enum.c */
 NTSTATUS Bus_EnumerateDevices(PFDO_DEVICE_DATA DeviceExtension);
 
@@ -132,6 +128,9 @@ NTSTATUS Bus_EnumerateDevices(PFDO_DEVICE_DATA DeviceExtension);
 NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 		     PIO_STACK_LOCATION IrpStack,
 		     PPDO_DEVICE_DATA DeviceData);
+
+/* busmgr/hwhacks.c */
+VOID AcpiInitializeHwHacks(VOID);
 
 /* busmgr/system.c */
 ACPI_STATUS AcpiBusSuspendSystem(UINT32 state);

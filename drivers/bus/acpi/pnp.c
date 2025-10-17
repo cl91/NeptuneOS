@@ -315,6 +315,8 @@ static NTSTATUS Bus_StartFdo(IN PDEVICE_OBJECT Fdo,
     }
     Status = Bus_EnumerateDevices(FdoData);
 
+    AcpiInitializeHwHacks();
+
     return Status;
 }
 

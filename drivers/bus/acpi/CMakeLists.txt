@@ -179,6 +179,7 @@ list(APPEND ACPI_SOURCE
     busmgr/pdo.c
     busmgr/power.c
     busmgr/utils.c
+    busmgr/hwhacks.c
     osl.c
     eval.c
     pnp.c
@@ -188,7 +189,7 @@ list(APPEND ACPI_SOURCE
 
 add_driver(acpi ${ACPI_SOURCE})
 add_dependencies(acpi acpica)
-target_link_libraries(acpi PRIVATE acpica)
+target_link_libraries(acpi PRIVATE acpica dmilib)
 
 add_subdirectory(battc)
 add_subdirectory(cmbatt)

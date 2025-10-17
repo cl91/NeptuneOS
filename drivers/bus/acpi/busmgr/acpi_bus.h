@@ -272,6 +272,11 @@ VOID AcpiButtonExit(IN PDEVICE_OBJECT BusFdo);
 VOID AcpiEcProbeEcdt(IN PDEVICE_OBJECT BusFdo);
 VOID AcpiEcProbeDsdt(IN PDEVICE_OBJECT BusFdo);
 VOID AcpiEcInit(IN PDEVICE_OBJECT BusFdo);
+ACPI_STATUS EcRead(UCHAR Addr, PUCHAR Data);
+ACPI_STATUS EcWrite(UCHAR Addr, UCHAR Val);
+
+/* hwhacks.c */
+ACPI_STATUS AcpiApplyStartDeviceHacks(IN PACPI_DEVICE Device);
 
 /* power.c */
 INT AcpiPowerGetInferredState(PACPI_DEVICE Device);

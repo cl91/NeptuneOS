@@ -54,6 +54,8 @@
 @ stdcall IoWMIRegistrationControl(ptr long)
 @ stdcall IoWMIDeviceObjectToProviderId(ptr)
 @ stdcall IoWMIWriteEvent(ptr)
+@ stdcall IoWMIOpenBlock(ptr long ptr)
+@ stdcall IoWMIQueryAllData(ptr ptr ptr)
 @ stdcall EtwRegister(ptr ptr ptr ptr)
 @ stdcall EtwUnregister(long long)
 @ stdcall EtwWrite(long long ptr ptr long ptr)

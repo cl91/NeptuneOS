@@ -1724,6 +1724,12 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	// required to allow others to access this device.
 	// Power up the device.
 	//
+	if (!ACPI_SUCCESS(AcpiApplyStartDeviceHacks(Device))) {
+	    DPRINT1("Failed to apply start-device hacks for device %p!\n",
+		    DeviceData->AcpiHandle);
+	    Status = STATUS_UNSUCCESSFUL;
+	    break;
+	}
 	if (DeviceData->AcpiHandle && AcpiBusPowerManageable(DeviceData->AcpiHandle) &&
 	    !ACPI_SUCCESS(AcpiBusSetPower(DeviceData->AcpiHandle, ACPI_STATE_D0))) {
 	    DPRINT1("Device %p failed to start!\n", DeviceData->AcpiHandle);
