@@ -375,6 +375,7 @@ ld.lld -m ${LINKER_EMULATION} ${LLD_OPTIONS} ${RTLIB} \
        -z max-page-size=0x1000 \
        ../ntos/libntos.a \
        ../ntos/rtl/librtl.a \
+       ../ntos/dmilib/libdmilib.a \
        ../initcpio/initcpio.o \
        -T ../../private/ntos/ntos.lds \
        -o ntos

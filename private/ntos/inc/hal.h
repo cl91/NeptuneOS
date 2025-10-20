@@ -50,6 +50,9 @@ NTSTATUS HalMaskUnusableInterrupts(VOID);
 BOOLEAN HalQueryRealTimeClock(OUT PTIME_FIELDS Time);
 BOOLEAN HalSetRealTimeClock(IN PTIME_FIELDS Time);
 
+/* smbios.c */
+VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr);
+
 /* vga.c */
 VOID HalRegisterFramebuffer(IN PHAL_FRAMEBUFFER Fb);
 VOID HalDisplayString(PCSTR String);

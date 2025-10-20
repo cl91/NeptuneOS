@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.12.0)
+cmake_policy(SET CMP0079 NEW)
 
 project(ntos C ASM)
 
@@ -39,11 +40,14 @@ if ("${Arch}" MATCHES "^(i386|amd64)$")
    set_property(TARGET kernel.elf APPEND_STRING PROPERTY LINK_FLAGS " -fuse-ld=ld ")
 endif()
 
+add_subdirectory(../../drivers/lib/dmilib ${CMAKE_BINARY_DIR}/dmilib)
+
 add_dependencies(rtl structures_gen)
+target_link_libraries(dmilib rtl)
 add_library(ntos STATIC ${SRC})
 add_dependencies(ntos sel4 rtl kernel.elf)
 target_include_directories(ntos PRIVATE inc inc/${Arch} ${STRUCTURES_GEN_DIR})
-target_link_libraries(ntos PRIVATE sel4 sel4_autoconf rtl ntos_Config)
+target_link_libraries(ntos PRIVATE sel4 sel4_autoconf rtl dmilib ntos_Config)
 
 set_property(TARGET ntos APPEND_STRING PROPERTY LINK_FLAGS " -Wl,-T ${CMAKE_CURRENT_LIST_DIR}/ntos.lds ")
 

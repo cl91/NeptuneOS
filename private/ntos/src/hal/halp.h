@@ -207,5 +207,8 @@ NTSTATUS HalpInitDma(VOID);
 /* rtc.c */
 NTSTATUS HalpInitRtc(VOID);
 
+/* smbios.c */
+NTSTATUS HalpInitSmbios(VOID);
+
 /* vga.c */
 NTSTATUS HalpInitVga(VOID);

@@ -95,8 +95,6 @@ enum _DMI_FIELD_OFFSETS {
     DMI_BOARD_SERIAL = 0x07,
     DMI_BOARD_ASSET_TAG = 0x08,
     DMI_BOARD_SIZE = 0x10,
-
-
 };
 
 typedef struct _DMI_HEADER {

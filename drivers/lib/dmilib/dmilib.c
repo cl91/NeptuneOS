@@ -7,7 +7,11 @@
  * REFERENCES:  http://www.dmtf.org/sites/default/files/standards/documents/DSP0134_3.0.0.pdf
  */
 
-#include "precomp.h"
+#include <ntdef.h>
+#include <guiddef.h>
+#include <wmidata.h>
+#include "dmi.h"
+#include "dmilib.h"
 
 static PCHAR GetDmiString(IN PDMI_HEADER Header,
 			  IN ULONG FieldOffset)
@@ -20,7 +24,7 @@ static PCHAR GetDmiString(IN PDMI_HEADER Header,
 	return NULL;
     }
 
-    String = (PCHAR) Header + Header->Length;
+    String = (PCHAR)Header + Header->Length;
 
     while (--StringIndex != 0) {
 	while (*String != 0)
@@ -32,17 +36,11 @@ static PCHAR GetDmiString(IN PDMI_HEADER Header,
     return String;
 }
 
-VOID ParseSMBiosTables(IN PVOID SMBiosTables,
-		       IN ULONG TableSize,
-		       IN OUT PCHAR *Strings)
+VOID ParseSMBiosTables(IN PMSSmBios_RawSMBiosTables SmbiosTables,
+		       OUT PCSTR Strings[SMBIOS_ID_STRINGS_MAX])
 {
-    PMSSmBios_RawSMBiosTables BiosTablesHeader = SMBiosTables;
-    PDMI_HEADER Header;
-    ULONG Remaining;
-    PCHAR Data;
-
-    Header = (PDMI_HEADER)(&BiosTablesHeader->SMBiosData);
-    Remaining = BiosTablesHeader->Size;
+    PDMI_HEADER Header = (PDMI_HEADER)(&SmbiosTables->SMBiosData);
+    ULONG Remaining = SmbiosTables->Size;
 
     while (Remaining >= sizeof(*Header)) {
 	if (Header->Type == DMI_ENTRY_END_OF_TABLE)
@@ -87,7 +85,7 @@ VOID ParseSMBiosTables(IN PVOID SMBiosTables,
 	}
 
 	Remaining -= Header->Length;
-	Data = (PCHAR) Header + Header->Length;
+	PCHAR Data = (PCHAR)Header + Header->Length;
 
 	/* Now loop until we find 2 zeroes */
 	while ((Remaining >= 2) && ((Data[0] != 0) || (Data[1] != 0))) {
@@ -100,6 +98,6 @@ VOID ParseSMBiosTables(IN PVOID SMBiosTables,
 
 	/* Go to the next header */
 	Remaining -= 2;
-	Header = (PDMI_HEADER) ((PUCHAR) Data + 2);
+	Header = (PDMI_HEADER)(Data + 2);
     }
 }

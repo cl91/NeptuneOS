@@ -4762,7 +4762,7 @@ typedef struct _MSSmBios_RawSMBiosTables {
 } MSSmBios_RawSMBiosTables, *PMSSmBios_RawSMBiosTables;
 
 typedef struct _MSSmBios_SMBiosEventlog {
-    char VariableData[1];
+    CHAR VariableData[1];
 } MSSmBios_SMBiosEventlog, *PMSSmBios_SMBiosEventlog;
 
 typedef struct _SYSID_UUID {

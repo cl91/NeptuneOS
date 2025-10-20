@@ -9,8 +9,7 @@
 #ifndef DMILIB_H
 #define DMILIB_H
 
-enum _ID_STRINGS {
-    ID_NONE = 0,
+enum _SMBIOS_ID_STRINGS {
     BIOS_VENDOR,
     BIOS_VERSION,
     BIOS_DATE,
@@ -26,11 +25,10 @@ enum _ID_STRINGS {
     BOARD_SERIAL,
     BOARD_ASSET_TAG,
 
-    ID_STRINGS_MAX,
+    SMBIOS_ID_STRINGS_MAX,
 };
 
-VOID ParseSMBiosTables(IN PVOID SMBiosTables,
-		       IN ULONG TableSize,
-		       IN OUT PCHAR *Strings);
+VOID ParseSMBiosTables(IN PMSSmBios_RawSMBiosTables SmbiosTables,
+		       OUT PCSTR Strings[SMBIOS_ID_STRINGS_MAX]);
 
 #endif	/* DMILIB_H */

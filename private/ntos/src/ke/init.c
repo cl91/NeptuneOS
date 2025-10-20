@@ -121,37 +121,46 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
 
-static void KiRecordMachineInformation(seL4_BootInfo *bootinfo)
+static VOID KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 {
-    if (bootinfo->extraLen) {
-	seL4_BootInfoHeader *BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)bootinfo + PAGE_SIZE);
-	while ((MWORD)BootInfoHeader < ((MWORD) bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
-	    switch (BootInfoHeader->id) {
+    if (!bootinfo->extraLen) {
+	return;
+    }
+
+    seL4_BootInfoHeader *BootInfoHeader = (PVOID)((MWORD)bootinfo + PAGE_SIZE);
+    while ((MWORD)BootInfoHeader < ((MWORD) bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
+	switch (BootInfoHeader->id) {
 #if defined(_M_IX86) || defined(_M_AMD64)
-	    case SEL4_BOOTINFO_HEADER_X86_VBE:
-		/* TODO: Record x86 VBE information */
-		break;
-	    case SEL4_BOOTINFO_HEADER_X86_MBMMAP:
-		/* TODO: Record x86 memory map information */
-		break;
-	    case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
-		HalAcpiRegisterRsdp((PHAL_ACPI_RSDP)(BootInfoHeader+1));
-		break;
-	    case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
-		HalRegisterFramebuffer((PHAL_FRAMEBUFFER)(BootInfoHeader+1));
-		break;
-	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
-		KeX86TscFreq = *((uint32_t *)(BootInfoHeader+1));
-		break;
+	case SEL4_BOOTINFO_HEADER_X86_VBE:
+	    /* TODO: Record x86 VBE information */
+	    break;
+	case SEL4_BOOTINFO_HEADER_X86_MBMMAP:
+	    /* TODO: Record x86 memory map information */
+	    break;
+	case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
+	    HalAcpiRegisterRsdp((PHAL_ACPI_RSDP)(BootInfoHeader+1));
+	    break;
+	case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
+	    HalRegisterFramebuffer((PHAL_FRAMEBUFFER)(BootInfoHeader+1));
+	    break;
+	case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
+	    KeX86TscFreq = *((uint32_t *)(BootInfoHeader+1));
+	    break;
 #endif
-	    case SEL4_BOOTINFO_HEADER_FDT:
-		/* TODO: Record FDT information */
-		break;
-	    default:
-		break;
+	case SEL4_BOOTINFO_HEADER_FDT:
+	    /* TODO: Record FDT information */
+	    break;
+	case SEL4_BOOTINFO_HEADER_EFI_SYSTBL_PTR:
+	    if (BootInfoHeader->len == sizeof(ULONG) + sizeof(seL4_BootInfoHeader)) {
+		HalRegisterEfiSystemTablePointer(*(PULONG)(BootInfoHeader+1));
+	    } else {
+		assert(BootInfoHeader->len == sizeof(ULONG64) + sizeof(seL4_BootInfoHeader));
+		HalRegisterEfiSystemTablePointer(*(PULONG64)(BootInfoHeader+1));
 	    }
-	    BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)BootInfoHeader + BootInfoHeader->len);
+	default:
+	    break;
 	}
+	BootInfoHeader = (PVOID)((MWORD)BootInfoHeader + BootInfoHeader->len);
     }
 }
 
@@ -244,55 +253,77 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
     DbgPrint("    numNodes = %zd\n", bootinfo->numNodes);
     DbgPrint("    numIOPTLevels = %zd\n", bootinfo->numIOPTLevels);
     DbgPrint("    ipcBuffer = %p\n", bootinfo->ipcBuffer);
-    DbgPrint("    empty = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->empty));
-    DbgPrint("    sharedFrames = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->sharedFrames));
-    DbgPrint("    userImageFrames = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->userImageFrames));
-    DbgPrint("    userImagePaging = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->userImagePaging));
-    DbgPrint("    ioSpaceCaps = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->ioSpaceCaps));
-    DbgPrint("    extraBIPages = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->extraBIPages));
+    DbgPrint("    empty = %s\n",
+	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->empty));
+    DbgPrint("    sharedFrames = %s\n",
+	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->sharedFrames));
+    DbgPrint("    userImageFrames = %s\n",
+	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->userImageFrames));
+    DbgPrint("    userImagePaging = %s\n",
+	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->userImagePaging));
+    DbgPrint("    ioSpaceCaps = %s\n",
+	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->ioSpaceCaps));
+    DbgPrint("    extraBIPages = %s\n",
+	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->extraBIPages));
     DbgPrint("    initThreadCNodeSizeBits = %zd\n", bootinfo->initThreadCNodeSizeBits);
     DbgPrint("    initThreadDomain = %zd\n", bootinfo->initThreadDomain);
-    DbgPrint("    untyped = %s\n", KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->untyped));
+    DbgPrint("    untyped = %s\n",
+	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->untyped));
 
-    if (bootinfo->extraLen) {
-	DbgPrint("Extra bootinfo structures:\n");
-	seL4_BootInfoHeader *BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)bootinfo + PAGE_SIZE);
-	while ((MWORD)BootInfoHeader < ((MWORD)bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
-	    switch (BootInfoHeader->id) {
-	    case SEL4_BOOTINFO_HEADER_PADDING:
-		DbgPrint("    empty bootinfo padding of size 0x%zx\n", BootInfoHeader->len);
-		break;
+    if (!bootinfo->extraLen) {
+	return;
+    }
+
+    DbgPrint("Extra bootinfo structures:\n");
+    seL4_BootInfoHeader *BootInfoHeader = (PVOID)((MWORD)bootinfo + PAGE_SIZE);
+    while ((MWORD)BootInfoHeader < ((MWORD)bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
+	switch (BootInfoHeader->id) {
+	case SEL4_BOOTINFO_HEADER_PADDING:
+	    DbgPrint("    empty bootinfo padding of size 0x%zx\n", BootInfoHeader->len);
+	    break;
 #if defined(_M_IX86) || defined(_M_AMD64)
-	    case SEL4_BOOTINFO_HEADER_X86_VBE:
-		DbgPrint("    x86 vbe info of size 0x%zx\n", BootInfoHeader->len);
-		KiDumpBootInfoVbe((seL4_X86_BootInfo_VBE *)(BootInfoHeader+1));
-		break;
-	    case SEL4_BOOTINFO_HEADER_X86_MBMMAP:
-		DbgPrint("    x86 mem map of size 0x%zx\n", BootInfoHeader->len);
-		KiDumpBootInfoMemMap((seL4_X86_BootInfo_mmap_t *)(BootInfoHeader+1));
-		break;
-	    case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
-		DbgPrint("    x86 acpi rsdp of size 0x%zx\n", BootInfoHeader->len);
-		HalAcpiDumpRsdp((PHAL_ACPI_RSDP)(BootInfoHeader+1), 6);
-		break;
-	    case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
-		DbgPrint("    x86 multiboot2 framebuffer info of size 0x%zx\n", BootInfoHeader->len);
-		KiDumpBootInfoFrameBuffer((seL4_X86_BootInfo_fb_t *)(BootInfoHeader+1));
-		break;
-	    case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
-		DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);
-		DbgPrint("    tsc freq is %d MHz\n", KeX86TscFreq);
-		break;
+	case SEL4_BOOTINFO_HEADER_X86_VBE:
+	    DbgPrint("    x86 vbe info of size 0x%zx\n", BootInfoHeader->len);
+	    KiDumpBootInfoVbe((seL4_X86_BootInfo_VBE *)(BootInfoHeader+1));
+	    break;
+	case SEL4_BOOTINFO_HEADER_X86_MBMMAP:
+	    DbgPrint("    x86 mem map of size 0x%zx\n", BootInfoHeader->len);
+	    KiDumpBootInfoMemMap((seL4_X86_BootInfo_mmap_t *)(BootInfoHeader+1));
+	    break;
+	case SEL4_BOOTINFO_HEADER_X86_ACPI_RSDP:
+	    DbgPrint("    x86 acpi rsdp of size 0x%zx\n", BootInfoHeader->len);
+	    HalAcpiDumpRsdp((PHAL_ACPI_RSDP)(BootInfoHeader+1), 8);
+	    break;
+	case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
+	    DbgPrint("    x86 multiboot2 framebuffer info of size 0x%zx\n",
+		     BootInfoHeader->len);
+	    KiDumpBootInfoFrameBuffer((seL4_X86_BootInfo_fb_t *)(BootInfoHeader+1));
+	    break;
+	case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
+	    DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);
+	    DbgPrint("        tsc freq is %d MHz\n", KeX86TscFreq);
+	    break;
 #endif
-	    case SEL4_BOOTINFO_HEADER_FDT:
-		DbgPrint("    fdt of size 0x%zx\n", BootInfoHeader->len);
-		break;
-	    default:
-		DbgPrint("    unknown bootinfo of id %zd and size 0x%zx\n", BootInfoHeader->id, BootInfoHeader->len);
-		break;
+	case SEL4_BOOTINFO_HEADER_FDT:
+	    DbgPrint("    fdt of size 0x%zx\n", BootInfoHeader->len);
+	    break;
+	case SEL4_BOOTINFO_HEADER_EFI_SYSTBL_PTR:
+	    DbgPrint("    efi system table pointer of size 0x%zx\n", BootInfoHeader->len);
+	    if (BootInfoHeader->len == sizeof(ULONG) + sizeof(seL4_BootInfoHeader)) {
+		DbgPrint("        efi system table at physical address 0x%x\n",
+			 *(PULONG)(BootInfoHeader+1));
+	    } else {
+		assert(BootInfoHeader->len == sizeof(ULONG64) + sizeof(seL4_BootInfoHeader));
+		DbgPrint("        efi system table at physical address 0x%llx\n",
+			 *(PULONG64)(BootInfoHeader+1));
 	    }
-	    BootInfoHeader = (seL4_BootInfoHeader *)((MWORD)BootInfoHeader + BootInfoHeader->len);
+	    break;
+	default:
+	    DbgPrint("    unknown bootinfo of id %zd and size 0x%zx\n",
+		     BootInfoHeader->id, BootInfoHeader->len);
+	    break;
 	}
+	BootInfoHeader = (PVOID)((MWORD)BootInfoHeader + BootInfoHeader->len);
     }
 }
 
