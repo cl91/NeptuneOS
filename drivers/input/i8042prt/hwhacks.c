@@ -79,6 +79,9 @@ static const HARDWARE_TABLE i8042HardwareTable[] = {
     { { { SYS_VENDOR, "Dell Inc."},
 	{ SYS_PRODUCT, "Latitude E6400                  "} },
       FL_INITHACK },
+
+    { { { SYS_VENDOR, "GPD" }, { SYS_PRODUCT, "MicroPC"} },
+      FL_NOMOUSE | FL_INITHACK },
 };
 
 static PCSTR i8042SmbiosStrings[SMBIOS_ID_STRINGS_MAX] = {};

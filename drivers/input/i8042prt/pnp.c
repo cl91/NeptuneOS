@@ -380,8 +380,10 @@ static NTSTATUS StartProcedure(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	/* First detect the mouse and then the keyboard!
 	 * If we do it the other way round, some systems throw away settings
 	 * like the keyboard translation, when detecting the mouse. */
-	TRACE_(I8042PRT, "Detecting mouse\n");
-	i8042DetectMouse(DeviceExtension);
+	if (!(i8042HwFlags & FL_NOMOUSE)) {
+	    TRACE_(I8042PRT, "Detecting mouse\n");
+	    i8042DetectMouse(DeviceExtension);
+	}
 	TRACE_(I8042PRT, "Detecting keyboard\n");
 	i8042DetectKeyboard(DeviceExtension);
 

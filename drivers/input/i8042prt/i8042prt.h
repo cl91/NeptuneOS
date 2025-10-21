@@ -367,6 +367,7 @@ VOID i8042InitializeHwHacks(VOID);
 enum _FLAGS {
     FL_NOLOOP = 0x01,
     FL_INITHACK = 0x02,
+    FL_NOMOUSE = 0x04,
 };
 
 extern ULONG i8042HwFlags;
