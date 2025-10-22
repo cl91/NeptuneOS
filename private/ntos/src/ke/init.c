@@ -152,10 +152,12 @@ static VOID KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 	    break;
 	case SEL4_BOOTINFO_HEADER_EFI_SYSTBL_PTR:
 	    if (BootInfoHeader->len == sizeof(ULONG) + sizeof(seL4_BootInfoHeader)) {
-		HalRegisterEfiSystemTablePointer(*(PULONG)(BootInfoHeader+1));
+		HalRegisterEfiSystemTablePointer(*(PULONG)(BootInfoHeader+1),
+						 sizeof(ULONG));
 	    } else {
 		assert(BootInfoHeader->len == sizeof(ULONG64) + sizeof(seL4_BootInfoHeader));
-		HalRegisterEfiSystemTablePointer(*(PULONG64)(BootInfoHeader+1));
+		HalRegisterEfiSystemTablePointer(*(PULONG64)(BootInfoHeader+1),
+						 sizeof(ULONG64));
 	    }
 	default:
 	    break;

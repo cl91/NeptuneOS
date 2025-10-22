@@ -21,26 +21,52 @@ typedef struct _EFI_TABLE_HEADER {
     UINT32 Reserved;
 } EFI_TABLE_HEADER, *PEFI_TABLE_HEADER;
 
-typedef struct _EFI_CONFIGURATION_TABLE {
-    GUID VendorGuid;
-    PVOID VendorTable;
-} EFI_CONFIGURATION_TABLE, *PEFI_CONFIGURATION_TABLE;
+typedef ULONG EFI_PTR32;
+typedef ULONG64 EFI_PTR64;
 
-typedef struct _EFI_SYSYEM_TABLE {
+typedef struct _EFI_SYSYEM_TABLE32 {
     EFI_TABLE_HEADER Hdr;
-    WCHAR *FirmwareVendor;
+    EFI_PTR32 FirmwareVendor;
     UINT32 FirmwareRevision;
-    PVOID ConsoleInHandle;
-    PVOID ConIn;
-    PVOID ConsoleOutHandle;
-    PVOID ConOut;
-    PVOID StandardErrorHandle;
-    PVOID StdErr;
-    PVOID RuntimeServices;
-    PVOID BootServices;
+    EFI_PTR32 ConsoleInHandle;
+    EFI_PTR32 ConIn;
+    EFI_PTR32 ConsoleOutHandle;
+    EFI_PTR32 ConOut;
+    EFI_PTR32 StandardErrorHandle;
+    EFI_PTR32 StdErr;
+    EFI_PTR32 RuntimeServices;
+    EFI_PTR32 BootServices;
     UINT32 NumberOfTableEntries;
-    EFI_CONFIGURATION_TABLE *ConfigurationTable;
-} EFI_SYSTEM_TABLE, *PEFI_SYSTEM_TABLE;
+    EFI_PTR32 ConfigurationTable;
+} EFI_SYSTEM_TABLE32, *PEFI_SYSTEM_TABLE32;
+
+typedef struct _EFI_SYSYEM_TABLE64 {
+    EFI_TABLE_HEADER Hdr;
+    EFI_PTR64 FirmwareVendor;
+    UINT32 FirmwareRevision;
+    UINT32 Padding1;
+    EFI_PTR64 ConsoleInHandle;
+    EFI_PTR64 ConIn;
+    EFI_PTR64 ConsoleOutHandle;
+    EFI_PTR64 ConOut;
+    EFI_PTR64 StandardErrorHandle;
+    EFI_PTR64 StdErr;
+    EFI_PTR64 RuntimeServices;
+    EFI_PTR64 BootServices;
+    UINT32 NumberOfTableEntries;
+    UINT32 Padding2;
+    EFI_PTR64 ConfigurationTable;
+} EFI_SYSTEM_TABLE64, *PEFI_SYSTEM_TABLE64;
+
+typedef struct _EFI_CONFIGURATION_TABLE32 {
+    GUID VendorGuid;
+    EFI_PTR32 VendorTable;
+} EFI_CONFIGURATION_TABLE32, *PEFI_CONFIGURATION_TABLE32;
+
+typedef struct _EFI_CONFIGURATION_TABLE64 {
+    GUID VendorGuid;
+    EFI_PTR64 VendorTable;
+} EFI_CONFIGURATION_TABLE64, *PEFI_CONFIGURATION_TABLE64;
 
 #include <pshpack1.h>
 typedef struct _SMBIOS21_ENTRY_POINT {
@@ -75,12 +101,19 @@ typedef struct _SMBIOS30_ENTRY_POINT {
 #include <poppack.h>
 
 static PHYSICAL_ADDRESS HalpEfiSystemTablePointer;
+static BOOLEAN HalpEfiSystemTableIs64Bit;
 static PMSSmBios_RawSMBiosTables HalpRawSmbiosTables;
 PCSTR HalpSmbiosStrings[SMBIOS_ID_STRINGS_MAX];
 
-VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr)
+VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr,
+				      IN ULONG Size)
 {
     HalpEfiSystemTablePointer.QuadPart = PhysAddr;
+    if (Size == 8) {
+	HalpEfiSystemTableIs64Bit = TRUE;
+    } else {
+	assert(Size == 4);
+    }
 }
 
 static PVOID HalpMapTable(IN PHYSICAL_ADDRESS PhyAddr,
@@ -124,68 +157,81 @@ static BOOLEAN IsValidSmbios21EntryPoint(IN PSMBIOS21_ENTRY_POINT EntryPoint)
     VALIDATE_SMBIOS_ENTRYPOINT("_SM_");
 }
 
-static NTSTATUS HalpEfiFindSmbiosTable(OUT PPVOID EntryPointStructure,
-				       OUT PBOOLEAN pIsSmbios3)
-{
-    if (!HalpEfiSystemTablePointer.QuadPart) {
-	return STATUS_NOT_FOUND;
+#define DEFINE_FIND_TABLE_ROUTINE(RoutineName, TableTy, CfgTableTy)	\
+    static NTSTATUS RoutineName(OUT PPVOID EntryPointStructure,		\
+				OUT PBOOLEAN pIsSmbios3)		\
+    {									\
+	if (!HalpEfiSystemTablePointer.QuadPart) {			\
+	    return STATUS_NOT_FOUND;					\
+	}								\
+	TableTy *SystemTable = HalpMapTable(HalpEfiSystemTablePointer,	\
+					    sizeof(TableTy));		\
+	if (!SystemTable) {						\
+	    return STATUS_NOT_FOUND;					\
+	}								\
+	if (SystemTable->Hdr.Signature != EFI_SYSTEM_TABLE_SIGNATURE) {	\
+	    DbgTrace("Invalid EFI system table signature 0x%llx\n",	\
+		     SystemTable->Hdr.Signature);			\
+	    MmUnmapPhysicalMemory((MWORD)SystemTable);			\
+	    return STATUS_NOT_FOUND;					\
+	}								\
+	DbgTrace("UEFI Firmware Revision %d.%d\n",			\
+		 SystemTable->FirmwareRevision >> 16,			\
+		 SystemTable->FirmwareRevision & 0xffff);		\
+	DbgTrace("Number of UEFI configuration tables: %d\n",		\
+		 SystemTable->NumberOfTableEntries);			\
+	PHYSICAL_ADDRESS ConfigTablesPhyAddr = {			\
+	    .QuadPart = (MWORD)SystemTable->ConfigurationTable		\
+	};								\
+	ULONG NumConfigTables = SystemTable->NumberOfTableEntries;	\
+	ULONG ConfigTablesSize = NumConfigTables * sizeof(CfgTableTy);	\
+	MmUnmapPhysicalMemory((MWORD)SystemTable);			\
+	if (!NumConfigTables) {						\
+	    return STATUS_NOT_FOUND;					\
+	}								\
+	CfgTableTy *ConfigTables = HalpMapTable(ConfigTablesPhyAddr,	\
+						ConfigTablesSize);	\
+	if (!ConfigTables) {						\
+	    return STATUS_NOT_FOUND;					\
+	}								\
+	for (ULONG i = 0; i < NumConfigTables; i++) {			\
+	    BOOLEAN IsSmbios3 = IsEqualGUID(&ConfigTables[i].VendorGuid, \
+					    &HalpSmbios3TableGuid);	\
+	    BOOLEAN IsSmbios = IsEqualGUID(&ConfigTables[i].VendorGuid,	\
+					   &HalpSmbiosTableGuid);	\
+	    if (!(IsSmbios3 || IsSmbios)) {				\
+		continue;						\
+	    }								\
+	    PHYSICAL_ADDRESS TablePhyAddr = {				\
+		.QuadPart = (MWORD)ConfigTables[i].VendorTable		\
+	    };								\
+	    MmUnmapPhysicalMemory((MWORD)ConfigTables);			\
+	    ULONG TableSize = IsSmbios ?				\
+		sizeof(SMBIOS21_ENTRY_POINT) : sizeof(SMBIOS30_ENTRY_POINT); \
+	    PVOID MappedTable = HalpMapTable(TablePhyAddr, TableSize);	\
+	    if (!MappedTable) {						\
+		return STATUS_NOT_FOUND;				\
+	    }								\
+	    if (IsValidSmbios3EntryPoint(MappedTable)) {		\
+		*EntryPointStructure = MappedTable;			\
+		*pIsSmbios3 = TRUE;					\
+		return STATUS_SUCCESS;					\
+	    } else if (IsValidSmbios21EntryPoint(MappedTable)) {	\
+		*EntryPointStructure = MappedTable;			\
+		*pIsSmbios3 = FALSE;					\
+		return STATUS_SUCCESS;					\
+	    }								\
+	    assert(FALSE);						\
+	    return STATUS_NOT_FOUND;					\
+	}								\
+	return STATUS_NOT_FOUND;					\
     }
-    PEFI_SYSTEM_TABLE SystemTable = HalpMapTable(HalpEfiSystemTablePointer,
-						 sizeof(EFI_SYSTEM_TABLE));
-    if (!SystemTable) {
-	return STATUS_NOT_FOUND;
-    }
-    if (SystemTable->Hdr.Signature != EFI_SYSTEM_TABLE_SIGNATURE) {
-	DbgTrace("Invalid EFI system table signature 0x%llx\n", SystemTable->Hdr.Signature);
-	MmUnmapPhysicalMemory((MWORD)SystemTable);
-	return STATUS_NOT_FOUND;
-    }
-    DbgTrace("UEFI Firmware Revision %d.%d\n",
-	     SystemTable->FirmwareRevision >> 16,
-	     SystemTable->FirmwareRevision & 0xffff);
-    DbgTrace("Number of UEFI configuration tables: %d\n",
-	     SystemTable->NumberOfTableEntries);
-    PHYSICAL_ADDRESS ConfigTablesPhyAddr = {
-	.QuadPart = (MWORD)SystemTable->ConfigurationTable
-    };
-    ULONG NumConfigTables = SystemTable->NumberOfTableEntries;
-    ULONG ConfigTablesSize = NumConfigTables * sizeof(EFI_CONFIGURATION_TABLE);
-    MmUnmapPhysicalMemory((MWORD)SystemTable);
-    if (!NumConfigTables) {
-	return STATUS_NOT_FOUND;
-    }
-    PEFI_CONFIGURATION_TABLE ConfigTables = HalpMapTable(ConfigTablesPhyAddr,
-							 ConfigTablesSize);
-    if (!ConfigTables) {
-	return STATUS_NOT_FOUND;
-    }
-    for (ULONG i = 0; i < NumConfigTables; i++) {
-	BOOLEAN IsSmbios3 = IsEqualGUID(&ConfigTables[i].VendorGuid, &HalpSmbios3TableGuid);
-	BOOLEAN IsSmbios = IsEqualGUID(&ConfigTables[i].VendorGuid, &HalpSmbiosTableGuid);
-	if (!(IsSmbios3 || IsSmbios)) {
-	    continue;
-	}
-	PHYSICAL_ADDRESS TablePhyAddr = { .QuadPart = (MWORD)ConfigTables[i].VendorTable };
-	MmUnmapPhysicalMemory((MWORD)ConfigTables);
-	ULONG TableSize = IsSmbios ? sizeof(SMBIOS21_ENTRY_POINT) : sizeof(SMBIOS30_ENTRY_POINT);
-	PVOID MappedTable = HalpMapTable(TablePhyAddr, TableSize);
-	if (!MappedTable) {
-	    return STATUS_NOT_FOUND;
-	}
-	if (IsValidSmbios3EntryPoint(MappedTable)) {
-	    *EntryPointStructure = MappedTable;
-	    *pIsSmbios3 = TRUE;
-	    return STATUS_SUCCESS;
-	} else if (IsValidSmbios21EntryPoint(MappedTable)) {
-	    *EntryPointStructure = MappedTable;
-	    *pIsSmbios3 = FALSE;
-	    return STATUS_SUCCESS;
-	}
-	assert(FALSE);
-	return STATUS_NOT_FOUND;
-    }
-    return STATUS_NOT_FOUND;
-}
+
+DEFINE_FIND_TABLE_ROUTINE(HalpEfiFindSmbiosTable32, EFI_SYSTEM_TABLE32,
+			  EFI_CONFIGURATION_TABLE32);
+
+DEFINE_FIND_TABLE_ROUTINE(HalpEfiFindSmbiosTable64, EFI_SYSTEM_TABLE64,
+			  EFI_CONFIGURATION_TABLE64);
 
 /*
  * Search in the physical memory window 0xF0000--0xFFFFF to find the SMBIOS
@@ -269,7 +315,9 @@ NTSTATUS HalpInitSmbios(VOID)
 {
     PVOID EntryPointStructure = NULL;
     BOOLEAN IsSmbios3 = FALSE;
-    NTSTATUS Status = HalpEfiFindSmbiosTable(&EntryPointStructure, &IsSmbios3);
+    NTSTATUS Status = HalpEfiSystemTableIs64Bit ?
+	HalpEfiFindSmbiosTable64(&EntryPointStructure, &IsSmbios3) :
+	HalpEfiFindSmbiosTable32(&EntryPointStructure, &IsSmbios3);
     if (!NT_SUCCESS(Status)) {
 	Status = HalpLegacyFindSmbiosTable(&EntryPointStructure, &IsSmbios3);
     }

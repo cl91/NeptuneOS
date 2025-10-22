@@ -52,7 +52,8 @@ BOOLEAN HalQueryRealTimeClock(OUT PTIME_FIELDS Time);
 BOOLEAN HalSetRealTimeClock(IN PTIME_FIELDS Time);
 
 /* smbios.c */
-VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr);
+VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr,
+				      IN ULONG Size);
 PMSSmBios_RawSMBiosTables HalGetRawSmbiosTables();
 
 /* vga.c */
