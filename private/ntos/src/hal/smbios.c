@@ -1,6 +1,5 @@
 #include "halp.h"
 #include <wmidata.h>
-#include <dmilib.h>
 
 #define EFI_SYSTEM_TABLE_SIGNATURE 0x5453595320494249
 
@@ -77,7 +76,7 @@ typedef struct _SMBIOS30_ENTRY_POINT {
 
 static PHYSICAL_ADDRESS HalpEfiSystemTablePointer;
 static PMSSmBios_RawSMBiosTables HalpRawSmbiosTables;
-static PCSTR HalpSmbiosStrings[SMBIOS_ID_STRINGS_MAX];
+PCSTR HalpSmbiosStrings[SMBIOS_ID_STRINGS_MAX];
 
 VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr)
 {

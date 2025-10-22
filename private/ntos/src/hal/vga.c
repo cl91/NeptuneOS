@@ -2364,6 +2364,603 @@ static VGA_FONT HalpVgaFonts[] = {
 #define HAL_VGA_FONT_8	(0)
 #define HAL_VGA_FONT_16	(1)
 
+/*
+ * Some x86 clamshell design devices use portrait tablet screens and a display
+ * engine which cannot rotate in hardware, so we need to rotate the fbcon to
+ * compensate. Unfortunately these (cheap) devices also typically have quite
+ * generic DMI data, so we match on a combination of DMI data, screen resolution
+ * and a list of known BIOS dates to avoid false positives.
+ */
+typedef enum _PANEL_ORIENTATION {
+    PANEL_ORIENTATION_DEFAULT,
+    PANEL_ORIENTATION_RIGHT_UP,	/* Screen should be rotated 90 degrees counterclockwise */
+    PANEL_ORIENTATION_LEFT_UP,	/* Screen should be rotated 90 degrees clockwise */
+} PANEL_ORIENTATION;
+
+static PANEL_ORIENTATION HalpVgaPanelOrientation;
+
+typedef const struct _DMI_PANEL_ORIENTATION_DATA {
+    ULONG Width;
+    ULONG Height;
+    const char *const *BiosDates;
+    PANEL_ORIENTATION Orientation;
+} DMI_PANEL_ORIENTATION_DATA, *PDMI_PANEL_ORIENTATION_DATA;
+
+static DMI_PANEL_ORIENTATION_DATA GpdMicropc = {
+    .Width = 720,
+    .Height = 1280,
+    .BiosDates = (const char * const []){ "04/26/2019",	NULL },
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA GpdOnemix2s = {
+    .Width = 1200,
+    .Height = 1920,
+    .BiosDates = (const char * const []){ "05/21/2018", "10/26/2018",
+	"03/04/2019", NULL },
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA GpdPocket = {
+    .Width = 1200,
+    .Height = 1920,
+    .BiosDates = (const char * const []){ "05/26/2017", "06/28/2017",
+	"07/05/2017", "08/07/2017", NULL },
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA GpdPocket2 = {
+    .Width = 1200,
+    .Height = 1920,
+    .BiosDates = (const char * const []){ "06/28/2018", "08/28/2018",
+	"12/07/2018", NULL },
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA GpdWin = {
+    .Width = 720,
+    .Height = 1280,
+    .BiosDates = (const char * const []){
+	"10/25/2016", "11/18/2016", "12/23/2016", "12/26/2016",
+	"02/21/2017", "03/20/2017", "05/25/2017", NULL },
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA GpdWin2 = {
+    .Width = 720,
+    .Height = 1280,
+    .BiosDates = (const char * const []){
+	"12/07/2017", "05/24/2018", "06/29/2018", NULL },
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA ItworksTw891 = {
+    .Width = 800,
+    .Height = 1280,
+    .BiosDates = (const char * const []){ "10/16/2015", NULL },
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Onegx1Pro = {
+    .Width = 1200,
+    .Height = 1920,
+    .BiosDates = (const char * const []){ "12/17/2020", NULL },
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd640x960LeftsideUp = {
+    .Width = 640,
+    .Height = 960,
+    .Orientation = PANEL_ORIENTATION_LEFT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd720x1280RightsideUp = {
+    .Width = 720,
+    .Height = 1280,
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd800x1280LeftsideUp = {
+    .Width = 800,
+    .Height = 1280,
+    .Orientation = PANEL_ORIENTATION_LEFT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd800x1280RightsideUp = {
+    .Width = 800,
+    .Height = 1280,
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd1080x1920LeftsideUp = {
+    .Width = 1080,
+    .Height = 1920,
+    .Orientation = PANEL_ORIENTATION_LEFT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd1080x1920RightsideUp = {
+    .Width = 1080,
+    .Height = 1920,
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd1200x1920LeftsideUp = {
+    .Width = 1200,
+    .Height = 1920,
+    .Orientation = PANEL_ORIENTATION_LEFT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd1200x1920RightsideUp = {
+    .Width = 1200,
+    .Height = 1920,
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd1280x1920RightsideUp = {
+    .Width = 1280,
+    .Height = 1920,
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd1600x2560LeftsideUp = {
+    .Width = 1600,
+    .Height = 2560,
+    .Orientation = PANEL_ORIENTATION_LEFT_UP,
+};
+
+static DMI_PANEL_ORIENTATION_DATA Lcd1600x2560RightsideUp = {
+    .Width = 1600,
+    .Height = 2560,
+    .Orientation = PANEL_ORIENTATION_RIGHT_UP,
+};
+
+typedef const struct _SMBIOS_MATCH_ENTRY {
+    ULONG Type;
+    PCHAR String;
+} SMBIOS_MATCH_ENTRY;
+
+#define MAX_MATCH_ENTRIES 4
+
+typedef const struct _DMI_PANEL_ORIENTATION_QUIRK {
+    SMBIOS_MATCH_ENTRY MatchEntries[MAX_MATCH_ENTRIES];
+    PDMI_PANEL_ORIENTATION_DATA Data;
+} DMI_PANEL_ORIENTATION_QUIRK, *PDMI_PANEL_ORIENTATION_QUIRK;
+
+static DMI_PANEL_ORIENTATION_QUIRK HalpVgaOrientationQuirks[] = {
+    {	/* Acer One 10 (S1003) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Acer" },
+	    { SYS_PRODUCT, "One S1003" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* Acer Switch V 10 (SW5-017) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Acer" },
+	    { SYS_PRODUCT, "SW5-017" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* Anbernic Win600 */
+	.MatchEntries = {
+	    { BOARD_VENDOR, "Anbernic" },
+	    { SYS_PRODUCT, "Win600" },
+	},
+	.Data = &Lcd720x1280RightsideUp,
+    }, {	/* Asus T100HA */
+	.MatchEntries = {
+	    { SYS_VENDOR, "ASUSTeK COMPUTER INC." },
+	    { SYS_PRODUCT, "T100HAN" },
+	},
+	.Data = &Lcd800x1280LeftsideUp,
+    }, {	/* Asus T101HA */
+	.MatchEntries = {
+	    { SYS_VENDOR, "ASUSTeK COMPUTER INC." },
+	    { SYS_PRODUCT, "T101HA" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* Asus T103HAF */
+	.MatchEntries = {
+	    { SYS_VENDOR, "ASUSTeK COMPUTER INC." },
+	    { SYS_PRODUCT, "T103HAF" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* AYA NEO AYANEO 2/2S */
+	.MatchEntries = {
+	    { SYS_VENDOR, "AYANEO" },
+	    { SYS_PRODUCT, "AYANEO 2" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* AYA NEO 2021 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "AYADEVICE" },
+	    { SYS_PRODUCT, "AYA NEO 2021" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* AYA NEO AIR */
+	.MatchEntries = {
+	    { SYS_VENDOR, "AYANEO" },
+	    { SYS_PRODUCT, "AIR" },
+	},
+	.Data = &Lcd1080x1920LeftsideUp,
+    }, {    /* AYA NEO Flip DS Bottom Screen */
+	.MatchEntries = {
+	    { SYS_VENDOR, "AYANEO" },
+	    { SYS_PRODUCT, "FLIP DS" },
+	},
+	.Data = &Lcd640x960LeftsideUp,
+    }, {    /* AYA NEO Flip KB/DS Top Screen */
+	.MatchEntries = {
+	    { SYS_VENDOR, "AYANEO" },
+	    { SYS_PRODUCT, "FLIP" },
+	},
+	.Data = &Lcd1080x1920LeftsideUp,
+    }, {	/* AYA NEO Founder */
+	.MatchEntries = {
+	    { SYS_VENDOR, "AYA NEO" },
+	    { SYS_PRODUCT, "AYA NEO Founder" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* AYA NEO GEEK */
+	.MatchEntries = {
+	    { SYS_VENDOR, "AYANEO" },
+	    { SYS_PRODUCT, "GEEK" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* AYA NEO NEXT */
+	.MatchEntries = {
+	    { BOARD_VENDOR, "AYANEO" },
+	    { BOARD_NAME, "NEXT" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* AYA NEO KUN */
+	.MatchEntries = {
+	    { BOARD_VENDOR, "AYANEO" },
+	    { BOARD_NAME, "KUN" },
+	},
+	.Data = &Lcd1600x2560RightsideUp,
+    }, {	/* AYA NEO SLIDE */
+	.MatchEntries = {
+	    { SYS_VENDOR, "AYANEO" },
+	    { SYS_PRODUCT, "SLIDE" },
+	},
+	.Data = &Lcd1080x1920LeftsideUp,
+    }, {    /* AYN Loki Max */
+	.MatchEntries = {
+	    { SYS_VENDOR, "ayn" },
+	    { SYS_PRODUCT, "Loki Max" },
+	},
+	.Data = &Lcd1080x1920LeftsideUp,
+    }, {	/* AYN Loki Zero */
+	.MatchEntries = {
+	    { SYS_VENDOR, "ayn" },
+	    { SYS_PRODUCT, "Loki Zero" },
+	},
+	.Data = &Lcd1080x1920LeftsideUp,
+    }, {	/* Chuwi HiBook (CWI514) */
+	.MatchEntries = {
+	    { BOARD_VENDOR, "Hampoo" },
+	    { BOARD_NAME, "Cherry Trail CR" },
+	    /* Above matches are too generic, add bios-date match */
+	    { BIOS_DATE, "05/07/2016" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* Chuwi Hi10 Pro (CWI529) */
+	.MatchEntries = {
+	    { BOARD_VENDOR, "Hampoo" },
+	    { SYS_PRODUCT, "Hi10 pro tablet" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* Dynabook K50 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Dynabook Inc." },
+	    { SYS_PRODUCT, "dynabook K50/FR" },
+	},
+	.Data = &Lcd800x1280LeftsideUp,
+    }, {	/* GPD MicroPC (generic strings, also match on bios date) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Default string" },
+	    { SYS_PRODUCT, "Default string" },
+	    { BOARD_VENDOR, "Default string" },
+	    { BOARD_NAME, "Default string" },
+	},
+	.Data = &GpdMicropc,
+    }, {	/* GPD MicroPC (later BIOS versions with proper DMI strings) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "GPD" },
+	    { SYS_PRODUCT, "MicroPC" },
+	},
+	.Data = &Lcd720x1280RightsideUp,
+    }, {	/* GPD Win Max */
+	.MatchEntries = {
+	    { SYS_VENDOR, "GPD" },
+	    { SYS_PRODUCT, "G1619-01" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/*
+		 * GPD Pocket, note that the DMI data is less generic then
+		 * it seems, devices with a board-vendor of "AMI Corporation"
+		 * are quite rare, as are devices which have both board- *and*
+		 * product-id set to "Default String"
+		 */
+	.MatchEntries = {
+	    { BOARD_VENDOR, "AMI Corporation" },
+	    { BOARD_NAME, "Default string" },
+	    { BOARD_SERIAL, "Default string" },
+	    { SYS_PRODUCT, "Default string" },
+	},
+	.Data = &GpdPocket,
+    }, {	/* GPD Pocket 2 (generic strings, also match on bios date) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Default string" },
+	    { SYS_PRODUCT, "Default string" },
+	    { BOARD_VENDOR, "Default string" },
+	    { BOARD_NAME, "Default string" },
+	},
+	.Data = &GpdPocket2,
+    }, {	/* GPD Win (same note on DMI match as GPD Pocket) */
+	.MatchEntries = {
+	    { BOARD_VENDOR, "AMI Corporation" },
+	    { BOARD_NAME, "Default string" },
+	    { BOARD_SERIAL, "Default string" },
+	    { SYS_PRODUCT, "Default string" },
+	},
+	.Data = &GpdWin,
+    }, {	/* GPD Win 2 (too generic strings, also match on bios date) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Default string" },
+	    { SYS_PRODUCT, "Default string" },
+	    { BOARD_VENDOR, "Default string" },
+	    { BOARD_NAME, "Default string" },
+	},
+	.Data = &GpdWin2,
+    }, {	/* GPD Win 2 (correct DMI strings) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "GPD" },
+	    { SYS_PRODUCT, "WIN2" }
+	},
+	.Data = &Lcd720x1280RightsideUp,
+    }, {	/* GPD Win 3 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "GPD" },
+	    { SYS_PRODUCT, "G1618-03" }
+	},
+	.Data = &Lcd720x1280RightsideUp,
+    }, {	/* GPD Win Mini */
+	.MatchEntries = {
+	    { SYS_VENDOR, "GPD" },
+	    { SYS_PRODUCT, "G1617-01" }
+	},
+	.Data = &Lcd1080x1920RightsideUp,
+    }, {	/* I.T.Works TW891 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "To be filled by O.E.M." },
+	    { SYS_PRODUCT, "TW891" },
+	    { BOARD_VENDOR, "To be filled by O.E.M." },
+	    { BOARD_NAME, "TW891" },
+	},
+	.Data = &ItworksTw891,
+    }, {	/* KD Kurio Smart C15200 2-in-1 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "KD Interactive" },
+	    { SYS_PRODUCT, "Kurio Smart" },
+	    { BOARD_NAME, "KDM960BCP" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/*
+		 * Lenovo Ideapad Miix 310 laptop, only some production batches
+		 * have a portrait screen, the resolution checks makes the quirk
+		 * apply only to those batches.
+		 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "LENOVO" },
+	    { SYS_PRODUCT, "80SG" },
+	    { SYS_VERSION, "MIIX 310-10ICR" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* Lenovo Ideapad Miix 320 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "LENOVO" },
+	    { SYS_PRODUCT, "80XF" },
+	    { SYS_VERSION, "Lenovo MIIX 320-10ICR" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* Lenovo Ideapad D330-10IGM (HD) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "LENOVO" },
+	    { SYS_VERSION, "Lenovo ideapad D330-10IGM" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* Lenovo Ideapad D330-10IGM (FHD) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "LENOVO" },
+	    { SYS_VERSION, "Lenovo ideapad D330-10IGM" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* Lenovo Ideapad D330-10IGL (HD) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "LENOVO" },
+	    { SYS_VERSION, "Lenovo ideapad D330-10IGL" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* Lenovo IdeaPad Duet 3 10IGL5 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "LENOVO" },
+	    { SYS_VERSION, "IdeaPad Duet 3 10IGL5" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* Lenovo Legion Go 8APU1 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "LENOVO" },
+	    { SYS_VERSION, "Legion Go 8APU1" },
+	},
+	.Data = &Lcd1600x2560LeftsideUp,
+    }, {	/* Lenovo Yoga Book X90F / X90L */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Intel Corporation" },
+	    { SYS_PRODUCT, "CHERRYVIEW D1 PLATFORM" },
+	    { SYS_VERSION, "YETI-11" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* Lenovo Yoga Book X91F / X91L */
+	.MatchEntries = {
+	    /* Non exact match to match F + L versions */
+	    { SYS_PRODUCT, "Lenovo YB1-X91" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* Lenovo Yoga Tablet 2 830F / 830L */
+	.MatchEntries = {
+	    /*
+	     * Note this also matches the Lenovo Yoga Tablet 2 1050F/L
+	     * since that uses the same mainboard. The resolution match
+	     * will limit this to only matching on the 830F/L. Neither has
+	     * any external video outputs so those are not a concern.
+	     */
+	    { SYS_VENDOR, "Intel Corp." },
+	    { SYS_PRODUCT, "VALLEYVIEW C0 PLATFORM" },
+	    { BOARD_NAME, "BYT-T FFD8" },
+	    /* Partial match on beginning of BIOS version */
+	    { BIOS_VERSION, "BLADE_21" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* Lenovo Yoga Tab 3 X90F */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Intel Corporation" },
+	    { SYS_VERSION, "Blade3-10A-001" },
+	},
+	.Data = &Lcd1600x2560RightsideUp,
+    }, {	/* Nanote UMPC-01 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "RWC CO.,LTD" },
+	    { SYS_PRODUCT, "UMPC-01" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* OneGX1 Pro */
+	.MatchEntries = {
+	    { SYS_VENDOR, "SYSTEM_MANUFACTURER" },
+	    { SYS_PRODUCT, "SYSTEM_PRODUCT_NAME" },
+	    { SYS_VERSION, "Default string" },
+	},
+	.Data = &Onegx1Pro,
+    }, {	/* OneXPlayer */
+	.MatchEntries = {
+	    { SYS_VENDOR, "ONE-NETBOOK TECHNOLOGY CO., LTD." },
+	    { SYS_PRODUCT, "ONE XPLAYER" },
+	},
+	.Data = &Lcd1600x2560LeftsideUp,
+    }, {	/* OneXPlayer Mini (Intel) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "ONE-NETBOOK TECHNOLOGY CO., LTD." },
+	    { SYS_PRODUCT, "ONE XPLAYER" },
+	},
+	.Data = &Lcd1200x1920LeftsideUp,
+    }, {	/* OrangePi Neo */
+	.MatchEntries = {
+	    { SYS_VENDOR, "OrangePi" },
+	    { SYS_PRODUCT, "NEO-01" },
+	},
+	.Data = &Lcd1200x1920RightsideUp,
+    }, {	/* Samsung GalaxyBook 10.6 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "SAMSUNG ELECTRONICS CO., LTD." },
+	    { SYS_PRODUCT, "Galaxy Book 10.6" },
+	},
+	.Data = &Lcd1280x1920RightsideUp,
+    }, {	/* Valve Steam Deck (Jupiter) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Valve" },
+	    { SYS_PRODUCT, "Jupiter" },
+	    { SYS_VERSION, "1" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* Valve Steam Deck (Galileo) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Valve" },
+	    { SYS_PRODUCT, "Galileo" },
+	    { SYS_VERSION, "1" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* VIOS LTH17 */
+	.MatchEntries = {
+	    { SYS_VENDOR, "VIOS" },
+	    { SYS_PRODUCT, "LTH17" },
+	},
+	.Data = &Lcd800x1280RightsideUp,
+    }, {	/* ZOTAC Gaming Zone */
+	.MatchEntries = {
+	    { SYS_VENDOR, "ZOTAC" },
+	    { BOARD_NAME, "G0A1W" },
+	},
+	.Data = &Lcd1080x1920LeftsideUp,
+    }, {	/* One Mix 2S (generic strings, also match on bios date) */
+	.MatchEntries = {
+	    { SYS_VENDOR, "Default string" },
+	    { SYS_PRODUCT, "Default string" },
+	    { BOARD_VENDOR, "Default string" },
+	    { BOARD_NAME, "Default string" },
+	},
+	.Data = &GpdOnemix2s,
+    },
+};
+
+/**
+ * HalpVgaGetPanelOrientation - Check for panel orientation quirks
+ * @Width: width in pixels of the panel
+ * @Height: height in pixels of the panel
+ *
+ * This function checks for platform specific (e.g. DMI based) quirks
+ * providing info on panel_orientation for systems where this cannot be
+ * probed from the hard-/firm-ware. To avoid false-positive this function
+ * takes the panel resolution as argument and checks that against the
+ * resolution expected by the quirk-table entry.
+ *
+ * Note this function is also used outside of the drm-subsys, by for example
+ * the efifb code. Because of this this function gets compiled into its own
+ * kernel-module when built as a module.
+ *
+ * Returns:
+ * A PANEL_ORIENTATION_* value if there is a quirk for this system,
+ * or PANEL_ORIENTATION_DEFAULT if there is no quirk.
+ */
+PANEL_ORIENTATION HalpVgaGetPanelOrientation(ULONG Width, ULONG Height)
+{
+    for (ULONG i = 0; i < _ARRAYSIZE(HalpVgaOrientationQuirks); i++) {
+	ULONG j;
+	for (j = 0; j < MAX_MATCH_ENTRIES; j++) {
+	    ULONG Type = HalpVgaOrientationQuirks[i].MatchEntries[j].Type;
+
+	    if (Type == SMBIOS_STRING_ID_NONE) {
+		/* Note this does NOT skip the increment (j++). */
+		continue;
+	    }
+
+	    /* If the specified string does not match, break out of the loop.
+	     * Note in this case j will be strictly less than MAX_MATCH_ENTRIES. */
+	    if (!HalpSmbiosStrings[Type] ||
+		strcmp(HalpVgaOrientationQuirks[i].MatchEntries[j].String,
+		       HalpSmbiosStrings[Type])) {
+		break;
+	    }
+	}
+
+	if (j == MAX_MATCH_ENTRIES) {
+	    PDMI_PANEL_ORIENTATION_DATA Data = HalpVgaOrientationQuirks[i].Data;
+	    if (Data->Width != Width || Data->Height != Height) {
+		continue;
+	    }
+	    if (!Data->BiosDates) {
+		return Data->Orientation;
+	    }
+	    for (const PCSTR *pBiosDate = Data->BiosDates; *pBiosDate; pBiosDate++) {
+		if (!strcmp(*pBiosDate, HalpSmbiosStrings[BIOS_DATE])) {
+		    return Data->Orientation;
+		}
+	    }
+	}
+    }
+
+    return PANEL_ORIENTATION_DEFAULT;
+}
+
+
 FORCEINLINE ULONG HalpGetFrameBufferSize()
 {
     return HalpFramebuffer.Pitch * HalpFramebuffer.Height;
@@ -2386,11 +2983,27 @@ static VOID HalpVgaBlitCharEx(IN CHAR Chr,
 	ULONG StartHeight = Row * HalpVgaFont->Height;
 	ULONG StartWidth = Column * HalpVgaFont->Width;
 	ULONG BytesPerPixel = HalpFramebuffer.BitsPerPixel / 8;
-	volatile PCHAR Video = (volatile PCHAR)(FRAMEBUFFER_VADDR_START);
+	volatile CHAR *Video = (volatile CHAR *)(FRAMEBUFFER_VADDR_START);
 	for (ULONG Height = 0; Height < HalpVgaFont->Height; Height++) {
 	    for (ULONG Width = 0; Width < HalpVgaFont->Width; Width++) {
-		PCHAR Pixel = Video + (StartHeight + Height) * HalpFramebuffer.Pitch
-		    + (StartWidth + Width) * BytesPerPixel;
+		volatile CHAR *Pixel = Video;
+		switch (HalpVgaPanelOrientation) {
+		case PANEL_ORIENTATION_DEFAULT:
+		    Pixel += (StartHeight + Height) * HalpFramebuffer.Pitch
+			+ (StartWidth + Width) * BytesPerPixel;
+		    break;
+		case PANEL_ORIENTATION_RIGHT_UP:
+		    assert(StartHeight + Height < HalpFramebuffer.Width);
+		    Pixel += (StartWidth + Width) * HalpFramebuffer.Pitch
+			+ (HalpFramebuffer.Width - StartHeight - Height - 1) * BytesPerPixel;
+		    break;
+		case PANEL_ORIENTATION_LEFT_UP:
+		    Pixel += (StartWidth + Width) * HalpFramebuffer.Pitch
+			+ (StartHeight + Height) * BytesPerPixel;
+		    break;
+		default:
+		    assert(FALSE);
+		}
 		UCHAR Byte = Glyph[(Height * HalpVgaFont->Width + Width) / 8];
 		UCHAR BitIndex = (Height * HalpVgaFont->Width + Width) % 8;
 		if (Byte & (1UL << (7 - BitIndex))) {
@@ -2405,7 +3018,7 @@ static VOID HalpVgaBlitCharEx(IN CHAR Chr,
 	    }
 	}
     } else {
-	volatile PCHAR Video = (volatile PCHAR)(FRAMEBUFFER_VADDR_START + Pos * 2);
+	volatile CHAR *Video = (volatile CHAR *)(FRAMEBUFFER_VADDR_START + Pos * 2);
 	Video[0] = Chr;
 	Video[1] = VGA_TEXT_COLOR;
     }
@@ -2522,13 +3135,19 @@ NTSTATUS HalpInitVga()
 	RET_ERR(MmMapPhysicalMemory(HalpFramebuffer.PhysicalAddress,
 				    FRAMEBUFFER_VADDR_START, FrameBufferSize,
 				    PAGE_WRITECOMBINE));
-	if (HalpFramebuffer.Width >= 1600) {
+	HalpVgaPanelOrientation = HalpVgaGetPanelOrientation(HalpFramebuffer.Width,
+							     HalpFramebuffer.Height);
+	if (HalpFramebuffer.Width >= 1280 || HalpFramebuffer.Height >= 1280) {
 	    HalpVgaFont = &HalpVgaFonts[HAL_VGA_FONT_16];
 	} else {
 	    HalpVgaFont = &HalpVgaFonts[HAL_VGA_FONT_8];
 	}
-	HalpVgaCursorMaxColumns = HalpFramebuffer.Width / HalpVgaFont->Width;
-	HalpVgaCursorMaxRows = HalpFramebuffer.Height / HalpVgaFont->Height;
+	ULONG RotatedWidth = HalpVgaPanelOrientation == PANEL_ORIENTATION_DEFAULT ?
+	    HalpFramebuffer.Width : HalpFramebuffer.Height;
+	ULONG RotatedHeight = HalpVgaPanelOrientation == PANEL_ORIENTATION_DEFAULT ?
+	    HalpFramebuffer.Height : HalpFramebuffer.Width;
+	HalpVgaCursorMaxColumns = RotatedWidth / HalpVgaFont->Width;
+	HalpVgaCursorMaxRows = RotatedHeight / HalpVgaFont->Height;
     } else {
     TryVga:
 #if defined(_M_IX86) || defined(_M_AMD64)

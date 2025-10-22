@@ -9,5 +9,7 @@ CheckOptions:
   - { key: readability-identifier-naming.MemberCase,                  value: CamelCase }
   - { key: readability-identifier-naming.ParameterCase,               value: CamelCase }
   - { key: readability-identifier-naming.ParameterIgnoredRegexp,      value: '[a-z]|p([A-Z][a-z0-9]+)+' }
-  - { key: readability-identifier-naming.GlobalConstantCase,          value: UPPER_CASE }
+  - { key: readability-identifier-naming.GlobalConstantCase,          value: CamelCase }
   - { key: readability-identifier-naming.GlobalConstantIgnoredRegexp, value: '_[A-Za-z0-9_]+' }
+  - { key: readability-identifier-naming.GlobalVariableCase,          value: CamelCase }
+  - { key: readability-identifier-naming.MacroDefinitionCase,         value: UPPER_CASE }

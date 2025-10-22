@@ -17,7 +17,7 @@
 PVOID i8042SMBiosTables;
 ULONG i8042HwFlags;
 
-typedef struct _MATCH_ENTRY {
+typedef struct _SMBIOS_MATCH_ENTRY {
     ULONG Type;
     PCHAR String;
 } SMBIOS_MATCH_ENTRY;
@@ -101,8 +101,7 @@ static PHARDWARE_TABLE i8042HwhackMatchHardware(IN PCSTR Strings[SMBIOS_ID_STRIN
 	    /* If the specified string does not match, break out of the loop.
 	     * Note in this case j will be strictly less than MAX_MATCH_ENTRIES. */
 	    if (!Strings[Type] ||
-		strcmp(i8042HardwareTable[i].MatchEntries[j].String,
-		       Strings[i8042HardwareTable[i].MatchEntries[j].Type])) {
+		strcmp(i8042HardwareTable[i].MatchEntries[j].String, Strings[Type])) {
 		break;
 	    }
 	}

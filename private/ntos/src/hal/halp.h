@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ntos.h>
+#include <dmilib.h>
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 
@@ -209,6 +210,7 @@ NTSTATUS HalpInitRtc(VOID);
 
 /* smbios.c */
 NTSTATUS HalpInitSmbios(VOID);
+extern PCSTR HalpSmbiosStrings[SMBIOS_ID_STRINGS_MAX];
 
 /* vga.c */
 NTSTATUS HalpInitVga(VOID);
