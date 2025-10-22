@@ -166,7 +166,7 @@ BOOLEAN AcpiOsReadable(PVOID Memory, ACPI_SIZE Length)
 {
     __try {
 	for (ACPI_SIZE i = 0; i < Length; i++) {
-	    Probe = ((volatile PUCHAR)Memory)[i];
+	    Probe = ((volatile UCHAR *)Memory)[i];
 	}
     } __except(EXCEPTION_EXECUTE_HANDLER) {
 	return FALSE;
@@ -179,8 +179,8 @@ BOOLEAN AcpiOsWritable(PVOID Memory, ACPI_SIZE Length)
 {
     __try {
 	for (ACPI_SIZE i = 0; i < Length; i++) {
-	    Probe = ((volatile PUCHAR)Memory)[i];
-	    ((volatile PUCHAR)Memory)[i] = Probe;
+	    Probe = ((volatile UCHAR *)Memory)[i];
+	    ((volatile UCHAR *)Memory)[i] = Probe;
 	}
     } __except(EXCEPTION_EXECUTE_HANDLER) {
 	return FALSE;
@@ -379,19 +379,19 @@ static VOID OslReadMemory(PVOID MappedAddress,
 {
     switch (Width) {
     case 8:
-	*Value = *(volatile PUCHAR)MappedAddress;
+	*Value = *(volatile UCHAR *)MappedAddress;
 	break;
 
     case 16:
-	*Value = *(volatile PUSHORT)MappedAddress;
+	*Value = *(volatile USHORT *)MappedAddress;
 	break;
 
     case 32:
-	*Value = *(volatile PULONG)MappedAddress;
+	*Value = *(volatile ULONG *)MappedAddress;
 	break;
 
     case 64:
-	*Value = *(volatile PULONGLONG)MappedAddress;
+	*Value = *(volatile ULONGLONG *)MappedAddress;
 	break;
 
     default:
@@ -420,19 +420,19 @@ static VOID OslWriteMemory(PVOID MappedAddress,
 {
     switch (Width) {
     case 8:
-	*(volatile PUCHAR)MappedAddress = Value;
+	*(volatile UCHAR *)MappedAddress = Value;
 	break;
 
     case 16:
-	*(volatile PUSHORT)MappedAddress = Value;
+	*(volatile USHORT *)MappedAddress = Value;
 	break;
 
     case 32:
-	*(volatile PULONG)MappedAddress = Value;
+	*(volatile ULONG *)MappedAddress = Value;
 	break;
 
     case 64:
-	*(volatile PULONGLONG)MappedAddress = Value;
+	*(volatile ULONGLONG *)MappedAddress = Value;
 	break;
 
     default:

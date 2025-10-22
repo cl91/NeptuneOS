@@ -46,7 +46,7 @@ static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
     PHYSICAL_ADDRESS PhyAddr = DeviceExtension->ConfigBase;
     PhyAddr.QuadPart += ((DeviceExtension->BaseBus << 8) | (Slot.Bits.DeviceNumber << 3) |
 			 Slot.Bits.FunctionNumber) << CFG_SHIFT;
-    volatile PCHAR Ptr = MmMapIoSpace(PhyAddr, 1UL << CFG_SHIFT, MmNonCached);
+    volatile CHAR *Ptr = MmMapIoSpace(PhyAddr, 1UL << CFG_SHIFT, MmNonCached);
     DPRINT("%s PCI Config Base 0x%llx BaseBus 0x%x Dev 0x%x Func 0x%x "
 	   "Mapped %p Buffer %p Offset 0x%x Length 0x%x\n",
 	   Read ? "Reading" : "Writing",
@@ -57,7 +57,7 @@ static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
 	RtlRaiseStatus(STATUS_ACCESS_DENIED);
     }
 #if DBG
-    volatile PPCI_COMMON_CONFIG PciCfg = (PVOID)Ptr;
+    volatile PCI_COMMON_CONFIG *PciCfg = (PVOID)Ptr;
     if (PciCfg->Header.VendorID == PCI_INVALID_VENDORID) {
 	DPRINT("Invalid vendor ID in PCI configuration space.\n");
     } else {
