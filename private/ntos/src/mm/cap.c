@@ -146,7 +146,7 @@ NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
 
     ULONG CNodeSize = 1ULL << CNode->Log2Size;
     MWORD CNodeMask = CNodeSize - 1;
-    /* This usually indicate a memory leak or resource leak.
+    /* This usually indicates a memory leak or resource leak.
      * We assert in debug build */
     if (CNode->TotalUsed >= CNodeSize) {
 	MmDbgDumpCNode(CNode);

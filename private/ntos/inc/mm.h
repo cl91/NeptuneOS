@@ -62,12 +62,12 @@
  * Additionally, for amd64 EX_POOL_START must be within the first GB (since the initial
  * page directory and PDPT only cover the first GB). */
 #define EX_POOL_START				(0x10000000ULL)
-#define EX_POOL_MAX_SIZE			(0x02000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_POOL_MAX_SIZE			(0x01000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_POOL_END				(EX_POOL_START + EX_POOL_MAX_SIZE)
 /* Region for the Large Object Executive Pool. Objects larger than one page size are
  * allocated from this pool. */
 #define EX_LARGE_POOL_START			(EX_POOL_END)
-#define EX_LARGE_POOL_SIZE			(0x02000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_LARGE_POOL_SIZE			(0x03000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_LARGE_POOL_END			(EX_LARGE_POOL_START + EX_LARGE_POOL_SIZE)
 /* Region where the driver processes' IO packet buffers are allocated, managed with bitmaps. */
 #define EX_DRIVER_REGION_START			(EX_LARGE_POOL_END)

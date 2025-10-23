@@ -105,9 +105,10 @@ typedef seL4_Word MWORD;
 /* Each client thread gets its own private CSpace, with the zeroth slot pointing
  * to the shared CNode for its process. We don't neeed a huge CNode for either
  * the private or the shared CNode, since we only use client-side cap slots for
- * IPC endpoints. Even the most heavy RPC services need more than 20 LPC connections
- * per thread. */
-#define PROCESS_SHARED_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE)
+ * IPC endpoints. Even the most heavy RPC services rarely need more than 20 LPC
+ * connections per thread. Note the process shared CNode size is slightly larger
+ * so drivers which access a lot of X86 ports can have enough cap slots there. */
+#define PROCESS_SHARED_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE + 1)
 #define THREAD_PRIVATE_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE)
 
 /* Private heap reserved for the Ldr component of NTDLL */
