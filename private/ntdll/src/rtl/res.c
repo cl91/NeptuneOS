@@ -26,6 +26,10 @@
 
 #include <nt.h>
 
+/* Comment this to enable debug logging */
+#undef DPRINT
+#define DPRINT(...)
+
 /* FUNCTIONS ****************************************************************/
 
 FORCEINLINE ULONG ExecuteHandlerIfPageFault(ULONG ExceptionCode)
