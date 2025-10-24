@@ -219,8 +219,6 @@ typedef __builtin_va_list va_list;
 #ifndef __cplusplus
 #define ACPI_FLEX_ARRAY(TYPE, NAME) \
     struct {                        \
-	struct {                    \
-	} __Empty_##NAME;           \
 	TYPE NAME[];                \
     }
 #endif
