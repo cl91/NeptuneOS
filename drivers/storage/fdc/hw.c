@@ -122,7 +122,8 @@ static NTSTATUS SendByte(PCONTROLLER_INFO ControllerInfo,
 	if (ReadyForWrite(ControllerInfo))
 	    break;
 
-	KeStallExecutionProcessor(50);
+	LARGE_INTEGER Delay = { .QuadPart = -500 };
+	KeDelayExecutionThread(FALSE, &Delay);
     }
 
     if (i < 5) {
@@ -160,7 +161,8 @@ static NTSTATUS GetByte(PCONTROLLER_INFO ControllerInfo,
 	if (ReadyForRead(ControllerInfo))
 	    break;
 
-	KeStallExecutionProcessor(50);
+	LARGE_INTEGER Delay = { .QuadPart = -500 };
+	KeDelayExecutionThread(FALSE, &Delay);
     }
 
     if (i < 5) {
