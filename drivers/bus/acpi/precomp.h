@@ -119,7 +119,7 @@ int AcpiBusSetPower(ACPI_HANDLE Handle, int State);
 BOOLEAN AcpiBusPowerManageable(ACPI_HANDLE Handle);
 
 /* busmgr/button.c */
-VOID AcpiBusQueueGetButtonEventIrp(IN PIRP Irp);
+NTSTATUS AcpiBusHandleGetButtonEventIrp(IN PIRP Irp);
 
 /* busmgr/enum.c */
 NTSTATUS Bus_EnumerateDevices(PFDO_DEVICE_DATA DeviceExtension);

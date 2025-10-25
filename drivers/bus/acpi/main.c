@@ -160,8 +160,7 @@ static NTAPI NTSTATUS Bus_DeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP 
 	    break;
 
 	case IOCTL_GET_SYS_BUTTON_EVENT:
-	    AcpiBusQueueGetButtonEventIrp(Irp);
-	    Status = STATUS_PENDING;
+	    Status = AcpiBusHandleGetButtonEventIrp(Irp);
 	    break;
 
 	case IOCTL_BATTERY_QUERY_TAG:

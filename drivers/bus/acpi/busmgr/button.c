@@ -49,6 +49,11 @@ typedef struct _ACPI_BUTTON {
     ULONG64 Pushed;
 } ACPI_BUTTON, *PACPI_BUTTON;
 
+typedef struct _ACPI_BUTTON_EVENT {
+    SLIST_ENTRY SListEntry;
+    ULONG ButtonEvent;
+} ACPI_BUTTON_EVENT, *PACPI_BUTTON_EVENT;
+
 PACPI_DEVICE PowerButton;
 PACPI_DEVICE SleepButton;
 PACPI_DEVICE LidButton;
@@ -58,10 +63,22 @@ PACPI_DEVICE LidButton;
    -------------------------------------------------------------------------- */
 
 static SLIST_HEADER GetButtonEventIrpList;
+static SLIST_HEADER ButtonEventList;
 
-VOID AcpiBusQueueGetButtonEventIrp(IN PIRP Irp)
+NTSTATUS AcpiBusHandleGetButtonEventIrp(IN PIRP Irp)
 {
-    RtlInterlockedPushEntrySList(&GetButtonEventIrpList, &Irp->Tail.SListEntry);
+    PSLIST_ENTRY Entry = RtlInterlockedPopEntrySList(&ButtonEventList);
+    if (Entry) {
+	PACPI_BUTTON_EVENT Event = CONTAINING_RECORD(Entry,
+						     ACPI_BUTTON_EVENT,
+						     SListEntry);
+	RtlCopyMemory(Irp->SystemBuffer, &Event->ButtonEvent, sizeof(ULONG));
+	Irp->IoStatus.Information = sizeof(ULONG);
+	return STATUS_SUCCESS;
+    } else {
+	RtlInterlockedPushEntrySList(&GetButtonEventIrpList, &Irp->Tail.SListEntry);
+	return STATUS_PENDING;
+    }
 }
 
 static NTAPI VOID ButtonEventWorkItemRoutine(IN PDEVICE_OBJECT DeviceObject,
@@ -69,7 +86,7 @@ static NTAPI VOID ButtonEventWorkItemRoutine(IN PDEVICE_OBJECT DeviceObject,
 {
     PIRP Irp = Ctx;
     ULONG ButtonEvent = Irp->IoStatus.Status;
-    RtlCopyMemory(Irp->SystemBuffer, &ButtonEvent, sizeof(ButtonEvent));
+    RtlCopyMemory(Irp->SystemBuffer, &ButtonEvent, sizeof(ULONG));
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = sizeof(ULONG);
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -94,6 +111,19 @@ static INT HandleButtonEvent(PACPI_BUTTON Button, UINT8 Type, INT Data)
 	ButtonEvent = SYS_BUTTON_SLEEP;
 
     PSLIST_ENTRY Entry = RtlInterlockedPopEntrySList(&GetButtonEventIrpList);
+    /* If there is no queued IRP waiting for the button event, so we save the
+     * button event into the event list. */
+    if (!Entry) {
+	PACPI_BUTTON_EVENT Event = ExAllocatePoolWithTag(NonPagedPool,
+							 sizeof(ACPI_BUTTON_EVENT),
+							 ACPI_TAG);
+	if (!Event) {
+	    return_VALUE(AE_NO_MEMORY);
+	}
+	Event->ButtonEvent = ButtonEvent;
+	RtlInterlockedPushEntrySList(&ButtonEventList, &Event->SListEntry);
+	return_VALUE(AE_OK);
+    }
     PIRP Irp = CONTAINING_RECORD(Entry, IRP, Tail.SListEntry);
     /* We pass ButtonEvent in the IoStatus field of the IRP object
      * so we don't have to define and allocate a context for the work item. */
@@ -109,7 +139,7 @@ static INT HandleButtonEvent(PACPI_BUTTON Button, UINT8 Type, INT Data)
 
 static VOID AcpiButtonNotify(ACPI_HANDLE Handle, UINT32 Event, PVOID Data)
 {
-    PACPI_BUTTON Button = (PACPI_BUTTON )Data;
+    PACPI_BUTTON Button = (PACPI_BUTTON)Data;
 
     ACPI_FUNCTION_TRACE("AcpiButtonNotify");
 
@@ -316,6 +346,7 @@ INT AcpiButtonInit(IN PDEVICE_OBJECT DeviceObject)
     ACPI_FUNCTION_TRACE("AcpiButtonInit");
 
     RtlInitializeSListHead(&GetButtonEventIrpList);
+    RtlInitializeSListHead(&ButtonEventList);
     Result = AcpiBusRegisterDriver(DeviceObject, &AcpiButtonDriver);
     if (Result < 0) {
 	return_VALUE(-15);
