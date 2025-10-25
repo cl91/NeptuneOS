@@ -20,16 +20,17 @@
 VOID i8042Flush(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 {
     UCHAR Ignore;
+    LARGE_INTEGER Delay = { .QuadPart = -500 };
 
     /* Flush output buffer */
     while (NT_SUCCESS(i8042ReadData(DeviceExtension, KBD_OBF /* | MOU_OBF */ , &Ignore))) {
-	KeStallExecutionProcessor(50);
+	KeDelayExecutionThread(FALSE, &Delay);
 	TRACE_(I8042PRT, "Output data flushed\n");
     }
 
     /* Flush input buffer */
     while (NT_SUCCESS(i8042ReadData(DeviceExtension, KBD_IBF, &Ignore))) {
-	KeStallExecutionProcessor(50);
+	KeDelayExecutionThread(FALSE, &Delay);
 	TRACE_(I8042PRT, "Input data flushed\n");
     }
 }
@@ -97,7 +98,8 @@ NTSTATUS i8042ReadDataWait(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 	if (NT_SUCCESS(Status))
 	    return Status;
 
-	KeStallExecutionProcessor(50);
+	LARGE_INTEGER Delay = { .QuadPart = -500 };
+	KeDelayExecutionThread(FALSE, &Delay);
     }
 
     /* Timed out */
@@ -177,7 +179,8 @@ BOOLEAN i8042Write(IN PPORT_DEVICE_EXTENSION DeviceExtension,
     Counter = DeviceExtension->Settings.PollingIterations;
 
     while ((KBD_IBF & READ_PORT_UCHAR(DeviceExtension->ControlPort)) && (Counter--)) {
-	KeStallExecutionProcessor(50);
+	LARGE_INTEGER Delay = { .QuadPart = -500 };
+	KeDelayExecutionThread(FALSE, &Delay);
     }
 
     if (Counter) {
