@@ -130,6 +130,62 @@ FORCEINLINE ULONG AcpiGetAdditionalResourceCount()
     return ResCount;
 }
 
+/*
+ * Looks up the MADT Interrupt Source Override entry for a given GSI.
+ * Returns AE_OK if found, AE_NOT_FOUND if not.
+ */
+static ACPI_STATUS AcpiFindIsoForGsi(UINT32 TargetGsi,
+				     ACPI_MADT_INTERRUPT_OVERRIDE *OutIso)
+{
+    ACPI_TABLE_HEADER *MadtTable = NULL;
+    ACPI_STATUS Status;
+    UINT8 *MadtEnd;
+    UINT8 *EntryPtr;
+
+    /*
+     * Get the MADT table (APIC)
+     */
+    Status = AcpiGetTable("APIC", 0, &MadtTable);
+    if (ACPI_FAILURE(Status) || !MadtTable) {
+        return AE_NOT_FOUND;
+    }
+
+    /*
+     * MADT header is followed by variable-length entries.
+     */
+    ACPI_TABLE_MADT *Madt = (ACPI_TABLE_MADT *)MadtTable;
+    EntryPtr = (UINT8 *)Madt + sizeof(ACPI_TABLE_MADT);
+    MadtEnd  = (UINT8 *)Madt + Madt->Header.Length;
+
+    /*
+     * Iterate over all MADT substructures
+     */
+    while (EntryPtr < MadtEnd) {
+        ACPI_SUBTABLE_HEADER *SubTable = (ACPI_SUBTABLE_HEADER *)EntryPtr;
+
+        /*
+	 * Check type: Interrupt Source Override = 2
+	 */
+        if (SubTable->Type == ACPI_MADT_TYPE_INTERRUPT_OVERRIDE) {
+            ACPI_MADT_INTERRUPT_OVERRIDE *IsoEntry = (PVOID)SubTable;
+
+            if (IsoEntry->GlobalIrq == TargetGsi) {
+                //
+                // Found matching ISO entry
+                //
+                if (OutIso) {
+                    *OutIso = *IsoEntry;
+                }
+                return AE_OK;
+            }
+        }
+
+        EntryPtr += SubTable->Length;
+    }
+
+    return AE_NOT_FOUND;
+}
+
 static NTSTATUS Bus_FilterResourcesFdo(IN PDEVICE_OBJECT Fdo,
 				       IN PFDO_DEVICE_DATA FdoData,
 				       IN PIRP Irp)
@@ -187,12 +243,35 @@ static NTSTATUS Bus_FilterResourcesFdo(IN PDEVICE_OBJECT Fdo,
 	AcpiTerminate();
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
+
+    ULONG GsiFlags = 0;
+    ACPI_MADT_INTERRUPT_OVERRIDE IsoEntry = {};
+    if (ACPI_SUCCESS(AcpiFindIsoForGsi(AcpiGbl_FADT.SciInterrupt, &IsoEntry))) {
+        DPRINT("Found ISO for GSI %u:\n"
+	       "  BusSource=%u  IrqSource=%u  GSI=%u  Flags=0x%X\n",
+	       AcpiGbl_FADT.SciInterrupt,
+	       IsoEntry.Bus, IsoEntry.SourceIrq,
+	       IsoEntry.GlobalIrq, IsoEntry.IntiFlags);
+	if (IsoEntry.IntiFlags & 2) {
+	    GsiFlags |= CM_RESOURCE_INTERRUPT_ACTIVE_LOW;
+	}
+	if (IsoEntry.IntiFlags & 8) {
+	    GsiFlags |= CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE;
+	} else {
+	    GsiFlags |= CM_RESOURCE_INTERRUPT_LATCHED;
+	}
+    } else {
+        DPRINT("No ISO found for GSI 0x%x, assuming level-sensitive and active-low\n",
+	       AcpiGbl_FADT.SciInterrupt);
+	GsiFlags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE | CM_RESOURCE_INTERRUPT_ACTIVE_LOW;
+    }
+
     RtlCopyMemory(NewResList, Res, Res->ListSize);
     NewResList->ListSize = NewListSize;
     NewResList->List[0].Count += ResCount;
     Desc = &NewResList->List[0].Descriptors[Res->List[0].Count];
     Desc->Type = CmResourceTypeInterrupt;
-    Desc->Flags = CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE | CM_RESOURCE_INTERRUPT_ACTIVE_LOW;
+    Desc->Flags = GsiFlags;
     Desc->ShareDisposition = CmResourceShareDeviceExclusive;
     Desc->Interrupt.MinimumVector = AcpiGbl_FADT.SciInterrupt;
     Desc->Interrupt.MaximumVector = AcpiGbl_FADT.SciInterrupt;
