@@ -238,7 +238,7 @@ VOID AcpiOsSleep(UINT64 Milliseconds)
     DPRINT("AcpiOsSleep %llu\n", Milliseconds);
     LARGE_INTEGER Delay = {
 	/* Unit is 100ns. */
-	.QuadPart = -((LONGLONG)Milliseconds) * 1000 * 10
+	.QuadPart = -((LONGLONG)Milliseconds) * 10000LL
     };
     KeDelayExecutionThread(FALSE, &Delay);
 }
