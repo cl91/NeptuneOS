@@ -46,7 +46,7 @@ static struct {
     { "i8042prt", L"*PNP0303\0",
       ARRAYSIZE(I8042prtParameters), I8042prtParameters },
     { "kbdclass", NULL, ARRAYSIZE(KbdclassParameters), KbdclassParameters },
-    { "storahci", L"PCI\\CC_0106", 0, NULL },
+    { "storahci", L"PCI\\CC_0106\0", 0, NULL },
     { "disk" }
 };
 
