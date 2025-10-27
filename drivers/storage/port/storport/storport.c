@@ -717,6 +717,74 @@ static ULONG StorExtFreeTimer(IN PVOID HwDeviceExtension,
     return STOR_STATUS_SUCCESS;
 }
 
+static ULONG StorExtInitializeWorker(IN PVOID HwDeviceExtension,
+				     OUT PVOID *pWorker)
+{
+    if (!HwDeviceExtension || !pWorker) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    /* Get the miniport extension */
+    assert(HwDeviceExtension);
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
+
+    PIO_WORKITEM Worker = IoAllocateWorkItem(DevExt->Device);
+    if (!Worker) {
+	return STOR_STATUS_INSUFFICIENT_RESOURCES;
+    }
+    *pWorker = Worker;
+    return STOR_STATUS_SUCCESS;
+}
+
+typedef struct _STORPORT_WORKITEM_CONTEXT {
+    PHW_WORKITEM Callback;
+    PVOID HwDeviceExtension;
+    PVOID Worker;
+    PVOID Context;
+} STORPORT_WORKITEM_CONTEXT, *PSTORPORT_WORKITEM_CONTEXT;
+
+static NTAPI VOID StorExtWorkItemCallback(IN PDEVICE_OBJECT DeviceObject,
+					  IN PVOID Ctx)
+{
+    assert(Ctx);
+    PSTORPORT_WORKITEM_CONTEXT Context = Ctx;
+    Context->Callback(Context->HwDeviceExtension, Context->Context, Context->Worker);
+    ExFreePool(Context);
+}
+
+static ULONG StorExtQueueWorkItem(IN PVOID HwDeviceExtension,
+				  IN PHW_WORKITEM WorkItemCallback,
+				  IN PVOID Worker,
+				  IN OPTIONAL PVOID Context)
+{
+    if (!HwDeviceExtension || !WorkItemCallback || !Worker) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    PSTORPORT_WORKITEM_CONTEXT Ctx = ExAllocatePool(NonPagedPool,
+						    sizeof(STORPORT_WORKITEM_CONTEXT));
+    if (!Ctx) {
+	return STOR_STATUS_INSUFFICIENT_RESOURCES;
+    }
+    Ctx->HwDeviceExtension = HwDeviceExtension;
+    Ctx->Callback = WorkItemCallback;
+    Ctx->Worker = Worker;
+    Ctx->Context = Context;
+    IoQueueWorkItem(Worker, StorExtWorkItemCallback, DelayedWorkQueue, Ctx);
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG StorExtFreeWorker(IN PVOID HwDeviceExtension,
+			       IN PVOID Worker)
+{
+    if (!HwDeviceExtension || !Worker) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    IoFreeWorkItem(Worker);
+    return STOR_STATUS_SUCCESS;
+}
+
 /*
  * @unimplemented
  */
@@ -808,6 +876,30 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
     {
 	GET_VA_ARG(VaList, PVOID, TimerHandle);
 	Status = StorExtFreeTimer(HwDeviceExtension, TimerHandle);
+	break;
+    }
+
+    case ExtFunctionInitializeWorker:
+    {
+	GET_VA_ARG(VaList, PVOID *, Worker);
+	Status = StorExtInitializeWorker(HwDeviceExtension, Worker);
+	break;
+    }
+
+    case ExtFunctionQueueWorkItem:
+    {
+	GET_VA_ARG(VaList, PHW_WORKITEM, WorkItemCallback);
+	GET_VA_ARG(VaList, PVOID, Worker);
+	GET_VA_ARG(VaList, PVOID, Context);
+	Status = StorExtQueueWorkItem(HwDeviceExtension, WorkItemCallback,
+				      Worker, Context);
+	break;
+    }
+
+    case ExtFunctionFreeWorker:
+    {
+	GET_VA_ARG(VaList, PVOID, Worker);
+	Status = StorExtFreeWorker(HwDeviceExtension, Worker);
 	break;
     }
 
