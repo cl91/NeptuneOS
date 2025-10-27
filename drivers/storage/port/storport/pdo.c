@@ -8,6 +8,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "precomp.h"
+#include <stdio.h>
 #include <srbhelper.h>
 
 /* FUNCTIONS ******************************************************************/
@@ -368,13 +369,414 @@ done:
     return Status;
 }
 
+static NTSTATUS PortPdoStartDevice(IN PPDO_DEVICE_EXTENSION DevExt,
+				   IN PIRP Irp)
+{
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PortPdoQueryTargetDeviceRelation(IN PPDO_DEVICE_EXTENSION DevExt,
+						 OUT PULONG_PTR Information)
+{
+    DPRINT1("PortPdoQueryTargetDeviceRelation(%p %p)\n", DevExt, Information);
+
+    PDEVICE_RELATIONS DeviceRelations = ExAllocatePoolWithTag(NonPagedPool,
+							      sizeof(DEVICE_RELATIONS),
+							      TAG_DEV_RELATIONS);
+    if (!DeviceRelations) {
+        return STATUS_NO_MEMORY;
+    }
+    DeviceRelations->Objects[0] = DevExt->Device;
+    DeviceRelations->Count = 0;
+    *Information = (ULONG_PTR)DeviceRelations;
+    return STATUS_SUCCESS;
+}
+
+#define QUERY_ID_BUFSIZE	512
+
+static PCSTR ScsiDeviceTypeStrings[][2] = {
+    { "Disk",        "GenDisk" },
+    { "Sequential",  "" },
+    { "Printer",     "GenPrinter" },
+    { "Processor",   "" },
+    { "Worm",        "GenWorm" },
+    { "CdRom",       "GenCdRom" },
+    { "Scanner",     "GenScanner" },
+    { "Optical",     "GenOptical" },
+    { "Changer",     "ScsiChanger" },
+    { "Net",         "ScsiNet" },
+    { "ASCIT8",      "ScsiASCIT8" },
+    { "ASCIT8",      "ScsiASCIT8" },
+    { "Array",       "ScsiArray" },
+    { "Enclosure",   "ScsiEnclosure" },
+    { "RBC",         "ScsiRBC" },
+    { "CardReader",  "ScsiCardReader" },
+    { "Bridge",      "ScsiBridge" },
+    { "Other",       "ScsiOther" },
+};
+
+static PCSTR StorGetDeviceTypeString(IN UCHAR DeviceType)
+{
+    if (DeviceType > ARRAYSIZE(ScsiDeviceTypeStrings)) {
+	return "Invalid";
+    }
+    return ScsiDeviceTypeStrings[DeviceType][0];
+}
+
+static PCSTR StorGetDeviceTypeGenericName(IN UCHAR DeviceType)
+{
+    if (DeviceType > ARRAYSIZE(ScsiDeviceTypeStrings)) {
+	return "InvalidDeviceType";
+    }
+    return ScsiDeviceTypeStrings[DeviceType][1];
+}
+
+#define INQUIRY_ID_BUFSIZE	32
+
+static VOID StorSanitizeInquiryId(IN UCHAR InquiryId[],
+				  OUT CHAR Id[INQUIRY_ID_BUFSIZE],
+				  IN ULONG IdSize,
+				  IN UCHAR ReplacementChar)
+{
+    assert((IdSize + 1) < INQUIRY_ID_BUFSIZE);
+    RtlCopyMemory(Id, InquiryId, IdSize);
+    for (ULONG i = strlen(Id); i; i--) {
+	if (Id[i-1] != ' ') {
+	    break;
+	}
+	Id[i-1] = ReplacementChar;
+    }
+    for (ULONG i = strlen(Id); i < IdSize; i++) {
+	Id[i] = ReplacementChar;
+    }
+    Id[IdSize] = '\0';
+}
+
+/*
+ * Returns the device ID of the PDO.
+ *
+ * Example: SCSI\Disk&Ven_QEMU&Prod_HARDDISK&Rev_2.5+
+ */
+static VOID StorPdoGetDeviceId(IN PPDO_DEVICE_EXTENSION DevExt,
+			       OUT PWSTR Id)
+{
+    assert(DevExt->InquiryBuffer);
+    CHAR VendorId[INQUIRY_ID_BUFSIZE] = {};
+    CHAR ProductId[INQUIRY_ID_BUFSIZE] = {};
+    CHAR ProductRevisionLevel[INQUIRY_ID_BUFSIZE] = {};
+    StorSanitizeInquiryId(DevExt->InquiryBuffer->VendorId, VendorId,
+			  sizeof(DevExt->InquiryBuffer->VendorId), '\0');
+    StorSanitizeInquiryId(DevExt->InquiryBuffer->ProductId, ProductId,
+			  sizeof(DevExt->InquiryBuffer->ProductId), '\0');
+    StorSanitizeInquiryId(DevExt->InquiryBuffer->ProductRevisionLevel, ProductRevisionLevel,
+			  sizeof(DevExt->InquiryBuffer->ProductRevisionLevel), '\0');
+    _snwprintf(Id, QUERY_ID_BUFSIZE,
+	       L"SCSI\\%hs&Ven_%hs&Prod_%hs&Rev_%hs",
+	       StorGetDeviceTypeString(DevExt->InquiryBuffer->DeviceType),
+	       VendorId,
+	       ProductId,
+	       ProductRevisionLevel);
+}
+
+static VOID StorPdoGetInstanceId(IN PPDO_DEVICE_EXTENSION DevExt,
+				 OUT PWSTR Id)
+{
+    _snwprintf(Id, QUERY_ID_BUFSIZE, L"%x%x%x",
+	       DevExt->Bus, DevExt->Target, DevExt->Lun);
+}
+
+static VOID StorPdoGetHardwareIds(IN PPDO_DEVICE_EXTENSION DevExt,
+				  OUT PWSTR Id)
+{
+    PINQUIRYDATA InquiryData = DevExt->InquiryBuffer;
+    PCSTR DeviceType = StorGetDeviceTypeString(InquiryData->DeviceType);
+    PCSTR GenericName = StorGetDeviceTypeGenericName(InquiryData->DeviceType);
+    CHAR VendorId[INQUIRY_ID_BUFSIZE] = {};
+    CHAR ProductId[INQUIRY_ID_BUFSIZE] = {};
+    CHAR ProductRevisionLevel[INQUIRY_ID_BUFSIZE] = {};
+    StorSanitizeInquiryId(InquiryData->VendorId, VendorId,
+			  sizeof(InquiryData->VendorId), '_');
+    StorSanitizeInquiryId(InquiryData->ProductId, ProductId,
+			  sizeof(InquiryData->ProductId), '_');
+    StorSanitizeInquiryId(InquiryData->ProductRevisionLevel, ProductRevisionLevel,
+			  sizeof(InquiryData->ProductRevisionLevel), '_');
+
+    /*
+     * SCSI\<DEVICE><VENDOR><PRODUCT><REVISION>
+     *
+     * Example: SCSI\DiskQEMU____HARDDISK________2.5+
+     */
+    ULONG RemainingSize = QUERY_ID_BUFSIZE - 1;
+    ULONG WcharsWritten = _snwprintf(Id, RemainingSize,
+				     L"SCSI\\%hs%hs%hs%hs",
+				     DeviceType,
+				     VendorId,
+				     ProductId,
+				     ProductRevisionLevel) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+    RemainingSize -= WcharsWritten * sizeof(WCHAR);
+    if (RemainingSize <= 1) {
+	goto out;
+    }
+
+    /*
+     * SCSI\<DEVICE><VENDOR><PRODUCT>
+     *
+     * Example: SCSI\DiskQEMU____HARDDISK________
+     */
+    WcharsWritten = _snwprintf(Id, RemainingSize,
+			       L"SCSI\\%hs%hs%hs",
+			       DeviceType,
+			       VendorId,
+			       ProductId) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+    RemainingSize -= WcharsWritten * sizeof(WCHAR);
+    if (RemainingSize <= 1) {
+	goto out;
+    }
+
+    /*
+     * SCSI\<DEVICE><VENDOR>
+     *
+     * Example: SCSI\DiskQEMU____
+     */
+    WcharsWritten = _snwprintf(Id, RemainingSize,
+			       L"SCSI\\%hs%hs",
+			       DeviceType,
+			       VendorId) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+    RemainingSize -= WcharsWritten * sizeof(WCHAR);
+    if (RemainingSize <= 1) {
+	goto out;
+    }
+
+    /*
+     * SCSI\<VENDOR><PRODUCT><REVISION[0]>
+     *
+     * Example: SCSI\QEMU____HARDDISK________2
+     */
+    WcharsWritten = _snwprintf(Id, RemainingSize,
+			       L"SCSI\\%hs%hs%hc",
+			       VendorId,
+			       ProductId,
+			       ProductRevisionLevel[0]) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+    RemainingSize -= WcharsWritten * sizeof(WCHAR);
+    if (RemainingSize <= 1) {
+	goto out;
+    }
+
+    /*
+     * <VENDOR><PRODUCT><REVISION[0]>
+     *
+     * Example: QEMU____HARDDISK________2
+     */
+    WcharsWritten = _snwprintf(Id, RemainingSize,
+			       L"%hs%hs%hc",
+			       VendorId,
+			       ProductId,
+			       ProductRevisionLevel[0]) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+    RemainingSize -= WcharsWritten * sizeof(WCHAR);
+    if (RemainingSize <= 1) {
+	goto out;
+    }
+
+    /*
+     * <GenericName>
+     *
+     * Example: GenDisk
+     */
+    WcharsWritten = _snwprintf(Id, RemainingSize,
+			       L"%hs",
+			       GenericName) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+
+out:
+    *Id++ = UNICODE_NULL;
+}
+
+static VOID StorPdoGetCompatibleIds(IN PPDO_DEVICE_EXTENSION DevExt,
+				    OUT PWSTR Id)
+{
+    PINQUIRYDATA InquiryData = DevExt->InquiryBuffer;
+    PCSTR DeviceType = StorGetDeviceTypeString(InquiryData->DeviceType);
+
+    /*
+     * SCSI\<DEVICE>
+     */
+    ULONG RemainingSize = QUERY_ID_BUFSIZE - 1;
+    ULONG WcharsWritten = _snwprintf(Id, RemainingSize,
+				     L"SCSI\\%hs",
+				     DeviceType) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+    RemainingSize -= WcharsWritten * sizeof(WCHAR);
+    if (RemainingSize <= 1) {
+	goto out;
+    }
+
+    /*
+     * SCSI\RAW
+     */
+    WcharsWritten = _snwprintf(Id, RemainingSize,
+			       L"SCSI\\RAW") + 1;
+    Id += WcharsWritten;
+
+out:
+    *Id++ = UNICODE_NULL;
+}
+
+static NTSTATUS PortPdoQueryId(IN PPDO_DEVICE_EXTENSION DevExt,
+			       IN BUS_QUERY_ID_TYPE IdType,
+			       OUT PULONG_PTR Information)
+{
+    DPRINT1("PortPdoQueryId(%p %d %p)\n", DevExt, IdType, Information);
+
+    assert(DevExt->InquiryBuffer);
+    if (!DevExt->InquiryBuffer) {
+	*Information = 0;
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    PWSTR Id = ExAllocatePool(NonPagedPool, QUERY_ID_BUFSIZE);
+    if (!Id) {
+	*Information = 0;
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    switch (IdType) {
+    case BusQueryDeviceID:
+	StorPdoGetDeviceId(DevExt, Id);
+	break;
+    case BusQueryInstanceID:
+	StorPdoGetInstanceId(DevExt, Id);
+	break;
+    case BusQueryHardwareIDs:
+	StorPdoGetHardwareIds(DevExt, Id);
+	break;
+    case BusQueryCompatibleIDs:
+	StorPdoGetCompatibleIds(DevExt, Id);
+	break;
+    default:
+	ExFreePool(Id);
+	Id = NULL;
+    }
+
+    *Information = (ULONG_PTR)Id;
+    return STATUS_SUCCESS;
+}
+
 NTAPI NTSTATUS PortPdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
 			  _In_ PIRP Irp)
 {
     DPRINT1("PortPdoPnp(%p %p)\n", DeviceObject, Irp);
 
-    Irp->IoStatus.Information = 0;
-    Irp->IoStatus.Status = STATUS_SUCCESS;
+    PPDO_DEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+    ASSERT(DeviceExtension);
+    ASSERT(DeviceExtension->ExtensionType == PdoExtension);
+
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+
+    ULONG_PTR Information = 0;
+    NTSTATUS Status = STATUS_NOT_SUPPORTED;
+
+    switch (Stack->MinorFunction) {
+    case IRP_MN_START_DEVICE: /* 0x00 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_START_DEVICE\n");
+	Status = PortPdoStartDevice(DeviceExtension, Irp);
+	break;
+
+    case IRP_MN_QUERY_REMOVE_DEVICE: /* 0x01 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_REMOVE_DEVICE\n");
+	break;
+
+    case IRP_MN_REMOVE_DEVICE: /* 0x02 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_REMOVE_DEVICE\n");
+	break;
+
+    case IRP_MN_CANCEL_REMOVE_DEVICE: /* 0x03 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_CANCEL_REMOVE_DEVICE\n");
+	break;
+
+    case IRP_MN_STOP_DEVICE: /* 0x04 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_STOP_DEVICE\n");
+	break;
+
+    case IRP_MN_QUERY_STOP_DEVICE: /* 0x05 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_STOP_DEVICE\n");
+	break;
+
+    case IRP_MN_CANCEL_STOP_DEVICE: /* 0x06 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_CANCEL_STOP_DEVICE\n");
+	break;
+
+    case IRP_MN_QUERY_DEVICE_RELATIONS: /* 0x07 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS\n");
+	switch (Stack->Parameters.QueryDeviceRelations.Type) {
+	case TargetDeviceRelation:
+	    DPRINT1("    IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS / TargetDeviceRelation\n");
+	    Status = PortPdoQueryTargetDeviceRelation(DeviceExtension, &Information);
+	    break;
+
+	default:
+	    DPRINT1("    IRP_MJ_PNP / IRP_MN_QUERY_DEVICE_RELATIONS / Unsupported type "
+		    "0x%x\n",
+		    Stack->Parameters.QueryDeviceRelations.Type);
+	}
+	break;
+
+    case IRP_MN_QUERY_RESOURCES: /* 0x0a */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_RESOURCES\n");
+	Status = STATUS_SUCCESS;
+	break;
+
+    case IRP_MN_QUERY_RESOURCE_REQUIREMENTS: /* 0x0b */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_RESOURCE_REQUIREMENTS\n");
+	Status = STATUS_SUCCESS;
+	break;
+
+    case IRP_MN_FILTER_RESOURCE_REQUIREMENTS: /* 0x0d */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_FILTER_RESOURCE_REQUIREMENTS\n");
+	break;
+
+    case IRP_MN_QUERY_ID: /* 0x13 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_ID\n");
+	Status = PortPdoQueryId(DeviceExtension,
+				Stack->Parameters.QueryId.IdType,
+				&Information);
+	break;
+
+    case IRP_MN_QUERY_PNP_DEVICE_STATE: /* 0x14 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_PNP_DEVICE_STATE\n");
+	break;
+
+    case IRP_MN_QUERY_BUS_INFORMATION: /* 0x15 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_BUS_INFORMATION\n");
+	break;
+
+    case IRP_MN_DEVICE_USAGE_NOTIFICATION: /* 0x16 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_DEVICE_USAGE_NOTIFICATION\n");
+	break;
+
+    case IRP_MN_SURPRISE_REMOVAL: /* 0x17 */
+	DPRINT1("IRP_MJ_PNP / IRP_MN_SURPRISE_REMOVAL\n");
+	break;
+
+    default:
+	DPRINT1("IRP_MJ_PNP / Unknown minor code 0x%x\n", Stack->MinorFunction);
+	break;
+    }
+
+    Irp->IoStatus.Information = Information;
+    Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
-    return STATUS_SUCCESS;
+
+    return Status;
 }

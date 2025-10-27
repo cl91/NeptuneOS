@@ -713,7 +713,7 @@ NTAPI NTSTATUS PortFdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	break;
 
     default:
-	DPRINT1("IRP_MJ_PNP / Unknown IOCTL 0x%x\n", Stack->MinorFunction);
+	DPRINT1("IRP_MJ_PNP / Unknown minor code 0x%x\n", Stack->MinorFunction);
 	return ForwardIrpAndForget(DeviceExtension->LowerDevice, Irp);
     }
 
