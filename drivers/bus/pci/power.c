@@ -66,7 +66,7 @@ NTSTATUS PciStallForPowerChange(IN PPCI_PDO_EXTENSION PdoExtension,
 	/* Check if this state transition will take time */
 	if (TimeoutEntry > 0) {
 	    /* Do a wait for the timeout specified instead */
-	    Interval.QuadPart = -10 * TimeoutEntry;
+	    Interval.QuadPart = -10LL * (LONGLONG)TimeoutEntry;
 	    KeDelayExecutionThread(FALSE, &Interval);
 	}
 
