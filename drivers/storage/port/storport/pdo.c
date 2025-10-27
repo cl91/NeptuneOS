@@ -160,9 +160,13 @@ static NTAPI VOID PortStartMiniportIo(IN PDEVICE_OBJECT DeviceObject,
     assert(InitData->HwBuildIo);
     assert(InitData->HwStartIo);
     assert(Srb->MiniportContext);
-    if (!MiniportBuildIo(Miniport, Srb) || !MiniportStartIo(Miniport, Srb)) {
-	Srb->SrbStatus = SRB_STATUS_ERROR;
-	PortCompleteRequest(Srb);
+    /* Note if the miniport's BuildIo returns FALSE, it means the miniport will
+     * complete it later. This is not an error, and we should not failed the SRB. */
+    if (MiniportBuildIo(Miniport, Srb)) {
+	if (!MiniportStartIo(Miniport, Srb)) {
+	    Srb->SrbStatus = SRB_STATUS_ERROR;
+	    PortCompleteRequest(Srb);
+	}
     }
 }
 
