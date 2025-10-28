@@ -346,11 +346,14 @@ NTSTATUS DiskCreateFdo(IN PDRIVER_OBJECT DriverObject,
 
     fdoExtension = deviceObject->DeviceExtension;
 
-    if (DasdAccessOnly) {
+    if (DasdAccessOnly && deviceObject->Vpb) {
 	//
 	// Inidicate that only RAW should be allowed to mount on the root
 	// partition object.  This ensures that a file system can't doubly
 	// mount on a super-floppy by mounting once on P0 and once on P1.
+	//
+	// Neptune OS Note: this is only relevant if file system is loaded
+	// in the same process as the storage device driver stack
 	//
 
 	SET_FLAG(deviceObject->Vpb->Flags, VPB_RAW_MOUNT);
