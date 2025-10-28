@@ -16,6 +16,7 @@
 
 #include <ntddscsi.h>
 #include <ntdddisk.h>
+#include <ntddstor.h>
 #include <mountdev.h>
 #include <wdmguid.h>
 
@@ -60,6 +61,7 @@ typedef struct _DRIVER_OBJECT_EXTENSION {
 
     LIST_ENTRY AdapterListHead;
     ULONG AdapterCount;
+    STORAGE_BUS_TYPE StorageBusType;
 
     LIST_ENTRY InitDataListHead;
 } DRIVER_OBJECT_EXTENSION, *PDRIVER_OBJECT_EXTENSION;

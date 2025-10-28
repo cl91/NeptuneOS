@@ -237,6 +237,8 @@ NTSTATUS MiniportInitialize(IN PMINIPORT Miniport,
     if (!NT_SUCCESS(Status))
 	return Status;
 
+    /* Query the registry to find the storage bus type (SATA, NVME, etc) */
+
     /* Assign the resources to the port configuration */
     AssignResourcesToConfiguration(&Miniport->PortConfig,
 				   DeviceExtension->AllocatedResources,

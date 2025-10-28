@@ -448,6 +448,9 @@ typedef enum _STORAGE_BUS_TYPE {
     BusTypeMmc,
     BusTypeVirtual,
     BusTypeFileBackedVirtual,
+    BusTypeSpaces,
+    BusTypeNvme,
+    BusTypeSCM,
     BusTypeMax,
     BusTypeMaxReserved = 0x7F
 } STORAGE_BUS_TYPE, *PSTORAGE_BUS_TYPE;

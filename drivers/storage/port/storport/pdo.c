@@ -606,6 +606,38 @@ out:
     *Id++ = UNICODE_NULL;
 }
 
+static PCSTR StorageBusTypeStrings[] = {
+    "Unknown",
+    "Scsi",
+    "Atapi",
+    "Ata",
+    "1394",
+    "Ssa",
+    "Fibre",
+    "Usb",
+    "RAID",
+    "iScsi",
+    "Sas",
+    "Sata",
+    "Sd",
+    "Mmc",
+    "Virtual",
+    "FileBackedVirtual",
+    "Spaces",
+    "Nvme",
+    "SCM",
+    "Invalid"
+};
+
+static PCSTR StorGetStorageBusTypeString(IN PPDO_DEVICE_EXTENSION DevExt)
+{
+    PDRIVER_OBJECT_EXTENSION DrvExt = DevExt->FdoExtension->DriverExtension;
+    if ((ULONG)DrvExt->StorageBusType >= (ULONG)BusTypeMax) {
+	return "Invalid";
+    }
+    return StorageBusTypeStrings[DrvExt->StorageBusType];
+}
+
 static VOID StorPdoGetCompatibleIds(IN PPDO_DEVICE_EXTENSION DevExt,
 				    OUT PWSTR Id)
 {
@@ -619,6 +651,37 @@ static VOID StorPdoGetCompatibleIds(IN PPDO_DEVICE_EXTENSION DevExt,
     ULONG WcharsWritten = _snwprintf(Id, RemainingSize,
 				     L"SCSI\\%hs",
 				     DeviceType) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+    RemainingSize -= WcharsWritten * sizeof(WCHAR);
+    if (RemainingSize <= 1) {
+	goto out;
+    }
+
+    /*
+     * SCSI\<StorageBusType>
+     *
+     * Example: SCSI\Sata
+     */
+    WcharsWritten = _snwprintf(Id, RemainingSize,
+			       L"SCSI\\%hs",
+			       StorGetStorageBusTypeString(DevExt)) + 1;
+    Id += WcharsWritten;
+    assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
+    RemainingSize -= WcharsWritten * sizeof(WCHAR);
+    if (RemainingSize <= 1) {
+	goto out;
+    }
+
+    /*
+     * SCSI\<StorageBusType><DEVICE>
+     *
+     * Example: SCSI\Sata
+     */
+    WcharsWritten = _snwprintf(Id, RemainingSize,
+			       L"SCSI\\%hs%hs",
+			       StorGetStorageBusTypeString(DevExt),
+			       DeviceType) + 1;
     Id += WcharsWritten;
     assert(RemainingSize >= WcharsWritten * sizeof(WCHAR));
     RemainingSize -= WcharsWritten * sizeof(WCHAR);

@@ -1343,6 +1343,54 @@ NTAPI ULONG StorPortSetBusDataByOffset(IN PVOID DeviceExtension,
 				    SlotNumber, Buffer, Length, TRUE);
 }
 
+static NTSTATUS MiniportGetStorageBusType(IN PUNICODE_STRING RegistryPath,
+					  OUT STORAGE_BUS_TYPE *BusType)
+{
+    RTL_QUERY_REGISTRY_TABLE Parameters[3] = { 0 };
+
+    OBJECT_ATTRIBUTES ObjectAttributes = { 0 };
+    InitializeObjectAttributes(&ObjectAttributes, RegistryPath,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, NULL, NULL);
+
+    HANDLE ServiceKey = NULL;
+    NTSTATUS Status = NtOpenKey(&ServiceKey, KEY_READ, &ObjectAttributes);
+    if (!NT_SUCCESS(Status)) {
+	assert(FALSE);
+	return Status;
+    }
+
+    UNICODE_STRING ParamStr;
+    RtlInitUnicodeString(&ParamStr, L"Parameters");
+    InitializeObjectAttributes(&ObjectAttributes, &ParamStr,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, ServiceKey,
+			       NULL);
+
+    HANDLE ParametersKey = NULL;
+    Status = NtOpenKey(&ParametersKey, KEY_READ, &ObjectAttributes);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    ULONG StorageBusType = BusTypeUnknown;
+    Parameters[0].Flags = RTL_QUERY_REGISTRY_DIRECT;
+    Parameters[0].Name = L"BusType";
+    Parameters[0].EntryContext = &StorageBusType;
+    Parameters[0].DefaultType = (REG_DWORD << RTL_QUERY_REGISTRY_TYPECHECK_SHIFT) |
+				REG_DWORD;
+    Parameters[0].DefaultData = &StorageBusType;
+    Parameters[0].DefaultLength = sizeof(ULONG);
+
+    Status = RtlQueryRegistryValues(RTL_REGISTRY_HANDLE | RTL_REGISTRY_OPTIONAL,
+				    ParametersKey, Parameters, NULL, NULL);
+    if (NT_SUCCESS(Status)) {
+	*BusType = StorageBusType;
+    }
+
+out:
+    NtClose(ServiceKey);
+    return Status;
+}
+
 /*
  * @implemented
  */
@@ -1387,6 +1435,10 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
 	return STATUS_REVISION_MISMATCH;
     }
 
+    /* Open the driver service registry to query the storage bus type (SATA, NVME, etc) */
+    STORAGE_BUS_TYPE BusType = BusTypeUnknown;
+    MiniportGetStorageBusType(RegistryPath, &BusType);
+
     DriverObjectExtension = IoGetDriverObjectExtension(DriverObject, (PVOID)DriverEntry);
     if (DriverObjectExtension == NULL) {
 	DPRINT1("No driver object extension!\n");
@@ -1406,6 +1458,7 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
 
 	DriverObjectExtension->ExtensionType = DriverExtension;
 	DriverObjectExtension->DriverObject = DriverObject;
+	DriverObjectExtension->StorageBusType = BusType;
 
 	InitializeListHead(&DriverObjectExtension->AdapterListHead);
 

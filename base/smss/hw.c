@@ -12,6 +12,9 @@
 #define ENUM_KEY_PATH				CURRENT_CONTROL_SET_KEY_PATH "\\Enum"
 #define PARAMETERS_KEY_NAME			"Parameters"
 
+/*
+ * Eventually these will be retrieved from the corresponding .inf file.
+ */
 typedef struct _DRIVER_SERVICE_PARAMETER {
     PCSTR Name;
     ULONG Type;
@@ -25,6 +28,11 @@ static DRIVER_SERVICE_PARAMETER I8042prtParameters[] = {
 static ULONG DefaultConnectMultiplePorts = 1;
 static DRIVER_SERVICE_PARAMETER KbdclassParameters[] = {
     { "ConnectMultiplePorts", REG_DWORD, sizeof(ULONG), &DefaultConnectMultiplePorts }
+};
+
+static ULONG StorAhciBusType = 0xb;
+static DRIVER_SERVICE_PARAMETER StorAhciParameters[] = {
+    { "BusType", REG_DWORD, sizeof(ULONG), &StorAhciBusType }
 };
 
 /* For now these are hard-coded, Eventually we want to move this to a
@@ -46,7 +54,8 @@ static struct {
     { "i8042prt", L"*PNP0303\0",
       ARRAYSIZE(I8042prtParameters), I8042prtParameters },
     { "kbdclass", NULL, ARRAYSIZE(KbdclassParameters), KbdclassParameters },
-    { "storahci", L"PCI\\CC_0106\0", 0, NULL },
+    { "storahci", L"PCI\\CC_0106\0SCSI\\SATA\0",
+      ARRAYSIZE(StorAhciParameters), StorAhciParameters },
     { "disk" }
 };
 
