@@ -1155,6 +1155,7 @@ static PIRP ClasspPrepareMcnIrp(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
      */
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(irp);
     irpStack->DeviceObject = FdoExtension->DeviceObject;
+    ObReferenceObject(FdoExtension->DeviceObject);
 
     //
     // If the irp is sent down when the volume needs to be

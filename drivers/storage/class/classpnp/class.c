@@ -6938,6 +6938,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    newStack = IoGetCurrentIrpStackLocation(irp2);
 	    newStack->Parameters.Others.Argument1 = Irp;
 	    newStack->DeviceObject = DeviceObject;
+	    ObReferenceObject(DeviceObject);
 
 	    //
 	    // Stick the check verify completion routine onto the stack
@@ -6950,6 +6951,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    IoSetNextIrpStackLocation(irp2);
 	    newStack = IoGetCurrentIrpStackLocation(irp2);
 	    newStack->DeviceObject = DeviceObject;
+	    ObReferenceObject(DeviceObject);
 	    newStack->MajorFunction = irpStack->MajorFunction;
 	    newStack->MinorFunction = irpStack->MinorFunction;
 	    newStack->Flags = irpStack->Flags;
@@ -9657,6 +9659,7 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
     // the current process for this IRP.
     //
 
+    assert(TargetDeviceObject->StackSize);
     PIRP irp = IoAllocateIrp(TargetDeviceObject->StackSize);
     if (!irp) {
 	IoStatus->Information = 0;
@@ -9671,6 +9674,7 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
 
     PIO_STACK_LOCATION irpSp = IoGetNextIrpStackLocation(irp);
     irpSp->DeviceObject = TargetDeviceObject;
+    ObReferenceObject(TargetDeviceObject);
 
     //
     // Set the major function code based on the type of device I/O control
