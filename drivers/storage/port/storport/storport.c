@@ -147,6 +147,14 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
     ASSERT(DriverObject);
     ASSERT(PhysicalDeviceObject);
 
+    /* If we are matched against the PDO of logical units, simply return success. */
+    if (PhysicalDeviceObject->DeviceExtension) {
+	PPDO_DEVICE_EXTENSION PdoExt = PhysicalDeviceObject->DeviceExtension;
+	assert(PdoExt->ExtensionType == PdoExtension);
+	assert(PdoExt->Device == PhysicalDeviceObject);
+	return STATUS_SUCCESS;
+    }
+
     swprintf(NameBuffer, L"\\Device\\RaidPort%lu", PortNumber);
     RtlInitUnicodeString(&DeviceName, NameBuffer);
     PortNumber++;
