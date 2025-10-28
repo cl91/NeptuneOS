@@ -150,8 +150,8 @@ NTSTATUS PortFdoInitDma(IN PFDO_DEVICE_EXTENSION FdoExt,
     return STATUS_SUCCESS;
 }
 
-static NTAPI NTSTATUS PortFdoStartDevice(IN PFDO_DEVICE_EXTENSION DeviceExtension,
-					 IN PIRP Irp)
+static NTSTATUS PortFdoStartDevice(IN PFDO_DEVICE_EXTENSION DeviceExtension,
+				   IN PIRP Irp)
 {
     DPRINT1("PortFdoStartDevice(%p %p)\n", DeviceExtension, Irp);
 
@@ -616,7 +616,7 @@ static NTSTATUS PortFdoFilterRequirements(PFDO_DEVICE_EXTENSION DeviceExtension,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PortFdoScsi(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+NTSTATUS PortFdoScsi(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     DPRINT("PortFdoScsi(%p %p)\n", DeviceObject, Irp);
 
@@ -631,7 +631,262 @@ NTAPI NTSTATUS PortFdoScsi(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     return Status;
 }
 
-NTAPI NTSTATUS PortFdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+static NTSTATUS PortFdoIoctlStorageQueryProperty(IN PFDO_DEVICE_EXTENSION FdoExt,
+						 IN PMINIPORT Miniport,
+						 IN PVOID HwDevExt,
+						 IN OUT PVOID Buffer,
+						 IN ULONG InputLength,
+						 IN ULONG OutputLength,
+						 OUT ULONG_PTR *Information)
+{
+    PSTORAGE_PROPERTY_QUERY Query = Buffer;
+    if (InputLength < FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters) ||
+        Query->PropertyId != StorageAdapterProperty) {
+        return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    switch (Query->QueryType) {
+    case PropertyStandardQuery:
+	if (OutputLength < sizeof(STORAGE_DESCRIPTOR_HEADER)) {
+	    *Information = sizeof(STORAGE_ADAPTER_DESCRIPTOR);
+	    return STATUS_BUFFER_TOO_SMALL;
+	}
+	PSTORAGE_ADAPTER_DESCRIPTOR Descriptor = Buffer;
+	Descriptor->Version = sizeof(STORAGE_ADAPTER_DESCRIPTOR);
+	Descriptor->Size = sizeof(STORAGE_ADAPTER_DESCRIPTOR);
+
+	if (OutputLength < sizeof(STORAGE_ADAPTER_DESCRIPTOR)) {
+	    *Information = sizeof(STORAGE_DESCRIPTOR_HEADER);
+	    return STATUS_SUCCESS;
+	}
+	PPORT_CONFIGURATION_INFORMATION PortConfig = &Miniport->PortConfig;
+	Descriptor->MaximumPhysicalPages = min(PortConfig->NumberOfPhysicalBreaks,
+					       FdoExt->NumberOfMapRegisters);
+	Descriptor->MaximumTransferLength = PortConfig->MaximumTransferLength;
+	Descriptor->AlignmentMask = PortConfig->AlignmentMask;
+	Descriptor->AdapterUsesPio = PortConfig->MapBuffers;
+	Descriptor->AdapterScansDown = PortConfig->AdapterScansDown;
+	Descriptor->CommandQueueing = PortConfig->TaggedQueuing;
+	Descriptor->AcceleratedTransfer = TRUE;
+
+	assert(FdoExt->DriverExtension);
+	Descriptor->BusType = FdoExt->DriverExtension->StorageBusType;
+	Descriptor->BusMajorVersion = 2;
+	Descriptor->BusMinorVersion = 0;
+	*Information = sizeof(STORAGE_ADAPTER_DESCRIPTOR);
+	return STATUS_SUCCESS;
+
+    case PropertyExistsQuery:
+	return STATUS_SUCCESS;
+
+    default:
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+}
+
+static NTSTATUS PortFdoIoctlStorageResetBus(IN PFDO_DEVICE_EXTENSION FdoExt,
+					    IN PMINIPORT Miniport,
+					    IN PVOID HwDevExt,
+					    IN OUT PVOID Buffer,
+					    IN ULONG InputLength,
+					    IN ULONG OutputLength)
+{
+    assert(Miniport);
+    assert(Miniport->InitData);
+    assert(Miniport->InitData->HwResetBus);
+
+    if (InputLength < sizeof(STORAGE_BUS_RESET_REQUEST)) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    PSTORAGE_BUS_RESET_REQUEST Req = Buffer;
+
+    BOOLEAN Succ = Miniport->InitData->HwResetBus(HwDevExt,
+						  Req->PathId);
+
+    return (Succ ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL);
+}
+
+static NTSTATUS PortFdoIoctlStorageBreakReservation(IN PFDO_DEVICE_EXTENSION FdoExt,
+						    IN PMINIPORT Miniport,
+						    IN PVOID HwDevExt,
+						    IN OUT PVOID Buffer,
+						    IN ULONG InputLength,
+						    IN ULONG OutputLength)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTSTATUS PortFdoIoctlScsiMiniport(IN PFDO_DEVICE_EXTENSION FdoExt,
+					 IN PMINIPORT Miniport,
+					 IN PVOID HwDevExt,
+					 IN OUT PVOID Buffer,
+					 IN ULONG InputLength,
+					 IN ULONG OutputLength)
+{
+    /* TODO: Need to implement DMA buffer allocation first */
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTSTATUS PortFdoIoctlScsiGetCapabilities(IN PFDO_DEVICE_EXTENSION FdoExt,
+						IN PMINIPORT Miniport,
+						IN PVOID HwDevExt,
+						IN OUT PVOID Buffer,
+						IN ULONG InputLength,
+						IN ULONG OutputLength,
+						OUT ULONG_PTR *Information)
+{
+    if (OutputLength < sizeof(IO_SCSI_CAPABILITIES)) {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+
+    PPORT_CONFIGURATION_INFORMATION PortConfig = &Miniport->PortConfig;
+    PIO_SCSI_CAPABILITIES Capabilities = Buffer;
+    Capabilities->Length = sizeof(IO_SCSI_CAPABILITIES);
+    Capabilities->MaximumTransferLength = PortConfig->MaximumTransferLength;
+    Capabilities->MaximumPhysicalPages = PortConfig->NumberOfPhysicalBreaks;
+    Capabilities->SupportedAsynchronousEvents = FALSE;
+    Capabilities->AlignmentMask = PortConfig->AlignmentMask;
+    Capabilities->TaggedQueuing = TRUE;
+    Capabilities->AdapterScansDown = PortConfig->AdapterScansDown;
+    Capabilities->AdapterUsesPio = FALSE;
+
+    *Information = sizeof(IO_SCSI_CAPABILITIES);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS PortFdoIoctlScsiRescanBus(IN PFDO_DEVICE_EXTENSION FdoExt,
+					  IN PMINIPORT Miniport,
+					  IN PVOID HwDevExt,
+					  IN OUT PVOID Buffer,
+					  IN ULONG InputLength,
+					  IN ULONG OutputLength)
+{
+    /* We have not implement storage bus rescanning yet. */
+    return STATUS_NOT_SUPPORTED;
+}
+
+static NTSTATUS PortFdoIoctlScsiPassThrough(IN PFDO_DEVICE_EXTENSION FdoExt,
+					    IN PMINIPORT Miniport,
+					    IN PVOID HwDevExt,
+					    IN OUT PVOID Buffer,
+					    IN ULONG InputLength,
+					    IN ULONG OutputLength)
+{
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTSTATUS PortFdoIoctlScsiPassThroughDirect(IN PFDO_DEVICE_EXTENSION FdoExt,
+						  IN PMINIPORT Miniport,
+						  IN PVOID HwDevExt,
+						  IN OUT PVOID Buffer,
+						  IN ULONG InputLength,
+						  IN ULONG OutputLength)
+{
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTSTATUS PortFdoIoctlScsiGetInquiryData(IN PFDO_DEVICE_EXTENSION FdoExt,
+					       IN PMINIPORT Miniport,
+					       IN PVOID HwDevExt,
+					       IN OUT PVOID Buffer,
+					       IN ULONG InputLength,
+					       IN ULONG OutputLength)
+{
+    UNIMPLEMENTED_DBGBREAK();
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS PortFdoDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+{
+    DPRINT("PortFdoDeviceControl(%p %p)\n", DeviceObject, Irp);
+
+    Irp->IoStatus.Information = 0;
+
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    ULONG Ioctl = Stack->Parameters.DeviceIoControl.IoControlCode;
+    PFDO_DEVICE_EXTENSION FdoExt = DeviceObject->DeviceExtension;
+    ASSERT(FdoExt);
+    ASSERT(FdoExt->ExtensionType == FdoExtension);
+    PMINIPORT Miniport = &FdoExt->Miniport;
+    assert(Miniport);
+    assert(Miniport->InitData);
+    assert(Miniport->MiniportExtension);
+    PVOID HwDevExt = &Miniport->MiniportExtension->HwDeviceExtension;
+
+    /* All of the IOCTLs we handle are METHOD_BUFFERED IOCTLs */
+    PVOID Buffer = Irp->SystemBuffer;
+    ULONG InputLength = Stack->Parameters.DeviceIoControl.InputBufferLength;
+    ULONG OutputLength = Stack->Parameters.DeviceIoControl.OutputBufferLength;
+
+    NTSTATUS Status = STATUS_NOT_SUPPORTED;
+
+    switch (Ioctl) {
+    case IOCTL_STORAGE_QUERY_PROPERTY:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_STORAGE_QUERY_PROPERTY\n");
+	Status = PortFdoIoctlStorageQueryProperty(FdoExt, Miniport, HwDevExt,
+						  Buffer, InputLength, OutputLength,
+						  &Irp->IoStatus.Information);
+	break;
+
+    case IOCTL_STORAGE_RESET_BUS:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_STORAGE_RESET_BUS\n");
+	Status = PortFdoIoctlStorageResetBus(FdoExt, Miniport, HwDevExt, Buffer,
+					     InputLength, OutputLength);
+	break;
+
+    case IOCTL_STORAGE_BREAK_RESERVATION:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_STORAGE_BREAK_RESERVATION\n");
+	Status = PortFdoIoctlStorageBreakReservation(FdoExt, Miniport, HwDevExt,
+						     Buffer, InputLength, OutputLength);
+	break;
+
+    case IOCTL_SCSI_MINIPORT:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_STORAGE_MINIPORT\n");
+	Status = PortFdoIoctlScsiMiniport(FdoExt, Miniport, HwDevExt,
+					  Buffer, InputLength, OutputLength);
+	break;
+
+    case IOCTL_SCSI_GET_CAPABILITIES:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_STORAGE_GET_CAPABILITIES\n");
+	Status = PortFdoIoctlScsiGetCapabilities(FdoExt, Miniport, HwDevExt,
+						 Buffer, InputLength, OutputLength,
+						 &Irp->IoStatus.Information);
+	break;
+
+    case IOCTL_SCSI_RESCAN_BUS:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_SCSI_RESCAN_BUS\n");
+	Status = PortFdoIoctlScsiRescanBus(FdoExt, Miniport, HwDevExt,
+					   Buffer, InputLength, OutputLength);
+	break;
+
+    case IOCTL_SCSI_PASS_THROUGH:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_SCSI_PASS_THROUGH\n");
+	Status = PortFdoIoctlScsiPassThrough(FdoExt, Miniport, HwDevExt,
+					     Buffer, InputLength, OutputLength);
+	break;
+
+    case IOCTL_SCSI_PASS_THROUGH_DIRECT:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_SCSI_PASS_THROUGH_DIRECT\n");
+	Status = PortFdoIoctlScsiPassThroughDirect(FdoExt, Miniport, HwDevExt,
+						   Buffer, InputLength, OutputLength);
+	break;
+
+    case IOCTL_SCSI_GET_INQUIRY_DATA:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_SCSI_GET_INQUIRY_DATA\n");
+	Status = PortFdoIoctlScsiGetInquiryData(FdoExt, Miniport, HwDevExt,
+						Buffer, InputLength, OutputLength);
+	break;
+    }
+
+    Irp->IoStatus.Status = Status;
+    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return Status;
+}
+
+NTSTATUS PortFdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 {
     DPRINT1("PortFdoPnp(%p %p)\n", DeviceObject, Irp);
 

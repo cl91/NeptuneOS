@@ -93,6 +93,7 @@ typedef struct _FDO_DEVICE_EXTENSION {
     DEVICE_STATE PnpState;
     LIST_ENTRY AdapterListEntry;
     MINIPORT Miniport;
+    ULONG PortNumber;
     ULONG BusNumber;
     ULONG SlotNumber;
     PCM_RESOURCE_LIST AllocatedResources;
@@ -141,37 +142,40 @@ typedef struct _SRB_PORT_CONTEXT {
 
 /* fdo.c */
 
-NTAPI NTSTATUS PortFdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
-			   _In_ PIRP Irp);
+NTSTATUS PortFdoScsi(IN PDEVICE_OBJECT DeviceObject,
+		     IN PIRP Irp);
 
-NTAPI NTSTATUS PortFdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
-			  _In_ PIRP Irp);
+NTSTATUS PortFdoDeviceControl(IN PDEVICE_OBJECT DeviceObject,
+			      IN PIRP Irp);
+
+NTSTATUS PortFdoPnp(IN PDEVICE_OBJECT DeviceObject,
+		    IN PIRP Irp);
 
 NTSTATUS PortFdoInitDma(IN PFDO_DEVICE_EXTENSION FdoExt,
 			IN PPORT_CONFIGURATION_INFORMATION PortConfig);
 
 /* miniport.c */
 
-NTSTATUS MiniportInitialize(_In_ PMINIPORT Miniport,
-			    _In_ PFDO_DEVICE_EXTENSION DeviceExtension,
-			    _In_ PHW_INITIALIZATION_DATA HwInitializationData);
+NTSTATUS MiniportInitialize(IN PMINIPORT Miniport,
+			    IN PFDO_DEVICE_EXTENSION DeviceExtension,
+			    IN PHW_INITIALIZATION_DATA HwInitializationData);
 
-NTSTATUS MiniportFindAdapter(_In_ PMINIPORT Miniport);
+NTSTATUS MiniportFindAdapter(IN PMINIPORT Miniport);
 
-NTSTATUS MiniportHwInitialize(_In_ PMINIPORT Miniport);
+NTSTATUS MiniportHwInitialize(IN PMINIPORT Miniport);
 
-BOOLEAN MiniportHwInterrupt(_In_ PMINIPORT Miniport);
+BOOLEAN MiniportHwInterrupt(IN PMINIPORT Miniport);
 
-BOOLEAN MiniportBuildIo(_In_ PMINIPORT Miniport,
-			_In_ PSTORAGE_REQUEST_BLOCK Srb);
+BOOLEAN MiniportBuildIo(IN PMINIPORT Miniport,
+			IN PSTORAGE_REQUEST_BLOCK Srb);
 
-BOOLEAN MiniportStartIo(_In_ PMINIPORT Miniport,
-			_In_ PSTORAGE_REQUEST_BLOCK Srb);
+BOOLEAN MiniportStartIo(IN PMINIPORT Miniport,
+			IN PSTORAGE_REQUEST_BLOCK Srb);
 
 /* misc.c */
 
-NTAPI NTSTATUS ForwardIrpAndForget(_In_ PDEVICE_OBJECT LowerDevice,
-				   _In_ PIRP Irp);
+NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT LowerDevice,
+				   IN PIRP Irp);
 
 INTERFACE_TYPE GetBusInterface(PDEVICE_OBJECT DeviceObject);
 
@@ -200,13 +204,13 @@ NTSTATUS AllocateAddressMapping(PMAPPED_ADDRESS *MappedAddressList,
 
 /* pdo.c */
 
-NTSTATUS PortCreatePdo(_In_ PFDO_DEVICE_EXTENSION FdoExtension,
-		       _In_ ULONG Bus,
-		       _In_ ULONG Target,
-		       _In_ ULONG Lun,
-		       _Out_ PPDO_DEVICE_EXTENSION *PdoExtension);
+NTSTATUS PortCreatePdo(IN PFDO_DEVICE_EXTENSION FdoExtension,
+		       IN ULONG Bus,
+		       IN ULONG Target,
+		       IN ULONG Lun,
+		       OUT PPDO_DEVICE_EXTENSION *PdoExtension);
 
-NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension);
+NTSTATUS PortDeletePdo(IN PPDO_DEVICE_EXTENSION PdoExtension);
 
 VOID PortPdoSetBusy(IN PPDO_DEVICE_EXTENSION PdoExt);
 
@@ -214,11 +218,14 @@ VOID PortPdoSetReady(IN PPDO_DEVICE_EXTENSION PdoExt);
 
 VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb);
 
-NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
-			   _In_ PIRP Irp);
+NTSTATUS PortPdoScsi(IN PDEVICE_OBJECT DeviceObject,
+		     IN PIRP Irp);
 
-NTAPI NTSTATUS PortPdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
-			  _In_ PIRP Irp);
+NTSTATUS PortPdoDeviceControl(IN PDEVICE_OBJECT DeviceObject,
+			      IN PIRP Irp);
+
+NTSTATUS PortPdoPnp(IN PDEVICE_OBJECT DeviceObject,
+		    IN PIRP Irp);
 
 
 /* storport.c */
@@ -226,7 +233,7 @@ NTAPI NTSTATUS PortPdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
 PHW_INITIALIZATION_DATA PortGetDriverInitData(PDRIVER_OBJECT_EXTENSION DriverExtension,
 					      INTERFACE_TYPE InterfaceType);
 
-NTAPI NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
-			   _In_ PUNICODE_STRING RegistryPath);
+NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
+			   IN PUNICODE_STRING RegistryPath);
 
 #endif /* _STORPORT_PCH_ */

@@ -13,11 +13,11 @@
 
 /* FUNCTIONS ******************************************************************/
 
-NTSTATUS PortCreatePdo(_In_ PFDO_DEVICE_EXTENSION FdoDeviceExtension,
-		       _In_ ULONG Bus,
-		       _In_ ULONG Target,
-		       _In_ ULONG Lun,
-		       _Out_ PPDO_DEVICE_EXTENSION *PdoDeviceExtension)
+NTSTATUS PortCreatePdo(IN PFDO_DEVICE_EXTENSION FdoDeviceExtension,
+		       IN ULONG Bus,
+		       IN ULONG Target,
+		       IN ULONG Lun,
+		       OUT PPDO_DEVICE_EXTENSION *PdoDeviceExtension)
 {
     PPDO_DEVICE_EXTENSION DeviceExtension = NULL;
     PDEVICE_OBJECT Pdo = NULL;
@@ -64,7 +64,7 @@ NTSTATUS PortCreatePdo(_In_ PFDO_DEVICE_EXTENSION FdoDeviceExtension,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS PortDeletePdo(_In_ PPDO_DEVICE_EXTENSION PdoExtension)
+NTSTATUS PortDeletePdo(IN PPDO_DEVICE_EXTENSION PdoExtension)
 {
     DPRINT("PortDeletePdo(%p)\n", PdoExtension);
 
@@ -261,8 +261,8 @@ VOID PortPdoSetReady(IN PPDO_DEVICE_EXTENSION PdoExt)
     KeSetEvent(&PdoExt->QueueUnfrozen);
 }
 
-NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
-			   _In_ PIRP Irp)
+NTSTATUS PortPdoScsi(IN PDEVICE_OBJECT DeviceObject,
+		     IN PIRP Irp)
 {
     DPRINT1("PortPdoScsi(%p %p)\n", DeviceObject, Irp);
     Irp->IoStatus.Information = 0;
@@ -370,6 +370,177 @@ NTAPI NTSTATUS PortPdoScsi(_In_ PDEVICE_OBJECT DeviceObject,
 done:
     Irp->IoStatus.Status = Status;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    return Status;
+}
+
+
+static NTSTATUS PortPdoIoctlStorageQueryProperty(IN PPDO_DEVICE_EXTENSION PdoExt,
+						 IN PFDO_DEVICE_EXTENSION FdoExt,
+						 IN OUT PVOID Buffer,
+						 IN ULONG InputLength,
+						 IN ULONG OutputLength,
+						 OUT ULONG_PTR *Information)
+{
+    PSTORAGE_PROPERTY_QUERY Query = Buffer;
+    if (InputLength < FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters)) {
+        return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    switch (Query->QueryType) {
+    case PropertyStandardQuery:
+    {
+	/* Compute the total buffer size needed */
+	ULONG SizeNeeded = FIELD_OFFSET(STORAGE_DEVICE_DESCRIPTOR, RawDeviceProperties);
+	PCHAR ExtraData = Buffer;
+	ExtraData += SizeNeeded;
+	PINQUIRYDATA InquiryData = PdoExt->InquiryBuffer;
+	SizeNeeded += sizeof(InquiryData->VendorId) + sizeof(InquiryData->ProductId) +
+	    sizeof(InquiryData->ProductRevisionLevel) + 3;
+	/* TODO: Make VPD_SERIAL_NUMBER INQUIRY during port enumeration and return it here. */
+	*Information = SizeNeeded;
+	if (OutputLength < sizeof(STORAGE_DESCRIPTOR_HEADER)) {
+	    return STATUS_BUFFER_TOO_SMALL;
+	}
+
+	PSTORAGE_DEVICE_DESCRIPTOR Descriptor = Buffer;
+	Descriptor->Version = sizeof(STORAGE_DEVICE_DESCRIPTOR);
+	Descriptor->Size = SizeNeeded;
+	if (OutputLength < SizeNeeded) {
+	    /* Based on the behavior of the classpnp.sys driver, we should return success
+	     * here rather than STATUS_BUFFER_TOO_SMALL. */
+	    return STATUS_SUCCESS;
+	}
+
+	Descriptor->DeviceType = InquiryData->DeviceType;
+	Descriptor->DeviceTypeModifier = InquiryData->DeviceTypeModifier;
+	Descriptor->RemovableMedia = InquiryData->RemovableMedia;
+	Descriptor->CommandQueueing = InquiryData->CommandQueue;
+	Descriptor->BusType = FdoExt->DriverExtension->StorageBusType;
+
+	RtlCopyMemory(ExtraData, InquiryData->VendorId, sizeof(InquiryData->VendorId));
+	ExtraData += sizeof(InquiryData->VendorId);
+	*ExtraData++ = '\0';
+	Descriptor->VendorIdOffset = FIELD_OFFSET(STORAGE_DEVICE_DESCRIPTOR,
+						  RawDeviceProperties);
+
+	RtlCopyMemory(ExtraData, InquiryData->ProductId, sizeof(InquiryData->ProductId));
+	ExtraData += sizeof(InquiryData->ProductId);
+	*ExtraData++ = '\0';
+	Descriptor->ProductIdOffset = Descriptor->VendorIdOffset +
+	    sizeof(InquiryData->VendorId) + 1;
+
+	RtlCopyMemory(ExtraData, InquiryData->ProductRevisionLevel,
+		      sizeof(InquiryData->ProductRevisionLevel));
+	ExtraData += sizeof(InquiryData->ProductRevisionLevel);
+	*ExtraData++ = '\0';
+	Descriptor->ProductRevisionOffset = Descriptor->ProductIdOffset +
+	    sizeof(InquiryData->ProductId) + 1;
+
+	return STATUS_SUCCESS;
+    }
+
+    case PropertyExistsQuery:
+	return STATUS_SUCCESS;
+
+    default:
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+}
+
+/*
+ * Pass the request to the FDO
+ */
+static NTSTATUS PortPdoIoctlScsiPassThrough(IN PPDO_DEVICE_EXTENSION PdoExt,
+					    IN PFDO_DEVICE_EXTENSION FdoExt,
+					    IN OUT PVOID Buffer,
+					    IN ULONG InputLength,
+					    IN PIRP Irp)
+{
+    if (InputLength < sizeof(SCSI_PASS_THROUGH)) {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+    PSCSI_PASS_THROUGH Command = Buffer;
+    Command->PathId = PdoExt->Bus;
+    Command->TargetId = PdoExt->Target;
+    Command->Lun = PdoExt->Lun;
+    IoSkipCurrentIrpStackLocation(Irp);
+    return IoCallDriver(FdoExt->Device, Irp);
+}
+
+static NTSTATUS PortPdoIoctlScsiGetAddress(IN PPDO_DEVICE_EXTENSION PdoExt,
+					   IN PFDO_DEVICE_EXTENSION FdoExt,
+					   IN OUT PVOID Buffer,
+					   IN ULONG OutputLength,
+					   OUT PULONG_PTR Information)
+{
+    if (OutputLength < sizeof(SCSI_ADDRESS)) {
+        return STATUS_BUFFER_TOO_SMALL;
+    }
+    PSCSI_ADDRESS ScsiAddress = Buffer;
+    ScsiAddress->Length = sizeof (SCSI_ADDRESS);
+    ScsiAddress->PortNumber = FdoExt->PortNumber;
+    ScsiAddress->PathId = PdoExt->Bus;
+    ScsiAddress->TargetId = PdoExt->Target;
+    ScsiAddress->Lun = PdoExt->Lun;
+    *Information = sizeof(SCSI_ADDRESS);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS PortPdoDeviceControl(IN PDEVICE_OBJECT DeviceObject,
+			      IN PIRP Irp)
+{
+    DPRINT1("PortPdoDeviceControl(%p %p)\n", DeviceObject, Irp);
+    Irp->IoStatus.Information = 0;
+
+    PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
+    ULONG Ioctl = Stack->Parameters.DeviceIoControl.IoControlCode;
+    PPDO_DEVICE_EXTENSION PdoExt = DeviceObject->DeviceExtension;
+    ASSERT(PdoExt);
+    ASSERT(PdoExt->ExtensionType == PdoExtension);
+    PFDO_DEVICE_EXTENSION FdoExt = PdoExt->FdoExtension;
+    ASSERT(FdoExt);
+    ASSERT(FdoExt->ExtensionType == FdoExtension);
+    PMINIPORT Miniport = &FdoExt->Miniport;
+    assert(Miniport);
+    assert(Miniport->InitData);
+    assert(Miniport->MiniportExtension);
+
+    /* All of the IOCTLs we handle are METHOD_BUFFERED IOCTLs */
+    PVOID Buffer = Irp->SystemBuffer;
+    ULONG InputLength = Stack->Parameters.DeviceIoControl.InputBufferLength;
+    ULONG OutputLength = Stack->Parameters.DeviceIoControl.OutputBufferLength;
+
+    NTSTATUS Status = STATUS_NOT_SUPPORTED;
+
+    switch (Ioctl) {
+    case IOCTL_STORAGE_QUERY_PROPERTY:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_STORAGE_QUERY_PROPERTY\n");
+	Status = PortPdoIoctlStorageQueryProperty(PdoExt, FdoExt, Buffer,
+						  InputLength, OutputLength,
+						  &Irp->IoStatus.Information);
+	break;
+
+    case IOCTL_SCSI_PASS_THROUGH:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_SCSI_PASS_THROUGH\n");
+	Status = PortPdoIoctlScsiPassThrough(PdoExt, FdoExt, Buffer, InputLength, Irp);
+	break;
+
+    case IOCTL_SCSI_PASS_THROUGH_DIRECT:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_SCSI_PASS_THROUGH_DIRECT\n");
+	Status = PortPdoIoctlScsiPassThrough(PdoExt, FdoExt, Buffer, InputLength, Irp);
+	break;
+
+    case IOCTL_SCSI_GET_ADDRESS:
+	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_SCSI_GET_ADDRESS\n");
+	Status = PortPdoIoctlScsiGetAddress(PdoExt, FdoExt, Buffer, OutputLength,
+					    &Irp->IoStatus.Information);
+	break;
+    }
+
+    Irp->IoStatus.Status = Status;
+    if (Status != STATUS_PENDING) {
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    }
     return Status;
 }
 
@@ -740,8 +911,8 @@ static NTSTATUS PortPdoQueryId(IN PPDO_DEVICE_EXTENSION DevExt,
     return STATUS_SUCCESS;
 }
 
-NTAPI NTSTATUS PortPdoPnp(_In_ PDEVICE_OBJECT DeviceObject,
-			  _In_ PIRP Irp)
+NTSTATUS PortPdoPnp(IN PDEVICE_OBJECT DeviceObject,
+		    IN PIRP Irp)
 {
     DPRINT1("PortPdoPnp(%p %p)\n", DeviceObject, Irp);
 

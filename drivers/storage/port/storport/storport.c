@@ -21,7 +21,7 @@
 
 /* GLOBALS ********************************************************************/
 
-ULONG PortNumber = 0;
+static ULONG StorPortTotalPortCount = 0;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -155,9 +155,8 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
 	return STATUS_SUCCESS;
     }
 
-    swprintf(NameBuffer, L"\\Device\\RaidPort%lu", PortNumber);
+    swprintf(NameBuffer, L"\\Device\\RaidPort%lu", StorPortTotalPortCount);
     RtlInitUnicodeString(&DeviceName, NameBuffer);
-    PortNumber++;
 
     DPRINT1("Creating device: %wZ\n", &DeviceName);
 
@@ -183,6 +182,8 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
     DeviceExtension->PhysicalDevice = PhysicalDeviceObject;
 
     DeviceExtension->PnpState = dsStopped;
+    DeviceExtension->PortNumber = StorPortTotalPortCount;
+    StorPortTotalPortCount++;
 
     InitializeListHead(&DeviceExtension->PdoListHead);
 
@@ -256,13 +257,22 @@ static NTAPI NTSTATUS PortDispatchDeviceControl(IN PDEVICE_OBJECT DeviceObject,
 {
     DPRINT1("PortDispatchDeviceControl(%p %p)\n", DeviceObject, Irp);
 
-    Irp->IoStatus.Status = STATUS_NOT_IMPLEMENTED;
-    Irp->IoStatus.Information = 0;
-    UNIMPLEMENTED_DBGBREAK();
+    PFDO_DEVICE_EXTENSION DeviceExtension = (PVOID)DeviceObject->DeviceExtension;
+    DPRINT1("ExtensionType: %u\n", DeviceExtension->ExtensionType);
 
-    IoCompleteRequest(Irp, IO_NO_INCREMENT);
+    switch (DeviceExtension->ExtensionType) {
+    case FdoExtension:
+	return PortFdoDeviceControl(DeviceObject, Irp);
 
-    return STATUS_SUCCESS;
+    case PdoExtension:
+	return PortPdoDeviceControl(DeviceObject, Irp);
+
+    default:
+	Irp->IoStatus.Status = STATUS_UNSUCCESSFUL;
+	Irp->IoStatus.Information = 0;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	return STATUS_UNSUCCESSFUL;
+    }
 }
 
 static NTAPI NTSTATUS PortDispatchScsi(IN PDEVICE_OBJECT DeviceObject,
@@ -270,7 +280,7 @@ static NTAPI NTSTATUS PortDispatchScsi(IN PDEVICE_OBJECT DeviceObject,
 {
     DPRINT1("PortDispatchScsi(%p %p)\n", DeviceObject, Irp);
 
-    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PFDO_DEVICE_EXTENSION DeviceExtension = (PVOID)DeviceObject->DeviceExtension;
     DPRINT1("ExtensionType: %u\n", DeviceExtension->ExtensionType);
 
     switch (DeviceExtension->ExtensionType) {
@@ -286,8 +296,6 @@ static NTAPI NTSTATUS PortDispatchScsi(IN PDEVICE_OBJECT DeviceObject,
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
 	return STATUS_UNSUCCESSFUL;
     }
-
-    return STATUS_SUCCESS;
 }
 
 static NTAPI NTSTATUS PortDispatchSystemControl(IN PDEVICE_OBJECT DeviceObject,
