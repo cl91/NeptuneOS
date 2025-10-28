@@ -36,8 +36,8 @@ ULONG ClassMaxInterleavePerCriticalIo = CLASS_MAX_INTERLEAVE_PER_CRITICAL_IO;
 CONST LARGE_INTEGER Magic10000 = { { 0xe219652c, 0xd1b71758 } };
 GUID StoragePredictFailureDPSGuid = WDI_STORAGE_PREDICT_FAILURE_DPS_GUID;
 
-#define FirstDriveLetter 'C'
-#define LastDriveLetter 'Z'
+#define FIRST_DRIVE_LETTER 'C'
+#define LAST_DRIVE_LETTER 'Z'
 
 BOOLEAN UseQPCTime = FALSE;
 
@@ -6586,8 +6586,8 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    driveLetterName.Buffer[0] = 0xFF;
 
 	} else if (driveLetterName.Length != 4 ||
-		   driveLetterName.Buffer[0] < FirstDriveLetter ||
-		   driveLetterName.Buffer[0] > LastDriveLetter ||
+		   driveLetterName.Buffer[0] < FIRST_DRIVE_LETTER ||
+		   driveLetterName.Buffer[0] > LAST_DRIVE_LETTER ||
 		   driveLetterName.Buffer[1] != ':') {
 	    status = STATUS_NOT_FOUND;
 	    FREE_POOL(valueName);
