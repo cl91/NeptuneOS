@@ -76,7 +76,6 @@ typedef enum _IO_COMPLETION_ROUTINE_RESULT {
 /* IO_STACK_LOCATION.Control */
 #define SL_PENDING_RETURNED               0x01
 #define SL_ERROR_RETURNED                 0x02
-#define SL_COMPLETION_STOPPED             0x04
 #define SL_INVOKE_ON_CANCEL               0x20
 #define SL_INVOKE_ON_SUCCESS              0x40
 #define SL_INVOKE_ON_ERROR                0x80

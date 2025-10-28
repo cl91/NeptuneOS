@@ -1864,6 +1864,8 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
     return Status;
 }
 
+static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status);
+
 /*
  * If the IRP has already been completed, do nothing. Otherwise complete the IRP.
  */
@@ -1911,7 +1913,14 @@ static VOID IopCompleteIrp(IN PIRP Irp)
 	    ObDereferenceObject(IoStack->FileObject);
 	}
 	if (Status == StopCompletion) {
-	    IoStack->Control |= SL_COMPLETION_STOPPED;
+	    /* Check the list of execution environment and remove us so
+	     * the finalizer will not try to complete the IRP. */
+	    LoopOverList(Env, &IopExecEnvList, IOP_EXEC_ENV, QueueListEntry) {
+		if (Env->Context == Irp) {
+		    assert(Env->Finalizer == IopDispatchFcnExecEnvFinalizer);
+		    Env->Context = NULL;
+		}
+	    }
 	    return;
 	}
     }
@@ -2064,10 +2073,11 @@ static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
     DbgTrace("Running finalizer for exec env %p context %p suspended %d "
 	     "status 0x%08x:\n", Env, Env->Context, Env->Suspended, Status);
     PIRP Irp = Env->Context;
+    if (!Irp) {
+	return;
+    }
     IoDbgDumpIrp(Irp);
-    BOOLEAN CompletionStopped = (Irp->CurrentLocation >= 2) &&
-	(IoGetNextIrpStackLocation(Irp)->Control & SL_COMPLETION_STOPPED);
-    if (!CompletionStopped && Status != STATUS_PENDING) {
+    if (Status != STATUS_PENDING) {
 	Irp->IoStatus.Status = Status;
 	/* This will execute the completion routine of the IRP if registered,
 	 * and add the IRP to either the cleanup list or the pending list,
