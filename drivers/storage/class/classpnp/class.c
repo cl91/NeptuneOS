@@ -3607,6 +3607,8 @@ retry:
 
     irpStack->MajorFunction = IRP_MJ_SCSI;
     irpStack->Parameters.Scsi.Srb = Srb;
+    irpStack->DeviceObject = fdoExtension->CommonExtension.LowerDeviceObject;
+    ObReferenceObject(fdoExtension->CommonExtension.LowerDeviceObject);
 
     IoSetCompletionRoutine(irp, ClasspSendSynchronousCompletion, Srb, TRUE, TRUE, TRUE);
 
@@ -8435,6 +8437,8 @@ NTAPI NTSTATUS ClassGetDescriptor(IN PDEVICE_OBJECT DeviceObject,
 				  IN PSTORAGE_PROPERTY_ID PropertyId,
 				  OUT PVOID *Descriptor)
 {
+    assert(DeviceObject);
+    assert(PropertyId);
     STORAGE_PROPERTY_QUERY query = { 0 };
     IO_STATUS_BLOCK ioStatus;
 
@@ -9666,6 +9670,7 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
     //
 
     PIO_STACK_LOCATION irpSp = IoGetNextIrpStackLocation(irp);
+    irpSp->DeviceObject = TargetDeviceObject;
 
     //
     // Set the major function code based on the type of device I/O control
