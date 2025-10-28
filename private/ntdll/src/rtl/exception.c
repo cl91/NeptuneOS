@@ -74,8 +74,8 @@ static VOID RtlpGetModuleNameFromAddr(IN PVOID Addr,
 				      OUT PUNICODE_STRING BaseDllName)
 {
     if (NtCurrentPeb()->LdrData && NtCurrentPeb()->LdrData->Initialized) {
-	LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
-		     LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks) {
+	LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InMemoryOrderModuleList,
+		     LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks) {
 	    if ((MWORD)Addr >= (MWORD)LdrEntry->DllBase &&
 		(MWORD)Addr < (MWORD)LdrEntry->DllBase + LdrEntry->SizeOfImage) {
 		*ModuleStartAddr = LdrEntry->DllBase;
@@ -272,8 +272,8 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 
 	if (NtCurrentPeb()->LdrData && NtCurrentPeb()->LdrData->Initialized) {
 	    DbgPrinter("Modules:\n");
-	    LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
-			 LDR_DATA_TABLE_ENTRY, InInitializationOrderLinks) {
+	    LoopOverList(LdrEntry, &NtCurrentPeb()->LdrData->InMemoryOrderModuleList,
+			 LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks) {
 		DbgPrinter("   %wZ (%wZ) @ [%p, %p)\n",
 			   &LdrEntry->FullDllName, &LdrEntry->BaseDllName,
 			   LdrEntry->DllBase, (PCHAR)LdrEntry->DllBase + LdrEntry->SizeOfImage);
