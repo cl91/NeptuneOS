@@ -1087,7 +1087,7 @@ NTSTATUS ClasspWriteCacheProperty(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
 	status = STATUS_SUCCESS;
     }
 
-    modeData = ExAllocatePoolWithTag(NonPagedPool, MODE_PAGE_DATA_SIZE,
+    modeData = ExAllocatePoolWithTag(CachedDmaPool, MODE_PAGE_DATA_SIZE,
 				     CLASS_TAG_MODE_DATA);
 
     if (modeData == NULL) {
@@ -1381,11 +1381,11 @@ NTSTATUS ClassReadCapacity16(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     //
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
-    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(NonPagedPool,
+    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(CachedDmaPool,
 							      allocationBufferLength,
 							      '4CcS');
 #else
-    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(NonPagedPool,
+    dataBuffer = (PREAD_CAPACITY16_DATA)ExAllocatePoolWithTag(CachedDmaPool,
 							      bufferLength, '4CcS');
 #endif
 
@@ -1845,11 +1845,11 @@ NTSTATUS ClasspDeviceGetBlockDeviceCharacteristicsVPDPage(IN PFUNCTIONAL_DEVICE_
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
     dataBuffer = (PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE)
-	ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength, '5CcS');
+	ExAllocatePoolWithTag(CachedDmaPool, allocationBufferLength, '5CcS');
 #else
 
     dataBuffer = (PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE)
-	ExAllocatePoolWithTag(NonPagedPool, bufferLength, '5CcS');
+	ExAllocatePoolWithTag(CachedDmaPool, bufferLength, '5CcS');
 #endif
     if (dataBuffer == NULL) {
 	status = STATUS_INSUFFICIENT_RESOURCES;
@@ -2132,10 +2132,10 @@ NTSTATUS ClasspDeviceGetLBProvisioningVPDPage(IN PDEVICE_OBJECT DeviceObject,
 	//
 	allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					     KeGetRecommendedSharedDataAlignment());
-	dataBuffer = ExAllocatePoolWithTag(NonPagedPool,
+	dataBuffer = ExAllocatePoolWithTag(CachedDmaPool,
 					   allocationBufferLength, '0CcS');
 #else
-	dataBuffer = ExAllocatePoolWithTag(NonPagedPool, bufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(CachedDmaPool, bufferLength, '0CcS');
 #endif
 	if (dataBuffer == NULL) {
 	    // return without updating FdoExtension->FunctionSupportInfo
@@ -2303,9 +2303,9 @@ NTSTATUS ClasspDeviceGetBlockLimitsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION FdoEx
 	//
 	allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					     KeGetRecommendedSharedDataAlignment());
-	dataBuffer = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(CachedDmaPool, allocationBufferLength, '0CcS');
 #else
-	dataBuffer = ExAllocatePoolWithTag(NonPagedPool, bufferLength, '0CcS');
+	dataBuffer = ExAllocatePoolWithTag(CachedDmaPool, bufferLength, '0CcS');
 #endif
 	if (dataBuffer == NULL) {
 	    // return without updating FdoExtension->FunctionSupportInfo
@@ -3016,7 +3016,7 @@ NTSTATUS DeviceProcessDsmTrimRequest(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
     bufferLength = ALIGN_UP_BY(bufferLength, KeGetRecommendedSharedDataAlignment());
 #endif
 
-    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(NonPagedPool, bufferLength,
+    buffer = (PUNMAP_LIST_HEADER)ExAllocatePoolWithTag(CachedDmaPool, bufferLength,
 						       CLASS_TAG_LB_PROVISIONING);
 
     if (buffer == NULL) {
@@ -3989,7 +3989,7 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
     lbaStatusSize = ALIGN_UP_BY(lbaStatusSize, KeGetRecommendedSharedDataAlignment());
 #endif
 
-    lbaStatusListHeader = (PLBA_STATUS_LIST_HEADER)ExAllocatePoolWithTag(NonPagedPool,
+    lbaStatusListHeader = (PLBA_STATUS_LIST_HEADER)ExAllocatePoolWithTag(CachedDmaPool,
 									 lbaStatusSize,
 									 CLASS_TAG_LB_PROVISIONING);
 
@@ -4608,7 +4608,7 @@ NTSTATUS ClassGetLBProvisioningResources(IN PDEVICE_OBJECT DeviceObject,
     logPageSize = ALIGN_UP_BY(logPageSize, KeGetRecommendedSharedDataAlignment());
 #endif
 
-    logPage = (PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING)ExAllocatePoolWithTag(NonPagedPool,
+    logPage = (PLOG_PAGE_LOGICAL_BLOCK_PROVISIONING)ExAllocatePoolWithTag(CachedDmaPool,
 									  logPageSize,
 									  CLASS_TAG_LB_PROVISIONING);
     if (logPage != NULL) {
@@ -5552,7 +5552,7 @@ VOID ClasspQueueLogIOEventWithContextWorker(IN PDEVICE_OBJECT DeviceObject,
     }
 
     if (SenseBufferSize) {
-	senseData = ExAllocatePoolWithTag(NonPagedPool, SenseBufferSize,
+	senseData = ExAllocatePoolWithTag(CachedDmaPool, SenseBufferSize,
 					  CLASSPNP_POOL_TAG_LOG_MESSAGE);
 	if (senseData) {
 	    senseBufferSize = SenseBufferSize;

@@ -3521,7 +3521,7 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo,
 
 #endif
 
-    senseInfoBuffer = ExAllocatePoolWithTag(NonPagedPool, senseInfoBufferLength, '7CcS');
+    senseInfoBuffer = ExAllocatePoolWithTag(CachedDmaPool, senseInfoBufferLength, '7CcS');
 
     if (senseInfoBuffer == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_GENERAL,
@@ -3607,6 +3607,7 @@ retry:
 
     irpStack->MajorFunction = IRP_MJ_SCSI;
     irpStack->Parameters.Scsi.Srb = Srb;
+    irpStack->Parameters.DeviceIoControl.IoControlCode = IOCTL_SCSI_EXECUTE_NONE;
     irpStack->DeviceObject = fdoExtension->CommonExtension.LowerDeviceObject;
     ObReferenceObject(fdoExtension->CommonExtension.LowerDeviceObject);
 
@@ -11039,7 +11040,7 @@ VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExten
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
 #endif
-    supportedPages = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength, '3CcS');
+    supportedPages = ExAllocatePoolWithTag(CachedDmaPool, allocationBufferLength, '3CcS');
 
     if (supportedPages == NULL) {
 	// memory allocation failure.
@@ -11316,7 +11317,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
     allocationBufferLength = ALIGN_UP_BY(allocationBufferLength,
 					 KeGetRecommendedSharedDataAlignment());
 #endif
-    dataBuffer = ExAllocatePoolWithTag(NonPagedPool, allocationBufferLength,
+    dataBuffer = ExAllocatePoolWithTag(CachedDmaPool, allocationBufferLength,
 				       CLASSPNP_POOL_TAG_VPD);
 
     if (!dataBuffer) {
@@ -11826,7 +11827,7 @@ static NTSTATUS ClasspServicePopulateTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 
     allocationSize = sizeof(OFFLOAD_READ_CONTEXT) + bufferLength;
 
-    offloadReadContext = ExAllocatePoolWithTag(NonPagedPool, allocationSize,
+    offloadReadContext = ExAllocatePoolWithTag(CachedDmaPool, allocationSize,
 					       CLASSPNP_POOL_TAG_TOKEN_OPERATION);
 
     if (!offloadReadContext) {
@@ -12797,7 +12798,7 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
 
     allocationSize = sizeof(OFFLOAD_WRITE_CONTEXT) + bufferLength;
 
-    offloadWriteContext = ExAllocatePoolWithTag(NonPagedPool, allocationSize,
+    offloadWriteContext = ExAllocatePoolWithTag(CachedDmaPool, allocationSize,
 						CLASSPNP_POOL_TAG_TOKEN_OPERATION);
 
     if (!offloadWriteContext) {

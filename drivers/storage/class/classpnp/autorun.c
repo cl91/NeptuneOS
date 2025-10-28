@@ -1733,7 +1733,7 @@ static NTSTATUS ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
     //
 
     if (Info->Gesn.Buffer == NULL) {
-	Info->Gesn.Buffer = ExAllocatePoolWithTag(NonPagedPool,
+	Info->Gesn.Buffer = ExAllocatePoolWithTag(CachedDmaPool,
 						  GESN_BUFFER_SIZE, '??cS');
     }
     if (Info->Gesn.Buffer == NULL) {
