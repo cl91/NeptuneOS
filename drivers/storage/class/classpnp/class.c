@@ -8096,64 +8096,70 @@ Return Value:
 NTAPI NTSTATUS ClassClaimDevice(IN PDEVICE_OBJECT LowerDeviceObject,
 				IN BOOLEAN Release)
 {
-    IO_STATUS_BLOCK ioStatus;
-    PIRP irp;
-    PIO_STACK_LOCATION irpStack;
-    KEVENT event;
-    NTSTATUS status;
-    STORAGE_REQUEST_BLOCK srb = {};
+    IO_STATUS_BLOCK IoStatus;
+    PIRP Irp;
+    PIO_STACK_LOCATION IrpStack;
+    KEVENT Event;
+    NTSTATUS Status;
+    UCHAR SrbBuffer[CLASS_SRBEX_NO_SRBEX_DATA_BUFFER_SIZE] = {};
+    PSTORAGE_REQUEST_BLOCK Srb = (PVOID)SrbBuffer;
 
     //
     // WORK ITEM - MPIO related. Need to think about how to handle.
     //
 
-    srb.Signature = SRB_SIGNATURE;
-    srb.Version = STORAGE_REQUEST_BLOCK_VERSION_1;
-    srb.SrbLength = sizeof(STORAGE_REQUEST_BLOCK);
-    srb.SrbFunction = Release ? SRB_FUNCTION_RELEASE_DEVICE : SRB_FUNCTION_CLAIM_DEVICE;
+    Srb->Signature = SRB_SIGNATURE;
+    Srb->Version = STORAGE_REQUEST_BLOCK_VERSION_1;
+    Srb->SrbLength = sizeof(SrbBuffer);
+    Srb->SrbFunction = Release ? SRB_FUNCTION_RELEASE_DEVICE : SRB_FUNCTION_CLAIM_DEVICE;
+    Srb->AddressOffset = sizeof(STORAGE_REQUEST_BLOCK);
+    /* The SCSI address is ignored by the port driver, so we will simply set it to zero. */
+    PSTOR_ADDR_BTL8 StorAddr = (PVOID)((PUCHAR)Srb + Srb->AddressOffset);
+    StorAddr->Type = STOR_ADDRESS_TYPE_BTL8;
+    StorAddr->AddressLength = STOR_ADDR_BTL8_ADDRESS_LENGTH;
 
     //
     // Set the event object to the unsignaled state.
     // It will be used to signal request completion
     //
 
-    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
     //
     // Build synchronous request with no transfer.
     //
 
-    irp = IoBuildDeviceIoControlRequest(IOCTL_SCSI_EXECUTE_NONE, LowerDeviceObject, NULL,
-					0, NULL, 0, TRUE, &event, &ioStatus);
+    Irp = IoBuildDeviceIoControlRequest(IOCTL_SCSI_EXECUTE_NONE, LowerDeviceObject, NULL,
+					0, NULL, 0, TRUE, &Event, &IoStatus);
 
-    if (irp == NULL) {
+    if (Irp == NULL) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_INIT,
 		    "ClassClaimDevice: Can't allocate Irp\n"));
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
-    irpStack = IoGetNextIrpStackLocation(irp);
+    IrpStack = IoGetNextIrpStackLocation(Irp);
 
     //
     // Save SRB address in next stack for port driver.
     //
 
-    irpStack->Parameters.Scsi.Srb = &srb;
+    IrpStack->Parameters.Scsi.Srb = Srb;
 
     //
     // Set up IRP Address.
     //
 
-    srb.OriginalRequest = irp;
+    Srb->OriginalRequest = Irp;
 
     //
     // Call the port driver with the request and wait for it to complete.
     //
 
-    status = IoCallDriver(LowerDeviceObject, irp);
-    if (status == STATUS_PENDING) {
-	(VOID) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
-	status = ioStatus.Status;
+    Status = IoCallDriver(LowerDeviceObject, Irp);
+    if (Status == STATUS_PENDING) {
+	(VOID) KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+	Status = IoStatus.Status;
     }
 
     //
@@ -8166,13 +8172,13 @@ NTAPI NTSTATUS ClassClaimDevice(IN PDEVICE_OBJECT LowerDeviceObject,
 	return STATUS_SUCCESS;
     }
 
-    if (!NT_SUCCESS(status)) {
-	return status;
+    if (!NT_SUCCESS(Status)) {
+	return Status;
     }
 
-    NT_ASSERT(!TEST_FLAG(srb.SrbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
+    NT_ASSERT(!TEST_FLAG(Srb->SrbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
 
-    return status;
+    return Status;
 } // end ClassClaimDevice()
 
 /*++////////////////////////////////////////////////////////////////////////////
