@@ -1911,7 +1911,7 @@ static VOID IopCompleteIrp(IN PIRP Irp)
 	    ObDereferenceObject(IoStack->FileObject);
 	}
 	if (Status == StopCompletion) {
-	    IoGetCurrentIrpStackLocation(Irp)->Control |= SL_COMPLETION_STOPPED;
+	    IoStack->Control |= SL_COMPLETION_STOPPED;
 	    return;
 	}
     }
@@ -2065,8 +2065,8 @@ static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
 	     "status 0x%08x:\n", Env, Env->Context, Env->Suspended, Status);
     PIRP Irp = Env->Context;
     IoDbgDumpIrp(Irp);
-    BOOLEAN CompletionStopped = (Irp->CurrentLocation <= Irp->StackCount) &&
-	(IoGetCurrentIrpStackLocation(Irp)->Control & SL_COMPLETION_STOPPED);
+    BOOLEAN CompletionStopped = (Irp->CurrentLocation >= 2) &&
+	(IoGetNextIrpStackLocation(Irp)->Control & SL_COMPLETION_STOPPED);
     if (!CompletionStopped && Status != STATUS_PENDING) {
 	Irp->IoStatus.Status = Status;
 	/* This will execute the completion routine of the IRP if registered,

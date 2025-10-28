@@ -1807,9 +1807,6 @@ FORCEINLINE VOID IoSetCompletionRoutine(IN PIRP Irp,
     if (InvokeOnSuccess || InvokeOnError || InvokeOnCancel) {
 	ASSERT(CompletionRoutine);
     }
-    if (Irp->CurrentLocation <= Irp->StackCount) {
-	IoGetCurrentIrpStackLocation(Irp)->Control &= ~SL_COMPLETION_STOPPED;
-    }
     PIO_STACK_LOCATION IoStack = IoGetNextIrpStackLocation(Irp);
     IoStack->CompletionRoutine = CompletionRoutine;
     IoStack->Context = Context;
