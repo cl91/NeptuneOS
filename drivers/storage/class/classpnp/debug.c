@@ -228,7 +228,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
 			"SRB and IRP result transfer lengths don't match in succeeded "
 			"packet %ph: (op=%s, SrbStatus=%s, Srb.DataTransferLength=%xh, "
-			"Irp->IoStatus.Information=%Ixh).",
+			"Irp->IoStatus.Information=%zxh).",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			SrbGetDataTransferLength(Pkt->Srb),
 			Pkt->Irp->IoStatus.Information));
@@ -259,7 +259,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
 			"SRB and IRP result transfer lengths don't match in failed "
 			"packet %ph: (op=%s, SrbStatus=%s, Srb.DataTransferLength=%xh, "
-			"Irp->IoStatus.Information=%Ixh).",
+			"Irp->IoStatus.Information=%zxh).",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			SrbGetDataTransferLength(Pkt->Srb),
 			Pkt->Irp->IoStatus.Information));
