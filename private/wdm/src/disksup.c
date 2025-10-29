@@ -291,7 +291,7 @@ NTAPI VOID HalExamineMBR(IN PDEVICE_OBJECT DeviceObject,
     BufferSize = max(512, SectorSize);
 
     /* Allocate the buffer */
-    Buffer = ExAllocatePoolWithTag(NonPagedPool, max(PAGE_SIZE, BufferSize),
+    Buffer = ExAllocatePoolWithTag(CachedDmaPool, max(PAGE_SIZE, BufferSize),
 				   TAG_FILE_SYSTEM);
     if (!Buffer)
 	return;
@@ -434,7 +434,7 @@ NTAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
 	   DiskGeometryEx.DiskSize.QuadPart, MaxSector);
 
     /* Allocate our buffer */
-    Buffer = ExAllocatePoolWithTag(NonPagedPool, InputSize, TAG_FILE_SYSTEM);
+    Buffer = ExAllocatePoolWithTag(CachedDmaPool, InputSize, TAG_FILE_SYSTEM);
     if (!Buffer) {
 	/* Fail, free the input buffer */
 	ExFreePoolWithTag(*PartitionBuffer, TAG_FILE_SYSTEM);
@@ -802,7 +802,7 @@ NTAPI NTSTATUS IoSetPartitionInformation(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* Allocate our partition buffer */
-    Buffer = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, TAG_FILE_SYSTEM);
+    Buffer = ExAllocatePoolWithTag(CachedDmaPool, PAGE_SIZE, TAG_FILE_SYSTEM);
     if (!Buffer)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
@@ -1017,7 +1017,7 @@ NTAPI NTSTATUS IoWritePartitionTable(IN PDEVICE_OBJECT DeviceObject,
 			     NUM_PARTITION_TABLE_ENTRIES;
 
     /* Allocate our partition buffer */
-    Buffer = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, TAG_FILE_SYSTEM);
+    Buffer = ExAllocatePoolWithTag(CachedDmaPool, PAGE_SIZE, TAG_FILE_SYSTEM);
     if (!Buffer)
 	return STATUS_INSUFFICIENT_RESOURCES;
 

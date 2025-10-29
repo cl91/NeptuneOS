@@ -209,7 +209,7 @@ NTAPI NTSTATUS FstubAllocateDiskInformation(IN PDEVICE_OBJECT DeviceObject,
 				   DiskInformation->SectorSize;
 
     /* Finally, allocate the buffer that will be used for different read */
-    DiskInformation->Buffer = ExAllocatePoolWithTag(NonPagedPool,
+    DiskInformation->Buffer = ExAllocatePoolWithTag(CachedDmaPool,
 						    DiskInformation->SectorSize,
 						    TAG_FSTUB);
     if (!DiskInformation->Buffer) {
@@ -767,7 +767,7 @@ NTAPI NTSTATUS FstubReadHeaderEFI(IN PDISK_INFORMATION Disk,
     }
 
     /* Allocate a buffer to read a sector on the disk */
-    Sector = ExAllocatePoolWithTag(NonPagedPool, Disk->SectorSize, TAG_FSTUB);
+    Sector = ExAllocatePoolWithTag(CachedDmaPool, Disk->SectorSize, TAG_FSTUB);
     if (!Sector) {
 	DPRINT("EFI::Lacking resources!\n");
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -1058,6 +1058,7 @@ static NTSTATUS FstubReadSector(IN PDEVICE_OBJECT DeviceObject,
     LARGE_INTEGER StartingOffset;
     IO_STATUS_BLOCK IoStatusBlock;
     PIO_STACK_LOCATION IoStackLocation;
+    ASSERT(MmGetPhysicalAddress(Buffer).QuadPart);
 
     PAGED_CODE();
 
@@ -1620,7 +1621,7 @@ NTAPI NTSTATUS IoReadDiskSignature(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* Allocate a buffer for reading operations */
-    Buffer = ExAllocatePoolWithTag(NonPagedPool, BytesPerSector, TAG_FSTUB);
+    Buffer = ExAllocatePoolWithTag(CachedDmaPool, BytesPerSector, TAG_FSTUB);
     if (!Buffer) {
 	return STATUS_NO_MEMORY;
     }
