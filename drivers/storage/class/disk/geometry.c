@@ -59,9 +59,9 @@ typedef struct _DISK_DETECT_INFO {
 // by NTDETECT.COM or the system firmware.
 //
 
-PDISK_DETECT_INFO DetectInfoList = NULL;
-ULONG DetectInfoCount = 0;
-LONG DetectInfoUsedCount = 0;
+static PDISK_DETECT_INFO DetectInfoList = NULL;
+static ULONG DetectInfoCount = 0;
+static LONG DetectInfoUsedCount = 0;
 
 #define GET_STARTING_SECTOR(p)                                              \
     ((ULONG)(p->StartingSectorLsb0) + (ULONG)(p->StartingSectorLsb1 << 8) + \
