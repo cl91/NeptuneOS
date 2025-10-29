@@ -2383,6 +2383,8 @@ again:
 
     /* Process the ReplyIrpList which contains IRPs that may require sending
      * a reply to the server. */
+    BOOLEAN RecheckReplyList = FALSE;
+reply:
     LoopOverList(Irp, &IopReplyIrpList, IRP, Private.Link) {
 	/* This will become FALSE if remaining size is too small for the IO packet */
 	BOOLEAN Ok = TRUE;
@@ -2396,6 +2398,11 @@ again:
 	    if (Irp->Private.OriginalRequestor) {
 		Ok = IopPopulateIoCompleteMessageFromLocalIrp(DestIrp, Irp,
 							      RemainingBufferSize);
+	    } else if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
+		Irp->Flags &= ~IRP_DEALLOCATE_BUFFER;
+		assert(Irp->SystemBuffer);
+		ExFreePool(Irp->SystemBuffer);
+		Irp->SystemBuffer = NULL;
 	    }
 	    /* Add the IRP to the cleanup list, if it's locally generated, or
 	     * if the server has been notified. */
@@ -2409,13 +2416,76 @@ again:
 	    }
 	} else if (IopDeviceObjectIsLocal(IoGetCurrentIrpStackLocation(Irp)->DeviceObject)) {
 	    /* If we are forwarding this IRP to a local device object, requeue it to
-	     * the IRP queue. Note drivers should be careful when forwarding IRPs
-	     * locally. More specifically, the IO transfer type of the target device
-	     * must match that of the source device, and for IRPs generated locally
-	     * (by IoBuildDeviceIoControlRequest, IoBuildAsynchronousFsdRequest, and
-	     * IoBuildSynchronousFsdRequest), the IO tranfer type is ignored and
-	     * NEITHER IO is always assumed, so the relevant dispatch routines will
-	     * need to handle this case separately. */
+	     * the IRP queue. For a locally generated IRP with buffered IO, we allocate
+	     * or set the system buffer. */
+	    if (!Irp->Private.OriginalRequestor) {
+		PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+		PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
+		if (IoStack->MajorFunction == IRP_MJ_DEVICE_CONTROL ||
+		    IoStack->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
+		    ULONG Ioctl = IoStack->Parameters.DeviceIoControl.IoControlCode;
+		    PVOID InputBuffer = IoStack->Parameters.DeviceIoControl.Type3InputBuffer;
+		    PVOID OutputBuffer = Irp->UserBuffer;
+		    ULONG InputLength = IoStack->Parameters.DeviceIoControl.InputBufferLength;
+		    ULONG OutputLength = IoStack->Parameters.DeviceIoControl.OutputBufferLength;
+		    if (IoStack->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL &&
+			(!Ioctl || DEVICE_TYPE_FROM_CTL_CODE(Ioctl) == FILE_DEVICE_SCSI)) {
+			/* For SRBs we simply set the system buffer to UserBuffer. */
+			Irp->SystemBuffer = OutputBuffer;
+		    } else if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_BUFFERED &&
+			       !(Irp->Flags & IRP_DEALLOCATE_BUFFER)) {
+			if (InputBuffer && OutputBuffer && InputBuffer != OutputBuffer) {
+			    /* In this case we need to allocate a system buffer. */
+			    assert(!Irp->SystemBuffer);
+			    assert(InputLength);
+			    assert(OutputLength);
+			    PVOID SystemBuffer = ExAllocatePool(NonPagedPool,
+								max(InputLength, OutputLength));
+			    if (!SystemBuffer) {
+				Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+				/* IopCompleteIrp will append this IRP to the end of the
+				 * reply IRP list. This is safe even if this IRP is the
+				 * last IRP in the list. */
+				IopCompleteIrp(Irp);
+				RecheckReplyList = TRUE;
+				continue;
+			    }
+			    Irp->SystemBuffer = SystemBuffer;
+			    Irp->Flags |= IRP_DEALLOCATE_BUFFER;
+			} else if (OutputBuffer) {
+			    Irp->SystemBuffer = OutputBuffer;
+			} else {
+			    Irp->SystemBuffer = InputBuffer;
+			}
+		    } else if (METHOD_FROM_CTL_CODE(Ioctl) == METHOD_IN_DIRECT ||
+			       METHOD_FROM_CTL_CODE(Ioctl) == METHOD_OUT_DIRECT) {
+			Irp->SystemBuffer = InputBuffer;
+			if (OutputLength) {
+			    Irp->MdlAddress = IoAllocateMdl(OutputBuffer,
+							    OutputLength);
+			    if (!Irp->MdlAddress) {
+				assert(FALSE);
+				Irp->IoStatus.Status = STATUS_INVALID_USER_BUFFER;
+				IopCompleteIrp(Irp);
+				RecheckReplyList = TRUE;
+				continue;
+			    }
+			}
+		    }
+		} else if (DeviceObject->Flags & DO_BUFFERED_IO) {
+		    Irp->SystemBuffer = Irp->UserBuffer;
+		} else if (DeviceObject->Flags & DO_DIRECT_IO) {
+		    Irp->MdlAddress = IoAllocateMdl(Irp->UserBuffer,
+						    IoStack->Parameters.Read.Length);
+		    if (!Irp->MdlAddress) {
+			assert(FALSE);
+			Irp->IoStatus.Status = STATUS_INVALID_USER_BUFFER;
+			IopCompleteIrp(Irp);
+			RecheckReplyList = TRUE;
+			continue;
+		    }
+		}
+	    }
 	    InsertTailList(&IopIrpQueue, &Irp->Private.Link);
 	    continue;
 	} else {
@@ -2456,6 +2526,12 @@ again:
 	if (RemainingBufferSize < sizeof(IO_PACKET)) {
 	    break;
 	}
+    }
+
+    /* The reply IRP list might be modified by IopCompleteIrp, so recheck if needed. */
+    if (RecheckReplyList) {
+	RecheckReplyList = FALSE;
+	goto reply;
     }
 
 delete:

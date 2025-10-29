@@ -366,17 +366,6 @@ and `IoBuildDeviceIoControlRequest` if you are generating an IRP within a driver
 process and forwarding it to another driver (or yourself). Do NOT build IRPs yourself
 as you may get the IO buffer settings wrong.
 
-##### Sending IRP to self
-
-Drivers should generally avoid sending IRPs to device objects created by itself and
-should simply call the relevant function directly. This avoids the overhead of allocating
-and freeing the IRP. In particular, for IRPs generated within the same driver address
-space, the IO transfer type is ignored and NEITHER IO is always assumed. This is
-especially important for driver-minidriver pairs since a driver-minidriver pair is
-loaded in the same address space, so sending an IRP from the minidriver to the
-library driver will always have NEITHER IO as the IO transfer type, regardless of
-the flags in the device object or the IOCTL code.
-
 ##### Variable-length structs
 
 We use the C99 flexible array member feature where the last array member of a variable

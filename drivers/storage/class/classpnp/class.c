@@ -3616,8 +3616,7 @@ retry:
     irp->UserIosb = &ioStatus;
     irp->UserEvent = &event;
 
-    // Since the class driver is loaded in the same process as the port driver,
-    // the IO transfer type is always NEITHER IO.
+    // IOCTL_SCSI_EXECUTE_NONE uses NEITHER_IO
     irp->UserBuffer = BufferAddress;
 
     //
@@ -9697,13 +9696,8 @@ NTAPI VOID ClassSendDeviceIoControlSynchronous(IN ULONG IoControlCode,
     irpSp->Parameters.DeviceIoControl.InputBufferLength = InputBufferLength;
     irpSp->Parameters.DeviceIoControl.IoControlCode = IoControlCode;
 
-    // Note unlike Windows/ReactOS we simply store the buffer pointers
-    // regardless of IO transfer type of the IOCTL code. Copying/mapping the
-    // IO buffers is taken care of automatically by the system. In the case
-    // where the target of the IO is a device object of a driver mapped in
-    // the same address space as the class driver (usually a port driver,
-    // such as storahci), no mapping or buffer copying is done.
-    irp->SystemBuffer = Buffer;
+    // We simply stick the buffer pointers into the IRP. Copying/mapping the
+    // IO buffers is taken care of automatically by the system.
     irp->UserBuffer = Buffer;
     irpSp->Parameters.DeviceIoControl.Type3InputBuffer = Buffer;
 
