@@ -7652,7 +7652,7 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 SetStatusAndReturn:
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_IOCTL,
-		"< ioctl %xh (%s): status %xh.", modifiedIoControlCode,
+		"< ioctl %xh (%s): status %xh.\n", modifiedIoControlCode,
 		DBGGETIOCTLSTR(modifiedIoControlCode), status));
 
     return status;

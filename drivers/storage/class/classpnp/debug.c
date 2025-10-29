@@ -209,7 +209,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
     if (SRB_STATUS(Pkt->Srb->SrbStatus) == SRB_STATUS_PENDING) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
 		    "SRB completed with status PENDING in packet %ph: (op=%s "
-		    "srbstat=%s(%xh), irpstat=%xh)",
+		    "srbstat=%s(%xh), irpstat=%xh)\n",
 		    Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 		    (ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status));
     } else if (SRB_STATUS(Pkt->Srb->SrbStatus) == SRB_STATUS_SUCCESS) {
@@ -219,7 +219,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 	if (!NT_SUCCESS(Pkt->Irp->IoStatus.Status)) {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
 			"SRB and IRP status don't match in packet %ph: (op=%s "
-			"srbstat=%s(%xh), irpstat=%xh)",
+			"srbstat=%s(%xh), irpstat=%xh)\n",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			(ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status));
 	}
@@ -228,7 +228,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
 			"SRB and IRP result transfer lengths don't match in succeeded "
 			"packet %ph: (op=%s, SrbStatus=%s, Srb.DataTransferLength=%xh, "
-			"Irp->IoStatus.Information=%zxh).",
+			"Irp->IoStatus.Information=%zxh).\n",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			SrbGetDataTransferLength(Pkt->Srb),
 			Pkt->Irp->IoStatus.Information));
@@ -237,13 +237,13 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 	if (NT_SUCCESS(Pkt->Irp->IoStatus.Status)) {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
 			"SRB and IRP status don't match in packet %ph: (op=%s "
-			"srbstat=%s(%xh), irpstat=%xh)",
+			"srbstat=%s(%xh), irpstat=%xh)\n",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			(ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status));
 	}
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
 		    "Packet %ph failed (op=%s srbstat=%s(%xh), irpstat=%xh, "
-		    "sense=%s/%s/%s)",
+		    "sense=%s/%s/%s)\n",
 		    Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 		    (ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status,
 		    DBGGETSENSECODESTR(Pkt->Srb), DBGGETADSENSECODESTR(Pkt->Srb),
@@ -259,7 +259,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
 			"SRB and IRP result transfer lengths don't match in failed "
 			"packet %ph: (op=%s, SrbStatus=%s, Srb.DataTransferLength=%xh, "
-			"Irp->IoStatus.Information=%zxh).",
+			"Irp->IoStatus.Information=%zxh).\n",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			SrbGetDataTransferLength(Pkt->Srb),
 			Pkt->Irp->IoStatus.Information));
@@ -293,7 +293,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
     default:
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
 		    "Miniport illegally changed Srb.Cdb.OperationCode in packet %ph "
-		    "failed (op=%s srbstat=%s(%xh), irpstat=%xh, sense=%s/%s/%s)",
+		    "failed (op=%s srbstat=%s(%xh), irpstat=%xh, sense=%s/%s/%s)\n",
 		    Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 		    (ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status,
 		    DBGGETSENSECODESTR(Pkt->Srb), DBGGETADSENSECODESTR(Pkt->Srb),
