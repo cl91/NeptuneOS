@@ -765,6 +765,8 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt)
     nextSp = IoGetNextIrpStackLocation(Pkt->Irp);
     nextSp->MajorFunction = IRP_MJ_SCSI;
     nextSp->Parameters.Scsi.Srb = Pkt->Srb;
+    nextSp->DeviceObject = nextDevObj;
+    ObReferenceObject(nextDevObj);
 
     SrbSetScsiStatus(Pkt->Srb, 0);
     Pkt->Srb->SrbStatus = 0;
