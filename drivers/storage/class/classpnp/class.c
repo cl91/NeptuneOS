@@ -3504,7 +3504,7 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo,
     NT_ASSERT(Srb->SrbFunction == SRB_FUNCTION_EXECUTE_SCSI);
 
     //
-    // Sense buffer is in aligned nonpaged pool.
+    // Sense buffer is in cached DMA pool.
     //
 
 #if defined(_ARM_) || defined(_ARM64_)

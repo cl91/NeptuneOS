@@ -45,10 +45,11 @@ static PTRANSFER_PACKET NewTransferPacket(PDEVICE_OBJECT Fdo)
     }
 
     /*
-     *  Allocate the actual packet.
+     *  Allocate the actual packet. We need to allocate it on the cached DMA pool
+     *  because the sense info buffer is embedded in it.
      */
     if (NT_SUCCESS(status)) {
-	newPkt = ExAllocatePoolWithTag(NonPagedPool, sizeof(TRANSFER_PACKET), 'pnPC');
+	newPkt = ExAllocatePoolWithTag(CachedDmaPool, sizeof(TRANSFER_PACKET), 'pnPC');
 	if (newPkt == NULL) {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
 			"Failed to allocate transfer packet."));

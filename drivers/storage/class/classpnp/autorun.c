@@ -1588,7 +1588,7 @@ static NTSTATUS ClasspInitializePolling(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExten
 	    PVOID buffer;
 	    BOOLEAN GesnSupported = FALSE;
 
-	    buffer = ExAllocatePoolWithTag(NonPagedPool, SENSE_BUFFER_SIZE_EX,
+	    buffer = ExAllocatePoolWithTag(CachedDmaPool, SENSE_BUFFER_SIZE_EX,
 					   CLASS_TAG_MEDIA_CHANGE_DETECTION);
 
 	    if (buffer != NULL) {

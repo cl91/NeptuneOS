@@ -7110,7 +7110,7 @@ VOID ClasspZeroQERR(IN PDEVICE_OBJECT DeviceObject)
     PMODE_CONTROL_PAGE pageData = NULL;
     ULONG size = 0;
 
-    modeData = ExAllocatePoolWithTag(NonPagedPool, MODE_PAGE_DATA_SIZE,
+    modeData = ExAllocatePoolWithTag(CachedDmaPool, MODE_PAGE_DATA_SIZE,
 				     CLASS_TAG_MODE_DATA);
 
     if (modeData == NULL) {
