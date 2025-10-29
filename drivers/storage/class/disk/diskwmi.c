@@ -667,7 +667,7 @@ NTSTATUS DiskEnableInfoExceptions(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 
     modeDataSize = MODE_DATA_SIZE;
 
-    modeData = ExAllocatePoolWithTag(NonPagedPool,
+    modeData = ExAllocatePoolWithTag(CachedDmaPool,
 				     modeDataSize, DISK_TAG_INFO_EXCEPTION);
 
     if (modeData == NULL) {
@@ -997,7 +997,7 @@ NTSTATUS DiskReadFailurePredictData(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 			max(sizeof(SENDCMDINPARAMS),
 			    sizeof(SENDCMDOUTPARAMS) - 1 + READ_ATTRIBUTE_BUFFER_SIZE);
 
-	outBuffer = ExAllocatePoolWithTag(NonPagedPool, outBufferSize, DISK_TAG_SMART);
+	outBuffer = ExAllocatePoolWithTag(CachedDmaPool, outBufferSize, DISK_TAG_SMART);
 
 	if (outBuffer != NULL) {
 	    status = DiskReadSmartData(FdoExtension, (PSRB_IO_CONTROL)outBuffer,
@@ -1074,7 +1074,7 @@ NTSTATUS DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 			max(sizeof(SENDCMDINPARAMS),
 			    sizeof(SENDCMDOUTPARAMS) - 1 + READ_THRESHOLD_BUFFER_SIZE);
 
-	outBuffer = ExAllocatePoolWithTag(NonPagedPool, outBufferSize, DISK_TAG_SMART);
+	outBuffer = ExAllocatePoolWithTag(CachedDmaPool, outBufferSize, DISK_TAG_SMART);
 
 	if (outBuffer != NULL) {
 	    status = DiskReadSmartThresholds(FdoExtension, (PSRB_IO_CONTROL)outBuffer,
@@ -1443,7 +1443,7 @@ NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     PSTOR_ADDR_BTL8 storAddrBtl8 = NULL;
     PSRBEX_DATA_SCSI_CDB16 srbExDataCdb16 = NULL;
 
-    modeData = ExAllocatePoolWithTag(NonPagedPool,
+    modeData = ExAllocatePoolWithTag(CachedDmaPool,
 				     MODE_DATA_SIZE, DISK_TAG_INFO_EXCEPTION);
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_WMI,
@@ -1465,10 +1465,10 @@ NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     RtlZeroMemory(srbEx, srbSize);
 
     //
-    // Sense buffer is in aligned nonpaged pool.
+    // Sense buffer is in cached DMA pool.
     //
 
-    senseInfoBuffer = ExAllocatePoolWithTag(NonPagedPool,
+    senseInfoBuffer = ExAllocatePoolWithTag(CachedDmaPool,
 					    SENSE_BUFFER_SIZE_EX, '7CcS');
 
     if (senseInfoBuffer == NULL) {

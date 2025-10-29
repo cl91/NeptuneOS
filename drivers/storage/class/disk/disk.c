@@ -1566,7 +1566,7 @@ NTSTATUS DiskModeSelect(IN PDEVICE_OBJECT Fdo,
     // Allocate buffer for mode select header, block descriptor, and mode page.
     //
 
-    buffer = ExAllocatePoolWithTag(NonPagedPool, length2, DISK_TAG_MODE_DATA);
+    buffer = ExAllocatePoolWithTag(CachedDmaPool, length2, DISK_TAG_MODE_DATA);
 
     if (buffer == NULL) {
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -2394,7 +2394,7 @@ NTSTATUS DiskGetInfoExceptionInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExte
     // ReturnPageData is allocated by the caller
     //
 
-    modeData = ExAllocatePoolWithTag(NonPagedPool,
+    modeData = ExAllocatePoolWithTag(CachedDmaPool,
 				     MODE_DATA_SIZE, DISK_TAG_INFO_EXCEPTION);
 
     if (modeData == NULL) {
@@ -2509,7 +2509,7 @@ NTAPI NTSTATUS DiskGetCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
 
     ULONG length;
 
-    modeData = ExAllocatePoolWithTag(NonPagedPool,
+    modeData = ExAllocatePoolWithTag(CachedDmaPool,
 				     MODE_DATA_SIZE, DISK_TAG_DISABLE_CACHE);
 
     if (modeData == NULL) {
@@ -2637,7 +2637,7 @@ NTAPI NTSTATUS DiskSetCacheInformation(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
     ULONG i;
     NTSTATUS status = STATUS_SUCCESS;
 
-    modeData = ExAllocatePoolWithTag(NonPagedPool,
+    modeData = ExAllocatePoolWithTag(CachedDmaPool,
 				     MODE_DATA_SIZE, DISK_TAG_DISABLE_CACHE);
 
     if (modeData == NULL) {
@@ -3434,7 +3434,7 @@ NTSTATUS DiskIoctlGetMediaTypesEx(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
     }
 
     modeLength = MODE_DATA_SIZE;
-    modeData = ExAllocatePoolWithTag(NonPagedPool, modeLength, DISK_TAG_MODE_DATA);
+    modeData = ExAllocatePoolWithTag(CachedDmaPool, modeLength, DISK_TAG_MODE_DATA);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -3595,7 +3595,7 @@ NTSTATUS DiskIoctlPredictFailure(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp
 	//
 
 	readBufferSize = fdoExtension->DiskGeometry.BytesPerSector;
-	readBuffer = ExAllocatePoolWithTag(NonPagedPool,
+	readBuffer = ExAllocatePoolWithTag(CachedDmaPool,
 					   readBufferSize, DISK_TAG_SMART);
 
 	if (readBuffer != NULL) {
@@ -4158,7 +4158,7 @@ NTSTATUS DiskIoctlIsWritable(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Irp)
     //
 
     modeLength = MODE_DATA_SIZE;
-    modeData = ExAllocatePoolWithTag(NonPagedPool, modeLength, DISK_TAG_MODE_DATA);
+    modeData = ExAllocatePoolWithTag(CachedDmaPool, modeLength, DISK_TAG_MODE_DATA);
 
     if (modeData == NULL) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_IOCTL,
@@ -4517,7 +4517,7 @@ NTSTATUS DiskIoctlSmartGetVersion(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
-    srbControl = ExAllocatePoolWithTag(NonPagedPool,
+    srbControl = ExAllocatePoolWithTag(CachedDmaPool,
 				       sizeof(SRB_IO_CONTROL) + sizeof(GETVERSIONINPARAMS),
 				       DISK_TAG_SMART);
 
@@ -4708,7 +4708,7 @@ NTSTATUS DiskIoctlSmartReceiveDriveData(IN PDEVICE_OBJECT DeviceObject, IN OUT P
 	return STATUS_INVALID_PARAMETER;
     }
 
-    srbControl = ExAllocatePoolWithTag(NonPagedPool,
+    srbControl = ExAllocatePoolWithTag(CachedDmaPool,
 				       sizeof(SRB_IO_CONTROL) + length,
 				       DISK_TAG_SMART);
 
@@ -4952,7 +4952,7 @@ NTSTATUS DiskIoctlSmartSendDriveCommand(IN PDEVICE_OBJECT DeviceObject, IN OUT P
     }
 
     length += max(sizeof(SENDCMDOUTPARAMS), sizeof(SENDCMDINPARAMS));
-    srbControl = ExAllocatePoolWithTag(NonPagedPool,
+    srbControl = ExAllocatePoolWithTag(CachedDmaPool,
 				       sizeof(SRB_IO_CONTROL) + length,
 				       DISK_TAG_SMART);
 

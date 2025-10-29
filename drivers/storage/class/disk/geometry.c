@@ -261,7 +261,7 @@ NTSTATUS DiskSaveGeometryDetectInfo(IN PDRIVER_OBJECT DriverObject, IN HANDLE Ha
 
     RtlInitUnicodeString(&unicodeString, L"Configuration Data");
 
-    keyData = ExAllocatePoolWithTag(NonPagedPool,
+    keyData = ExAllocatePoolWithTag(CachedDmaPool,
 				    VALUE_BUFFER_SIZE, DISK_TAG_UPDATE_GEOM);
 
     if (keyData == NULL) {
@@ -1019,7 +1019,7 @@ BOOLEAN DiskIsNT4Geometry(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     PUSHORT readBuffer = NULL;
     BOOLEAN bFoundNT4 = FALSE;
 
-    readBuffer = ExAllocatePoolWithTag(NonPagedPool,
+    readBuffer = ExAllocatePoolWithTag(CachedDmaPool,
 				       FdoExtension->DiskGeometry.BytesPerSector,
 				       DISK_TAG_UPDATE_GEOM);
 

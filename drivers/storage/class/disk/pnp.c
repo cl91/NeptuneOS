@@ -223,7 +223,7 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
     // Allocate request sense buffer.
     //
 
-    fdoExtension->SenseData = ExAllocatePoolWithTag(NonPagedPool,
+    fdoExtension->SenseData = ExAllocatePoolWithTag(CachedDmaPool,
 						    SENSE_BUFFER_SIZE_EX,
 						    DISK_TAG_START);
 
