@@ -1566,8 +1566,9 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 
     case IRP_MJ_DEVICE_CONTROL:
     case IRP_MJ_INTERNAL_DEVICE_CONTROL:
-	if ((DEVICE_TYPE_FROM_CTL_CODE(Stack->Parameters.DeviceIoControl.IoControlCode) ==
-	     FILE_DEVICE_SCSI) && Stack->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL) {
+	if (Stack->MajorFunction == IRP_MJ_INTERNAL_DEVICE_CONTROL &&
+	    (DEVICE_TYPE_FROM_CTL_CODE(Stack->Parameters.DeviceIoControl.IoControlCode) ==
+	     FILE_DEVICE_SCSI || !Stack->Parameters.DeviceIoControl.IoControlCode)) {
 	    PSTORAGE_REQUEST_BLOCK Srb = Stack->Parameters.Scsi.Srb;
 	    DbgPrint("    SCSI  SRB %p Signature 0x%x Verion 0x%x SrbLength 0x%x SrbFunction "
 		     "0x%x SrbStatus 0x%x SrbFlags 0x%x\n"
