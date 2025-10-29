@@ -1798,17 +1798,16 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 		// routines, as it relies upon the hack flags.
 		//
 		status = ClasspInitializeHotplugInfo(fdoExtension);
-		if (NT_SUCCESS(status)) {
-		    /*
-                     *  Allocate/initialize TRANSFER_PACKETs and related resources.
-                     */
-		    status = InitializeTransferPackets(DeviceObject);
-		} else {
+		if (!NT_SUCCESS(status)) {
 		    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_PNP,
 				"ClassPnpStartDevice: Could not initialize hotplug "
 				"information %lx\n",
 				status));
 		}
+		/*
+		 *  Allocate/initialize TRANSFER_PACKETs and related resources.
+		 */
+		status = InitializeTransferPackets(DeviceObject);
 	    } else {
 		TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_PNP,
 			    "ClassPnpStartDevice: ClassGetDescriptor [DEVICE] failed "
@@ -1823,9 +1822,8 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 		//
 		propertyId = StorageDevicePowerProperty;
 
-		status =
-		    ClassGetDescriptor(fdoExtension->CommonExtension.LowerDeviceObject,
-				       &propertyId, (PVOID *)&powerDescriptor);
+		status = ClassGetDescriptor(fdoExtension->CommonExtension.LowerDeviceObject,
+					    &propertyId, (PVOID *)&powerDescriptor);
 		if (NT_SUCCESS(status) && (powerDescriptor != NULL)) {
 		    fdoExtension->FunctionSupportInfo->AsynchronousNotificationSupported =
 			powerDescriptor->AsynchronousNotificationSupported;
