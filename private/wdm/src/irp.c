@@ -1615,7 +1615,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 				 i, Offset);
 			continue;
 		    }
-		    PSRBEX_DATA_BIDIRECTIONAL BidData = (PSRBEX_DATA_BIDIRECTIONAL)SrbExData;
+		    PSRBEX_DATA_BIDIRECTIONAL BidData = (PVOID)SrbExData;
 		    DbgPrint("        DataInTransferLength 0x%x DataInBuffer %p\n",
 			     BidData->DataInTransferLength, BidData->DataInBuffer);
 		    break;
@@ -1626,7 +1626,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 				 i, Offset);
 			continue;
 		    }
-		    PSRBEX_DATA_WMI WmiData = (PSRBEX_DATA_WMI)SrbExData;
+		    PSRBEX_DATA_WMI WmiData = (PVOID)SrbExData;
 		    DbgPrint("        WMISubFunction 0x%x WMIFlags 0x%x DataPath %p\n",
 			     WmiData->WMISubFunction, WmiData->WMIFlags,
 			     WmiData->DataPath);
@@ -1638,7 +1638,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 				 i, Offset);
 			continue;
 		    }
-		    PSRBEX_DATA_POWER PowerData = (PSRBEX_DATA_POWER)SrbExData;
+		    PSRBEX_DATA_POWER PowerData = (PVOID)SrbExData;
 		    DbgPrint("        SrbPowerFlags 0x%x DevicePowerState 0x%x "
 			     "PowerAction 0x%x\n",
 			     PowerData->SrbPowerFlags, PowerData->DevicePowerState,
@@ -1651,7 +1651,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 				 i, Offset);
 			continue;
 		    }
-		    PSRBEX_DATA_PNP PnpData = (PSRBEX_DATA_PNP)SrbExData;
+		    PSRBEX_DATA_PNP PnpData = (PVOID)SrbExData;
 		    DbgPrint("        PnPSubFunction 0x%x PnPAction 0x%x SrbPnPFlags 0x%x\n",
 			     PnpData->PnPSubFunction, PnpData->PnPAction,
 			     PnpData->SrbPnPFlags);
@@ -1664,7 +1664,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 				 i, Offset);
 			continue;
 		    }
-		    PSRBEX_DATA_SCSI_CDB16 Cdb16Data = (PSRBEX_DATA_SCSI_CDB16)SrbExData;
+		    PSRBEX_DATA_SCSI_CDB16 Cdb16Data = (PVOID)SrbExData;
 		    DbgPrint("        ScsiStatus 0x%x SenseInfoBufferLength 0x%x "
 			     "CdbLength 0x%x SenseInfoBuffer %p\n",
 			     Cdb16Data->ScsiStatus, Cdb16Data->SenseInfoBufferLength,
@@ -1683,7 +1683,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 				 i, Offset);
 			continue;
 		    }
-		    PSRBEX_DATA_SCSI_CDB32 Cdb32Data = (PSRBEX_DATA_SCSI_CDB32)SrbExData;
+		    PSRBEX_DATA_SCSI_CDB32 Cdb32Data = (PVOID)SrbExData;
 		    DbgPrint("        ScsiStatus 0x%x SenseInfoBufferLength 0x%x "
 			     "CdbLength 0x%x SenseInfoBuffer %p\n",
 			     Cdb32Data->ScsiStatus, Cdb32Data->SenseInfoBufferLength,
@@ -1707,7 +1707,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 				 i, Offset);
 			continue;
 		    }
-		    PSRBEX_DATA_SCSI_CDB_VAR CdbVarData = (PSRBEX_DATA_SCSI_CDB_VAR)SrbExData;
+		    PSRBEX_DATA_SCSI_CDB_VAR CdbVarData = (PVOID)SrbExData;
 		    DbgPrint("      ScsiStatus 0x%x SenseInfoBufferLength 0x%x "
 			     "CdbLength 0x%x SenseInfoBuffer %p      CDB\n",
 			     CdbVarData->ScsiStatus, CdbVarData->SenseInfoBufferLength,
@@ -1715,6 +1715,23 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		    for (ULONG i = 0; i < CdbVarData->CdbLength; i++) {
 			DbgPrint(" 0x%x", CdbVarData->Cdb[i]);
 		    }
+		    break;
+
+		case SrbExDataTypeIoInfo:
+		    if (Srb->SrbExDataOffset[i] + sizeof(SRBEX_DATA_IO_INFO) >
+			Srb->SrbLength) {
+			DbgPrint("      NOT ENOUGH SPACE FOR SRB CDBVAR DATA [%d] 0x%x\n",
+				 i, Offset);
+			continue;
+		    }
+		    PSRBEX_DATA_IO_INFO IoInfo = (PVOID)SrbExData;
+		    DbgPrint("        Flags 0x%x Key 0x%x RWLength 0x%x "
+			     "IsWriteRequest %d CachePriority %d Reserved[2] 0x%x 0x%x "
+			     "Reserved1[2] 0x%x 0x%x\n",
+			     IoInfo->Flags, IoInfo->Key, IoInfo->RWLength,
+			     IoInfo->IsWriteRequest, IoInfo->CachePriority,
+			     IoInfo->Reserved[0], IoInfo->Reserved[1],
+			     IoInfo->Reserved1[0], IoInfo->Reserved1[1]);
 		    break;
 
 		default:
