@@ -5013,6 +5013,16 @@ VOID UpdateDeviceParameters(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension)
 	}
 
 	//
+	// Obtain the maximum number of 512-byte blocks that can be transferred as the DSM
+	// parameter data buffer in a single TRIM command from the IDENTIFY data. If the
+	// device did not report a specific limit, use the default (one block, 512 bytes).
+	//
+	if (identifyDeviceData->DsmCap) {
+	    deviceParameters->DsmCapBlockCount = identifyDeviceData->DsmCap;
+	} else {
+	    deviceParameters->DsmCapBlockCount = 1;
+	}
+
 	// Fill some firmware support information.
 	//
 	if (identifyDeviceData->MinBlocksPerDownloadMicrocodeMode03 > 0) {
