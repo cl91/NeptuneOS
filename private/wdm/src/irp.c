@@ -860,8 +860,10 @@ NTAPI VOID IoReuseIrp(IN OUT PIRP Irp,
 
     /* Reinitialize the IRP */
     assert(Irp->Size == IoSizeOfIrp(Irp->StackCount));
-    RtlZeroMemory(Irp, Irp->Size);
-    IoInitializeIrp(Irp, Irp->Size, Irp->StackCount);
+    USHORT Size = Irp->Size;
+    UCHAR StackCount = Irp->StackCount;
+    RtlZeroMemory(Irp, Size);
+    IoInitializeIrp(Irp, Size, StackCount);
 
     /* Duplicate the status */
     Irp->IoStatus.Status = Status;
