@@ -2404,7 +2404,11 @@ NTAPI NTSTATUS ClassReadDriveCapacity(IN PDEVICE_OBJECT Fdo)
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Fdo->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
-    READ_CAPACITY_DATA_EX PTRALIGN readCapacityData = { 0 };
+    PREAD_CAPACITY_DATA_EX readCapacityData = ExAllocatePool(CachedDmaPool,
+							     sizeof(READ_CAPACITY_DATA_EX));
+    if (!readCapacityData) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
     PTRANSFER_PACKET pkt;
     NTSTATUS status;
     KEVENT event;
@@ -2438,7 +2442,7 @@ RetryRequest:
     pseudoIrp.Tail.DriverContext[0] = LongToPtr(1);
     pseudoIrp.IoStatus.Status = STATUS_SUCCESS;
     pseudoIrp.IoStatus.Information = 0;
-    pseudoIrp.UserBuffer = &readCapacityData;
+    pseudoIrp.UserBuffer = readCapacityData;
 
     //
     //  Set this up as a SYNCHRONOUS transfer, submit it,
@@ -2447,7 +2451,7 @@ RetryRequest:
     //
 
     KeInitializeEvent(&event, SynchronizationEvent, FALSE);
-    SetupDriveCapacityTransferPacket(pkt, &readCapacityData, readCapacityDataSize, &event,
+    SetupDriveCapacityTransferPacket(pkt, readCapacityData, readCapacityDataSize, &event,
 				     &pseudoIrp, use16ByteCdb);
     SubmitTransferPacket(pkt);
     (VOID) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
@@ -2471,7 +2475,7 @@ RetryRequest:
 	    pseudoIrp.IoStatus.Status = STATUS_SUCCESS;
 	    pseudoIrp.IoStatus.Information = 0;
 	    KeInitializeEvent(&event, SynchronizationEvent, FALSE);
-	    SetupDriveCapacityTransferPacket(pkt, &readCapacityData, readCapacityDataSize,
+	    SetupDriveCapacityTransferPacket(pkt, readCapacityData, readCapacityDataSize,
 					     &event, &pseudoIrp, use16ByteCdb);
 	    SubmitTransferPacket(pkt);
 	    (VOID) KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
@@ -2490,14 +2494,12 @@ RetryRequest:
 	//
 
 	if (use16ByteCdb == FALSE) {
-	    PREAD_CAPACITY_DATA readCapacity;
+	    PREAD_CAPACITY_DATA readCapacity = (PVOID)readCapacityData;
 
 	    //
 	    // Check whether the device supports 8 byte LBA. If the device supports
 	    // it then retry the request using 16 byte CDB.
 	    //
-
-	    readCapacity = (PREAD_CAPACITY_DATA)&readCapacityData;
 
 	    if (readCapacity->LogicalBlockAddress == 0xFFFFFFFF) {
 		//
@@ -2513,9 +2515,9 @@ RetryRequest:
 		// format for ease of use. This is the only format stored in the device extension.
 		//
 
-		RtlMoveMemory((PUCHAR)(&readCapacityData) + sizeof(ULONG), readCapacity,
+		RtlMoveMemory((PUCHAR)readCapacityData + sizeof(ULONG), readCapacity,
 			      sizeof(READ_CAPACITY_DATA));
-		RtlZeroMemory((PUCHAR)(&readCapacityData), sizeof(ULONG));
+		RtlZeroMemory((PUCHAR)readCapacityData, sizeof(ULONG));
 	    }
 	} else {
 	    //
@@ -2529,7 +2531,7 @@ RetryRequest:
 	// Read out and store the drive information.
 	//
 
-	InterpretCapacityData(Fdo, &readCapacityData);
+	InterpretCapacityData(Fdo, readCapacityData);
 
 	//
 	// Before caching the new drive capacity, compare it with the
@@ -2548,7 +2550,7 @@ RetryRequest:
 	// the paging disk in an error state. Also this is used in
 	// IOCTL_STORAGE_READ_CAPACITY.
 	//
-	fdoData->LastKnownDriveCapacityData = readCapacityData;
+	fdoData->LastKnownDriveCapacityData = *readCapacityData;
 	fdoData->IsCachedDriveCapDataValid = TRUE;
 
 	if (match == FALSE) {
@@ -2671,6 +2673,8 @@ SafeExit:
 	InterpretCapacityData(Fdo, &fdoData->LastKnownDriveCapacityData);
 	status = STATUS_SUCCESS;
     }
+
+    ExFreePool(readCapacityData);
 
     return status;
 }
