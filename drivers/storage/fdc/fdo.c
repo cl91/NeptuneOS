@@ -290,7 +290,7 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
 
     ASSERT(ControllerInfo);
 
-    TRACE_(FLOPPY, "InitController called with Controller 0x%p\n",
+    TRACE_(FLOPPY, "InitController called with Controller %p\n",
 	   ControllerInfo);
 
     /* Get controller in a known state. We will set implied seek to FALSE
@@ -418,7 +418,7 @@ static NTSTATUS InitController(PCONTROLLER_INFO ControllerInfo)
      */
     for (int i = 0; i < ControllerInfo->NumberOfDrives; i++) {
 	INFO_(FLOPPY,
-	      "InitController: recalibrating drive %d on controller 0x%p\n",
+	      "InitController: recalibrating drive %d on controller %p\n",
 	      i, ControllerInfo);
 	Recalibrate(&ControllerInfo->DriveInfo[i]);
     }

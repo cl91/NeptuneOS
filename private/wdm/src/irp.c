@@ -1575,7 +1575,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 		     "      RequestTag 0x%x RequestPriority 0x%x RequestAttribute 0x%x"
 		     " TimeOutValue 0x%x SystemStatus 0x%x\n"
 		     "      AddressOffset 0x%x NumSrbExData 0x%x DataTransferLength 0x%x"
-		     " DataBuffer 0x%p\n"
+		     " DataBuffer %p\n"
 		     "      OriginalRequest %p ClassContext %p PortContext %p MiniportContext %p"
 		     " NextSrb %p\n",
 		     Srb, Srb->Signature, Srb->Version, Srb->SrbLength, Srb->SrbFunction,

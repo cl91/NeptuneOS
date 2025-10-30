@@ -219,7 +219,7 @@ NTAPI ULONG NVMeFindAdapter(PVOID Context, PVOID Reserved1, PVOID Reserved2,
 	return (SP_RETURN_NOT_FOUND);
     } else {
 	/* Print out where it is */
-	StorPortDebugPrint(INFO, "Access Range, VirtualAddr=0x%p.\n", pAE->pCtrlRegister);
+	StorPortDebugPrint(INFO, "Access Range, VirtualAddr=%p.\n", pAE->pCtrlRegister);
     }
 
     pAE->originalVersion.value =

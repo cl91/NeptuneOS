@@ -3013,7 +3013,7 @@ SNTI_TRANSLATION_STATUS SntiTranslateRequestSense(PSTORAGE_REQUEST_BLOCK pSrb)
 	    pSenseData = &tmpSenseData;
 	}
 	StorPortDebugPrint(INFO,
-			   "SntiTranslateRequestSense: Desc Fmt buffer@ 0x%p, len=%d\n",
+			   "SntiTranslateRequestSense: Desc Fmt buffer@ %p, len=%d\n",
 			   pSenseData, allocLength);
 	if (pSenseData) {
 	    memset(pSenseData, 0, allocLength);
@@ -3036,7 +3036,7 @@ SNTI_TRANSLATION_STATUS SntiTranslateRequestSense(PSTORAGE_REQUEST_BLOCK pSrb)
 	    pSenseData = &tmpSenseData;
 	}
 	StorPortDebugPrint(INFO,
-			   "SntiTranslateRequestSense: Fixed Fmt buffer@ 0x%p, len=%d\n",
+			   "SntiTranslateRequestSense: Fixed Fmt buffer@ %p, len=%d\n",
 			   pSenseData, allocLength);
 	if (pSenseData) {
 	    memset(pSenseData, 0, allocLength);
@@ -4373,7 +4373,7 @@ SNTI_TRANSLATION_STATUS SntiTranslateUnmap(PSTORAGE_REQUEST_BLOCK pSrb)
 		    } else {
 			StorPortDebugPrint(INFO,
 					   "SNTI: Second Get PhysAddr for UNMAP failed "
-					   "(pSrbExt = 0x%p)\n",
+					   "(pSrbExt = %p)\n",
 					   pSrbExt);
 			ASSERT(FALSE);
 		    }
@@ -4381,7 +4381,7 @@ SNTI_TRANSLATION_STATUS SntiTranslateUnmap(PSTORAGE_REQUEST_BLOCK pSrb)
 	    } else {
 		StorPortDebugPrint(INFO,
 				   "SNTI: First Get PhysAddr for UNMAP failed (pSrbExt = "
-				   "0x%p)\n",
+				   "%p)\n",
 				   pSrbExt);
 		ASSERT(FALSE);
 	    }
@@ -6586,7 +6586,7 @@ VOID SntiBuildGetLogPageCmd(PNVME_SRB_EXTENSION pSrbExt, UINT8 logIdentifier)
 	} else {
 	    StorPortDebugPrint(INFO,
 			       "SNTI: Get PhysAddr for GET LOG PAGE failed (pSrbExt = "
-			       "0x%p)\n",
+			       "%p)\n",
 			       pSrbExt);
 
 	    ASSERT(FALSE);
@@ -6609,7 +6609,7 @@ VOID SntiBuildGetLogPageCmd(PNVME_SRB_EXTENSION pSrbExt, UINT8 logIdentifier)
 	    SntiTranslateSglToPrp(pSrbExt, pSgl);
 	} else {
 	    StorPortDebugPrint(INFO,
-			       "SNTI: Get SGL for GET LOG PAGE failed (pSrbExt = 0x%p)\n",
+			       "SNTI: Get SGL for GET LOG PAGE failed (pSrbExt = %p)\n",
 			       pSrbExt);
 
 	    ASSERT(FALSE);

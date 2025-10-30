@@ -1002,7 +1002,7 @@ ULONG NVMeInitSubQueue(PNVME_DEVICE_EXTENSION pAE, USHORT QueueID)
     dbIndex = dbIndex / sizeof(NVMe_QUEUE_Y_DOORBELL);
     pSQI->pSubTDBL = (PULONG)(&pAE->pCtrlRegister->IODB[dbIndex].QHT);
 
-    StorPortDebugPrint(INFO, "NVMeInitSubQueue : SQ 0x%x pSubTDBL 0x%p at index  0x%x\n",
+    StorPortDebugPrint(INFO, "NVMeInitSubQueue : SQ 0x%x pSubTDBL %p at index  0x%x\n",
 		       QueueID, pSQI->pSubTDBL, dbIndex);
     pSQI->Requests = 0;
     pSQI->SubQTailPtr = 0;
@@ -1119,7 +1119,7 @@ ULONG NVMeInitCplQueue(PNVME_DEVICE_EXTENSION pAE, USHORT QueueID)
     dbIndex = dbIndex / sizeof(NVMe_QUEUE_Y_DOORBELL);
     pCQI->pCplHDBL = (PULONG)(&pAE->pCtrlRegister->IODB[dbIndex].QHT);
 
-    StorPortDebugPrint(INFO, "NVMeInitCplQueue : CQ 0x%x pCplHDBL 0x%p at index  0x%x\n",
+    StorPortDebugPrint(INFO, "NVMeInitCplQueue : CQ 0x%x pCplHDBL %p at index  0x%x\n",
 		       QueueID, pCQI->pCplHDBL, dbIndex);
     pCQI->Completions = 0;
     pCQI->CurPhaseTag = 0;
@@ -3144,7 +3144,7 @@ PCMD_ENTRY NVMeAcqQueueEntry(PNVME_DEVICE_EXTENSION pAE, PLIST_ENTRY pFreeQ)
 	pListEntry = (PLIST_ENTRY)RemoveHeadList(pFreeQ);
 	pCmdEntry = CONTAINING_RECORD(pListEntry, CMD_ENTRY, ListEntry);
 
-	StorPortDebugPrint(TRACE, "NVMeAcqQueueEntry : Entry at 0x%p\n", pCmdEntry);
+	StorPortDebugPrint(TRACE, "NVMeAcqQueueEntry : Entry at %p\n", pCmdEntry);
     } else {
 	StorPortDebugPrint(WARNING, "NVMeAcqQueueEntry: <Warning> No entry acquired.\n");
     }

@@ -713,7 +713,7 @@ NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE AsyncState,
 			 IN ULONG BufferSize,
 			 OUT ULONG *ResultLength)
 {
-    CmDbg("KeyHandle 0x%p, Index 0x%x, KIC %d, Length 0x%x\n",
+    CmDbg("KeyHandle %p, Index 0x%x, KIC %d, Length 0x%x\n",
 	  KeyHandle, Index, KeyInformationClass, BufferSize);
     assert(Thread->Process != NULL);
 
@@ -738,7 +738,7 @@ NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE AsyncState,
 			 IN ULONG BufferSize,
 			 OUT ULONG *ResultLength)
 {
-    CmDbg("NtEnumerateKey() KY 0x%p, Index 0x%x, KIC %d, Length 0x%x\n",
+    CmDbg("NtEnumerateKey() KY %p, Index 0x%x, KIC %d, Length 0x%x\n",
 	  KeyHandle, Index, KeyInformationClass, BufferSize);
     assert(Thread->Process != NULL);
 

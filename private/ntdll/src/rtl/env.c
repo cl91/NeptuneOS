@@ -222,7 +222,7 @@ NTAPI VOID RtlSetCurrentEnvironment(PWSTR NewEnvironment,
 {
     PVOID EnvPtr;
 
-    DPRINT("NewEnvironment 0x%p OldEnvironment 0x%p\n",
+    DPRINT("NewEnvironment %p OldEnvironment %p\n",
 	   NewEnvironment, OldEnvironment);
 
     RtlAcquirePebLock();

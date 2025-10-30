@@ -235,14 +235,14 @@ NTAPI NTSTATUS Bus_Power(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     CommonData = (PCOMMON_DEVICE_DATA)DeviceObject->DeviceExtension;
 
     if (CommonData->IsFDO) {
-	DPRINT("FDO %s IRP:0x%p %s %s\n",
+	DPRINT("FDO %s IRP:%p %s %s\n",
 	       PowerMinorFunctionString(IrpStack->MinorFunction), Irp,
 	       DbgSystemPowerString(CommonData->SystemPowerState),
 	       DbgDevicePowerString(CommonData->DevicePowerState));
 
 	Status = Bus_FDO_Power((PFDO_DEVICE_DATA)DeviceObject->DeviceExtension, Irp);
     } else {
-	DPRINT("PDO %s IRP:0x%p %s %s\n",
+	DPRINT("PDO %s IRP:%p %s %s\n",
 	       PowerMinorFunctionString(IrpStack->MinorFunction), Irp,
 	       DbgSystemPowerString(CommonData->SystemPowerState),
 	       DbgDevicePowerString(CommonData->DevicePowerState));

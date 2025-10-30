@@ -1554,7 +1554,7 @@ NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     UCHAR BiosBuffer[PCI_COMMON_HDR_LENGTH] = {};
     PPCI_COMMON_HEADER PciData = (PVOID)Buffer;
     PPCI_COMMON_HEADER BiosData = (PVOID)BiosBuffer;
-    DPRINT1("PCI Scan Bus: FDO Extension @ 0x%p, Base Bus = 0x%x\n", DeviceExtension,
+    DPRINT1("PCI Scan Bus: FDO Extension @ %p, Base Bus = 0x%x\n", DeviceExtension,
 	    DeviceExtension->BaseBus);
 
     /* If we are not scanning the root bus, check if we should apply the PCI hack

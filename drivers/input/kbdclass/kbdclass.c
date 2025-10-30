@@ -372,7 +372,7 @@ static NTSTATUS CreateClassDeviceObject(IN PDRIVER_OBJECT DriverObject,
     PDEVICE_OBJECT DeviceObject;
     NTSTATUS Status;
 
-    TRACE_(CLASS_NAME, "CreateClassDeviceObject(0x%p)\n", DriverObject);
+    TRACE_(CLASS_NAME, "CreateClassDeviceObject(%p)\n", DriverObject);
 
     /* Create new device object */
     DriverExtension = IoGetDriverObjectExtension(DriverObject, DriverObject);
@@ -553,7 +553,7 @@ static NTAPI NTSTATUS ClassAddDevice(IN PDRIVER_OBJECT DriverObject,
     PCLASS_DRIVER_EXTENSION DriverExtension = IoGetDriverObjectExtension(DriverObject, DriverObject);
     PDEVICE_OBJECT Fdo = NULL;
 
-    TRACE_(CLASS_NAME, "ClassAddDevice called. Pdo = 0x%p\n", Pdo);
+    TRACE_(CLASS_NAME, "ClassAddDevice called. Pdo = %p\n", Pdo);
 
     /* We may get a NULL Pdo at the first call as we're a legacy driver. Ignore it */
     if (Pdo == NULL) {

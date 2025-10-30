@@ -958,7 +958,7 @@ NTSTATUS HwReset(PCONTROLLER_INFO ControllerInfo)
  */
 NTSTATUS HwPowerOff(PCONTROLLER_INFO ControllerInfo)
 {
-    TRACE_(FLOPPY, "HwPowerOff called on controller 0x%p\n",
+    TRACE_(FLOPPY, "HwPowerOff called on controller %p\n",
 	   ControllerInfo);
 
     WRITE_PORT_UCHAR(ControllerInfo->BaseAddress + DATA_RATE_SELECT_REGISTER,

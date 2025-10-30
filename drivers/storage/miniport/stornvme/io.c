@@ -667,7 +667,7 @@ BOOLEAN NVMeDetectPendingCmds(PNVME_DEVICE_EXTENSION pAE,
 #if DBG
                 DbgPrintEx(DPFLTR_STORMINIPORT_ID,
 			   DPFLTR_ERROR_LEVEL,
-			   "NVMeDetectPendingCmds: cmdinfo cmd id 0x%x srbExt 0x%p srb 0x%p\n",
+			   "NVMeDetectPendingCmds: cmdinfo cmd id 0x%x srbExt %p srb %p\n",
 			   pCmdEntry->CmdInfo.CmdID, pSrbExtension, pSrbExtension->pSrb);
                 DbgPrintEx(DPFLTR_STORMINIPORT_ID,
 			   DPFLTR_ERROR_LEVEL,

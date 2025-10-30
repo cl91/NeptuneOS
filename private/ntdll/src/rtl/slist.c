@@ -18,7 +18,7 @@ NTAPI VOID RtlInitializeSListHead(OUT PSLIST_HEADER SListHead)
 #ifdef _WIN64
     /* Make sure the header is 16 byte aligned */
     if (((ULONG_PTR)SListHead & 0xf) != 0) {
-	DPRINT1("Unaligned SListHead: 0x%p\n", SListHead);
+	DPRINT1("Unaligned SListHead: %p\n", SListHead);
 	RtlRaiseStatus(STATUS_DATATYPE_MISALIGNMENT);
     }
 

@@ -662,7 +662,7 @@ NTSTATUS LdrGetProcedureAddress(IN PVOID BaseAddress,
 
     if (!ExportDir) {
 	DPRINT1("Image %wZ has no exports, but were trying to get procedure %Z. "
-		"BaseAddress asked 0x%p, got entry BA 0x%p\n",
+		"BaseAddress asked %p, got entry BA %p\n",
 		&LdrEntry->BaseDllName, Name, BaseAddress, LdrEntry->DllBase);
 	Status = STATUS_PROCEDURE_NOT_FOUND;
 	goto Quickie;

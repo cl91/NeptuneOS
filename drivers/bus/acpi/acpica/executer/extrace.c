@@ -270,11 +270,11 @@ void AcpiExTracePoint(ACPI_TRACE_EVENT_TYPE Type, BOOLEAN Begin, UINT8 *Aml,
     ACPI_FUNCTION_NAME(ExTracePoint);
 
     if (Pathname) {
-	ACPI_DEBUG_PRINT((ACPI_DB_TRACE_POINT, "%s %s [0x%p:%s] execution.\n",
+	ACPI_DEBUG_PRINT((ACPI_DB_TRACE_POINT, "%s %s [%p:%s] execution.\n",
 			  AcpiExGetTraceEventName(Type), Begin ? "Begin" : "End", Aml,
 			  Pathname));
     } else {
-	ACPI_DEBUG_PRINT((ACPI_DB_TRACE_POINT, "%s %s [0x%p] execution.\n",
+	ACPI_DEBUG_PRINT((ACPI_DB_TRACE_POINT, "%s %s [%p] execution.\n",
 			  AcpiExGetTraceEventName(Type), Begin ? "Begin" : "End", Aml));
     }
 }

@@ -88,7 +88,7 @@ static NTSTATUS RtlpWaitForCriticalSection(PRTL_CRITICAL_SECTION CriticalSection
 	if (Status == STATUS_TIMEOUT) {
 	    /* Is this the 2nd time we've timed out? */
 	    if (LastChance) {
-		ERROR_DBGBREAK("Deadlock: 0x%p\n", CriticalSection);
+		ERROR_DBGBREAK("Deadlock: %p\n", CriticalSection);
 		/* Yes it is, we are raising an exception */
 		EXCEPTION_RECORD ExceptionRecord;
 		ExceptionRecord.ExceptionCode = STATUS_POSSIBLE_DEADLOCK;

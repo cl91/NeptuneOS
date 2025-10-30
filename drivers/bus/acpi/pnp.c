@@ -579,13 +579,13 @@ NTAPI NTSTATUS Bus_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     CommonData = (PCOMMON_DEVICE_DATA)DeviceObject->DeviceExtension;
 
     if (CommonData->IsFDO) {
-	DPRINT("FDO %s IRP:0x%p\n", PnPMinorFunctionString(IrpStack->MinorFunction), Irp);
+	DPRINT("FDO %s IRP:%p\n", PnPMinorFunctionString(IrpStack->MinorFunction), Irp);
 	//
 	// Request is for the bus FDO
 	//
 	Status = Bus_FDO_PnP(DeviceObject, Irp, IrpStack, (PFDO_DEVICE_DATA)CommonData);
     } else {
-	DPRINT("PDO %s IRP: 0x%p\n", PnPMinorFunctionString(IrpStack->MinorFunction),
+	DPRINT("PDO %s IRP: %p\n", PnPMinorFunctionString(IrpStack->MinorFunction),
 	       Irp);
 	//
 	// Request is for the child PDO.

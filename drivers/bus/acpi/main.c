@@ -20,7 +20,7 @@ static NTAPI NTSTATUS Bus_AddDevice(PDRIVER_OBJECT DriverObject,
     PDEVICE_OBJECT DeviceObject = NULL;
     PFDO_DEVICE_DATA DeviceData = NULL;
 
-    DPRINT("Add Device: 0x%p\n", PhysicalDeviceObject);
+    DPRINT("Add Device: %p\n", PhysicalDeviceObject);
 
     DPRINT("#################### Bus_AddDevice Creating FDO ####################\n");
     Status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_DATA), NULL, FILE_DEVICE_ACPI,

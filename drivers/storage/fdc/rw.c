@@ -216,7 +216,7 @@ static NTSTATUS RWSeekToCylinder(PDRIVE_INFO DriveInfo, UCHAR Cylinder)
     PAGED_CODE();
     UCHAR CurCylinder;
 
-    TRACE_(FLOPPY, "RWSeekToCylinder called drive 0x%p cylinder %d\n",
+    TRACE_(FLOPPY, "RWSeekToCylinder called drive %p cylinder %d\n",
 	   DriveInfo, Cylinder);
 
     /* Clear any spurious interrupts */

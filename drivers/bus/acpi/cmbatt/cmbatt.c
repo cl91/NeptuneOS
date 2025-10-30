@@ -129,7 +129,7 @@ VOID CmBattNotifyHandler(IN PCMBATT_DEVICE_EXTENSION DeviceExtension,
     ULONG ArFlag;
 
     if (CmBattDebug & (CMBATT_ACPI_ASSERT | CMBATT_PNP_INFO))
-	DbgPrint("CmBattNotifyHandler: CmBatt 0x%p Type %d Number %d Notify Value: "
+	DbgPrint("CmBattNotifyHandler: CmBatt %p Type %d Number %d Notify Value: "
 		 "%x\n",
 		 DeviceExtension, DeviceExtension->FdoType, DeviceExtension->DeviceId,
 		 NotifyValue);
