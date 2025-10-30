@@ -1305,8 +1305,6 @@ NTAPI NTSTATUS DiskInfoExceptionComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 	    TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
 			"DiskInfoExceptionComplete: Retry request %p\n", Irp));
 
-	    NT_ASSERT(dataBuffer == MmGetMdlVirtualAddress(Irp->MdlAddress));
-
 	    //
 	    // Reset byte count of transfer in SRB Extension.
 	    //

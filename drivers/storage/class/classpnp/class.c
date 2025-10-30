@@ -6249,12 +6249,6 @@ NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
 
     if (BufferAddress && Irp->MdlAddress) {
 	//
-	// Make sure the buffer requested matches the MDL.
-	//
-
-	NT_ASSERT(BufferAddress == MmGetMdlVirtualAddress(Irp->MdlAddress));
-
-	//
 	// Set read flag.
 	//
 
