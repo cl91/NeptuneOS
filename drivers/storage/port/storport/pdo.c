@@ -119,10 +119,11 @@ static NTAPI VOID PortIoCompletionWorkerRoutine(IN PDEVICE_OBJECT Pdo,
 {
     PSRB_PORT_CONTEXT Ctx = Context;
     assert(Ctx);
-    PortCompleteRequest(Ctx->Srb);
+    PortCompleteRequest(Ctx->Srb, FALSE);
 }
 
-VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb)
+VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb,
+			 IN BOOLEAN Defer)
 {
     PSRB_PORT_CONTEXT Ctx = Srb->PortContext;
     if (!Ctx) {
@@ -130,13 +131,15 @@ VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb)
 	return;
     }
     assert(Ctx->Srb == Srb);
-    /* If we are not at PASSIVE_LEVEL, queue an IO work item so the completion
-     * is done in the main event loop thread. */
-    if (!IoThreadIsAtPassiveLevel() &&
-	InterlockedCompareExchange(&Ctx->CompletionQueued, 1, 0)) {
-	IoQueueWorkItem(&Ctx->CompletionWorkItem,
-			PortIoCompletionWorkerRoutine,
-			DelayedWorkQueue, Ctx);
+    /* If we are not at PASSIVE_LEVEL, or caller explicitly specified deferred
+     * completion, queue an IO work item so the completion is done in the main
+     * event loop thread. */
+    if ((!IoThreadIsAtPassiveLevel() || Defer)) {
+	if (!InterlockedCompareExchange(&Ctx->CompletionQueued, 1, 0)) {
+	    IoQueueWorkItem(&Ctx->CompletionWorkItem,
+			    PortIoCompletionWorkerRoutine,
+			    DelayedWorkQueue, Ctx);
+	}
 	return;
     }
     PIRP Irp = Ctx->Irp;
@@ -187,7 +190,7 @@ static NTAPI VOID PortStartMiniportIo(IN PDEVICE_OBJECT DeviceObject,
     if (MiniportBuildIo(Miniport, Srb)) {
 	if (!MiniportStartIo(Miniport, Srb)) {
 	    Srb->SrbStatus = SRB_STATUS_ERROR;
-	    PortCompleteRequest(Srb);
+	    PortCompleteRequest(Srb, TRUE);
 	}
     }
 }

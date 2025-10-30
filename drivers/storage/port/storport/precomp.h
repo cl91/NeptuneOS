@@ -218,7 +218,8 @@ VOID PortPdoSetBusy(IN PPDO_DEVICE_EXTENSION PdoExt);
 
 VOID PortPdoSetReady(IN PPDO_DEVICE_EXTENSION PdoExt);
 
-VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb);
+VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb,
+			 IN BOOLEAN Defer);
 
 NTSTATUS PortPdoScsi(IN PDEVICE_OBJECT DeviceObject,
 		     IN PIRP Irp);

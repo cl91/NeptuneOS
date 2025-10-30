@@ -1587,7 +1587,7 @@ VOID StorPortNotification(IN SCSI_NOTIFICATION_TYPE NotificationType,
     {
 	GET_VA_ARG(ap, PSTORAGE_REQUEST_BLOCK, Srb);
 	DPRINT1("RequestComplete Srb %p\n", Srb);
-	PortCompleteRequest(Srb);
+	PortCompleteRequest(Srb, FALSE);
 	break;
     }
 
