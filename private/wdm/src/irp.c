@@ -2655,7 +2655,6 @@ NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
 
     IoSetNextIrpStackLocation(Irp);
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
-    assert(IoStack->DeviceObject);
 
     DbgTrace("Forwarding Irp %p to DeviceObject %p(%p)\n", Irp,
 	     DeviceObject, (PVOID)IopGetDeviceHandle(DeviceObject));
@@ -2663,7 +2662,7 @@ NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
 
     /* If we are forwarding the IRP to a local device object, make sure the IO
      * transfer type of the target device match that of the source device. */
-    if (IopDeviceObjectIsLocal(DeviceObject)) {
+    if (IopDeviceObjectIsLocal(DeviceObject) && IoStack->DeviceObject) {
 	assert((IoStack->DeviceObject->Flags & (DO_BUFFERED_IO | DO_DIRECT_IO)) ==
 	       (DeviceObject->Flags & (DO_BUFFERED_IO | DO_DIRECT_IO)));
     }
@@ -2672,7 +2671,9 @@ NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
      * putting its pointer into the IO stack location. Note this needs to
      * be done for both the skip and the copy case. */
     ObReferenceObject(DeviceObject);
-    ObDereferenceObject(IoStack->DeviceObject);
+    if (IoStack->DeviceObject) {
+	ObDereferenceObject(IoStack->DeviceObject);
+    }
     IoStack->DeviceObject = DeviceObject;
 
     /* Add the IRP to the ReplyList which we will examine towards the end of
