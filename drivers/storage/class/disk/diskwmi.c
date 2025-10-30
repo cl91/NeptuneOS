@@ -290,7 +290,7 @@ Return Value:
 NTSTATUS DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				 IN ULONG SrbControlCode, IN UCHAR Command,
 				 IN UCHAR Feature, IN UCHAR SectorCount,
-				 IN UCHAR SectorNumber, IN OUT PSRB_IO_CONTROL SrbControl,
+				 IN UCHAR SectorNumber, IN OUT PSRB_IO_CONTROL OrigSrbControl,
 				 OUT PULONG BufferSize)
 {
     PCOMMON_DEVICE_EXTENSION commonExtension = (PCOMMON_DEVICE_EXTENSION)FdoExtension;
@@ -310,6 +310,17 @@ NTSTATUS DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     PSTOR_ADDR_BTL8 storAddrBtl8;
 
     //
+    // Allocate a SRB control buffer from the cached DMA pool
+    //
+    PSRB_IO_CONTROL SrbControl = ExAllocatePoolWithTag(CachedDmaPool,
+						       *BufferSize,
+						       DISK_TAG_SMART);
+    if (!SrbControl) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    RtlCopyMemory(SrbControl, OrigSrbControl, *BufferSize);
+
+    //
     // Point to the 'buffer' portion of the SRB_CONTROL and compute how
     // much room we have left in the srb control. Abort if the buffer
     // isn't at least the size of SRB_IO_CONTROL.
@@ -322,6 +333,7 @@ NTSTATUS DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     if (*BufferSize >= sizeof(SRB_IO_CONTROL)) {
 	availableBufferSize = *BufferSize - sizeof(SRB_IO_CONTROL);
     } else {
+	ExFreePool(SrbControl);
 	return STATUS_BUFFER_TOO_SMALL;
     }
 
@@ -444,6 +456,7 @@ NTSTATUS DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 				       &ioStatus);
 
     if (irp == NULL) {
+	ExFreePool(SrbControl);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
 
@@ -525,6 +538,10 @@ NTSTATUS DiskPerformSmartCommand(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     if (status == STATUS_PENDING) {
 	KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
 	status = ioStatus.Status;
+    }
+
+    if (NT_SUCCESS(status)) {
+	RtlCopyMemory(OrigSrbControl, SrbControl, *BufferSize);
     }
 
     return status;

@@ -405,13 +405,19 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
 	PIRP irp;
 	KEVENT event;
 	IO_STATUS_BLOCK statusBlock = { 0 };
+	PSCSI_ADDRESS scsiAddress = ExAllocatePool(CachedDmaPool,
+						   sizeof(SCSI_ADDRESS));
+	if (!scsiAddress) {
+	    status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto out;
+	}
 
 	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
-	irp = IoBuildDeviceIoControlRequest(
-	    IOCTL_SCSI_GET_ADDRESS, fdoExtension->CommonExtension.LowerDeviceObject, NULL,
-	    0L, &(diskData->ScsiAddress), sizeof(SCSI_ADDRESS), FALSE, &event,
-	    &statusBlock);
+	irp = IoBuildDeviceIoControlRequest(IOCTL_SCSI_GET_ADDRESS,
+					    fdoExtension->CommonExtension.LowerDeviceObject,
+					    NULL, 0L, scsiAddress, sizeof(SCSI_ADDRESS),
+					    FALSE, &event, &statusBlock);
 
 	status = STATUS_UNSUCCESSFUL;
 
@@ -422,9 +428,16 @@ NTAPI NTSTATUS DiskInitFdo(IN PDEVICE_OBJECT Fdo)
 		KeWaitForSingleObject(&event, Executive, KernelMode, FALSE, NULL);
 		status = statusBlock.Status;
 	    }
+
+	    if (NT_SUCCESS(status)) {
+		diskData->ScsiAddress = *scsiAddress;
+	    }
 	}
+
+	ExFreePool(scsiAddress);
     }
 
+out:
     //
     // Determine the type of disk and enable failure prediction in the hardware
     // and enable failure prediction polling.
@@ -788,7 +801,11 @@ NTAPI NTSTATUS DiskStartFdo(IN PDEVICE_OBJECT Fdo)
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCOMMON_DEVICE_EXTENSION commonExtension = &(fdoExtension->CommonExtension);
     PDISK_DATA diskData = commonExtension->DriverData;
-    STORAGE_HOTPLUG_INFO hotplugInfo = { 0 };
+    PSTORAGE_HOTPLUG_INFO hotplugInfo = ExAllocatePool(CachedDmaPool,
+						       sizeof(STORAGE_HOTPLUG_INFO));
+    if (!hotplugInfo) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
     DISK_CACHE_INFORMATION cacheInfo = { 0 };
     ULONG isPowerProtected = 0;
     NTSTATUS status;
@@ -809,7 +826,7 @@ NTAPI NTSTATUS DiskStartFdo(IN PDEVICE_OBJECT Fdo)
 	KeInitializeEvent(&event, SynchronizationEvent, FALSE);
 
 	irp = IoBuildDeviceIoControlRequest(IOCTL_STORAGE_GET_HOTPLUG_INFO, Fdo, NULL, 0L,
-					    &hotplugInfo, sizeof(STORAGE_HOTPLUG_INFO),
+					    hotplugInfo, sizeof(STORAGE_HOTPLUG_INFO),
 					    FALSE, &event, &statusBlock);
 
 	if (irp != NULL) {
@@ -858,7 +875,7 @@ NTAPI NTSTATUS DiskStartFdo(IN PDEVICE_OBJECT Fdo)
 			Fdo));
 
 	    diskData->WriteCacheOverride = DiskWriteCacheDisable;
-	} else if (hotplugInfo.DeviceHotplug && !hotplugInfo.WriteCacheEnableOverride) {
+	} else if (hotplugInfo->DeviceHotplug && !hotplugInfo->WriteCacheEnableOverride) {
 	    //
 	    // This flag indicates that the device is hotpluggable making it unsafe to enable caching
 	    //
@@ -868,7 +885,7 @@ NTAPI NTSTATUS DiskStartFdo(IN PDEVICE_OBJECT Fdo)
 			Fdo));
 
 	    diskData->WriteCacheOverride = DiskWriteCacheDisable;
-	} else if (hotplugInfo.MediaHotplug) {
+	} else if (hotplugInfo->MediaHotplug) {
 	    //
 	    // This flag indicates that the media in the device cannot be reliably locked
 	    //
@@ -935,6 +952,7 @@ NTAPI NTSTATUS DiskStartFdo(IN PDEVICE_OBJECT Fdo)
     }
 
     ADJUST_FUA_FLAG(fdoExtension);
+    ExFreePool(hotplugInfo);
 
     return STATUS_SUCCESS;
 
