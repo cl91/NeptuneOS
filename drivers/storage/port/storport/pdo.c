@@ -114,10 +114,29 @@ static NTSTATUS SrbStatusToNtStatus(IN UCHAR SrbStatus)
     }
 }
 
+static NTAPI VOID PortIoCompletionWorkerRoutine(IN PDEVICE_OBJECT Pdo,
+						IN PVOID Context)
+{
+    PSRB_PORT_CONTEXT Ctx = Context;
+    assert(Ctx);
+    PortCompleteRequest(Ctx->Srb);
+}
+
 VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb)
 {
     PSRB_PORT_CONTEXT Ctx = Srb->PortContext;
     if (!Ctx) {
+	assert(FALSE);
+	return;
+    }
+    assert(Ctx->Srb == Srb);
+    /* If we are not at PASSIVE_LEVEL, queue an IO work item so the completion
+     * is done in the main event loop thread. */
+    if (!IoThreadIsAtPassiveLevel() &&
+	InterlockedCompareExchange(&Ctx->CompletionQueued, 1, 0)) {
+	IoQueueWorkItem(&Ctx->CompletionWorkItem,
+			PortIoCompletionWorkerRoutine,
+			DelayedWorkQueue, Ctx);
 	return;
     }
     PIRP Irp = Ctx->Irp;
@@ -196,6 +215,7 @@ static NTSTATUS PortStartPacket(IN OUT PPDO_DEVICE_EXTENSION PdoExt,
     if (!Ctx) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
+    IoInitializeWorkItem(PdoExt->Device, &Ctx->CompletionWorkItem);
     Ctx->Srb = Srb;
     Ctx->Irp = Irp;
     Ctx->DeallocateMdl = FALSE;

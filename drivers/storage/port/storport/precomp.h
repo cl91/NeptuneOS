@@ -131,6 +131,8 @@ typedef struct _PDO_DEVICE_EXTENSION {
 } PDO_DEVICE_EXTENSION, *PPDO_DEVICE_EXTENSION;
 
 typedef struct _SRB_PORT_CONTEXT {
+    volatile LONG CompletionQueued;
+    IO_WORKITEM CompletionWorkItem;
     PSTORAGE_REQUEST_BLOCK Srb;
     PMDL Mdl;
     PSCATTER_GATHER_LIST SgList;
