@@ -142,6 +142,9 @@ VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb)
     PIRP Irp = Ctx->Irp;
     assert(Irp);
     Irp->IoStatus.Status = SrbStatusToNtStatus(Srb->SrbStatus);
+    if (NT_SUCCESS(Irp->IoStatus.Status)) {
+	Irp->IoStatus.Information = Srb->DataTransferLength;
+    }
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     if (Ctx->DeallocateMdl) {
 	assert(Ctx->Mdl);
