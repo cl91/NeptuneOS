@@ -176,9 +176,29 @@ NTSTATUS SmStartCommandPrompt()
     return STATUS_SUCCESS;
 }
 
+static VOID SmCreateDosDevicesSymlink()
+{
+    UNICODE_STRING SymbolicLinkName = RTL_CONSTANT_STRING(L"\\DosDevices");
+    UNICODE_STRING PathName = RTL_CONSTANT_STRING(L"\\??");
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, &SymbolicLinkName,
+                               OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
+                               NULL, NULL);
+    HANDLE Handle;
+    NTSTATUS Status = NtCreateSymbolicLinkObject(&Handle, SYMBOLIC_LINK_ALL_ACCESS,
+						 &ObjectAttributes, &PathName);
+    if (NT_SUCCESS(Status)) {
+	NtClose(Handle);
+    } else {
+	SmPrint("Failed to create symbolic link \\DosDevices. Error = 0x%x\n",
+		Status);
+    }
+}
+
 NTAPI VOID NtProcessStartup(PPEB Peb)
 {
     SmPrint("%s\n", SMSS_BANNER);
+    SmCreateDosDevicesSymlink();
     SmInitRegistry();
     SmInitHardwareDatabase();
     SmMountDrives();
