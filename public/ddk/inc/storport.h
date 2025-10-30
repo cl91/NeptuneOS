@@ -2061,8 +2061,8 @@ FORCEINLINE ULONG StorPortRegistryReadAdapterKey(IN PVOID HwDeviceExtension,
 						 IN OPTIONAL PUCHAR SubKeyName,
 						 IN PUCHAR ValueName,
 						 IN ULONG ValueType,
-						 _Inout_ PVOID *ValueData,
-						 _Inout_ PULONG ValueDataLength)
+						 IN OUT PVOID *ValueData,
+						 IN OUT PULONG ValueDataLength)
 {
     return StorPortExtendedFunction(ExtFunctionRegistryReadAdapterKey,
                                     HwDeviceExtension,

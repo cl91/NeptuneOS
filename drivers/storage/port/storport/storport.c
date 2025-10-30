@@ -801,6 +801,124 @@ static ULONG StorExtFreeWorker(IN PVOID HwDeviceExtension,
     return STOR_STATUS_SUCCESS;
 }
 
+static ULONG StorExtRegistryReadWriteAdapterKey(IN PVOID HwDeviceExtension,
+						IN OPTIONAL PUCHAR SubKeyName,
+						IN PUCHAR ValueName,
+						IN ULONG ValueType,
+						IN OUT PVOID ValueData,
+						IN OUT PULONG ValueDataLength,
+						IN BOOLEAN Read)
+{
+    if (!HwDeviceExtension) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION FdoExt = MiniportExt->Miniport->DeviceExtension;
+    HANDLE RegKey = NULL;
+    NTSTATUS Status = IoOpenDeviceRegistryKey(FdoExt->Device, PLUGPLAY_REGKEY_DEVICE,
+					      KEY_ALL_ACCESS, &RegKey);
+    if (!NT_SUCCESS(Status)) {
+	return STOR_STATUS_UNSUCCESSFUL;
+    }
+
+    if (SubKeyName) {
+	HANDLE Subkey = NULL;
+	UNICODE_STRING SubKeyNameU = {};
+	Status = RtlCreateUnicodeStringFromAsciiz(&SubKeyNameU, (PCSTR)SubKeyName);
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
+	OBJECT_ATTRIBUTES ObjAttr;
+	InitializeObjectAttributes(&ObjAttr, &SubKeyNameU,
+				   OBJ_CASE_INSENSITIVE,
+				   RegKey, NULL);
+	Status = NtCreateKey(&Subkey, KEY_ALL_ACCESS, &ObjAttr, 0, NULL,
+			     REG_OPTION_VOLATILE, NULL);
+	RtlFreeUnicodeString(&SubKeyNameU);
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
+	NtClose(RegKey);
+	RegKey = Subkey;
+    }
+
+    UNICODE_STRING ValueNameU = {};
+    Status = RtlCreateUnicodeStringFromAsciiz(&ValueNameU, (PCSTR)ValueName);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    if (Read) {
+	ULONG BufferSize = *ValueDataLength + sizeof(KEY_VALUE_PARTIAL_INFORMATION);
+	PKEY_VALUE_PARTIAL_INFORMATION Buffer = ExAllocatePool(NonPagedPool, BufferSize);
+	if (!Buffer) {
+	    Status = STATUS_INSUFFICIENT_RESOURCES;
+	    goto done;
+	}
+	ULONG ResultLength = 0;
+	Status = NtQueryValueKey(RegKey,
+				 &ValueNameU,
+				 KeyValuePartialInformation,
+				 Buffer,
+				 BufferSize,
+				 &ResultLength);
+	assert(ResultLength >= sizeof(KEY_VALUE_PARTIAL_INFORMATION));
+	*ValueDataLength = ResultLength - sizeof(KEY_VALUE_PARTIAL_INFORMATION);
+	if (!NT_SUCCESS(Status)) {
+	    goto done;
+	}
+	*ValueDataLength = Buffer->DataLength;
+	RtlCopyMemory(ValueData, Buffer->Data, Buffer->DataLength);
+	ExFreePool(Buffer);
+    } else {
+	Status = NtSetValueKey(RegKey, &ValueNameU, 0,
+			       ValueType, ValueData, *ValueDataLength);
+    }
+done:
+    RtlFreeUnicodeString(&ValueNameU);
+
+out:
+    NtClose(RegKey);
+    return NT_SUCCESS(Status) ? STOR_STATUS_SUCCESS : STOR_STATUS_UNSUCCESSFUL;
+}
+
+static ULONG StorExtRegistryReadAdapterKey(IN PVOID HwDeviceExtension,
+					   IN OPTIONAL PUCHAR SubKeyName,
+					   IN PUCHAR ValueName,
+					   IN ULONG ValueType,
+					   IN OUT PVOID *ValueData,
+					   IN OUT PULONG ValueDataLength)
+{
+    if (!ValueData || !*ValueData) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    return StorExtRegistryReadWriteAdapterKey(HwDeviceExtension,
+					      SubKeyName,
+					      ValueName,
+					      ValueType,
+					      *ValueData,
+					      ValueDataLength,
+					      TRUE);
+}
+
+static ULONG StorExtRegistryWriteAdapterKey(IN PVOID HwDeviceExtension,
+					    IN OPTIONAL PUCHAR SubKeyName,
+					    IN PUCHAR ValueName,
+					    IN ULONG ValueType,
+					    IN PVOID ValueData,
+					    IN ULONG ValueDataLength)
+{
+    return StorExtRegistryReadWriteAdapterKey(HwDeviceExtension,
+					      SubKeyName,
+					      ValueName,
+					      ValueType,
+					      ValueData,
+					      &ValueDataLength,
+					      FALSE);
+}
+
 /*
  * @unimplemented
  */
@@ -916,6 +1034,38 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
     {
 	GET_VA_ARG(VaList, PVOID, Worker);
 	Status = StorExtFreeWorker(HwDeviceExtension, Worker);
+	break;
+    }
+
+    case ExtFunctionRegistryReadAdapterKey:
+    {
+	GET_VA_ARG(VaList, PUCHAR, SubKeyName);
+	GET_VA_ARG(VaList, PUCHAR, ValueName);
+	GET_VA_ARG(VaList, ULONG, ValueType);
+	GET_VA_ARG(VaList, PVOID *, ValueData);
+	GET_VA_ARG(VaList, PULONG, ValueDataLength);
+	Status = StorExtRegistryReadAdapterKey(HwDeviceExtension,
+					       SubKeyName,
+					       ValueName,
+					       ValueType,
+					       ValueData,
+					       ValueDataLength);
+	break;
+    }
+
+    case ExtFunctionRegistryWriteAdapterKey:
+    {
+	GET_VA_ARG(VaList, PUCHAR, SubKeyName);
+	GET_VA_ARG(VaList, PUCHAR, ValueName);
+	GET_VA_ARG(VaList, ULONG, ValueType);
+	GET_VA_ARG(VaList, PVOID, ValueData);
+	GET_VA_ARG(VaList, ULONG, ValueDataLength);
+	Status = StorExtRegistryWriteAdapterKey(HwDeviceExtension,
+						SubKeyName,
+						ValueName,
+						ValueType,
+						ValueData,
+						ValueDataLength);
 	break;
     }
 
