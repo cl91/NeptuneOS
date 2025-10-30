@@ -1015,6 +1015,7 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 
     PWSTR ValueName = NULL;
     ULONG ValueType;
+    ULONG KeyType = 0;
     switch (DeviceProperty) {
 	/* Registry-based properties */
     case DevicePropertyUINumber:
@@ -1028,6 +1029,7 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
     case DevicePropertyCompatibleIDs:
 	PIP_REGISTRY_DATA(REGSTR_VAL_COMPATIBLEIDS, REG_MULTI_SZ);
     case DevicePropertyBootConfiguration:
+	KeyType = PLUGPLAY_REGKEY_BOOT_CONFIGURATION;
 	PIP_REGISTRY_DATA(REGSTR_VAL_BOOTCONFIG, REG_RESOURCE_LIST);
     case DevicePropertyClassName:
 	PIP_REGISTRY_DATA(REGSTR_VAL_CLASS, REG_SZ);
@@ -1041,6 +1043,9 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
 	PIP_REGISTRY_DATA(REGSTR_VAL_FRIENDLYNAME, REG_SZ);
     case DevicePropertyInstallState:
 	PIP_REGISTRY_DATA(REGSTR_VAL_CONFIGFLAGS, REG_DWORD);
+    case DevicePropertyRemovalPolicy:
+	KeyType = PLUGPLAY_REGKEY_DEVICE;
+	PIP_REGISTRY_DATA(TEXT("RemovalPolicy"), REG_DWORD);
     case DevicePropertyContainerID:
     case DevicePropertyResourceRequirements:
     case DevicePropertyAllocatedResources:
@@ -1056,8 +1061,6 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
     }
 
     HANDLE KeyHandle = NULL;
-    ULONG KeyType = (DeviceProperty == DevicePropertyBootConfiguration)
-	? PLUGPLAY_REGKEY_BOOT_CONFIGURATION : 0;
     NTSTATUS Status = IoOpenDeviceRegistryKey(DeviceObject, KeyType, KEY_READ, &KeyHandle);
     if (!NT_SUCCESS(Status)) {
 	return Status;

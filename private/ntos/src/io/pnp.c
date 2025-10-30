@@ -2333,10 +2333,6 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 	UNIMPLEMENTED;
 	break;
 
-    case DevicePropertyRemovalPolicy:
-	UNIMPLEMENTED;
-	break;
-
     case DevicePropertyInstancePath:
 	snprintf(Buffer, sizeof(Buffer), "%s\\%s",
 		 DeviceNode->DeviceId, DeviceNode->InstanceId);
