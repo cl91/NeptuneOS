@@ -327,7 +327,7 @@ DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys base/pnp/pnp.sys
 bus/acpi/acpi.sys bus/pci/pci.sys input/kbdclass/kbdclass.sys
 storage/class/classpnp/classpnp.sys storage/class/disk/disk.sys
 storage/port/storport/storport.sys storage/miniport/storahci/storahci.sys
-filesystems/fatfs/fatfs.sys'
+storage/miniport/stornvme/stornvme.sys filesystems/fatfs/fatfs.sys'
 X86_DRIVER_COPY_LIST='input/i8042prt/i8042prt.sys storage/fdc/fdc.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed

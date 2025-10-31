@@ -35,6 +35,11 @@ static DRIVER_SERVICE_PARAMETER StorAhciParameters[] = {
     { "BusType", REG_DWORD, sizeof(ULONG), &StorAhciBusType }
 };
 
+static ULONG StorNvmeBusType = 0x11;
+static DRIVER_SERVICE_PARAMETER StorNvmeParameters[] = {
+    { "BusType", REG_DWORD, sizeof(ULONG), &StorNvmeBusType }
+};
+
 /* For now these are hard-coded, Eventually we want to move this to a
  * registry file (boot configuration database). */
 static struct {
@@ -56,6 +61,8 @@ static struct {
     { "kbdclass", NULL, ARRAYSIZE(KbdclassParameters), KbdclassParameters },
     { "storahci", L"PCI\\CC_0106\0SCSI\\SATA\0",
       ARRAYSIZE(StorAhciParameters), StorAhciParameters },
+    { "stornvme", L"PCI\\CC_010802\0SCSI\\NVME\0",
+      ARRAYSIZE(StorNvmeParameters), StorNvmeParameters },
     { "disk" }
 };
 
