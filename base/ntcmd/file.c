@@ -385,9 +385,12 @@ NTSTATUS OpenFile(HANDLE *File, WCHAR *FileName, BOOLEAN Write, BOOLEAN Overwrit
 {
     UNICODE_STRING FileNameU;
     IO_STATUS_BLOCK IoStatusBlock;
-    WCHAR FileNameBuffer[1024] = L"\\??\\";
+    WCHAR FileNameBuffer[1024] = {};
     OBJECT_ATTRIBUTES ObjectAttributes;
 
+    if (FileName[0] != '\\') {
+	RtlCopyMemory(FileNameBuffer, L"\\??\\", sizeof(L"\\??\\"));
+    }
     wcscat_s(FileNameBuffer, sizeof(FileNameBuffer)/sizeof(WCHAR), FileName);
     RtlInitUnicodeString(&FileNameU, FileNameBuffer);
     InitializeObjectAttributes(&ObjectAttributes, &FileNameU,

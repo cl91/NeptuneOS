@@ -28,7 +28,14 @@ NTSTATUS GetFullPath(IN PCSTR FileName,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    if ((strlen(FileName) > 1) && FileName[1] == ':') {
+    if (strlen(FileName) && FileName[0] == '\\') {
+	RtlInitAnsiString(&AnsiString, FileName);
+	RtlAnsiStringToUnicodeString(&UnicodeString, &AnsiString, TRUE);
+
+	wcscpy_s(FullPath, MAX_PATH, UnicodeString.Buffer);
+
+	RtlFreeUnicodeString(&UnicodeString);
+    } else if ((strlen(FileName) > 1) && FileName[1] == ':') {
 	RtlInitAnsiString(&AnsiString, FileName);
 	RtlAnsiStringToUnicodeString(&UnicodeString, &AnsiString, TRUE);
 

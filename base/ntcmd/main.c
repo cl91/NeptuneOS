@@ -164,7 +164,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	// Dump the file content
 	//
 	if (xargc == 2) {
-	    NTSTATUS Status =  GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
+	    NTSTATUS Status = GetFullPath(xargv[1], buf1, sizeof(buf1), FALSE);
 	    if (!NT_SUCCESS(Status)) {
 		RtlCliDisplayString("dump: %s\n", RtlCliStatusToErrorMessage(Status));
 	    }
