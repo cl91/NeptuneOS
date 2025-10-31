@@ -2485,7 +2485,7 @@ reply:
 		    }
 		} else if (DeviceObject->Flags & DO_BUFFERED_IO) {
 		    Irp->SystemBuffer = Irp->UserBuffer;
-		} else if (DeviceObject->Flags & DO_DIRECT_IO) {
+		} else if ((DeviceObject->Flags & DO_DIRECT_IO) && Irp->UserBuffer) {
 		    Irp->MdlAddress = IoAllocateMdl(Irp->UserBuffer,
 						    IoStack->Parameters.Read.Length);
 		    if (!Irp->MdlAddress) {
