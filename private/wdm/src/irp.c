@@ -1857,9 +1857,6 @@ FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
     PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
     PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
     assert(DeviceObject);
-    /* The IRP_MJ_CLOSE routine is called in IopHandleCloseFileServerMessage,
-     * as a response of a server message. */
-    assert(IoStack->MajorFunction != IRP_MJ_CLOSE);
     if (IoStack->MajorFunction == IRP_MJ_ADD_DEVICE) {
 	PDRIVER_OBJECT DriverObject = Irp->Tail.DriverContext[0];
 	assert(DriverObject);
@@ -2020,6 +2017,11 @@ static VOID IopHandleLoadDriverServerMessage(PIO_PACKET SrvMsg)
     }
 }
 
+/*
+ * Handle the CloseFile server message by simulating a locally-generated IRP call.
+ * We do not notify the server of this IRP completion as server does not expect a
+ * response for the CloseFile message.
+ */
 static VOID IopHandleCloseFileServerMessage(PIO_PACKET SrvMsg)
 {
     PFILE_OBJECT FileObj = IopGetFileObject(SrvMsg->ServerMsg.CloseFile.FileObject);
@@ -2032,34 +2034,20 @@ static VOID IopHandleCloseFileServerMessage(PIO_PACKET SrvMsg)
     }
     if (!FileObj->DeviceObject) {
 	assert(FALSE);
-	goto done;
+	return;
     }
-    PDRIVER_OBJECT DriverObject = FileObj->DeviceObject->DriverObject;
-    assert(DriverObject);
-    /* The dispatch routine for IRP_MJ_CLOSE cannot sleep, and in general
-     * should always succeed. We ignore any error that it returns. */
-    PDRIVER_DISPATCH Close = DriverObject->MajorFunction[IRP_MJ_CLOSE];
-    if (!Close) {
-	goto done;
-    }
-    PIRP Irp = IoAllocateIrp(1);
+    PIRP Irp = IoAllocateIrp(FileObj->DeviceObject->StackSize);
     IoSetNextIrpStackLocation(Irp);
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     Stack->DeviceObject = FileObj->DeviceObject;
     ObReferenceObject(Stack->DeviceObject);
+    /* Note here we do not increase the refcount of the file object so it
+     * can get deleted after the IRP_MJ_CLOSE dispatch routine returns. */
     Stack->FileObject = FileObj;
-    ObReferenceObject(Stack->FileObject);
     Stack->MajorFunction = IRP_MJ_CLOSE;
-    if (!NT_SUCCESS(Close(FileObj->DeviceObject, Irp))) {
-	assert(FALSE);
-    }
-    /* If the dispatch routine did not complete the IRP, do it now.
-     * This will move the IRP to the reply list and eventually to the
-     * delete list so it gets freed. */
-    IoCompleteRequest(Irp, 0);
-    /* Dereference the file object since we increased its refcount after CREATE. */
-done:
-    ObDereferenceObject(FileObj);
+    /* Note the original requestor is set to zero, so no server reply will
+     * be generated. */
+    InsertTailList(&IopIrpQueue, &Irp->Private.Link);
 }
 
 static VOID IopHandleCloseDeviceServerMessage(PIO_PACKET SrvMsg)
@@ -2414,11 +2402,14 @@ reply:
 	if (Irp->Completed) {
 	    assert(Irp->CurrentLocation == Irp->StackCount + 1);
 	    /* If the IRP being completed is not locally generated, notify server
-	     * that we have finished processing it. */
+	     * that we have finished processing it. Note for IRP_MJ_CLOSE we do not
+	     * notify server as the Irp->Private.OriginalRequestor is set to zero. */
 	    if (Irp->Private.OriginalRequestor) {
 		Ok = IopPopulateIoCompleteMessageFromLocalIrp(DestIrp, Irp,
 							      RemainingBufferSize);
 	    } else if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
+		/* For locally generated IRPS, we need to deallocate the system buffer
+		 * if previously allocated. */
 		Irp->Flags &= ~IRP_DEALLOCATE_BUFFER;
 		assert(Irp->SystemBuffer);
 		ExFreePool(Irp->SystemBuffer);
