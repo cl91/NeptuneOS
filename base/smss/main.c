@@ -142,6 +142,49 @@ static VOID SmMountDrives()
     SmPrint("OK\n");
 }
 
+static VOID SmDumpMbr()
+{
+    UNICODE_STRING DevicePath = RTL_CONSTANT_STRING(L"\\Device\\Harddisk0\\Partition0");
+    OBJECT_ATTRIBUTES ObjAttr;
+    InitializeObjectAttributes(&ObjAttr, &DevicePath, 0, NULL, NULL);
+    HANDLE VolumeHandle = NULL;
+    IO_STATUS_BLOCK IoStatus;
+    NTSTATUS Status = NtOpenFile(&VolumeHandle, 0, &ObjAttr, &IoStatus, 0, 0);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to open harddisk 0 (error 0x%08x).\n", Status);
+	return;
+    }
+    UCHAR Buf[512] = {};
+    LARGE_INTEGER FileOffset = {};
+    Status = NtReadFile(VolumeHandle, NULL, NULL, NULL, &IoStatus, Buf, sizeof(Buf),
+			&FileOffset, NULL);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to read harddisk 0 (error 0x%08x).\n", Status);
+	return;
+    }
+    for (ULONG i = 0; i < sizeof(Buf); i++) {
+	SmPrint("%02x", Buf[i]);
+	if ((i & 0xf) == 7) {
+	    SmPrint("  ");
+	} else if ((i & 0xf) == 0xf) {
+	    SmPrint("\n");
+	} else {
+	    SmPrint(" ");
+	}
+    }
+    for (ULONG i = 0; i < sizeof(Buf); i++) {
+	DbgPrint("%02x", Buf[i]);
+	if ((i & 0xf) == 7) {
+	    DbgPrint("  ");
+	} else if ((i & 0xf) == 0xf) {
+	    DbgPrint("\n");
+	} else {
+	    DbgPrint(" ");
+	}
+    }
+    NtClose(VolumeHandle);
+}
+
 NTSTATUS SmStartCommandPrompt()
 {
     PRTL_USER_PROCESS_PARAMETERS ProcessParams;
@@ -202,6 +245,7 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     SmInitRegistry();
     SmInitHardwareDatabase();
     SmMountDrives();
+    SmDumpMbr();
     SmPrint("\n");
 
     if (!NT_SUCCESS(SmStartCommandPrompt())) {
