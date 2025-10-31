@@ -952,6 +952,60 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
 	break;
     }
 
+    case ExtFunctionGetCurrentProcessorNumber:
+    {
+	GET_VA_ARG(VaList, PPROCESSOR_NUMBER, ProcNumber);
+	RtlZeroMemory(ProcNumber, sizeof(PROCESSOR_NUMBER));
+	Status = STOR_STATUS_SUCCESS;
+	break;
+    }
+
+    case ExtFunctionGetActiveGroupCount:
+    {
+	GET_VA_ARG(VaList, PUSHORT, NumberGroups);
+	*NumberGroups = 1;
+	Status = STOR_STATUS_SUCCESS;
+	break;
+    }
+
+    case ExtFunctionGetGroupAffinity:
+    {
+	GET_VA_ARG(VaList, ULONG, GroupNumber);
+	GET_VA_ARG(VaList, PGROUP_AFFINITY, GroupAffinityMask);
+	UNREFERENCED_PARAMETER(GroupNumber);
+	GroupAffinityMask->Mask = -1;
+	GroupAffinityMask->Group = 0;
+	Status = STOR_STATUS_SUCCESS;
+	break;
+    }
+
+    case ExtFunctionGetActiveNodeCount:
+    {
+	GET_VA_ARG(VaList, PULONG, NumberNodes);
+	*NumberNodes = 1;
+	Status = STOR_STATUS_SUCCESS;
+	break;
+    }
+
+    case ExtFunctionGetNodeAffinity:
+    {
+	GET_VA_ARG(VaList, ULONG, NodeNumber);
+	GET_VA_ARG(VaList, PGROUP_AFFINITY, NodeAffinityMask);
+	UNREFERENCED_PARAMETER(NodeNumber);
+	NodeAffinityMask->Mask = -1;
+	NodeAffinityMask->Group = 0;
+	Status = STOR_STATUS_SUCCESS;
+	break;
+    }
+
+    case ExtFunctionGetHighestNodeNumber:
+    {
+	GET_VA_ARG(VaList, PULONG, HighestNode);
+	*HighestNode = 0;
+	Status = STOR_STATUS_SUCCESS;
+	break;
+    }
+
     case ExtFunctionAllocateContiguousMemorySpecifyCacheNode:
     {
 	GET_VA_ARG(VaList, SIZE_T, NumberOfBytes);
