@@ -793,6 +793,11 @@ typedef struct _FUNCTIONAL_DEVICE_EXTENSION {
     ULONG_PTR Reserved4;
 } FUNCTIONAL_DEVICE_EXTENSION, *PFUNCTIONAL_DEVICE_EXTENSION;
 
+/* Flags for ClassCreateDeviceObject */
+#define CLASS_DO_IS_FDO			1UL
+#define CLASS_DO_RAW_MOUNT_ONLY		2UL
+#define CLASS_DO_DIRECT_IO		4UL
+
 NTAPI CLASSPNP_API ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 					   IN LPGUID Guid,
 					   IN PVOID Data);

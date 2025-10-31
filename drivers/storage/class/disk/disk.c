@@ -327,12 +327,19 @@ NTSTATUS DiskCreateFdo(IN PDRIVER_OBJECT DriverObject,
 	goto DiskCreateFdoExit;
     }
 
+    //
+    // Indicate that IRPs should include MDLs for data transfers.
+    //
+    ULONG flags = CLASS_DO_IS_FDO | CLASS_DO_DIRECT_IO;
+
     // If DasdAccessOnly is set, we inidicate to the system that only RAW should be
     // allowed to mount on the root partition object.  This ensures that a file system
     // can't doubly mount on a super-floppy by mounting once on P0 and once on P1.
+    if (DasdAccessOnly) {
+	flags |= CLASS_DO_RAW_MOUNT_ONLY;
+    }
     status = ClassCreateDeviceObject(DriverObject, deviceName, PhysicalDeviceObject,
-				     TRUE | ((UCHAR)DasdAccessOnly << 1),
-				     &deviceObject);
+				     flags, &deviceObject);
 
     if (!NT_SUCCESS(status)) {
 	TracePrint((TRACE_LEVEL_FATAL, TRACE_FLAG_PNP,
@@ -341,12 +348,6 @@ NTSTATUS DiskCreateFdo(IN PDRIVER_OBJECT DriverObject,
     }
 
     FREE_POOL(deviceName);
-
-    //
-    // Indicate that IRPs should include MDLs for data transfers.
-    //
-
-    SET_FLAG(deviceObject->Flags, DO_DIRECT_IO);
 
     fdoExtension = deviceObject->DeviceExtension;
 

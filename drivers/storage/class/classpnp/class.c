@@ -7810,6 +7810,7 @@ Arguments:
             an fdo or a pdo. If set, the device object is an FDO.
 	    Bit 1 indicates that the RAW_MOUNT_ONLY flag should be set for
 	    the device object. This only applies in the case of an FDO.
+	    Bit 2 indicates that the device object should use direct IO.
 
     DeviceObject - Pointer to the device object pointer we will return.
 
@@ -7854,8 +7855,9 @@ NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
 
     isPartitionable = (driverExtension->InitData.ClassEnumerateDevice != NULL);
 
-    BOOLEAN IsFdo = Flags & 1;
-    BOOLEAN RawMountOnly = Flags & 2;
+    BOOLEAN IsFdo = Flags & CLASS_DO_IS_FDO;
+    BOOLEAN RawMountOnly = Flags & CLASS_DO_RAW_MOUNT_ONLY;
+    BOOLEAN DirectIo = Flags & CLASS_DO_DIRECT_IO;
     NT_ASSERT(IsFdo || isPartitionable);
 
     //
@@ -7903,6 +7905,9 @@ NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
     SET_FLAG(characteristics, DO_POWER_PAGABLE);
     if (RawMountOnly) {
 	SET_FLAG(characteristics, DO_RAW_MOUNT_ONLY);
+    }
+    if (DirectIo) {
+	SET_FLAG(characteristics, DO_DIRECT_IO);
     }
 
     devExtSize = devInfo->DeviceExtensionSize;
