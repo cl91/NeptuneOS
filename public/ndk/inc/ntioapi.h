@@ -1192,6 +1192,7 @@ NTAPI NTSYSAPI NTSTATUS NtFlushBuffersFile(IN HANDLE FileHandle,
 #define DO_SYSTEM_SYSTEM_PARTITION        (0x00200000ULL << 32)
 #define DO_SYSTEM_CRITICAL_PARTITION      (0x00400000ULL << 32)
 #define DO_DISALLOW_EXECUTE               (0x00800000ULL << 32)
+#define DO_RAW_MOUNT_ONLY                 (0x01000000ULL << 32)
 
 /* DEVICE_OBJECT.AlignmentRequirement */
 #define FILE_BYTE_ALIGNMENT             0x00000000

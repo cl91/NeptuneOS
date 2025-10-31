@@ -7806,7 +7806,10 @@ Arguments:
 
     LowerDeviceObject - Pointer to the lower device object
 
-    IsFdo - should this be an fdo or a pdo
+    Flags - Bit 0 indicates that whether the device object to be created is
+            an fdo or a pdo. If set, the device object is an FDO.
+	    Bit 1 indicates that the RAW_MOUNT_ONLY flag should be set for
+	    the device object. This only applies in the case of an FDO.
 
     DeviceObject - Pointer to the device object pointer we will return.
 
@@ -7818,7 +7821,7 @@ Return Value:
 NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
 				       IN PCCHAR ObjectNameBuffer,
 				       IN PDEVICE_OBJECT LowerDevice,
-				       IN BOOLEAN IsFdo,
+				       IN ULONG Flags,
 				       OUT PDEVICE_OBJECT *DeviceObject)
 {
     BOOLEAN isPartitionable;
@@ -7827,7 +7830,7 @@ NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
     NTSTATUS status;
     PDEVICE_OBJECT deviceObject = NULL;
 
-    ULONG characteristics;
+    ULONG64 characteristics;
     ULONG devExtSize;
 
     PCLASS_DRIVER_EXTENSION driverExtension =
@@ -7851,6 +7854,8 @@ NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
 
     isPartitionable = (driverExtension->InitData.ClassEnumerateDevice != NULL);
 
+    BOOLEAN IsFdo = Flags & 1;
+    BOOLEAN RawMountOnly = Flags & 2;
     NT_ASSERT(IsFdo || isPartitionable);
 
     //
@@ -7895,9 +7900,15 @@ NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
 	RtlInitUnicodeString(&ntUnicodeString, NULL);
     }
 
+    SET_FLAG(characteristics, DO_POWER_PAGABLE);
+    if (RawMountOnly) {
+	SET_FLAG(characteristics, DO_RAW_MOUNT_ONLY);
+    }
+
     devExtSize = devInfo->DeviceExtensionSize;
     status = IoCreateDevice(DriverObject, devExtSize, &ntUnicodeString,
-			    devInfo->DeviceType, characteristics, FALSE, &deviceObject);
+			    devInfo->DeviceType, characteristics,
+			    FALSE, &deviceObject);
 
     if (!NT_SUCCESS(status)) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_INIT,
@@ -7970,11 +7981,6 @@ NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
 	    commonExtension->PartitionZeroExtension = deviceObject->DeviceExtension;
 
 	    //
-	    // Set the initial device object flags.
-	    //
-
-	    SET_FLAG(deviceObject->Flags, DO_POWER_PAGABLE);
-	    //
 	    // Clear the PDO list
 	    //
 
@@ -8019,8 +8025,6 @@ NTAPI NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
 	    PPHYSICAL_DEVICE_EXTENSION pdoExtension = deviceObject->DeviceExtension;
 
 	    PFUNCTIONAL_DEVICE_EXTENSION p0Extension = LowerDevice->DeviceExtension;
-
-	    SET_FLAG(deviceObject->Flags, DO_POWER_PAGABLE);
 
 	    commonExtension->PartitionZeroExtension = p0Extension;
 

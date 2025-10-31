@@ -195,10 +195,10 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	    PPENDING_IRP PendingIrp;
 	});
 
-    /* If the device object is from the underlying storage driver, we send open IRPs to
-     * its file system volume device object instead. */
-    /* TODO: Implement raw mount. */
-    Locals.TargetDevice = IopIsStorageDevice(Device) ? Device->Vcb->VolumeDevice : Device;
+    /* If the device object is from the underlying storage driver of a mounted volume,
+     * we send open IRPs to its file system volume device object instead. */
+    Locals.TargetDevice = IopIsStorageDevice(Device) && Device->Vcb ?
+	Device->Vcb->VolumeDevice : Device;
 
     if (MasterFileObject) {
 	FILE_OBJ_CREATE_CONTEXT Ctx = {

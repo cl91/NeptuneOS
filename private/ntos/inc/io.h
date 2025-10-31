@@ -110,6 +110,8 @@ typedef struct _IO_DEVICE_OBJECT {
     KEVENT MountCompleted; /* Used by the volume mount logic to signal mount completion. */
     BOOLEAN Removed; /* TRUE if the driver has crashed and the device is being removed. */
     BOOLEAN Exclusive;
+    BOOLEAN UnrecognizedVolume;	/* TRUE if no file system recognizes the volume. This is
+				 * reset after a new file system has registered itself. */
 } IO_DEVICE_OBJECT, *PIO_DEVICE_OBJECT;
 
 typedef struct _IO_FILE_SYSTEM {

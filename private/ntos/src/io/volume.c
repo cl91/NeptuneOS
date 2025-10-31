@@ -40,6 +40,10 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
 
+    if ((DevObj->DeviceInfo.Flags & DO_RAW_MOUNT_ONLY) || DevObj->UnrecognizedVolume) {
+	ASYNC_RETURN(State, STATUS_SUCCESS);
+    }
+
     /* If the volume is being dismounted, exit now. */
     if (DevObj->Vcb && DevObj->Vcb->Dismounted) {
 	ASYNC_RETURN(State, STATUS_VOLUME_DISMOUNTED);
@@ -133,8 +137,9 @@ next:
 	    Status = STATUS_UNRECOGNIZED_VOLUME;
 	    goto out;
 	}
-	PIO_DEVICE_OBJECT VolumeDevice = IopGetDeviceObject(Response->VolumeMounted.VolumeDeviceHandle,
-							    Locals.CurrentFs->FsctlDevObj->DriverObject);
+	PIO_DEVICE_OBJECT VolumeDevice =
+	    IopGetDeviceObject(Response->VolumeMounted.VolumeDeviceHandle,
+			       Locals.CurrentFs->FsctlDevObj->DriverObject);
 	if (!VolumeDevice) {
 	    assert(FALSE);
 	    Status = STATUS_UNRECOGNIZED_VOLUME;
@@ -179,6 +184,7 @@ out:
 	}
 	IopFreePool(DevObj->Vcb);
 	DevObj->Vcb = NULL;
+	DevObj->UnrecognizedVolume = TRUE;
     }
     KeSetEvent(&DevObj->MountCompleted);
     ASYNC_END(State, Status);
@@ -214,6 +220,14 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
     } else {
 	IopFreePool(FsObj);
 	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    /* Clear the UnrecognizedVolume flag of all device objects so client processes
+     * can reattempt to mount them. */
+    LoopOverList(DrvObj, &IopDriverList, IO_DRIVER_OBJECT, DriverLink) {
+	LoopOverList(DevObj, &DrvObj->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+	    DevObj->UnrecognizedVolume = FALSE;
+	}
     }
 
     assert(FsList);

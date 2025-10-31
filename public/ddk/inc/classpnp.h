@@ -800,7 +800,7 @@ NTAPI CLASSPNP_API ULONG ClassInitializeEx(IN PDRIVER_OBJECT DriverObject,
 NTAPI CLASSPNP_API NTSTATUS ClassCreateDeviceObject(IN PDRIVER_OBJECT DriverObject,
 						    IN PCCHAR ObjectNameBuffer,
 						    IN PDEVICE_OBJECT LowerDeviceObject,
-						    IN BOOLEAN IsFdo,
+						    IN ULONG Flags,
 						    OUT PDEVICE_OBJECT *DeviceObject);
 
 NTAPI CLASSPNP_API NTSTATUS ClassReadDriveCapacity(IN PDEVICE_OBJECT DeviceObject);

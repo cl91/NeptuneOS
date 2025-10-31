@@ -327,7 +327,11 @@ NTSTATUS DiskCreateFdo(IN PDRIVER_OBJECT DriverObject,
 	goto DiskCreateFdoExit;
     }
 
-    status = ClassCreateDeviceObject(DriverObject, deviceName, PhysicalDeviceObject, TRUE,
+    // If DasdAccessOnly is set, we inidicate to the system that only RAW should be
+    // allowed to mount on the root partition object.  This ensures that a file system
+    // can't doubly mount on a super-floppy by mounting once on P0 and once on P1.
+    status = ClassCreateDeviceObject(DriverObject, deviceName, PhysicalDeviceObject,
+				     TRUE | ((UCHAR)DasdAccessOnly << 1),
 				     &deviceObject);
 
     if (!NT_SUCCESS(status)) {
@@ -345,19 +349,6 @@ NTSTATUS DiskCreateFdo(IN PDRIVER_OBJECT DriverObject,
     SET_FLAG(deviceObject->Flags, DO_DIRECT_IO);
 
     fdoExtension = deviceObject->DeviceExtension;
-
-    if (DasdAccessOnly && deviceObject->Vpb) {
-	//
-	// Inidicate that only RAW should be allowed to mount on the root
-	// partition object.  This ensures that a file system can't doubly
-	// mount on a super-floppy by mounting once on P0 and once on P1.
-	//
-	// Neptune OS Note: this is only relevant if file system is loaded
-	// in the same process as the storage device driver stack
-	//
-
-	SET_FLAG(deviceObject->Vpb->Flags, VPB_RAW_MOUNT);
-    }
 
     //
     // Initialize lock count to zero. The lock count is used to
