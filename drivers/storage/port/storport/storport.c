@@ -1294,7 +1294,16 @@ NTAPI ULONG StorPortAllocateDmaMemory(IN PVOID HwDeviceExtension,
 				      OUT PVOID *BufferPointer,
 				      OUT PPHYSICAL_ADDRESS PhysicalAddress)
 {
-    return STOR_STATUS_NOT_IMPLEMENTED;
+    /* We don't support limiting the lowest physical address. */
+    if (LowestAddress.QuadPart) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    if (!NT_SUCCESS(MmAllocateContiguousMemorySpecifyCache(NumberOfBytes, HighestAddress,
+							   AddressMultiple, CacheType,
+							   BufferPointer, PhysicalAddress))) {
+	return STOR_STATUS_INSUFFICIENT_RESOURCES;
+    }
+    return STOR_STATUS_SUCCESS;
 }
 
 NTAPI ULONG StorPortFreeDmaMemory(IN PVOID HwDeviceExtension,
@@ -1303,7 +1312,8 @@ NTAPI ULONG StorPortFreeDmaMemory(IN PVOID HwDeviceExtension,
 				  IN MEMORY_CACHING_TYPE CacheType,
 				  IN OPTIONAL PHYSICAL_ADDRESS PhysicalAddress)
 {
-    return STOR_STATUS_NOT_IMPLEMENTED;
+    MmFreeContiguousMemorySpecifyCache(BaseAddress, NumberOfBytes, CacheType);
+    return STOR_STATUS_SUCCESS;
 }
 
 /*
