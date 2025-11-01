@@ -95,7 +95,6 @@ enum {
     FIXED = 20
 };
 
-static BOOLEAN HalpHpetUseMsi;	/* Set this to TRUE to enable MSI for HPET */
 extern ULONG HalpNumHpetTables;
 extern HAL_HPET HalpHpetTable[];
 
@@ -144,6 +143,8 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	UCHAR NumComparators = ((*HalpHpetGetCapId(VirtBase) >> 8) & 0x1F) + 1;
 	assert(NumComparators == HalpHpetTable[i].NumComparators);
 
+	BOOLEAN TryMsi = TRUE;
+    again:
 	for (UCHAR j = 0; j < NumComparators; j++) {
 	    PHPET_MMIO_REGISTERS Timer = HalpHpetGetTimerRegisters(VirtBase, j);
 	    ULONG64 ConfigBits = Timer->Config;
@@ -158,7 +159,7 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 		continue;
 	    }
 	    ULONG Irq = 0;
-	    if (HalpHpetUseMsi) {
+	    if (TryMsi) {
 		/* Skip this timer if MSI is request but this timer does not support it */
 		if (!(ConfigBits & (1ULL << TN_FSB_INT_DEL_CAP))) {
 		    DbgTrace("Skipping HPET %d because it does not support MSI.\n", j);
@@ -201,7 +202,7 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    /* HPET interrupts are always active-high and edge-triggered. */
 	    IrqHandler->Config.Word = 0;
 	    IrqHandler->Message = 0;
-	    if (HalpHpetUseMsi) {
+	    if (TryMsi) {
 		IrqHandler->Irq = Irq;
 		IrqHandler->Config.Msi = TRUE;
 		/* Set the timer to deliver interrupts via the front side bus (using MSIs) */
@@ -249,6 +250,10 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    HalpHpetTable[i].SystemTimer = TRUE;
 	    HalpHpetTable[i].ComparatorId = j;
 	    return STATUS_SUCCESS;
+	}
+	if (TryMsi) {
+	    TryMsi = FALSE;
+	    goto again;
 	}
 	MmUnmapPhysicalMemory(VirtBase);
     }
