@@ -122,7 +122,7 @@ static NTSTATUS SendByte(PCONTROLLER_INFO ControllerInfo,
 	if (ReadyForWrite(ControllerInfo))
 	    break;
 
-	LARGE_INTEGER Delay = { .QuadPart = -500 };
+	LARGE_INTEGER Delay = { .QuadPart = -500LL };
 	KeDelayExecutionThread(FALSE, &Delay);
     }
 
@@ -161,7 +161,7 @@ static NTSTATUS GetByte(PCONTROLLER_INFO ControllerInfo,
 	if (ReadyForRead(ControllerInfo))
 	    break;
 
-	LARGE_INTEGER Delay = { .QuadPart = -500 };
+	LARGE_INTEGER Delay = { .QuadPart = -500LL };
 	KeDelayExecutionThread(FALSE, &Delay);
     }
 
@@ -654,8 +654,8 @@ NTSTATUS HwSeek(PDRIVE_INFO DriveInfo, UCHAR Cylinder)
 
     /* Wait for the head to settle */
     Delay.QuadPart = 10 * 1000;
-    Delay.QuadPart *= -1;
     Delay.QuadPart *= DriveInfo->FloppyDeviceData.HeadSettleTime;
+    Delay.QuadPart *= -1LL;
 
     KeDelayExecutionThread(FALSE, &Delay);
 

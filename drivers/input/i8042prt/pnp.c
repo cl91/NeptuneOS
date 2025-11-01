@@ -102,7 +102,7 @@ static NTSTATUS i8042BasicDetect(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 	    break;
 	} else if (Value == KBD_RESEND) {
 	    TRACE_(I8042PRT, "Resending...\n");
-	    LARGE_INTEGER Delay = { .QuadPart = -500 };
+	    LARGE_INTEGER Delay = { .QuadPart = -500LL };
 	    KeDelayExecutionThread(FALSE, &Delay);
 	} else {
 	    WARN_(I8042PRT, "Got 0x%02x instead of 0x55\n", Value);
@@ -192,7 +192,7 @@ static VOID i8042DetectMouse(IN PPORT_DEVICE_EXTENSION DeviceExtension)
 
 	    if (!NT_SUCCESS(Status)) {
 		/* Wait some time before trying again */
-		LARGE_INTEGER Delay = { .QuadPart = -500 };
+		LARGE_INTEGER Delay = { .QuadPart = -500LL };
 		KeDelayExecutionThread(FALSE, &Delay);
 	    }
 	} while (Status == STATUS_IO_TIMEOUT && Counter--);
