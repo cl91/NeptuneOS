@@ -316,11 +316,9 @@ NTSTATUS PortPdoScsi(IN PDEVICE_OBJECT DeviceObject,
     UCHAR Lun = UCHAR_MAX;
     SrbGetPathTargetLun(Srb, &Bus, &Target, &Lun);
     if (Bus != PdoExt->Bus || Target != PdoExt->Target || Lun != PdoExt->Lun) {
-        DPRINT("SRB SCSI address %d:%d:%d does not match PDO %d:%d:%d\n",
+        DPRINT("SRB SCSI address %d:%d:%d does not match PDO %d:%d:%d. Adjusting.\n",
 	       Bus, Target, Lun, PdoExt->Bus, PdoExt->Target, PdoExt->Lun);
-        Status = STATUS_NO_SUCH_DEVICE;
-        Srb->SrbStatus = SRB_STATUS_NO_DEVICE;
-	goto done;
+	SrbSetPathTargetLun(Srb, PdoExt->Bus, PdoExt->Target, PdoExt->Lun);
     }
 
     switch (Srb->SrbFunction) {
