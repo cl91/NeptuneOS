@@ -1027,8 +1027,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	}
 	return STATUS_SUCCESS;
     } else if (Section->Flags.PhysicalMemory) {
-	if (!BaseAddress || !*BaseAddress || !SectionOffset || !*SectionOffset
-	    || !ViewSize || !*ViewSize) {
+	if (!BaseAddress || !*BaseAddress || !SectionOffset || !ViewSize || !*ViewSize) {
 	    return STATUS_INVALID_PARAMETER;
 	}
 	return MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress,

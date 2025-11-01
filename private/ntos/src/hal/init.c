@@ -93,6 +93,7 @@ NTSTATUS HalInitSystemPhase0(VOID)
     InitializeListHead(&HalpX86IoPortList);
 #endif
     RET_ERR(HalpInitSmbios());
+    RET_ERR(HalpInitCoreboot());
     RET_ERR(HalpInitVga());
     RET_ERR(HalpInitRtc());
 #if defined(_M_IX86) || defined(_M_AMD64)

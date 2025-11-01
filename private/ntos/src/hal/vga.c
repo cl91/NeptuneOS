@@ -17,10 +17,6 @@
 #define VGA_MODE_COLUMNS		(80)
 #define VGA_MODE_ROWS			(25)
 
-#define MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED	0
-#define MULTIBOOT_FRAMEBUFFER_TYPE_RGB		1
-#define MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT	2
-
 #define FRAMEBUFFER_BACKGROUND_COLOR_R	(0x3A)
 #define FRAMEBUFFER_BACKGROUND_COLOR_G	(0x6E)
 #define FRAMEBUFFER_BACKGROUND_COLOR_B	(0xA5)
@@ -3173,6 +3169,9 @@ NTSTATUS HalpInitVga()
 VOID HalRegisterFramebuffer(IN PHAL_FRAMEBUFFER Fb)
 {
     assert(Fb);
+    if (HalpHasFramebuffer) {
+	return;
+    }
     if (Fb->Type == MULTIBOOT_FRAMEBUFFER_TYPE_RGB) {
 	HalpFramebuffer = *Fb;
 	HalpHasFramebuffer = TRUE;

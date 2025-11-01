@@ -116,8 +116,8 @@ VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr,
     }
 }
 
-static PVOID HalpMapTable(IN PHYSICAL_ADDRESS PhyAddr,
-			  IN ULONG Size)
+PVOID HalpMapTable(IN PHYSICAL_ADDRESS PhyAddr,
+		   IN ULONG Size)
 {
     ULONG64 AlignedAddr = PAGE_ALIGN64(PhyAddr.QuadPart);
     ULONG WindowSize = PAGE_ALIGN_UP64(PhyAddr.QuadPart + Size) - AlignedAddr;

@@ -3,6 +3,10 @@
 #include <ntos.h>
 #include <dmilib.h>
 
+#define MULTIBOOT_FRAMEBUFFER_TYPE_INDEXED	0
+#define MULTIBOOT_FRAMEBUFFER_TYPE_RGB		1
+#define MULTIBOOT_FRAMEBUFFER_TYPE_EGA_TEXT	2
+
 #if defined(_M_IX86) || defined(_M_AMD64)
 
 /* Conversion functions */
@@ -207,6 +211,9 @@ NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
     HalpAllocateArrayEx(Var, Type, Size, {})
 #define HalpFreePool(Var) ExFreePoolWithTag(Var, NTOS_HAL_TAG)
 
+/* coreboot.c */
+NTSTATUS HalpInitCoreboot(VOID);
+
 /* dma.c */
 NTSTATUS HalpInitDma(VOID);
 
@@ -216,6 +223,8 @@ NTSTATUS HalpInitRtc(VOID);
 /* smbios.c */
 NTSTATUS HalpInitSmbios(VOID);
 extern PCSTR HalpSmbiosStrings[SMBIOS_ID_STRINGS_MAX];
+PVOID HalpMapTable(IN PHYSICAL_ADDRESS PhyAddr,
+		   IN ULONG Size);
 
 /* vga.c */
 NTSTATUS HalpInitVga(VOID);
