@@ -13,6 +13,61 @@ extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
 #define PEB_RESERVE	(16 * PAGE_SIZE)
 #define PEB_COMMIT	(PAGE_SIZE)
 
+#ifndef _WIN64
+AVL_TREE PspCidMap;
+
+/* splitmix32 algorithm that hashes the global handle to a 18-bit value */
+FORCEINLINE ULONG PspCidHashFunction(ULONG x)
+{
+    x += 0x9e3779b9UL;
+    x = (x ^ (x >> 16)) * 0x85ebca6bUL;
+    x = (x ^ (x >> 13)) * 0xc2b2ae35UL;
+    x ^= (x >> 16);
+    return x & ((1UL << seL4_GuardBits) - 1);
+}
+
+static GLOBAL_HANDLE PspGenerateCid(IN POBJECT Object,
+				    OUT PAVL_NODE *Parent)
+{
+    ULONG Offset = OBJECT_TO_GLOBAL_HANDLE(Object) >> EX_POOL_BLOCK_SHIFT;
+    ULONG Cid = PspCidHashFunction(Offset);
+    /* Make sure Cid is not zero */
+    while (!Cid) {
+	Cid = PspCidHashFunction(++Offset);
+    }
+    /* Retry if collision is detected */
+    while ((*Parent = AvlTreeFindNodeOrParent(&PspCidMap, Cid)) &&
+	   ((*Parent)->Key == Cid)) {
+        Offset += 0x9E3779B9UL;  // perturb and rehash
+        Cid = PspCidHashFunction(Offset);
+    }
+    return Cid;
+}
+
+#define PSP_GET_CID(Obj)					\
+    if (Obj->CidMapNode.Key) {					\
+	assert(Obj->CidMapNode.Key < (1UL << seL4_GuardBits));	\
+	return Obj->CidMapNode.Key << EX_POOL_BLOCK_SHIFT;	\
+    }								\
+    PAVL_NODE Parent = NULL;					\
+    GLOBAL_HANDLE Cid = PspGenerateCid(Obj, &Parent);		\
+    Obj->CidMapNode.Key = Cid;					\
+    assert(Cid);						\
+    assert(!Parent || Parent->Key != Cid);			\
+    AvlTreeInsertNode(&PspCidMap, Parent, &Obj->CidMapNode);	\
+    return Cid << EX_POOL_BLOCK_SHIFT
+
+GLOBAL_HANDLE PsGetProcessId(IN PPROCESS Process)
+{
+    PSP_GET_CID(Process);
+}
+
+GLOBAL_HANDLE PsGetThreadId(IN PTHREAD Thread)
+{
+    PSP_GET_CID(Thread);
+}
+#endif
+
 static NTSTATUS PspConfigureThread(IN MWORD Tcb,
 				   IN MWORD FaultHandler,
 				   IN PCNODE CNode,

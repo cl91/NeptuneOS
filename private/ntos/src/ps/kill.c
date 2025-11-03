@@ -38,6 +38,13 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
      * object creation */
     ObDereferenceObject(Thread->Process);
 
+#ifndef _WIN64
+    /* If we have generated the thread ID, remove it */
+    if (Thread->CidMapNode.Key) {
+	AvlTreeRemoveNode(&PspCidMap, &Thread->CidMapNode);
+    }
+#endif
+
     /* If we are deleting the main event loop thread of a driver process,
      * unlink us from the driver object. */
     if (Thread->Process->DriverObject &&
@@ -127,6 +134,12 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     MmDestroyVSpace(&Process->VSpace);
     MmDeleteCNode(Process->SharedCNode);
     RemoveEntryList(&Process->ProcessListEntry);
+#ifndef _WIN64
+    /* If we have generated the process ID, remove it */
+    if (Process->CidMapNode.Key) {
+	AvlTreeRemoveNode(&PspCidMap, &Process->CidMapNode);
+    }
+#endif
 }
 
 static NTSTATUS PspSuspendThread(IN MWORD Cap)

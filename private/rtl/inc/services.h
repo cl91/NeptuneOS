@@ -108,8 +108,8 @@ typedef seL4_Word MWORD;
  * IPC endpoints. Even the most heavy RPC services rarely need more than 20 LPC
  * connections per thread. Note the process shared CNode size is slightly larger
  * so drivers which access a lot of X86 ports can have enough cap slots there. */
-#define PROCESS_SHARED_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE + 1)
-#define THREAD_PRIVATE_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE)
+#define PROCESS_SHARED_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE + 3)
+#define THREAD_PRIVATE_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE + 1)
 
 /* Private heap reserved for the Ldr component of NTDLL */
 #define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)

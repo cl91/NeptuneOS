@@ -62,20 +62,20 @@
  * Additionally, for amd64 EX_POOL_START must be within the first GB (since the initial
  * page directory and PDPT only cover the first GB). */
 #define EX_POOL_START				(0x10000000ULL)
-#define EX_POOL_MAX_SIZE			(0x01000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_POOL_MAX_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_POOL_END				(EX_POOL_START + EX_POOL_MAX_SIZE)
 /* Region for the Large Object Executive Pool. Objects larger than one page size are
  * allocated from this pool. */
 #define EX_LARGE_POOL_START			(EX_POOL_END)
-#define EX_LARGE_POOL_SIZE			(0x03000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_LARGE_POOL_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_LARGE_POOL_END			(EX_LARGE_POOL_START + EX_LARGE_POOL_SIZE)
 /* Region where the driver processes' IO packet buffers are allocated, managed with bitmaps. */
 #define EX_DRIVER_REGION_START			(EX_LARGE_POOL_END)
-#define EX_DRIVER_REGION_SIZE			(0x04000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_DRIVER_REGION_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_DRIVER_REGION_END			(EX_DRIVER_REGION_START + EX_DRIVER_REGION_SIZE)
 /* Region where the client thread's pages are mapped. This region is managed with bitmaps. */
 #define EX_CLIENT_REGION_START			(EX_DRIVER_REGION_END)
-#define EX_CLIENT_REGION_SIZE			(0x08000000ULL * ADDRESS_SPACE_MULTIPLIER)
+#define EX_CLIENT_REGION_SIZE			(0x10000000ULL * ADDRESS_SPACE_MULTIPLIER)
 #define EX_CLIENT_REGION_END			(EX_CLIENT_REGION_START + EX_CLIENT_REGION_SIZE)
 /* Region of the dynamically managed Executive virtual address space */
 #define EX_DYN_VSPACE_START			(EX_CLIENT_REGION_END)
@@ -88,21 +88,35 @@
 /* Since we use the object header's offset from the start of Executive pool as the
  * unique global object handle (badge), and on i386 the seL4 kernel ignores the highest
  * four bits of a badge, the Executive pool cannot be larger than 256MB. */
-#if defined(_M_IX86) && (EX_POOL_MAX_SIZE > 0x10000000ULL)
+#if !defined(_WIN64) && (EX_POOL_MAX_SIZE > (1ULL << seL4_BadgeBits))
 #error "Executive pool too large"
 #endif
-
-/* Since we use the global handle of the thread object as the guard value of
- * its CSpace, the log2size of the ExPool cannot exceed of the number of guard
- * bits plus EX_POOL_BLOCK_SHIFT. */
-C_ASSERT(EX_POOL_MAX_SIZE <=
-	 (1ULL << (MWORD_BITS - THREAD_PRIVATE_CNODE_LOG2SIZE
-		   - PROCESS_SHARED_CNODE_LOG2SIZE + EX_POOL_BLOCK_SHIFT)));
 
 /* Since we use a device object's global handle right shifted by EX_POOL_BLOCK_SHIFT
  * as its (32-bit) WMI provider ID, the ExPool size cannot exceed 64GB on amd64. */
 C_ASSERT(EX_POOL_MAX_SIZE <=
 	 (1ULL << (32 + EX_POOL_BLOCK_SHIFT)));
+
+/*
+ * We use the following addressing scheme for the CSpace of a client thread
+ *
+ *   |------------------|------------|-------------|
+ *   | Guard = ThreadId |      0     |Process CNode|
+ *   |------------------|------------|-------------|
+ *   | Guard = ThreadId |Thread CNode|      0      |
+ *   |------------------|------------|-------------|
+ *
+ * Since on 32-bit architectures we use the full 18 guard bits for the thread ID,
+ * the total bits used must be less than the 32. On 64-bit architectures the log2size
+ * of ExPool should not exceed the number of guard bits plus EX_POOL_BLOCK_SHIFT
+ */
+#ifdef _WIN64
+C_ASSERT(((seL4_GuardBits + EX_POOL_BLOCK_SHIFT) >= MWORD_BITS) ||
+	 (EX_POOL_MAX_SIZE <= (1ULL << (seL4_GuardBits + EX_POOL_BLOCK_SHIFT))));
+#else
+C_ASSERT(PROCESS_SHARED_CNODE_LOG2SIZE + THREAD_PRIVATE_CNODE_LOG2SIZE + seL4_GuardBits <=
+	 MWORD_BITS);
+#endif
 
 /* Allocation granularity for the system thread region, the client region and
  * the driver region. For the client region we reserve two pages but only

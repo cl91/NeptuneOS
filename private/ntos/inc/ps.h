@@ -23,6 +23,9 @@ typedef struct _THREAD {
     IPC_ENDPOINT ReplyEndpoint;
     struct _PROCESS *Process;
     PCNODE CSpace;
+#ifndef _WIN64
+    AVL_NODE CidMapNode;      /* Node in the PspCidMap. Key is mapped TID. */
+#endif
     LIST_ENTRY ThreadListEntry;	/* List link for the PROCESS object's ThreadList */
     LIST_ENTRY QueuedApcList; /* List of all queued APCs. Note the objects in this
 			       * list are the APC objects that have been queued on
@@ -87,6 +90,9 @@ typedef struct _PROCESS {
     ULONG_PTR AffinityMask;
     ULONG_PTR InheritedFromUniqueProcessId;
     ULONG_PTR BasePriority;
+#ifndef _WIN64
+    AVL_NODE CidMapNode;      /* Node in the PspCidMap. Key is mapped PID. */
+#endif
 } PROCESS, *PPROCESS;
 
 /*
@@ -109,6 +115,7 @@ typedef struct _SYSTEM_THREAD {
 
 typedef VOID (*PSYSTEM_THREAD_ENTRY)();
 
+#ifdef _WIN64
 FORCEINLINE GLOBAL_HANDLE PsGetProcessId(IN PPROCESS Process)
 {
     return OBJECT_TO_GLOBAL_HANDLE(Process);
@@ -118,6 +125,10 @@ FORCEINLINE GLOBAL_HANDLE PsGetThreadId(IN PTHREAD Thread)
 {
     return OBJECT_TO_GLOBAL_HANDLE(Thread);
 }
+#else
+GLOBAL_HANDLE PsGetProcessId(IN PPROCESS Process);
+GLOBAL_HANDLE PsGetThreadId(IN PTHREAD Thread);
+#endif
 
 FORCEINLINE CLIENT_ID PsGetClientId(IN PTHREAD Thread)
 {

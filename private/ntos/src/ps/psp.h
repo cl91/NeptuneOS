@@ -48,6 +48,9 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 				    IN PVOID CreaCtx);
 VOID PspSystemThreadStartup(IN seL4_IPCBuffer *IpcBuffer,
 			    IN PSYSTEM_THREAD_ENTRY EntryPoint);
+#ifndef _WIN64
+extern AVL_TREE PspCidMap;
+#endif
 
 /* init.c */
 extern LIST_ENTRY PspProcessList;

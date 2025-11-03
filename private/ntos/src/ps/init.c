@@ -44,6 +44,9 @@ static NTSTATUS PspCreateProcessType()
 
 NTSTATUS PsInitSystemPhase0()
 {
+#ifndef _WIN64
+    AvlInitializeTree(&PspCidMap);
+#endif
     RET_ERR(PspCreateThreadType());
     RET_ERR(PspCreateProcessType());
     RET_ERR(MmReserveVirtualMemory(SYSTEM_THREAD_REGION_START, SYSTEM_THREAD_REGION_END,
