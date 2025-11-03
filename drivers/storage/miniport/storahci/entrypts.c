@@ -94,6 +94,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     hwInitializationData.AutoRequestSense = TRUE;
     hwInitializationData.NeedPhysicalAddresses = TRUE;
     hwInitializationData.NumberOfAccessRanges = NUM_ACCESS_RANGES;
+    hwInitializationData.NumberOfMsiMessagesRequested = AHCI_MAX_PORT_COUNT;
 
     //
     // Support both PCI/ACPI enumerations on ARM64 platform for SATA device.
@@ -738,26 +739,18 @@ ULONG AhciHwFindAdapter(_In_ PVOID AdapterExtension, _In_ PVOID HwContext,
     //
     // Set interrupt related entry points.
     //
-    if (ConfigInfo->InterruptMode == Latched) {
-	//
-	// Both MSI and MSI-X are Latched interrupt mode.
-	//
-	ConfigInfo->HwMSInterruptRoutine = AhciHwMSIInterrupt;
-	ConfigInfo->InterruptSynchronizationMode = InterruptSynchronizePerMessage;
+    ConfigInfo->HwMSInterruptRoutine = AhciHwMSIInterrupt;
+    ConfigInfo->InterruptSynchronizationMode = InterruptSynchronizePerMessage;
 
-	//
-	// Allocate MessageGroupAffinity buffer for later use.
-	//
-	if (!dumpMode) {
-	    StorPortAllocatePool(AdapterExtension,
-				 sizeof(GROUP_AFFINITY) *
-				     (adapterExtension->HighestPort + 1),
-				 AHCI_POOL_TAG,
-				 (PVOID *)&adapterExtension->MessageGroupAffinity);
-	}
-
-    } else {
-	ConfigInfo->InterruptSynchronizationMode = InterruptSynchronizeAll;
+    //
+    // Allocate MessageGroupAffinity buffer for later use.
+    //
+    if (!dumpMode) {
+	StorPortAllocatePool(AdapterExtension,
+			     sizeof(GROUP_AFFINITY) *
+			     (adapterExtension->HighestPort + 1),
+			     AHCI_POOL_TAG,
+			     (PVOID *)&adapterExtension->MessageGroupAffinity);
     }
 
     // 3.5 Register Power Setting Change Notification Guids

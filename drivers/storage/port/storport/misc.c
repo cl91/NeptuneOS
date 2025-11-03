@@ -116,46 +116,6 @@ BOOLEAN TranslateResourceListAddress(PFDO_DEVICE_EXTENSION DeviceExtension,
     return FALSE;
 }
 
-NTSTATUS GetResourceListInterrupt(PFDO_DEVICE_EXTENSION DeviceExtension,
-				  PULONG Vector,
-				  PKIRQL Irql,
-				  KINTERRUPT_MODE *InterruptMode,
-				  PBOOLEAN ShareVector,
-				  PKAFFINITY Affinity)
-{
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial;
-
-    DPRINT1("GetResourceListInterrupt(%p)\n", DeviceExtension);
-
-    PCM_FULL_RESOURCE_DESCRIPTOR Full = DeviceExtension->TranslatedResources->List;
-    for (ULONG i = 0; i < DeviceExtension->TranslatedResources->Count; i++) {
-	for (ULONG j = 0; j < Full->PartialResourceList.Count; j++) {
-	    Partial = Full->PartialResourceList.PartialDescriptors + j;
-
-	    switch (Partial->Type) {
-	    case CmResourceTypeInterrupt:
-		DPRINT1("Interrupt: Level %u  Vector %u\n",
-			Partial->Interrupt.Level,
-			Partial->Interrupt.Vector);
-
-		*Vector = Partial->Interrupt.Vector;
-		*Irql = (KIRQL)Partial->Interrupt.Level;
-		*InterruptMode = (Partial->Flags & CM_RESOURCE_INTERRUPT_LATCHED) ?
-		    Latched : LevelSensitive;
-		*ShareVector = (Partial->ShareDisposition == CmResourceShareShared);
-		*Affinity = Partial->Interrupt.Affinity;
-
-		return STATUS_SUCCESS;
-	    }
-	}
-
-	/* Advance to next CM_FULL_RESOURCE_DESCRIPTOR block in memory. */
-	Full = CmGetNextResourceDescriptor(Full);
-    }
-
-    return STATUS_NOT_FOUND;
-}
-
 NTSTATUS AllocateAddressMapping(PMAPPED_ADDRESS *MappedAddressList,
 				STOR_PHYSICAL_ADDRESS IoAddress,
 				PVOID MappedAddress,

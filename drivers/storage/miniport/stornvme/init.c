@@ -342,7 +342,7 @@ BOOLEAN NVMeEnumNumaCores(PNVME_DEVICE_EXTENSION pAE)
 			       Grp);
 	    return (FALSE);
 	}
-	StorPortDebugPrint(INFO, "NVMeEnumNumaCores: Group(%d) affinity mask(0x%Ix).\n",
+	StorPortDebugPrint(INFO, "NVMeEnumNumaCores: Group(%d) affinity mask(0x%zx).\n",
 			   Grp, GrpAffinityMask);
 	pProcGrpTbl = pRMT->pProcGroupTbl + Grp;
 	pProcGrpTbl->GroupAffinity.Group = Grp;
@@ -376,7 +376,7 @@ BOOLEAN NVMeEnumNumaCores(PNVME_DEVICE_EXTENSION pAE)
 	    return (FALSE);
 	}
 
-	StorPortDebugPrint(INFO, "Core mask is 0x%Ix in Group(%d)\n", GroupAffinity.Mask,
+	StorPortDebugPrint(INFO, "Core mask is 0x%zx in Group(%d)\n", GroupAffinity.Mask,
 			   GroupAffinity.Group);
 
 	/* Find out the number of active cores of the NUMA node */

@@ -104,8 +104,10 @@ static VOID PortAcquireSpinLock(PFDO_DEVICE_EXTENSION DeviceExtension,
 
     case InterruptLock:
 	DPRINT1("InterruptLock\n");
-	if (DeviceExtension->Interrupt) {
-	    IoAcquireInterruptMutex(DeviceExtension->Interrupt);
+	assert(DeviceExtension->NumberfOfConnectedInterrupts == 1);
+	if (DeviceExtension->ConnectedInterrupts &&
+	    DeviceExtension->ConnectedInterrupts[0].Interrupt) {
+	    IoAcquireInterruptMutex(DeviceExtension->ConnectedInterrupts[0].Interrupt);
 	}
 	break;
     }
@@ -125,8 +127,10 @@ static VOID PortReleaseSpinLock(PFDO_DEVICE_EXTENSION DeviceExtension,
 
     case InterruptLock:
 	DPRINT1("InterruptLock\n");
-	if (DeviceExtension->Interrupt) {
-	    IoReleaseInterruptMutex(DeviceExtension->Interrupt);
+	assert(DeviceExtension->NumberfOfConnectedInterrupts == 1);
+	if (DeviceExtension->ConnectedInterrupts &&
+	    DeviceExtension->ConnectedInterrupts[0].Interrupt) {
+	    IoReleaseInterruptMutex(DeviceExtension->ConnectedInterrupts[0].Interrupt);
 	}
 	break;
     }
@@ -135,7 +139,6 @@ static VOID PortReleaseSpinLock(PFDO_DEVICE_EXTENSION DeviceExtension,
 static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
 				    IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
-    PDRIVER_OBJECT_EXTENSION DriverObjectExtension;
     PFDO_DEVICE_EXTENSION DeviceExtension = NULL;
     WCHAR NameBuffer[80];
     UNICODE_STRING DeviceName;
@@ -154,6 +157,19 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
 	assert(PdoExt->Device == PhysicalDeviceObject);
 	return STATUS_SUCCESS;
     }
+
+    /* Get the interface type of the lower device */
+    INTERFACE_TYPE InterfaceType = GetBusInterface(PhysicalDeviceObject);
+    if (InterfaceType == InterfaceTypeUndefined)
+	return STATUS_INVALID_DEVICE_OBJECT_PARAMETER;
+
+    /* Get the driver init data for the given interface type */
+    PDRIVER_OBJECT_EXTENSION DriverObjectExtension =
+	IoGetDriverObjectExtension(DriverObject, (PVOID)DriverEntry);
+    PHW_INITIALIZATION_DATA InitData = PortGetDriverInitData(DriverObjectExtension,
+							     InterfaceType);
+    if (InitData == NULL)
+	return STATUS_NOT_SUPPORTED;
 
     swprintf(NameBuffer, L"\\Device\\RaidPort%lu", StorPortTotalPortCount);
     RtlInitUnicodeString(&DeviceName, NameBuffer);
@@ -180,6 +196,8 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
 
     DeviceExtension->Device = Fdo;
     DeviceExtension->PhysicalDevice = PhysicalDeviceObject;
+    DeviceExtension->Miniport.DeviceExtension = DeviceExtension;
+    DeviceExtension->Miniport.InitData = InitData;
 
     DeviceExtension->PnpState = dsStopped;
     DeviceExtension->PortNumber = StorPortTotalPortCount;
@@ -197,7 +215,6 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
     }
 
     /* Insert the FDO to the drivers FDO list */
-    DriverObjectExtension = IoGetDriverObjectExtension(DriverObject, (PVOID)DriverEntry);
     ASSERT(DriverObjectExtension->ExtensionType == DriverExtension);
 
     DeviceExtension->DriverExtension = DriverObjectExtension;
@@ -598,6 +615,67 @@ static ULONG StorExtFreePool(IN PVOID HwDeviceExtension,
     return STOR_STATUS_SUCCESS;
 }
 
+static ULONG StorExtGetMsiInfo(IN PVOID HwDeviceExtension,
+			       IN ULONG MessageId,
+			       OUT PMESSAGE_INTERRUPT_INFORMATION Info)
+{
+    if (!HwDeviceExtension) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
+    if (MessageId >= DevExt->NumberfOfConnectedInterrupts) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    Info->MessageId = MessageId;
+    Info->MessageData = DevExt->ConnectedInterrupts[MessageId].MessageData;
+    Info->MessageAddress.QuadPart = DevExt->ConnectedInterrupts[MessageId].MessageAddress;
+    Info->InterruptVector = DevExt->ConnectedInterrupts[MessageId].Vector;
+    Info->InterruptLevel = DevExt->ConnectedInterrupts[MessageId].Level;
+    Info->InterruptMode = Latched;
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG StorExtAcquireMsiSpinlock(IN PVOID HwDeviceExtension,
+				       IN ULONG MessageId)
+{
+    if (!HwDeviceExtension) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
+    if (MessageId >= DevExt->NumberfOfConnectedInterrupts) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    if (DevExt->ConnectedInterrupts && DevExt->ConnectedInterrupts[MessageId].Interrupt) {
+	IoAcquireInterruptMutex(DevExt->ConnectedInterrupts[MessageId].Interrupt);
+    }
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG StorExtReleaseMsiSpinlock(IN PVOID HwDeviceExtension,
+				       IN ULONG MessageId)
+{
+    if (!HwDeviceExtension) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExt = CONTAINING_RECORD(HwDeviceExtension,
+							       MINIPORT_DEVICE_EXTENSION,
+							       HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExt->Miniport->DeviceExtension;
+    if (MessageId >= DevExt->NumberfOfConnectedInterrupts) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    if (DevExt->ConnectedInterrupts && DevExt->ConnectedInterrupts[MessageId].Interrupt) {
+	IoReleaseInterruptMutex(DevExt->ConnectedInterrupts[MessageId].Interrupt);
+    }
+    return STOR_STATUS_SUCCESS;
+}
+
 static ULONG
 StorExtAllocateContiguousMemorySpecifyCacheNode(IN PVOID HwDeviceExtension,
 						IN SIZE_T NumberOfBytes,
@@ -949,6 +1027,28 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
     {
 	GET_VA_ARG(VaList, PVOID, Ptr);
 	Status = StorExtFreePool(HwDeviceExtension, Ptr);
+	break;
+    }
+
+    case ExtFunctionAcquireMSISpinLock:
+    {
+	GET_VA_ARG(VaList, ULONG, MessageId);
+	Status = StorExtAcquireMsiSpinlock(HwDeviceExtension, MessageId);
+	break;
+    }
+
+    case ExtFunctionReleaseMSISpinLock:
+    {
+	GET_VA_ARG(VaList, ULONG, MessageId);
+	Status = StorExtReleaseMsiSpinlock(HwDeviceExtension, MessageId);
+	break;
+    }
+
+    case ExtFunctionGetMessageInterruptInformation:
+    {
+	GET_VA_ARG(VaList, ULONG, MessageId);
+	GET_VA_ARG(VaList, PMESSAGE_INTERRUPT_INFORMATION, Info);
+	Status = StorExtGetMsiInfo(HwDeviceExtension, MessageId, Info);
 	break;
     }
 
@@ -1650,6 +1750,7 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
     DPRINT1("SpecificLuExtensionSize: %u\n", InitData->SpecificLuExtensionSize);
     DPRINT1("SrbExtensionSize: %u\n", InitData->SrbExtensionSize);
     DPRINT1("NumberOfAccessRanges: %u\n", InitData->NumberOfAccessRanges);
+    DPRINT1("NumberOfMsiMessagesRequested: %u\n", InitData->NumberOfMsiMessagesRequested);
 
     /* Check parameters */
     if ((DriverObject == NULL) || (RegistryPath == NULL) || (InitData == NULL)) {
@@ -1663,6 +1764,10 @@ NTAPI ULONG StorPortInitialize(IN PVOID Argument1,
 	(InitData->HwFindAdapter == NULL) || (InitData->HwResetBus == NULL)) {
 	DPRINT1("Revision mismatch!\n");
 	return STATUS_REVISION_MISMATCH;
+    }
+
+    if (!InitData->NumberOfMsiMessagesRequested) {
+	InitData->NumberOfMsiMessagesRequested = ULONG_MAX;
     }
 
     /* Open the driver service registry to query the storage bus type (SATA, NVME, etc) */
@@ -1759,10 +1864,10 @@ NTAPI PVOID StorPortGetLogicalUnit(IN PVOID HwDeviceExtension,
  * @implemented
  */
 NTAPI PSTORAGE_REQUEST_BLOCK StorPortGetSrb(IN PVOID DeviceExtension,
-					 IN UCHAR PathId,
-					 IN UCHAR TargetId,
-					 IN UCHAR Lun,
-					 IN LONG QueueTag)
+					    IN UCHAR PathId,
+					    IN UCHAR TargetId,
+					    IN UCHAR Lun,
+					    IN LONG QueueTag)
 {
     DPRINT("StorPortGetSrb()\n");
     return NULL;

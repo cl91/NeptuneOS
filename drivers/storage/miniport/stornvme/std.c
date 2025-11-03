@@ -142,6 +142,7 @@ NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject, IN PUNICODE_STRING Registry
     hwInitData.AutoRequestSense = TRUE;
     hwInitData.NeedPhysicalAddresses = TRUE;
     hwInitData.NumberOfAccessRanges = NVME_ACCESS_RANGES;
+    hwInitData.NumberOfMsiMessagesRequested = KeQueryHighestNodeNumber() + 2;
     hwInitData.AdapterInterfaceType = PCIBus;
     hwInitData.MapBuffers = STOR_MAP_NON_READ_WRITE_BUFFERS;
     hwInitData.TaggedQueuing = TRUE;

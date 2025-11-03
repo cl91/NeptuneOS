@@ -17,9 +17,88 @@ static NTAPI BOOLEAN PortFdoInterruptRoutine(IN PKINTERRUPT Interrupt,
 {
     DPRINT1("PortFdoInterruptRoutine(%p %p)\n", Interrupt, ServiceContext);
 
-    PFDO_DEVICE_EXTENSION DeviceExtension = (PFDO_DEVICE_EXTENSION)ServiceContext;
+    PINTERRUPT_INFO InterruptInfo = ServiceContext;
+    PFDO_DEVICE_EXTENSION FdoExt = InterruptInfo->FdoExt;
 
-    return MiniportHwInterrupt(&DeviceExtension->Miniport);
+    if (FdoExt->Miniport.PortConfig.HwMSInterruptRoutine) {
+	return MiniportHwMessageInterrupt(&FdoExt->Miniport,
+					  InterruptInfo - FdoExt->ConnectedInterrupts);
+    }
+    return MiniportHwInterrupt(&FdoExt->Miniport);
+}
+
+static NTSTATUS GetInterruptInfoFromResources(PFDO_DEVICE_EXTENSION DeviceExtension)
+{
+    DPRINT1("GetInterruptInfoFromResources(%p)\n", DeviceExtension);
+
+    assert(!DeviceExtension->NumberfOfConnectedInterrupts);
+    DeviceExtension->NumberfOfConnectedInterrupts = 0;
+    PCM_FULL_RESOURCE_DESCRIPTOR Full = DeviceExtension->AllocatedResources->List;
+    for (ULONG i = 0; i < DeviceExtension->AllocatedResources->Count; i++) {
+	for (ULONG j = 0; j < Full->PartialResourceList.Count; j++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
+		Full->PartialResourceList.PartialDescriptors + j;
+
+	    switch (Partial->Type) {
+	    case CmResourceTypeInterrupt:
+		if (!(Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)) {
+		    assert(FALSE);
+		    continue;
+		}
+		DeviceExtension->NumberfOfConnectedInterrupts +=
+		    Partial->MessageInterrupt.Raw.MessageCount;
+	    }
+	}
+
+	Full = CmGetNextResourceDescriptor(Full);
+    }
+
+    ULONG Size = sizeof(INTERRUPT_INFO) * DeviceExtension->NumberfOfConnectedInterrupts;
+    DeviceExtension->ConnectedInterrupts = ExAllocatePoolWithTag(NonPagedPool, Size,
+								 TAG_INTERRUPT_INFO);
+    if (!DeviceExtension->ConnectedInterrupts) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Full = DeviceExtension->AllocatedResources->List;
+    PCM_FULL_RESOURCE_DESCRIPTOR FullTranslated = DeviceExtension->TranslatedResources->List;
+    ULONG InterruptNum = 0;
+    for (ULONG i = 0; i < DeviceExtension->AllocatedResources->Count; i++) {
+	for (ULONG j = 0; j < Full->PartialResourceList.Count; j++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial =
+		Full->PartialResourceList.PartialDescriptors + j;
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialTranslated =
+		FullTranslated->PartialResourceList.PartialDescriptors + j;
+
+	    switch (Partial->Type) {
+	    case CmResourceTypeInterrupt:
+		if (!(Partial->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)) {
+		    assert(FALSE);
+		    continue;
+		}
+		for (ULONG k = 0; k < Partial->MessageInterrupt.Raw.MessageCount; k++) {
+		    DeviceExtension->ConnectedInterrupts[InterruptNum].FdoExt = DeviceExtension;
+		    DeviceExtension->ConnectedInterrupts[InterruptNum].Vector =
+			PartialTranslated->MessageInterrupt.Translated.Vector + k;
+		    DeviceExtension->ConnectedInterrupts[InterruptNum].Level =
+			PartialTranslated->MessageInterrupt.Translated.Level + k;
+		    DeviceExtension->ConnectedInterrupts[InterruptNum].Affinity =
+			PartialTranslated->MessageInterrupt.Translated.Affinity;
+		    DeviceExtension->ConnectedInterrupts[InterruptNum].MessageAddress =
+			Partial->MessageInterrupt.Raw.MessageAddress;
+		    DeviceExtension->ConnectedInterrupts[InterruptNum].MessageData =
+			Partial->MessageInterrupt.Raw.MessageData + k;
+		    InterruptNum++;
+		}
+	    }
+	}
+
+	Full = CmGetNextResourceDescriptor(Full);
+	FullTranslated = CmGetNextResourceDescriptor(FullTranslated);
+    }
+    assert(InterruptNum == DeviceExtension->NumberfOfConnectedInterrupts);
+
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS PortFdoConnectInterrupt(IN PFDO_DEVICE_EXTENSION DeviceExtension)
@@ -33,54 +112,44 @@ static NTSTATUS PortFdoConnectInterrupt(IN PFDO_DEVICE_EXTENSION DeviceExtension
     }
 
     /* Get the interrupt data from the resource list */
-    ULONG Vector;
-    KIRQL Irql;
-    KINTERRUPT_MODE InterruptMode;
-    BOOLEAN ShareVector;
-    KAFFINITY Affinity;
-    NTSTATUS Status = GetResourceListInterrupt(DeviceExtension, &Vector,
-					       &Irql, &InterruptMode,
-					       &ShareVector, &Affinity);
+    NTSTATUS Status = GetInterruptInfoFromResources(DeviceExtension);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("GetResourceListInterrupt() failed (Status 0x%08x)\n", Status);
+	DPRINT1("GetInterruptInfoFromResources() failed (Status 0x%08x)\n", Status);
 	return Status;
     }
 
-    DPRINT1("Vector: %u\n", Vector);
-    DPRINT1("Irql: %u\n", Irql);
-    DPRINT1("Affinity: 0x%08zx\n", Affinity);
-
-    /* Connect the interrupt */
-    Status = IoConnectInterrupt(&DeviceExtension->Interrupt, PortFdoInterruptRoutine,
-				DeviceExtension, Vector, Irql, Irql, InterruptMode,
-				ShareVector, Affinity, FALSE);
-    if (NT_SUCCESS(Status)) {
-	DeviceExtension->InterruptIrql = Irql;
-    } else {
-	DPRINT1("IoConnectInterrupt() failed (Status 0x%08x)\n", Status);
+    /* Connect the interrupts */
+    for (ULONG i = 0; i < DeviceExtension->NumberfOfConnectedInterrupts; i++) {
+	Status = IoConnectInterrupt(&DeviceExtension->ConnectedInterrupts[i].Interrupt,
+				    PortFdoInterruptRoutine,
+				    &DeviceExtension->ConnectedInterrupts[i],
+				    DeviceExtension->ConnectedInterrupts[i].Vector,
+				    DeviceExtension->ConnectedInterrupts[i].Level,
+				    DeviceExtension->ConnectedInterrupts[i].Level,
+				    Latched, FALSE,
+				    DeviceExtension->ConnectedInterrupts[i].Affinity, FALSE);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT1("IoConnectInterrupt() failed (Status 0x%08x)\n", Status);
+	    for (ULONG j = 0; j < i; j++) {
+		assert(DeviceExtension->ConnectedInterrupts[j].Interrupt);
+		IoDisconnectInterrupt(DeviceExtension->ConnectedInterrupts[j].Interrupt);
+	    }
+	    DeviceExtension->NumberfOfConnectedInterrupts = 0;
+	    ExFreePool(DeviceExtension->ConnectedInterrupts);
+	    break;
+	}
     }
 
-    return Status;
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS PortFdoStartMiniport(IN PFDO_DEVICE_EXTENSION DeviceExtension)
 {
     DPRINT1("PortFdoStartMiniport(%p)\n", DeviceExtension);
 
-    /* Get the interface type of the lower device */
-    INTERFACE_TYPE InterfaceType = GetBusInterface(DeviceExtension->LowerDevice);
-    if (InterfaceType == InterfaceTypeUndefined)
-	return STATUS_NO_SUCH_DEVICE;
-
-    /* Get the driver init data for the given interface type */
-    PHW_INITIALIZATION_DATA InitData = PortGetDriverInitData(DeviceExtension->DriverExtension,
-							     InterfaceType);
-    if (InitData == NULL)
-	return STATUS_NO_SUCH_DEVICE;
-
     /* Initialize the miniport */
-    NTSTATUS Status = MiniportInitialize(&DeviceExtension->Miniport,
-					 DeviceExtension, InitData);
+    assert(DeviceExtension == DeviceExtension->Miniport.DeviceExtension);
+    NTSTATUS Status = MiniportInitialize(&DeviceExtension->Miniport);
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("MiniportInitialize() failed (Status 0x%08x)\n", Status);
 	return Status;
@@ -128,17 +197,12 @@ NTSTATUS PortFdoInitDma(IN PFDO_DEVICE_EXTENSION FdoExt,
     }
     DEVICE_DESCRIPTION DevDesc = {
 	.Version = DEVICE_DESCRIPTION_VERSION,
-	.DmaChannel = PortConfig->DmaChannel,
 	.InterfaceType = PortConfig->AdapterInterfaceType,
 	.BusNumber = PortConfig->SystemIoBusNumber,
-	.DmaWidth = PortConfig->DmaWidth,
-	.DmaSpeed = PortConfig->DmaSpeed,
 	.ScatterGather = PortConfig->ScatterGather,
-	.Master = PortConfig->Master,
-	.DmaPort = PortConfig->DmaPort,
-	.Dma32BitAddresses = PortConfig->Dma32BitAddresses,
+	.Master = TRUE,
+	.Dma32BitAddresses = TRUE,
 	.AutoInitialize = FALSE,
-	.DemandMode = PortConfig->DemandMode,
 	.MaximumLength = PortConfig->MaximumTransferLength,
 	.Dma64BitAddresses = PortConfig->Dma64BitAddresses
     };
@@ -601,17 +665,73 @@ static NTSTATUS PortFdoQueryBusRelations(IN PFDO_DEVICE_EXTENSION DevExt,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PortFdoFilterRequirements(PFDO_DEVICE_EXTENSION DeviceExtension, PIRP Irp)
+static NTSTATUS PortFdoFilterRequirements(IN PFDO_DEVICE_EXTENSION DeviceExtension,
+					  IN OUT PULONG_PTR Information)
 {
-    DPRINT1("PortFdoFilterRequirements(%p %p)\n", DeviceExtension, Irp);
+    DPRINT1("PortFdoFilterRequirements(%p %p)\n", DeviceExtension, Information);
 
     /* Get the bus number and the slot number */
-    PIO_RESOURCE_REQUIREMENTS_LIST RequirementsList =
-	(PIO_RESOURCE_REQUIREMENTS_LIST)Irp->IoStatus.Information;
-    if (RequirementsList != NULL) {
-	DeviceExtension->BusNumber = RequirementsList->BusNumber;
-	DeviceExtension->SlotNumber = RequirementsList->SlotNumber;
+    PIO_RESOURCE_REQUIREMENTS_LIST ReqList = (PVOID)(*Information);
+    if (ReqList != NULL) {
+	DeviceExtension->BusNumber = ReqList->BusNumber;
+	DeviceExtension->SlotNumber = ReqList->SlotNumber;
     }
+
+    /* Count the number of interrupts provided by the parent bus driver */
+    ULONG ResCount = 0;
+    ULONG InterruptCount = 0;
+    ULONG NumRequested = DeviceExtension->Miniport.InitData->NumberOfMsiMessagesRequested;
+    /* So far we only handle the case where there is exactly one resource requirements list. */
+    assert(ReqList->AlternativeLists == 1);
+    PIO_RESOURCE_LIST ResList = ReqList->List;
+    for (ULONG i = 0; i < ResList->Count; i++) {
+	PIO_RESOURCE_DESCRIPTOR Desc = &ResList->Descriptors[i];
+	if (Desc->Type != CmResourceTypeInterrupt) {
+	    ResCount++;
+	} else if (!(Desc->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)) {
+	    assert(FALSE);
+	    ResCount++;
+	} else if (InterruptCount < NumRequested) {
+	    InterruptCount += Desc->Interrupt.MaximumVector - Desc->Interrupt.MinimumVector + 1;
+	    ResCount++;
+	}
+    }
+
+    assert(ResCount <= ResList->Count);
+    if (ResCount == ResList->Count) {
+	return STATUS_SUCCESS;
+    }
+    ULONG NewListSize = sizeof(IO_RESOURCE_REQUIREMENTS_LIST) + sizeof(IO_RESOURCE_LIST) +
+	sizeof(IO_RESOURCE_DESCRIPTOR) * ResCount;
+    ULONG CopiedInterruptCount = 0;
+    PIO_RESOURCE_REQUIREMENTS_LIST NewList = ExAllocatePoolWithTag(NonPagedPool,
+								   NewListSize,
+								   TAG_RESOURCE_LIST);
+    if (!NewList) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    ResList = ReqList->List;
+    *NewList = *ReqList;
+    NewList->ListSize = NewListSize;
+    NewList->List[0] = *ResList;
+    NewList->List[0].Count = ResCount;
+    for (ULONG i = 0; i < ResList->Count; i++) {
+	PIO_RESOURCE_DESCRIPTOR Orig = &ResList->Descriptors[i];
+	PIO_RESOURCE_DESCRIPTOR Dest = &NewList->List[0].Descriptors[i];
+	if (Orig->Type != CmResourceTypeInterrupt) {
+	    *Dest = *Orig;
+	} else if (!(Orig->Flags & CM_RESOURCE_INTERRUPT_MESSAGE)) {
+	    assert(FALSE);
+	    *Dest = *Orig;
+	} else if (CopiedInterruptCount < InterruptCount) {
+	    CopiedInterruptCount +=
+		Orig->Interrupt.MaximumVector - Orig->Interrupt.MinimumVector + 1;
+	    *Dest = *Orig;
+	}
+    }
+    ExFreePool(ReqList);
+    *Information = (ULONG_PTR)NewList;
 
     return STATUS_SUCCESS;
 }
@@ -664,9 +784,9 @@ static NTSTATUS PortFdoIoctlStorageQueryProperty(IN PFDO_DEVICE_EXTENSION FdoExt
 					       FdoExt->NumberOfMapRegisters);
 	Descriptor->MaximumTransferLength = PortConfig->MaximumTransferLength;
 	Descriptor->AlignmentMask = PortConfig->AlignmentMask;
-	Descriptor->AdapterUsesPio = PortConfig->MapBuffers;
-	Descriptor->AdapterScansDown = PortConfig->AdapterScansDown;
-	Descriptor->CommandQueueing = PortConfig->TaggedQueuing;
+	Descriptor->AdapterUsesPio = FALSE;
+	Descriptor->AdapterScansDown = FALSE;
+	Descriptor->CommandQueueing = TRUE;
 	Descriptor->AcceleratedTransfer = TRUE;
 
 	assert(FdoExt->DriverExtension);
@@ -748,7 +868,7 @@ static NTSTATUS PortFdoIoctlScsiGetCapabilities(IN PFDO_DEVICE_EXTENSION FdoExt,
     Capabilities->SupportedAsynchronousEvents = FALSE;
     Capabilities->AlignmentMask = PortConfig->AlignmentMask;
     Capabilities->TaggedQueuing = TRUE;
-    Capabilities->AdapterScansDown = PortConfig->AdapterScansDown;
+    Capabilities->AdapterScansDown = FALSE;
     Capabilities->AdapterUsesPio = FALSE;
 
     *Information = sizeof(IO_SCSI_CAPABILITIES);
@@ -896,7 +1016,7 @@ NTSTATUS PortFdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
 
-    ULONG_PTR Information = 0;
+    ULONG_PTR Information = Irp->IoStatus.Information;
     NTSTATUS Status = STATUS_NOT_SUPPORTED;
 
     switch (Stack->MinorFunction) {
@@ -952,8 +1072,8 @@ NTSTATUS PortFdoPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 
     case IRP_MN_FILTER_RESOURCE_REQUIREMENTS: /* 0x0d */
 	DPRINT1("IRP_MJ_PNP / IRP_MN_FILTER_RESOURCE_REQUIREMENTS\n");
-	PortFdoFilterRequirements(DeviceExtension, Irp);
-	return ForwardIrpAndForget(DeviceExtension->LowerDevice, Irp);
+	Status = PortFdoFilterRequirements(DeviceExtension, &Information);
+	break;
 
     case IRP_MN_QUERY_PNP_DEVICE_STATE: /* 0x14 */
 	DPRINT1("IRP_MJ_PNP / IRP_MN_QUERY_PNP_DEVICE_STATE\n");

@@ -15,14 +15,8 @@ static NTSTATUS InitializeConfiguration(IN PPORT_CONFIGURATION_INFORMATION PortC
 					IN PHW_INITIALIZATION_DATA InitData,
 					IN ULONG BusNumber, IN ULONG SlotNumber)
 {
-    PCONFIGURATION_INFORMATION ConfigInfo;
-    ULONG i;
-
     DPRINT1("InitializeConfiguration(%p %p %u %u)\n", PortConfig, InitData, BusNumber,
 	    SlotNumber);
-
-    /* Get the configurration information */
-    ConfigInfo = IoGetConfigurationInformation();
 
     /* Initialize the port configuration */
     RtlZeroMemory(PortConfig, sizeof(PORT_CONFIGURATION_INFORMATION));
@@ -33,25 +27,7 @@ static NTSTATUS InitializeConfiguration(IN PPORT_CONFIGURATION_INFORMATION PortC
     PortConfig->AdapterInterfaceType = InitData->AdapterInterfaceType;
 
     PortConfig->MaximumTransferLength = SP_UNINITIALIZED_VALUE;
-    PortConfig->DmaChannel = SP_UNINITIALIZED_VALUE;
-    PortConfig->DmaPort = SP_UNINITIALIZED_VALUE;
 
-    PortConfig->InterruptMode = LevelSensitive;
-
-    PortConfig->Master = TRUE;
-    PortConfig->AtdiskPrimaryClaimed = ConfigInfo->AtDiskPrimaryAddressClaimed;
-    PortConfig->AtdiskSecondaryClaimed = ConfigInfo->AtDiskSecondaryAddressClaimed;
-    PortConfig->Dma32BitAddresses = TRUE;
-    PortConfig->DemandMode = FALSE;
-    PortConfig->MapBuffers = InitData->MapBuffers;
-
-    PortConfig->NeedPhysicalAddresses = TRUE;
-    PortConfig->TaggedQueuing = TRUE;
-    PortConfig->AutoRequestSense = TRUE;
-    PortConfig->MultipleRequestPerLu = TRUE;
-    PortConfig->ReceiveEvent = InitData->ReceiveEvent;
-    PortConfig->RealModeInitialized = FALSE;
-    PortConfig->BufferAccessScsiPortControlled = TRUE;
     PortConfig->MaximumNumberOfTargets = SCSI_MAXIMUM_TARGETS_PER_BUS;
 
     PortConfig->SpecificLuExtensionSize = InitData->SpecificLuExtensionSize;
@@ -73,33 +49,31 @@ static NTSTATUS InitializeConfiguration(IN PPORT_CONFIGURATION_INFORMATION PortC
 		      PortConfig->NumberOfAccessRanges * sizeof(ACCESS_RANGE));
     }
 
-    for (i = 0; i < RTL_NUMBER_OF(PortConfig->InitiatorBusId); i++) {
+    for (ULONG i = 0; i < RTL_NUMBER_OF(PortConfig->InitiatorBusId); i++) {
 	PortConfig->InitiatorBusId[i] = (CCHAR)SP_UNINITIALIZED_VALUE;
     }
 
     return STATUS_SUCCESS;
 }
 
-static VOID AssignResourcesToConfiguration(IN PPORT_CONFIGURATION_INFORMATION PortConfiguration,
-					   IN PCM_RESOURCE_LIST ResourceList,
-					   IN ULONG NumberOfAccessRanges)
+static VOID AssignAccessRangesToConfiguration(IN PPORT_CONFIGURATION_INFORMATION PortConfig,
+					      IN PCM_RESOURCE_LIST ResourceList,
+					      IN ULONG NumberOfAccessRanges)
 {
     PCM_FULL_RESOURCE_DESCRIPTOR FullDescriptor;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialDescriptor;
     PCM_PARTIAL_RESOURCE_LIST PartialResourceList;
-    PACCESS_RANGE AccessRange;
-    INT i, j;
-    ULONG RangeNumber = 0, Interrupt = 0, Dma = 0;
+    ULONG RangeNumber = 0;
 
-    DPRINT1("AssignResourceToConfiguration(%p %p %u)\n", PortConfiguration, ResourceList,
+    DPRINT1("AssignResourceToConfiguration(%p %p %u)\n", PortConfig, ResourceList,
 	    NumberOfAccessRanges);
     assert(ResourceList);
 
     FullDescriptor = &ResourceList->List[0];
-    for (i = 0; i < ResourceList->Count; i++) {
+    for (ULONG i = 0; i < ResourceList->Count; i++) {
 	PartialResourceList = &FullDescriptor->PartialResourceList;
 
-	for (j = 0; j < PartialResourceList->Count; j++) {
+	for (ULONG j = 0; j < PartialResourceList->Count; j++) {
 	    PartialDescriptor = &PartialResourceList->PartialDescriptors[j];
 
 	    switch (PartialDescriptor->Type) {
@@ -107,7 +81,7 @@ static VOID AssignResourcesToConfiguration(IN PPORT_CONFIGURATION_INFORMATION Po
 		DPRINT1("Port: 0x%llx (0x%x)\n", PartialDescriptor->Port.Start.QuadPart,
 			PartialDescriptor->Port.Length);
 		if (RangeNumber < NumberOfAccessRanges) {
-		    AccessRange = &((*(PortConfiguration->AccessRanges))[RangeNumber]);
+		    PACCESS_RANGE AccessRange = &((*(PortConfig->AccessRanges))[RangeNumber]);
 		    AccessRange->RangeStart = PartialDescriptor->Port.Start;
 		    AccessRange->RangeLength = PartialDescriptor->Port.Length;
 		    AccessRange->RangeInMemory = FALSE;
@@ -120,7 +94,7 @@ static VOID AssignResourcesToConfiguration(IN PPORT_CONFIGURATION_INFORMATION Po
 			PartialDescriptor->Memory.Start.QuadPart,
 			PartialDescriptor->Memory.Length);
 		if (RangeNumber < NumberOfAccessRanges) {
-		    AccessRange = &((*(PortConfiguration->AccessRanges))[RangeNumber]);
+		    PACCESS_RANGE AccessRange = &((*(PortConfig->AccessRanges))[RangeNumber]);
 		    AccessRange->RangeStart = PartialDescriptor->Memory.Start;
 		    AccessRange->RangeLength = PartialDescriptor->Memory.Length;
 		    AccessRange->RangeInMemory = TRUE;
@@ -128,93 +102,24 @@ static VOID AssignResourcesToConfiguration(IN PPORT_CONFIGURATION_INFORMATION Po
 		}
 		break;
 
-	    case CmResourceTypeInterrupt:
-		DPRINT1("Interrupt: Level %u  Vector %u\n",
-			PartialDescriptor->Interrupt.Level,
-			PartialDescriptor->Interrupt.Vector);
-		if (Interrupt == 0) {
-		    /* Copy interrupt data */
-		    PortConfiguration->BusInterruptLevel =
-			PartialDescriptor->Interrupt.Level;
-		    PortConfiguration->BusInterruptVector =
-			PartialDescriptor->Interrupt.Vector;
-
-		    /* Set interrupt mode accordingly to the resource */
-		    if (PartialDescriptor->Flags == CM_RESOURCE_INTERRUPT_LATCHED) {
-			PortConfiguration->InterruptMode = Latched;
-		    } else if (PartialDescriptor->Flags ==
-			       CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE) {
-			PortConfiguration->InterruptMode = LevelSensitive;
-		    }
-		} else if (Interrupt == 1) {
-		    /* Copy interrupt data */
-		    PortConfiguration->BusInterruptLevel2 =
-			PartialDescriptor->Interrupt.Level;
-		    PortConfiguration->BusInterruptVector2 =
-			PartialDescriptor->Interrupt.Vector;
-
-		    /* Set interrupt mode accordingly to the resource */
-		    if (PartialDescriptor->Flags == CM_RESOURCE_INTERRUPT_LATCHED) {
-			PortConfiguration->InterruptMode2 = Latched;
-		    } else if (PartialDescriptor->Flags ==
-			       CM_RESOURCE_INTERRUPT_LEVEL_SENSITIVE) {
-			PortConfiguration->InterruptMode2 = LevelSensitive;
-		    }
-		}
-		Interrupt++;
-		break;
-
-	    case CmResourceTypeDma:
-		DPRINT1("Dma: Channel: %u  Port: %u\n", PartialDescriptor->Dma.Channel,
-			PartialDescriptor->Dma.Port);
-		if (Dma == 0) {
-		    PortConfiguration->DmaChannel = PartialDescriptor->Dma.Channel;
-		    PortConfiguration->DmaPort = PartialDescriptor->Dma.Port;
-
-		    if (PartialDescriptor->Flags & CM_RESOURCE_DMA_8)
-			PortConfiguration->DmaWidth = Width8Bits;
-		    else if ((PartialDescriptor->Flags & CM_RESOURCE_DMA_16) ||
-			     (PartialDescriptor->Flags & CM_RESOURCE_DMA_8_AND_16))
-			PortConfiguration->DmaWidth = Width16Bits;
-		    else if (PartialDescriptor->Flags & CM_RESOURCE_DMA_32)
-			PortConfiguration->DmaWidth = Width32Bits;
-		} else if (Dma == 1) {
-		    PortConfiguration->DmaChannel2 = PartialDescriptor->Dma.Channel;
-		    PortConfiguration->DmaPort2 = PartialDescriptor->Dma.Port;
-
-		    if (PartialDescriptor->Flags & CM_RESOURCE_DMA_8)
-			PortConfiguration->DmaWidth2 = Width8Bits;
-		    else if ((PartialDescriptor->Flags & CM_RESOURCE_DMA_16) ||
-			     (PartialDescriptor->Flags & CM_RESOURCE_DMA_8_AND_16))
-			PortConfiguration->DmaWidth2 = Width16Bits;
-		    else if (PartialDescriptor->Flags & CM_RESOURCE_DMA_32)
-			PortConfiguration->DmaWidth2 = Width32Bits;
-		}
-		Dma++;
-		break;
-
 	    default:
-		DPRINT1("Other: %u\n", PartialDescriptor->Type);
 		break;
 	    }
 	}
 
 	/* Advance to next CM_FULL_RESOURCE_DESCRIPTOR block in memory. */
-	FullDescriptor =
-	    (PCM_FULL_RESOURCE_DESCRIPTOR)(FullDescriptor->PartialResourceList
-					       .PartialDescriptors +
-					   FullDescriptor->PartialResourceList.Count);
+	FullDescriptor = (PVOID)(FullDescriptor->PartialResourceList.PartialDescriptors +
+				 FullDescriptor->PartialResourceList.Count);
     }
 }
 
-NTSTATUS MiniportInitialize(IN PMINIPORT Miniport,
-			    IN PFDO_DEVICE_EXTENSION DeviceExtension,
-			    IN PHW_INITIALIZATION_DATA InitData)
+NTSTATUS MiniportInitialize(IN PMINIPORT Miniport)
 {
-    DPRINT1("MiniportInitialize(%p %p %p)\n", Miniport, DeviceExtension, InitData);
-
-    Miniport->DeviceExtension = DeviceExtension;
-    Miniport->InitData = InitData;
+    DPRINT1("MiniportInitialize(%p)\n", Miniport);
+    PFDO_DEVICE_EXTENSION DeviceExtension = Miniport->DeviceExtension;
+    assert(DeviceExtension);
+    PHW_INITIALIZATION_DATA InitData = Miniport->InitData;
+    assert(InitData);
 
     /* Calculate the miniport device extension size */
     ULONG Size = sizeof(MINIPORT_DEVICE_EXTENSION) + Miniport->InitData->DeviceExtensionSize;
@@ -237,12 +142,10 @@ NTSTATUS MiniportInitialize(IN PMINIPORT Miniport,
     if (!NT_SUCCESS(Status))
 	return Status;
 
-    /* Query the registry to find the storage bus type (SATA, NVME, etc) */
-
     /* Assign the resources to the port configuration */
-    AssignResourcesToConfiguration(&Miniport->PortConfig,
-				   DeviceExtension->AllocatedResources,
-				   InitData->NumberOfAccessRanges);
+    AssignAccessRangesToConfiguration(&Miniport->PortConfig,
+				      DeviceExtension->AllocatedResources,
+				      InitData->NumberOfAccessRanges);
 
     return STATUS_SUCCESS;
 }
@@ -310,6 +213,13 @@ NTSTATUS MiniportHwInitialize(IN PMINIPORT Miniport)
 BOOLEAN MiniportHwInterrupt(IN PMINIPORT Miniport)
 {
     return Miniport->InitData->HwInterrupt(&Miniport->MiniportExtension->HwDeviceExtension);
+}
+
+BOOLEAN MiniportHwMessageInterrupt(IN PMINIPORT Miniport,
+				   IN ULONG MessageId)
+{
+    return Miniport->PortConfig.HwMSInterruptRoutine(
+	&Miniport->MiniportExtension->HwDeviceExtension, MessageId);
 }
 
 BOOLEAN MiniportBuildIo(IN PMINIPORT Miniport,

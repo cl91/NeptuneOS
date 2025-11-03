@@ -29,6 +29,7 @@
 #define TAG_SRB_EXTENSION   'EStS'
 #define TAG_ACCRESS_RANGE   'RAtS'
 #define TAG_RESOURCE_LIST   'LRtS'
+#define TAG_INTERRUPT_INFO  'NItS'
 #define TAG_ADDRESS_MAPPING 'MAtS'
 #define TAG_INQUIRY_DATA    'QItS'
 #define TAG_SENSE_DATA      'NStS'
@@ -83,6 +84,17 @@ typedef struct _UNIT_DATA {
     INQUIRYDATA InquiryData;
 } UNIT_DATA, *PUNIT_DATA;
 
+struct _FDO_DEVICE_EXTENSION;
+typedef struct _INTERRUPT_INFO {
+    struct _FDO_DEVICE_EXTENSION *FdoExt;
+    PKINTERRUPT Interrupt;
+    ULONG Vector;
+    ULONG Level;
+    KAFFINITY Affinity;
+    ULONG_PTR MessageAddress;
+    ULONG MessageData;
+} INTERRUPT_INFO, *PINTERRUPT_INFO;
+
 typedef struct _FDO_DEVICE_EXTENSION {
     EXTENSION_TYPE ExtensionType; /* Must be first member */
 
@@ -103,8 +115,8 @@ typedef struct _FDO_DEVICE_EXTENSION {
     PHYSICAL_ADDRESS UncachedExtensionPhysicalBase;
     ULONG UncachedExtensionSize;
     PHW_PASSIVE_INITIALIZE_ROUTINE HwPassiveInitRoutine;
-    PKINTERRUPT Interrupt;
-    ULONG InterruptIrql;
+    ULONG NumberfOfConnectedInterrupts;
+    PINTERRUPT_INFO ConnectedInterrupts;
     PDMA_ADAPTER DmaAdapter;
     ULONG NumberOfMapRegisters;
     PVOID MapRegisterBase;
@@ -158,15 +170,16 @@ NTSTATUS PortFdoInitDma(IN PFDO_DEVICE_EXTENSION FdoExt,
 
 /* miniport.c */
 
-NTSTATUS MiniportInitialize(IN PMINIPORT Miniport,
-			    IN PFDO_DEVICE_EXTENSION DeviceExtension,
-			    IN PHW_INITIALIZATION_DATA HwInitializationData);
+NTSTATUS MiniportInitialize(IN PMINIPORT Miniport);
 
 NTSTATUS MiniportFindAdapter(IN PMINIPORT Miniport);
 
 NTSTATUS MiniportHwInitialize(IN PMINIPORT Miniport);
 
 BOOLEAN MiniportHwInterrupt(IN PMINIPORT Miniport);
+
+BOOLEAN MiniportHwMessageInterrupt(IN PMINIPORT Miniport,
+				   IN ULONG MessageId);
 
 BOOLEAN MiniportBuildIo(IN PMINIPORT Miniport,
 			IN PSTORAGE_REQUEST_BLOCK Srb);
@@ -190,13 +203,6 @@ BOOLEAN TranslateResourceListAddress(PFDO_DEVICE_EXTENSION DeviceExtension,
 				     ULONG NumberOfBytes,
 				     BOOLEAN InIoSpace,
 				     PPHYSICAL_ADDRESS TranslatedAddress);
-
-NTSTATUS GetResourceListInterrupt(PFDO_DEVICE_EXTENSION DeviceExtension,
-				  PULONG Vector,
-				  PKIRQL Irql,
-				  KINTERRUPT_MODE *InterruptMode,
-				  PBOOLEAN ShareVector,
-				  PKAFFINITY Affinity);
 
 NTSTATUS AllocateAddressMapping(PMAPPED_ADDRESS *MappedAddressList,
 				STOR_PHYSICAL_ADDRESS IoAddress,

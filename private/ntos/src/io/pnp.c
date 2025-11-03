@@ -843,7 +843,9 @@ static NTSTATUS IopQueueFilterResourceRequirementsRequest(IN PTHREAD Thread,
     if (Res) {
 	memcpy(Irp->FilterResourceRequirements.Data, Res, DataSize);
     }
-    return IopCallDriver(Thread, Irp, PendingIrp);
+    NTSTATUS Status = IopCallDriver(Thread, Irp, PendingIrp);
+    ExFreePoolWithTag(Irp, NTOS_IO_TAG);
+    return Status;
 }
 
 static inline ULONG IopGetPartialResourceCount(IN PIO_RESOURCE_DESCRIPTOR List,
@@ -1162,12 +1164,10 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
 	    PPENDING_IRP QueryResPendingIrp;
 	    PPENDING_IRP FilterResPendingIrp;
 	    PIO_RESOURCE_REQUIREMENTS_LIST Res;
-	    BOOLEAN FreeResList;
 	});
     Locals.QueryResPendingIrp = NULL;
     Locals.FilterResPendingIrp = NULL;
     Locals.Res = NULL;
-    Locals.FreeResList = FALSE;
 
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeDevicesAdded) {
 	DbgTrace("Device node state is %d. Not assigning resources.\n",
@@ -1207,7 +1207,6 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
 	Locals.Res->List[0].Descriptors[0].Memory.Alignment = 1;
 	Locals.Res->List[0].Descriptors[0].Memory.MinimumAddress.QuadPart = Address;
 	Locals.Res->List[0].Descriptors[0].Memory.MaximumAddress.QuadPart = Address+Length-1;
-	Locals.FreeResList = TRUE;
 	goto filter;
     }
 
@@ -1230,10 +1229,11 @@ static NTSTATUS IopDeviceNodeAssignResources(IN ASYNC_STATE AsyncState,
 	goto filter;
     }
     if (Locals.Res->ListSize <= MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE ||
-	Locals.Res->ListSize > Locals.QueryResPendingIrp->IoResponseDataSize) {
+	Locals.Res->ListSize != Locals.QueryResPendingIrp->IoResponseDataSize) {
 	Status = STATUS_INVALID_PARAMETER;
 	goto out;
     }
+    Locals.QueryResPendingIrp->IoResponseData = NULL;
 
 filter:
     /* Queue a FILTER-RESOURCE-REQUIREMENTS request to the function driver so it can
@@ -1246,11 +1246,14 @@ filter:
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.FilterResPendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.FilterResPendingIrp->IoResponseStatus.Status;
-    if (NT_SUCCESS(Status) && Locals.FilterResPendingIrp->IoResponseData &&
-	Locals.Res->ListSize > MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE &&
-	Locals.Res->ListSize <= Locals.FilterResPendingIrp->IoResponseDataSize) {
-	Locals.Res = Locals.FilterResPendingIrp->IoResponseData;
-	Locals.FreeResList = FALSE;
+    if (NT_SUCCESS(Status) && Locals.FilterResPendingIrp->IoResponseData) {
+	PIO_RESOURCE_REQUIREMENTS_LIST NewList = Locals.FilterResPendingIrp->IoResponseData;
+	if (NewList->ListSize > MINIMAL_IO_RESOURCE_REQUIREMENTS_LIST_SIZE &&
+	    NewList->ListSize == Locals.FilterResPendingIrp->IoResponseDataSize) {
+	    IopFreePool(Locals.Res);
+	    Locals.Res = NewList;
+	    Locals.FilterResPendingIrp->IoResponseData = NULL;
+	}
     }
 
     /* Free the resource lists in case a previous attempt to assign resources failed. */
@@ -1299,7 +1302,7 @@ filter:
     }
 
 out:
-    if (Locals.FreeResList) {
+    if (Locals.Res) {
 	IopFreePool(Locals.Res);
     }
     if (Locals.QueryResPendingIrp) {
@@ -1349,7 +1352,9 @@ static NTSTATUS IopQueueStartDeviceRequest(IN PTHREAD Thread,
     CmDbgPrintResourceList(Raw);
     DbgTrace("and the following translated resources\n");
     CmDbgPrintResourceList(Translated);
-    return IopCallDriver(Thread, Irp, PendingIrp);
+    NTSTATUS Status = IopCallDriver(Thread, Irp, PendingIrp);
+    ExFreePoolWithTag(Irp, NTOS_IO_TAG);
+    return Status;
 }
 
 static NTSTATUS IopDeviceNodeStartDevice(IN ASYNC_STATE AsyncState,
@@ -1967,13 +1972,24 @@ BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
 	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Translated =
 		TranslatedDesc->PartialResourceList.PartialDescriptors;
 	    for (ULONG j = 0; j < TranslatedDesc->PartialResourceList.Count; j++) {
-		if (Translated->Type == CmResourceTypeInterrupt &&
-		    Translated->Interrupt.Vector == Vector) {
+		if (Translated->Type != CmResourceTypeInterrupt) {
+		    goto next;
+		}
+		BOOLEAN Found = FALSE;
+		if (Raw->Flags & CM_RESOURCE_INTERRUPT_MESSAGE) {
+		    ULONG VectorStart = Translated->MessageInterrupt.Translated.Vector;
+		    ULONG VectorCount = Raw->MessageInterrupt.Raw.MessageCount;
+		    Found = (Vector >= VectorStart) && (Vector < (VectorStart + VectorCount));
+		} else {
+		    Found = Translated->Interrupt.Vector == Vector;
+		}
+		if (Found) {
 		    *BusInfo = DevNode->BusInformation;
 		    *SlotNumber = DevNode->SlotNumber;
 		    *pRaw = Raw;
 		    return TRUE;
 		}
+	    next:
 		Raw = CmGetNextPartialDescriptor(Raw);
 		Translated = CmGetNextPartialDescriptor(Translated);
 	    }

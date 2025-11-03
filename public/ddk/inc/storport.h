@@ -74,24 +74,16 @@ typedef enum _INTERRUPT_SYNCHRONIZATION_MODE {
     InterruptSynchronizePerMessage
 } INTERRUPT_SYNCHRONIZATION_MODE;
 
-typedef BOOLEAN HW_MESSAGE_SIGNALED_INTERRUPT_ROUTINE (IN PVOID HwDeviceExtension,
-						       IN ULONG MessageId);
+typedef BOOLEAN HW_MESSAGE_SIGNALED_INTERRUPT_ROUTINE(IN PVOID HwDeviceExtension,
+						      IN ULONG MessageId);
 typedef HW_MESSAGE_SIGNALED_INTERRUPT_ROUTINE *PHW_MESSAGE_SIGNALED_INTERRUPT_ROUTINE;
-
 
 typedef struct _PORT_CONFIGURATION_INFORMATION {
     ULONG Length;
     ULONG SystemIoBusNumber;
     INTERFACE_TYPE AdapterInterfaceType;
-    ULONG BusInterruptLevel;
-    ULONG BusInterruptVector;
-    KINTERRUPT_MODE InterruptMode;
     ULONG MaximumTransferLength;
     ULONG NumberOfPhysicalBreaks;
-    ULONG DmaChannel;
-    ULONG DmaPort;
-    DMA_WIDTH DmaWidth;
-    DMA_SPEED DmaSpeed;
     ULONG AlignmentMask;
     ULONG NumberOfAccessRanges;
     ACCESS_RANGE (*AccessRanges)[];
@@ -99,31 +91,9 @@ typedef struct _PORT_CONFIGURATION_INFORMATION {
     UCHAR NumberOfBuses;
     UCHAR InitiatorBusId[8];
     BOOLEAN ScatterGather;
-    BOOLEAN Master;
     BOOLEAN CachesData;
-    BOOLEAN AdapterScansDown;
-    BOOLEAN AtdiskPrimaryClaimed;
-    BOOLEAN AtdiskSecondaryClaimed;
-    BOOLEAN Dma32BitAddresses;
-    BOOLEAN DemandMode;
-    BOOLEAN MapBuffers;
-    BOOLEAN NeedPhysicalAddresses;
-    BOOLEAN TaggedQueuing;
-    BOOLEAN AutoRequestSense;
-    BOOLEAN MultipleRequestPerLu;
-    BOOLEAN ReceiveEvent;
-    BOOLEAN RealModeInitialized;
-    BOOLEAN BufferAccessScsiPortControlled;
     UCHAR MaximumNumberOfTargets;
-    UCHAR ReservedUchars[2];
     ULONG SlotNumber;
-    ULONG BusInterruptLevel2;
-    ULONG BusInterruptVector2;
-    KINTERRUPT_MODE InterruptMode2;
-    ULONG DmaChannel2;
-    ULONG DmaPort2;
-    DMA_WIDTH DmaWidth2;
-    DMA_SPEED DmaSpeed2;
     ULONG DeviceExtensionSize;
     ULONG SpecificLuExtensionSize;
     ULONG SrbExtensionSize;
@@ -1114,7 +1084,7 @@ typedef struct _HW_INITIALIZATION_DATA {
     ULONG SpecificLuExtensionSize;
     ULONG SrbExtensionSize;
     ULONG NumberOfAccessRanges;
-    PVOID Reserved;
+    ULONG NumberOfMsiMessagesRequested;
     UCHAR MapBuffers;
     BOOLEAN NeedPhysicalAddresses;
     BOOLEAN TaggedQueuing;
