@@ -233,16 +233,10 @@ NTAPI ULONG NVMeFindAdapter(PVOID Context, PVOID Reserved1, PVOID Reserved2,
     if (NVMeStrCompare("dump=1", ArgumentString) == TRUE)
 	pAE->ntldrDump = TRUE;
 
-/* Code Analysis fails on StoPortReadRegisterUlong64 */
-#if 0 // (NTDDI_VERSION > NTDDI_WIN7) && defined(_WIN64)
-    CAP.AsUlonglong = StorPortReadRegisterUlong64(pAE,
-						  (PULONG64)(&pAE->pCtrlRegister->CAP));
-#else
     CAP.HighPart = StorPortReadRegisterUlong(pAE,
 					     (PULONG)(&pAE->pCtrlRegister->CAP.HighPart));
     CAP.LowPart = StorPortReadRegisterUlong(pAE,
 					    (PULONG)(&pAE->pCtrlRegister->CAP.LowPart));
-#endif
 
     /* setup ctrl timeout and stride info */
     pAE->uSecCrtlTimeout = (ULONG)(CAP.TO * MIN_WAIT_TIMEOUT);
