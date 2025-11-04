@@ -807,8 +807,9 @@ static ULONG StorExtRequestTimer(IN PVOID HwDeviceExtension,
 	if (Timer->Active) {
 	    return STOR_STATUS_BUSY;
 	}
-	/* TimerValue is the relative due time from the current time. */
-	LARGE_INTEGER DueTime = { .QuadPart = -TimerValue };
+	/* TimerValue is the relative due time from the current time,
+	 * in units of us. */
+	LARGE_INTEGER DueTime = { .QuadPart = -10LL * TimerValue };
 	Timer->Callback = TimerCallback;
 	Timer->CallbackContext = CallbackContext;
 	Timer->Active = TRUE;
