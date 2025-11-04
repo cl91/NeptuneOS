@@ -676,6 +676,22 @@ static ULONG StorExtReleaseMsiSpinlock(IN PVOID HwDeviceExtension,
     return STOR_STATUS_SUCCESS;
 }
 
+static ULONG StorExtInitializePerfOpts(IN PVOID HwDeviceExtension,
+				       IN ULONG Query,
+				       IN OUT PPERF_CONFIGURATION_DATA Data)
+{
+    UNIMPLEMENTED;
+    return STOR_STATUS_SUCCESS;
+}
+
+static ULONG StorExtGetStartIoPerfParams(IN PVOID HwDeviceExtension,
+					 IN PSTORAGE_REQUEST_BLOCK Srb,
+					 IN OUT PSTARTIO_PERFORMANCE_PARAMETERS Params)
+{
+    UNIMPLEMENTED;
+    return STOR_STATUS_SUCCESS;
+}
+
 static ULONG
 StorExtAllocateContiguousMemorySpecifyCacheNode(IN PVOID HwDeviceExtension,
 						IN SIZE_T NumberOfBytes,
@@ -1049,6 +1065,22 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
 	GET_VA_ARG(VaList, ULONG, MessageId);
 	GET_VA_ARG(VaList, PMESSAGE_INTERRUPT_INFORMATION, Info);
 	Status = StorExtGetMsiInfo(HwDeviceExtension, MessageId, Info);
+	break;
+    }
+
+    case ExtFunctionInitializePerformanceOptimizations:
+    {
+	GET_VA_ARG(VaList, ULONG, Query);
+	GET_VA_ARG(VaList, PPERF_CONFIGURATION_DATA, Data);
+	Status = StorExtInitializePerfOpts(HwDeviceExtension, Query, Data);
+	break;
+    }
+
+    case ExtFunctionGetStartIoPerformanceParameters:
+    {
+	GET_VA_ARG(VaList, PSTORAGE_REQUEST_BLOCK, Srb);
+	GET_VA_ARG(VaList, PSTARTIO_PERFORMANCE_PARAMETERS, Params);
+	Status = StorExtGetStartIoPerfParams(HwDeviceExtension, Srb, Params);
 	break;
     }
 

@@ -1837,7 +1837,7 @@ FORCEINLINE ULONG StorPortInitializePerfOpts(IN PVOID HwDeviceExtension,
 					     IN OUT PPERF_CONFIGURATION_DATA Data)
 {
     return StorPortExtendedFunction(ExtFunctionInitializePerformanceOptimizations,
-				    HwDeviceExtension, Query, Data);
+				    HwDeviceExtension, (ULONG)Query, Data);
 }
 
 FORCEINLINE ULONG StorPortGetStartIoPerfParams(IN PVOID HwDeviceExtension,
