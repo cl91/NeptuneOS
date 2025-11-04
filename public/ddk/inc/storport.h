@@ -956,7 +956,7 @@ typedef HW_STARTIO *PHW_STARTIO;
 typedef BOOLEAN (NTAPI HW_INTERRUPT)(IN PVOID DeviceExtension);
 typedef HW_INTERRUPT *PHW_INTERRUPT;
 
-typedef VOID (NTAPI HW_TIMER)(IN PVOID DeviceExtension);
+typedef VOID HW_TIMER(IN PVOID DeviceExtension);
 typedef HW_TIMER *PHW_TIMER;
 
 typedef VOID HW_TIMER_EX(IN PVOID DeviceExtension,

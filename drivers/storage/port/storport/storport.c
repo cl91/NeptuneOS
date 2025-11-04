@@ -827,9 +827,7 @@ static ULONG StorExtFreeTimer(IN PVOID HwDeviceExtension,
 	return STOR_STATUS_INVALID_PARAMETER;
     }
     PSTORPORT_TIMER Timer = TimerHandle;
-    if (Timer->Active) {
-	KeCancelTimer(&Timer->Timer);
-    }
+    KeCancelTimer(&Timer->Timer);
     ExFreePool(Timer);
     return STOR_STATUS_SUCCESS;
 }
@@ -2066,6 +2064,22 @@ static NTAPI VOID StorPortDpcWorkerRoutine(IN PDEVICE_OBJECT DeviceObject,
 		      Dpc->SystemArgument1, Dpc->SystemArgument2);
 }
 
+typedef struct _HW_TIMER_CALLBACK_CONTEXT {
+    PVOID TimerHandle;
+    PHW_TIMER Callback;
+} HW_TIMER_CALLBACK_CONTEXT, *PHW_TIMER_CALLBACK_CONTEXT;
+
+static VOID StorPortRequestTimerCallback(IN PVOID HwDevExt,
+					 IN PVOID Context)
+{
+    PHW_TIMER_CALLBACK_CONTEXT Ctx = Context;
+    assert(Ctx->Callback);
+    Ctx->Callback(HwDevExt);
+    /* Note since StorExtFreeTimer always cancels the timer, it is ok we free it here. */
+    StorExtFreeTimer(HwDevExt, Ctx->TimerHandle);
+    ExFreePool(Ctx);
+}
+
 /*
  * @unimplemented
  */
@@ -2155,6 +2169,36 @@ VOID StorPortNotification(IN SCSI_NOTIFICATION_TYPE NotificationType,
 	DPRINT1("ReleaseSpinLock\n");
 	GET_VA_ARG(ap, PSTOR_LOCK_HANDLE, LockHandle);
 	PortReleaseSpinLock(DevExt, LockHandle);
+	break;
+    }
+
+    case RequestTimerCall:
+    {
+	DPRINT1("RequestTimerCall\n");
+	GET_VA_ARG(ap, PHW_TIMER, HwStorTimer);
+	GET_VA_ARG(ap, ULONG, TimerValue);
+	PHW_TIMER_CALLBACK_CONTEXT Ctx = ExAllocatePool(NonPagedPool,
+							sizeof(HW_TIMER_CALLBACK_CONTEXT));
+	if (!Ctx) {
+	    break;
+	}
+	PVOID TimerHandle = NULL;
+	ULONG Status = StorExtInitializeTimer(HwDeviceExtension, &TimerHandle);
+	if (Status != STOR_STATUS_SUCCESS) {
+	    assert(FALSE);
+	    ExFreePool(Ctx);
+	    break;
+	}
+	Ctx->TimerHandle = TimerHandle;
+	Ctx->Callback = HwStorTimer;
+	Status = StorExtRequestTimer(HwDeviceExtension, TimerHandle,
+				     StorPortRequestTimerCallback, Ctx,
+				     TimerValue, 0);
+	if (Status != STOR_STATUS_SUCCESS) {
+	    assert(FALSE);
+	    ExFreePool(Ctx);
+	    StorExtFreeTimer(HwDeviceExtension, TimerHandle);
+	}
 	break;
     }
 

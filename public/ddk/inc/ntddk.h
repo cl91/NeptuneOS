@@ -244,7 +244,7 @@ typedef struct _OBJECT_HEADER {
  * side may or may not have a corresponding server-side object (KTIMER
  * does have a server-side object, but KEVENT does not).
  */
-typedef struct _WAITABLE_OBJECT_HEADER {
+typedef struct POINTER_ALIGNMENT _WAITABLE_OBJECT_HEADER {
     OBJECT_HEADER Header;
     LIST_ENTRY QueueListEntry;
     LIST_ENTRY EnvList;	/* List of execution environments suspended on the object */
@@ -1419,7 +1419,7 @@ NTAPI NTSYSAPI VOID IoQueueWorkItemEx(IN OUT PIO_WORKITEM IoWorkItem,
  * There is no name collision because the NTOS server does not
  * include files under public/ddk.
  */
-typedef struct _KTIMER {
+typedef struct POINTER_ALIGNMENT _KTIMER {
     WAITABLE_OBJECT_HEADER Header;	/* Must be first member. */
     union {
 	PKDPC Dpc;
