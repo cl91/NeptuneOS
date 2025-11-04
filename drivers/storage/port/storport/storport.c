@@ -2181,7 +2181,8 @@ NTAPI VOID StorPortQuerySystemTime(OUT PLARGE_INTEGER CurrentTime)
  */
 NTAPI VOID StorPortStallExecution(IN ULONG Delay)
 {
-    KeStallExecutionProcessor(Delay);
+    LARGE_INTEGER DueTime = { .QuadPart = -10LL * Delay };
+    KeDelayExecutionThread(FALSE, &DueTime);
 }
 
 /*
