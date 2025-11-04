@@ -3,7 +3,6 @@ project(storport C ASM)
 list(APPEND SOURCE
     fdo.c
     miniport.c
-    misc.c
     pdo.c
     storport.c
     wmi.c

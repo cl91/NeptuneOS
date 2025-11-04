@@ -154,6 +154,15 @@ typedef struct _SRB_PORT_CONTEXT {
     BOOLEAN WriteToDevice;
 } SRB_PORT_CONTEXT, *PSRB_PORT_CONTEXT;
 
+FORCEINLINE NTSTATUS ForwardIrpAndForget(_In_ PDEVICE_OBJECT LowerDevice,
+					 _In_ PIRP Irp)
+{
+    ASSERT(LowerDevice);
+
+    IoSkipCurrentIrpStackLocation(Irp);
+    return IoCallDriver(LowerDevice, Irp);
+}
+
 /* fdo.c */
 
 NTSTATUS PortFdoScsi(IN PDEVICE_OBJECT DeviceObject,
@@ -186,29 +195,6 @@ BOOLEAN MiniportBuildIo(IN PMINIPORT Miniport,
 
 BOOLEAN MiniportStartIo(IN PMINIPORT Miniport,
 			IN PSTORAGE_REQUEST_BLOCK Srb);
-
-/* misc.c */
-
-NTAPI NTSTATUS ForwardIrpAndForget(IN PDEVICE_OBJECT LowerDevice,
-				   IN PIRP Irp);
-
-INTERFACE_TYPE GetBusInterface(PDEVICE_OBJECT DeviceObject);
-
-PCM_RESOURCE_LIST CopyResourceList(PCM_RESOURCE_LIST Source);
-
-BOOLEAN TranslateResourceListAddress(PFDO_DEVICE_EXTENSION DeviceExtension,
-				     INTERFACE_TYPE BusType,
-				     ULONG SystemIoBusNumber,
-				     STOR_PHYSICAL_ADDRESS IoAddress,
-				     ULONG NumberOfBytes,
-				     BOOLEAN InIoSpace,
-				     PPHYSICAL_ADDRESS TranslatedAddress);
-
-NTSTATUS AllocateAddressMapping(PMAPPED_ADDRESS *MappedAddressList,
-				STOR_PHYSICAL_ADDRESS IoAddress,
-				PVOID MappedAddress,
-				ULONG NumberOfBytes,
-				ULONG BusNumber);
 
 /* pdo.c */
 

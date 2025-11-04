@@ -136,6 +136,27 @@ static VOID PortReleaseSpinLock(PFDO_DEVICE_EXTENSION DeviceExtension,
     }
 }
 
+static INTERFACE_TYPE GetBusInterface(PDEVICE_OBJECT DeviceObject)
+{
+    GUID Guid;
+    ULONG Length;
+    NTSTATUS Status;
+
+    Status = IoGetDeviceProperty(DeviceObject, DevicePropertyBusTypeGuid, sizeof(Guid),
+				 &Guid, &Length);
+    if (!NT_SUCCESS(Status))
+	return InterfaceTypeUndefined;
+
+    if (RtlCompareMemory(&Guid, &GUID_BUS_TYPE_PCMCIA, sizeof(GUID)) == sizeof(GUID))
+	return PCMCIABus;
+    else if (RtlCompareMemory(&Guid, &GUID_BUS_TYPE_PCI, sizeof(GUID)) == sizeof(GUID))
+	return PCIBus;
+    else if (RtlCompareMemory(&Guid, &GUID_BUS_TYPE_ISAPNP, sizeof(GUID)) == sizeof(GUID))
+	return PNPISABus;
+
+    return InterfaceTypeUndefined;
+}
+
 static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
 				    IN PDEVICE_OBJECT PhysicalDeviceObject)
 {
@@ -697,34 +718,21 @@ StorExtAllocateContiguousMemorySpecifyCacheNode(IN PVOID HwDeviceExtension,
 						IN SIZE_T NumberOfBytes,
 						IN PHYSICAL_ADDRESS LowestAcceptableAddress,
 						IN PHYSICAL_ADDRESS HighestAcceptableAddress,
-						IN OPTIONAL PHYSICAL_ADDRESS BoundaryAddrMultiple,
+						IN OPTIONAL PHYSICAL_ADDRESS BoundAddrMultiple,
 						IN MEMORY_CACHING_TYPE CacheType,
 						IN NODE_REQUIREMENT PreferredNode,
 						PVOID *VirtAddr)
 {
-    UNREFERENCED_PARAMETER(HwDeviceExtension);
-    UNREFERENCED_PARAMETER(PreferredNode);
-
     if (!VirtAddr) {
 	return STOR_STATUS_INVALID_PARAMETER;
     }
 
-    /* We don't allow non-zero lowest acceptable address */
-    if (LowestAcceptableAddress.QuadPart) {
-	return STOR_STATUS_INVALID_PARAMETER;
-    }
-
     *VirtAddr = NULL;
-    PHYSICAL_ADDRESS PhyAddr = {};
-    MmAllocateContiguousMemorySpecifyCache(NumberOfBytes,
-					   HighestAcceptableAddress,
-					   BoundaryAddrMultiple,
-					   CacheType, VirtAddr, &PhyAddr);
-    if (*VirtAddr == NULL || PhyAddr.QuadPart == 0) {
-	return STOR_STATUS_INSUFFICIENT_RESOURCES;
-    }
-
-    return STOR_STATUS_SUCCESS;
+    PHYSICAL_ADDRESS PhysicalAddress = {};
+    return StorPortAllocateDmaMemory(HwDeviceExtension, NumberOfBytes,
+				     LowestAcceptableAddress, HighestAcceptableAddress,
+				     BoundAddrMultiple, CacheType, PreferredNode,
+				     VirtAddr, &PhysicalAddress);
 }
 
 static ULONG StorExtFreeContiguousMemorySpecifyCache(IN PVOID HwDeviceExtension,
@@ -732,11 +740,9 @@ static ULONG StorExtFreeContiguousMemorySpecifyCache(IN PVOID HwDeviceExtension,
 						     IN SIZE_T NumberOfBytes,
 						     IN MEMORY_CACHING_TYPE CacheType)
 {
-    UNREFERENCED_PARAMETER(HwDeviceExtension);
-
-    MmFreeContiguousMemorySpecifyCache(BaseAddress, NumberOfBytes, CacheType);
-
-    return STOR_STATUS_SUCCESS;
+    LARGE_INTEGER PhysicalAddress = {};
+    return StorPortFreeDmaMemory(HwDeviceExtension, BaseAddress, NumberOfBytes,
+				 CacheType, PhysicalAddress);
 }
 
 typedef struct _STORPORT_TIMER {
@@ -1287,6 +1293,63 @@ ULONG StorPortExtendedFunction(IN STORPORT_FUNCTION_CODE FunctionCode,
     return Status;
 }
 
+static BOOLEAN TranslateResourceListAddress(PFDO_DEVICE_EXTENSION DeviceExtension,
+					    INTERFACE_TYPE BusType,
+					    ULONG SystemIoBusNumber,
+					    STOR_PHYSICAL_ADDRESS IoAddress,
+					    ULONG NumberOfBytes,
+					    BOOLEAN InIoSpace,
+					    PPHYSICAL_ADDRESS TranslatedAddress)
+{
+    DPRINT1("TranslateResourceListAddress(%p)\n", DeviceExtension);
+
+    PCM_FULL_RESOURCE_DESCRIPTOR FullA = DeviceExtension->AllocatedResources->List;
+    PCM_FULL_RESOURCE_DESCRIPTOR FullT = DeviceExtension->TranslatedResources->List;
+    for (ULONG i = 0; i < DeviceExtension->AllocatedResources->Count; i++) {
+	for (ULONG j = 0; j < FullA->PartialResourceList.Count; j++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialA =
+		FullA->PartialResourceList.PartialDescriptors + j;
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR PartialT =
+		FullT->PartialResourceList.PartialDescriptors + j;
+
+	    switch (PartialA->Type) {
+	    case CmResourceTypePort:
+		DPRINT1("Port: 0x%llx (0x%x)\n", PartialA->Port.Start.QuadPart,
+			PartialA->Port.Length);
+		if (InIoSpace && IoAddress.QuadPart >= PartialA->Port.Start.QuadPart &&
+		    IoAddress.QuadPart + NumberOfBytes <=
+		    PartialA->Port.Start.QuadPart + PartialA->Port.Length) {
+		    TranslatedAddress->QuadPart =
+			PartialT->Port.Start.QuadPart +
+			(IoAddress.QuadPart - PartialA->Port.Start.QuadPart);
+		    return TRUE;
+		}
+		break;
+
+	    case CmResourceTypeMemory:
+		DPRINT1("Memory: 0x%llx (0x%x)\n",
+			PartialA->Memory.Start.QuadPart,
+			PartialA->Memory.Length);
+		if (!InIoSpace && IoAddress.QuadPart >= PartialA->Memory.Start.QuadPart &&
+		    IoAddress.QuadPart + NumberOfBytes <=
+		    PartialA->Memory.Start.QuadPart + PartialA->Memory.Length) {
+		    TranslatedAddress->QuadPart =
+			PartialT->Memory.Start.QuadPart +
+			(IoAddress.QuadPart - PartialA->Memory.Start.QuadPart);
+		    return TRUE;
+		}
+		break;
+	    }
+	}
+
+	/* Advance to next CM_FULL_RESOURCE_DESCRIPTOR block in memory. */
+	FullA = CmGetNextResourceDescriptor(FullA);
+	FullT = CmGetNextResourceDescriptor(FullT);
+    }
+
+    return FALSE;
+}
+
 /*
  * @implemented
  */
@@ -1297,22 +1360,16 @@ NTAPI PVOID StorPortGetDeviceBase(IN PVOID HwDeviceExtension,
 				  IN ULONG NumberOfBytes,
 				  IN BOOLEAN InIoSpace)
 {
-    PMINIPORT_DEVICE_EXTENSION MiniportExtension;
-    PHYSICAL_ADDRESS TranslatedAddress;
-    PVOID MappedAddress;
-    NTSTATUS Status;
-
     DPRINT1("StorPortGetDeviceBase(%p %u %u 0x%llx %u %u)\n", HwDeviceExtension, BusType,
 	    SystemIoBusNumber, IoAddress.QuadPart, NumberOfBytes, InIoSpace);
 
     /* Get the miniport extension */
-    MiniportExtension = CONTAINING_RECORD(HwDeviceExtension, MINIPORT_DEVICE_EXTENSION,
-					  HwDeviceExtension);
-    DPRINT1("HwDeviceExtension %p  MiniportExtension %p\n", HwDeviceExtension,
-	    MiniportExtension);
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension =
+	CONTAINING_RECORD(HwDeviceExtension, MINIPORT_DEVICE_EXTENSION, HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExtension->Miniport->DeviceExtension;
 
-    if (!TranslateResourceListAddress(MiniportExtension->Miniport->DeviceExtension,
-				      BusType, SystemIoBusNumber, IoAddress,
+    PHYSICAL_ADDRESS TranslatedAddress;
+    if (!TranslateResourceListAddress(DevExt, BusType, SystemIoBusNumber, IoAddress,
 				      NumberOfBytes, InIoSpace, &TranslatedAddress)) {
 	assert(FALSE);
 	return NULL;
@@ -1326,16 +1383,27 @@ NTAPI PVOID StorPortGetDeviceBase(IN PVOID HwDeviceExtension,
 	return (PVOID)(ULONG_PTR)TranslatedAddress.QuadPart;
     }
 
-    /* In memory space */
-    MappedAddress = MmMapIoSpace(TranslatedAddress, NumberOfBytes, FALSE);
-    DPRINT1("Mapped Address: %p\n", MappedAddress);
+    PMAPPED_ADDRESS Mapping = ExAllocatePoolWithTag(NonPagedPool,
+						    sizeof(MAPPED_ADDRESS),
+						    TAG_ADDRESS_MAPPING);
+    if (!Mapping) {
+	DPRINT1("No memory!\n");
+	return NULL;
+    }
 
-    Status = AllocateAddressMapping(
-	&MiniportExtension->Miniport->DeviceExtension->MappedAddressList, IoAddress,
-	MappedAddress, NumberOfBytes, SystemIoBusNumber);
-    if (!NT_SUCCESS(Status)) {
-	assert(FALSE);
-	MappedAddress = NULL;
+    /* In memory space */
+    PVOID MappedAddress = MmMapIoSpace(TranslatedAddress, NumberOfBytes, FALSE);
+    DPRINT1("Mapped Address: %p\n", MappedAddress);
+    if (!MappedAddress) {
+	ExFreePoolWithTag(Mapping, TAG_ADDRESS_MAPPING);
+    } else {
+	Mapping->NextMappedAddress = DevExt->MappedAddressList;
+	DevExt->MappedAddressList = Mapping;
+
+	Mapping->IoAddress = IoAddress;
+	Mapping->MappedAddress = MappedAddress;
+	Mapping->NumberOfBytes = NumberOfBytes;
+	Mapping->BusNumber = SystemIoBusNumber;
     }
 
     DPRINT1("Mapped Address: %p\n", MappedAddress);
@@ -1430,11 +1498,31 @@ NTAPI ULONG StorPortAllocateDmaMemory(IN PVOID HwDeviceExtension,
     if (LowestAddress.QuadPart) {
 	return STOR_STATUS_INVALID_PARAMETER;
     }
+
+    PMAPPED_ADDRESS Mapping = ExAllocatePoolWithTag(NonPagedPool,
+						    sizeof(MAPPED_ADDRESS),
+						    TAG_ADDRESS_MAPPING);
+    if (!Mapping) {
+	return STOR_STATUS_INSUFFICIENT_RESOURCES;
+    }
+
     if (!NT_SUCCESS(MmAllocateContiguousMemorySpecifyCache(NumberOfBytes, HighestAddress,
 							   AddressMultiple, CacheType,
 							   BufferPointer, PhysicalAddress))) {
+	ExFreePoolWithTag(Mapping, TAG_ADDRESS_MAPPING);
 	return STOR_STATUS_INSUFFICIENT_RESOURCES;
     }
+
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension =
+	CONTAINING_RECORD(HwDeviceExtension, MINIPORT_DEVICE_EXTENSION, HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExtension->Miniport->DeviceExtension;
+    Mapping->NextMappedAddress = DevExt->MappedAddressList;
+    DevExt->MappedAddressList = Mapping;
+
+    Mapping->IoAddress = *PhysicalAddress;
+    Mapping->MappedAddress = *BufferPointer;
+    Mapping->NumberOfBytes = NumberOfBytes;
+    Mapping->BusNumber = ULONG_MAX;
     return STOR_STATUS_SUCCESS;
 }
 
@@ -1444,6 +1532,42 @@ NTAPI ULONG StorPortFreeDmaMemory(IN PVOID HwDeviceExtension,
 				  IN MEMORY_CACHING_TYPE CacheType,
 				  IN OPTIONAL PHYSICAL_ADDRESS PhysicalAddress)
 {
+    if (HwDeviceExtension) {
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+    PMINIPORT_DEVICE_EXTENSION MiniportExtension =
+	CONTAINING_RECORD(HwDeviceExtension, MINIPORT_DEVICE_EXTENSION, HwDeviceExtension);
+    PFDO_DEVICE_EXTENSION DevExt = MiniportExtension->Miniport->DeviceExtension;
+
+    /* Search the mapped address list and find the mapped address */
+    PMAPPED_ADDRESS Prev = NULL, Mapping = DevExt->MappedAddressList;
+    while (Mapping) {
+	ULONG_PTR EndAddress = (ULONG_PTR)Mapping->MappedAddress + NumberOfBytes;
+	if (Mapping->MappedAddress >= BaseAddress &&
+	    EndAddress >= (ULONG_PTR)BaseAddress + NumberOfBytes) {
+	    break;
+	}
+	Prev = Mapping;
+	Mapping = Mapping->NextMappedAddress;
+    }
+
+    if (Mapping) {
+	assert(Mapping->BusNumber == ULONG_MAX);
+	if (PhysicalAddress.QuadPart) {
+	    ULONG_PTR Offset = (ULONG_PTR)(BaseAddress - Mapping->MappedAddress);
+	    assert(PhysicalAddress.QuadPart == Mapping->IoAddress.QuadPart + Offset);
+	}
+	if (Prev) {
+	    Prev->NextMappedAddress = Mapping->NextMappedAddress;
+	} else {
+	    DevExt->MappedAddressList = Mapping->NextMappedAddress;
+	}
+	ExFreePoolWithTag(Mapping, TAG_ADDRESS_MAPPING);
+    } else {
+	assert(FALSE);
+	return STOR_STATUS_INVALID_PARAMETER;
+    }
+
     MmFreeContiguousMemorySpecifyCache(BaseAddress, NumberOfBytes, CacheType);
     return STOR_STATUS_SUCCESS;
 }
@@ -1454,8 +1578,9 @@ NTAPI ULONG StorPortFreeDmaMemory(IN PVOID HwDeviceExtension,
  * extension. If that is not the case, check if the virtual address is within
  * the the data buffer or the sense info buffer of the SRB, or within the SRB
  * extension. If so, return its physical address and the remaining length till
- * the end of the buffer or SRB extension. If none of the above is applicable,
- * returns zero.
+ * the end of the buffer or SRB extension. Otherwise, check if the address is
+ * a mapped IO address and return the physical address and length of remaining
+ * mapped region. If none of the above is applicable, returns zero.
  *
  * @implemented
  */
@@ -1490,12 +1615,35 @@ NTAPI STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtensio
 	PhysicalAddress.QuadPart =
 	    DeviceExtension->UncachedExtensionPhysicalBase.QuadPart + Offset;
 	*Length = DeviceExtension->UncachedExtensionSize - Offset;
-    } else if (!Srb) {
+    } else {
+	PMAPPED_ADDRESS Mapping = DeviceExtension->MappedAddressList;
+	while (Mapping) {
+	    ULONG_PTR EndAddress = (ULONG_PTR)Mapping->MappedAddress + Mapping->NumberOfBytes;
+	    if (VirtualAddress >= Mapping->MappedAddress &&
+		(ULONG_PTR)VirtualAddress < EndAddress) {
+		break;
+	    }
+	    Mapping = Mapping->NextMappedAddress;
+	}
+	if (Mapping) {
+	    ULONG_PTR Offset = (ULONG_PTR)VirtualAddress - (ULONG_PTR)Mapping->MappedAddress;
+	    PhysicalAddress.QuadPart = Mapping->IoAddress.QuadPart + Offset;
+	    *Length = Mapping->IoAddress.QuadPart + Mapping->NumberOfBytes -
+		PhysicalAddress.QuadPart;
+	    return PhysicalAddress;
+	}
+    }
+
+    if (!Srb) {
 	assert(FALSE);
-    } else if (SrbGetDataBuffer(Srb) &&
-	       POINTER_IS_IN_REGION(VirtualAddress, SrbGetDataBuffer(Srb),
-				    SrbGetDataTransferLength(Srb))) {
-	/* Get the physical address from the scatter-gather list */
+	return PhysicalAddress;
+    }
+
+    if (SrbGetDataBuffer(Srb) &&
+	POINTER_IS_IN_REGION(VirtualAddress, SrbGetDataBuffer(Srb),
+			     SrbGetDataTransferLength(Srb))) {
+	/* Get the physical address from the scatter-gather list. We cannot just call
+	 * MmGetPhysicalAddress because the SG list might be for a client user buffer. */
 	UNIMPLEMENTED_DBGBREAK();
     } else {
 	PVOID Buffer = NULL;

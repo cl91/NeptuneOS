@@ -214,6 +214,25 @@ NTSTATUS PortFdoInitDma(IN PFDO_DEVICE_EXTENSION FdoExt,
     return STATUS_SUCCESS;
 }
 
+static PCM_RESOURCE_LIST CopyResourceList(PCM_RESOURCE_LIST Source)
+{
+    DPRINT1("CopyResourceList(%p)\n", Source);
+
+    /* Get the size of the resource list */
+    ULONG Size = CmGetResourceListSize(Source);
+
+    /* Allocate a new buffer */
+    PCM_RESOURCE_LIST Destination = ExAllocatePoolWithTag(NonPagedPool,
+							  Size, TAG_RESOURCE_LIST);
+    if (Destination == NULL)
+	return NULL;
+
+    /* Copy the resource list */
+    RtlCopyMemory(Destination, Source, Size);
+
+    return Destination;
+}
+
 static NTSTATUS PortFdoStartDevice(IN PFDO_DEVICE_EXTENSION DeviceExtension,
 				   IN PIRP Irp)
 {
