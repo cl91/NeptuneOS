@@ -978,16 +978,10 @@ ULONG NVMeInitSubQueue(PNVME_DEVICE_EXTENSION pAE, USHORT QueueID)
     if (QueueID > maxCore)
 	return (STOR_STATUS_INVALID_PARAMETER);
 
-/* Code Analysis fails on StoPortReadRegisterUlong64 */
-#if 0 // (NTDDI_VERSION > NTDDI_WIN7) && defined(_WIN64)
-    CAP.AsUlonglong = StorPortReadRegisterUlong64(pAE,
-						  (PULONG64)(&pAE->pCtrlRegister->CAP));
-#else
     CAP.HighPart = StorPortReadRegisterUlong(pAE,
 					     (PULONG)(&pAE->pCtrlRegister->CAP.HighPart));
     CAP.LowPart = StorPortReadRegisterUlong(pAE,
 					    (PULONG)(&pAE->pCtrlRegister->CAP.LowPart));
-#endif
 
     /* Initialize static fields of SUB_QUEUE_INFO structure */
     pSQI->SubQEntries = (QueueID != 0) ? pQI->NumIoQEntriesAllocated :
@@ -1094,16 +1088,10 @@ ULONG NVMeInitCplQueue(PNVME_DEVICE_EXTENSION pAE, USHORT QueueID)
     if (QueueID > maxCore)
 	return (STOR_STATUS_INVALID_PARAMETER);
 
-/* Code Analysis fails on StoPortReadRegisterUlong64 */
-#if 0 // (NTDDI_VERSION > NTDDI_WIN7) && defined(_WIN64)
-    CAP.AsUlonglong = StorPortReadRegisterUlong64(pAE,
-						  (PULONG64)(&pAE->pCtrlRegister->CAP));
-#else
     CAP.HighPart = StorPortReadRegisterUlong(pAE,
 					     (PULONG)(&pAE->pCtrlRegister->CAP.HighPart));
     CAP.LowPart = StorPortReadRegisterUlong(pAE,
 					    (PULONG)(&pAE->pCtrlRegister->CAP.LowPart));
-#endif
 
     pSQI = pQI->pSubQueueInfo + QueueID;
     pCQI = pQI->pCplQueueInfo + QueueID;
@@ -1722,16 +1710,10 @@ BOOLEAN NVMeInitCallback(PVOID pNVMeDevExt, PVOID pSrbExtension)
 		pAE->DriverState.NumKnownNamespaces = pAE->controllerIdentifyData.NN;
 	    }
 
-/* Code Analysis fails on StoPortReadRegisterUlong64 */
-#if 0 // (NTDDI_VERSION > NTDDI_WIN7) && defined(_WIN64)
-	    CAP.AsUlonglong = StorPortReadRegisterUlong64(pAE,
-							  (PULONG64)(&pAE->pCtrlRegister->CAP));
-#else
 	    CAP.HighPart = StorPortReadRegisterUlong(
 		pAE, (PULONG)(&pAE->pCtrlRegister->CAP.HighPart));
 	    CAP.LowPart = StorPortReadRegisterUlong(
 		pAE, (PULONG)(&pAE->pCtrlRegister->CAP.LowPart));
-#endif
 
 	    /*
 	     * we don't discover the HW xfer limit until after we've reported it
