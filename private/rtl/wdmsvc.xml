@@ -63,6 +63,7 @@
   </svc>
 
   <svc name="WdmCreateTimer">
+    <parameter annotation="in" type="BOOLEAN" name="OneTime" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="GlobalHandle" />
   </svc>
 

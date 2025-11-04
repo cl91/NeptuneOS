@@ -74,6 +74,8 @@ typedef struct _IO_TIMER {
     ULARGE_INTEGER DueTime;  /* Absolute due time in units of 100ns */
     LONG Period;	     /* Periodicity of the timer */
     BOOLEAN State;	     /* TRUE if timer is set */
+    BOOLEAN OneTime;	     /* TRUE if timer will be deleted after it is fired */
+    BOOLEAN Expired;	     /* TRUE if timer has expired */
 } IO_TIMER, *PIO_TIMER;
 
 /*

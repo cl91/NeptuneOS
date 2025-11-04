@@ -622,6 +622,7 @@ err:
 
 NTSTATUS WdmCreateTimer(IN ASYNC_STATE State,
 			IN PTHREAD Thread,
+			IN BOOLEAN OneTime,
 			OUT GLOBAL_HANDLE *GlobalHandle)
 {
     assert(Thread != NULL);
@@ -630,6 +631,7 @@ NTSTATUS WdmCreateTimer(IN ASYNC_STATE State,
     assert(DriverObject);
     IopAllocatePool(IoTimer, IO_TIMER);
     IoTimer->DriverObject = DriverObject;
+    IoTimer->OneTime = OneTime;
     InsertHeadList(&DriverObject->IoTimerList, &IoTimer->DriverLink);
     *GlobalHandle = OBJECT_TO_GLOBAL_HANDLE(IoTimer);
     return STATUS_SUCCESS;
@@ -646,6 +648,13 @@ NTSTATUS WdmSetTimer(IN ASYNC_STATE State,
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     assert(DriverObject);
     LoopOverList(IoTimer, &DriverObject->IoTimerList, IO_TIMER, DriverLink) {
+	/* If driver has expired one-time timers, remove them */
+	if (IoTimer->OneTime && IoTimer->Expired) {
+	    assert(!IoTimer->State);
+	    KeRemoveIoTimerFromQueue(IoTimer);
+	    RemoveEntryList(&IoTimer->DriverLink);
+	    IopFreePool(IoTimer);
+	}
 	if (OBJECT_TO_GLOBAL_HANDLE(IoTimer) == GlobalHandle) {
 	    KeQueueIoTimer(IoTimer, *AbsoluteDueTime, Period);
 	    return STATUS_SUCCESS;

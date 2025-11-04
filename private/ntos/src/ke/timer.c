@@ -127,6 +127,9 @@ static VOID KiTimerInterruptService()
 		 * and reinsert it in KiSignalExpiredTimer */
 		RemoveEntryList(&Timer->QueueLink);
 		Timer->State = FALSE;
+		/* Note since we check the Expired field in the main thread,
+		 * this should be set after the queue link removal above. */
+		Timer->Expired = TRUE;
 		assert(Timer->DriverObject);
 		assert(Timer->DriverObject->TimerNotification.Cap);
 		seL4_Signal(Timer->DriverObject->TimerNotification.Cap);
