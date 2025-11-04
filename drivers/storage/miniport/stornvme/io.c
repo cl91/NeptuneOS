@@ -359,9 +359,9 @@ BOOLEAN ProcessIo(__in PNVME_DEVICE_EXTENSION pAdapterExtension,
 	     * Copy the PRP list pointed to by PRP2. Size of the copy is total num
 	     * of PRPs -1 because PRP1 is not in the PRP list pointed to by PRP2.
 	     */
-            StorPortCopyMemory(        (PVOID)pCmdInfo->pPRPList,
-				       (PVOID)&pSrbExtension->prpList[0],
-				       ((pSrbExtension->numberOfPrpEntries - 1) * sizeof(UINT64)));
+            StorPortCopyMemory((PVOID)pCmdInfo->pPRPList,
+			       (PVOID)&pSrbExtension->prpList[0],
+			       ((pSrbExtension->numberOfPrpEntries - 1) * sizeof(UINT64)));
 	}
 #else
         if (pSrbExtension->pSrb) {
@@ -381,9 +381,9 @@ BOOLEAN ProcessIo(__in PNVME_DEVICE_EXTENSION pAdapterExtension,
             ULONG i;
             pNvmeCmd->PRP2 = pCmdInfo->prpListPhyAddr.QuadPart;
 
-            StorPortCopyMemory(            (PVOID)pCmdInfo->pPRPList,
-					   (PVOID)&pSrbExtension->prpList[0],
-					   ((pSrbExtension->numberOfPrpEntries - 1) * sizeof(UINT64)));
+            StorPortCopyMemory((PVOID)pCmdInfo->pPRPList,
+			       (PVOID)&pSrbExtension->prpList[0],
+			       ((pSrbExtension->numberOfPrpEntries - 1) * sizeof(UINT64)));
 
             StorPortDebugPrint(INFO,
 			       "NVME: Process prp1 0x%x 0x%x prp2 0x%x 0x%x (list for 0x%x entries)\n",
@@ -395,15 +395,13 @@ BOOLEAN ProcessIo(__in PNVME_DEVICE_EXTENSION pAdapterExtension,
                 StorPortDebugPrint(INFO,
 				   "NVME: Process entry # 0x%x prp 0x%x 0x%x\n",
 				   i,
-				   pSrbExtension->prpList[i] >> 32, pSrbExtension->prpList[i]
-		    );
+				   pSrbExtension->prpList[i] >> 32, pSrbExtension->prpList[i]);
             }
         } else if (pNvmeCmd->PRP1 != 0) {
 	    StorPortDebugPrint(INFO,
 			       "NVME: Process prp1 0x%x 0x%x prp2 0x%x 0x%x (no list)\n",
 			       pNvmeCmd->PRP1 >> 32, pNvmeCmd->PRP1,
-			       pNvmeCmd->PRP2 >> 32, pNvmeCmd->PRP2
-		);
+			       pNvmeCmd->PRP2 >> 32, pNvmeCmd->PRP2);
         }
 #endif /* PRP_DBG */
 #endif /* DBL_BUFF */
