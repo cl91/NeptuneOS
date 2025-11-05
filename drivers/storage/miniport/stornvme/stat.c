@@ -672,14 +672,14 @@ VOID NVMeRunningWaitOnIoSQ(PNVME_DEVICE_EXTENSION pAE)
  ******************************************************************************/
 VOID NVMeDriverFatalError(PNVME_DEVICE_EXTENSION pAE, ULONG ErrorNum)
 {
-    ASSERT(FALSE);
-
     StorPortDebugPrint(ERROR, "NVMeDriverFatalError!\n");
 
     pAE->DriverState.DriverErrorStatus |= (ULONG64)(1 << ErrorNum);
     pAE->DriverState.NextDriverState = NVMeStateFailed;
 
     NVMeLogError(pAE, ErrorNum);
+
+    ASSERT(FALSE);
 } /* NVMeDriverFatalError */
 
 /*******************************************************************************

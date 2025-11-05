@@ -1374,15 +1374,16 @@ VOID NVMeSetFeaturesCompletion(PNVME_DEVICE_EXTENSION pAE, PNVMe_COMMAND pNVMeCm
     if (pAE->DriverState.InterruptCoalescingSet == FALSE &&
 	pNVMeCmd->CDW0.OPC == ADMIN_SET_FEATURES &&
 	pSetFeaturesCDW10->FID == INTERRUPT_COALESCING) {
+	/* If the controller does not support interrupt coalescing, we log the
+	 * error but do not treat this as a fatal error. */
 	if (pCplEntry->DW3.SF.SC != 0) {
-	    NVMeDriverFatalError(pAE, (1 << START_STATE_INT_COALESCING_FAILURE));
-	} else {
-	    pAE->DriverState.InterruptCoalescingSet = TRUE;
-
-	    /* Reset the counter and keep tihs state to set more features */
-	    pAE->DriverState.StateChkCount = 0;
-	    pAE->DriverState.NextDriverState = NVMeWaitOnSetFeatures;
+	    NVMeLogError(pAE, (1 << START_STATE_INT_COALESCING_FAILURE));
 	}
+	pAE->DriverState.InterruptCoalescingSet = TRUE;
+
+	/* Reset the counter and keep this state to set more features */
+	pAE->DriverState.StateChkCount = 0;
+	pAE->DriverState.NextDriverState = NVMeWaitOnSetFeatures;
     } else if (pNVMeCmd->CDW0.OPC == ADMIN_SET_FEATURES &&
 	       pSetFeaturesCDW10->FID == NUMBER_OF_QUEUES) {
 	if (pCplEntry->DW3.SF.SC != 0) {
@@ -1416,7 +1417,7 @@ VOID NVMeSetFeaturesCompletion(PNVME_DEVICE_EXTENSION pAE, PNVMe_COMMAND pNVMeCm
 		}
 	    }
 
-	    /* Reset the counter and keep tihs state to set more features */
+	    /* Reset the counter and keep this state to set more features */
 	    pAE->DriverState.StateChkCount = 0;
 	    pAE->DriverState.NextDriverState = NVMeWaitOnSetFeatures;
 	}
@@ -1596,7 +1597,7 @@ VOID NVMeSetFeaturesCompletion(PNVME_DEVICE_EXTENSION pAE, PNVMe_COMMAND pNVMeCm
 	    pAE->HMBenabled = TRUE;
 	}
 
-	/* Reset the counter and keep tihs state to set more features */
+	/* Reset the counter and keep this state to set more features */
 	pAE->DriverState.StateChkCount = 0;
 	pAE->DriverState.NextDriverState = NVMeWaitOnSetFeatures;
     }
