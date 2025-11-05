@@ -162,6 +162,25 @@ static NTSTATUS PortFdoStartMiniport(IN PFDO_DEVICE_EXTENSION DeviceExtension)
 	return Status;
     }
 
+    ULONG DumpBufferSize = DeviceExtension->Miniport.PortConfig.RequestedDumpBufferSize;
+    if (DumpBufferSize) {
+	PHYSICAL_ADDRESS Zero = {}, PhyAddr = {};
+	PHYSICAL_ADDRESS HighestAddr = { .QuadPart = ULONG_MAX };
+	PVOID VirtAddr = NULL;
+	PVOID HwDevExt = DeviceExtension->Miniport.MiniportExtension->HwDeviceExtension;
+	if (NT_SUCCESS(StorPortAllocateDmaMemory(HwDevExt,
+						 DumpBufferSize,
+						 Zero, HighestAddr, Zero,
+						 MmNonCached, MM_ANY_NODE_OK,
+						 &VirtAddr, &PhyAddr))) {
+	    assert(PhyAddr.QuadPart);
+	    assert(VirtAddr);
+	    DeviceExtension->Miniport.PortConfig.DumpRegion.Length = DumpBufferSize;
+	    DeviceExtension->Miniport.PortConfig.DumpRegion.PhysicalBase = PhyAddr;
+	    DeviceExtension->Miniport.PortConfig.DumpRegion.VirtualBase = VirtAddr;
+	}
+    }
+
     /* Connect the configured interrupt */
     Status = PortFdoConnectInterrupt(DeviceExtension);
     if (!NT_SUCCESS(Status)) {
