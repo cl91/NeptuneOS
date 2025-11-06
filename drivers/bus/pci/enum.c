@@ -1304,6 +1304,7 @@ static VOID PciDumpCapabilities(IN PPCI_PDO_EXTENSION NewExtension)
 	case PCI_CAPABILITY_ID_MSIX:
 	    Name = "MSI-X";
 	    Size = sizeof(PCI_MSIX_CAPABILITY);
+	    break;
 
 	    /* This driver doesn't really use anything other than that */
 	default:
