@@ -1162,6 +1162,7 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      OUT MWORD *VirtAddr,
 					      OUT MWORD *PhyAddr)
 {
+    Length = PAGE_ALIGN_UP(Length);
     ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_LARGE_PAGES;
     PMMVAD Vad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,

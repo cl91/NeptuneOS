@@ -512,6 +512,7 @@ NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
 				 OUT PVOID *pVirtAddr,
 				 OUT PHYSICAL_ADDRESS *pPhyAddr)
 {
+    Length = PAGE_ALIGN_UP(Length);
     /* Length cannot be larger than the contiguous bank that the
      * DMA controller/device can access. For instance, if the
      * DMA adapter is the ISA DMA controller, than Length must
