@@ -2078,8 +2078,9 @@ static VOID IopHandleForceDismountServerMessage(PIO_PACKET SrvMsg)
 static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
 {
     assert(Status != STATUS_ASYNC_PENDING);
-    DbgTrace("Running finalizer for exec env %p context %p suspended %d "
-	     "status 0x%08x:\n", Env, Env->Context, Env->Suspended, Status);
+    DbgTrace("%s for exec env %p context %p suspended %d status 0x%08x:\n",
+	     Status == STATUS_PENDING ? "Not completing IRP" : "Completing IRP",
+	     Env, Env->Context, Env->Suspended, Status);
     PIRP Irp = Env->Context;
     if (!Irp) {
 	return;
