@@ -2021,7 +2021,6 @@ BOOLEAN NVMeInitCallback(PVOID pNVMeDevExt, PVOID pSrbExtension)
 	}
 	break;
     case NVMeStartComplete:
-	ASSERT(pAE->ntldrDump);
 	break;
     default:
 	NVMeDriverFatalError(pAE, (1 << START_STATE_UNKNOWN_STATE_FAILURE));
