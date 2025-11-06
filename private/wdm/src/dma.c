@@ -561,10 +561,9 @@ NTAPI VOID HalpFreeMapRegisters(IN PDMA_ADAPTER DmaAdapter,
      * address windows and physical address windows must be adjacent. */
     PMAP_REGISTER_ENTRY Prev = GetPrevEntryList(&MapReg->Link, MAP_REGISTER_ENTRY,
 						Link, &HalpDmaMapRegCtrl.List);
-    if (Prev != NULL && !Prev->AssignedAdapter &&
+    if (Prev != NULL && !Prev->AssignedAdapter && !Prev->Keep &&
 	(Prev->VirtBase + ((ULONG_PTR)Prev->Count << PAGE_SHIFT) == MapReg->VirtBase) &&
 	(Prev->PhyBase.QuadPart + ((ULONGLONG)Prev->Count << PAGE_SHIFT) == MapReg->PhyBase.QuadPart)) {
-	assert(!Prev->Keep);
 	RemoveEntryList(&Prev->Link);
 	MapReg->VirtBase = Prev->VirtBase;
 	MapReg->PhyBase = Prev->PhyBase;
@@ -574,10 +573,9 @@ NTAPI VOID HalpFreeMapRegisters(IN PDMA_ADAPTER DmaAdapter,
 
     PMAP_REGISTER_ENTRY Next = GetNextEntryList(&MapReg->Link, MAP_REGISTER_ENTRY,
 						Link, &HalpDmaMapRegCtrl.List);
-    if (Next != NULL && !Next->AssignedAdapter &&
+    if (Next != NULL && !Next->AssignedAdapter && !Next->Keep &&
 	(MapReg->VirtBase + ((ULONG_PTR)MapReg->Count << PAGE_SHIFT) == Next->VirtBase) &&
 	(MapReg->PhyBase.QuadPart + ((ULONGLONG)MapReg->Count << PAGE_SHIFT) == Next->PhyBase.QuadPart)) {
-	assert(!Next->Keep);
 	RemoveEntryList(&Next->Link);
 	MapReg->Count += Next->Count;
 	ExFreePool(Next);
