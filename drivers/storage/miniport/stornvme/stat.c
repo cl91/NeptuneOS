@@ -674,7 +674,7 @@ VOID NVMeDriverFatalError(PNVME_DEVICE_EXTENSION pAE, ULONG ErrorNum)
 {
     StorPortDebugPrint(ERROR, "NVMeDriverFatalError!\n");
 
-    pAE->DriverState.DriverErrorStatus |= (ULONG64)(1 << ErrorNum);
+    pAE->DriverState.DriverErrorStatus |= ErrorNum;
     pAE->DriverState.NextDriverState = NVMeStateFailed;
 
     NVMeLogError(pAE, ErrorNum);
