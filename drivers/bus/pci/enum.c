@@ -520,7 +520,7 @@ static NTSTATUS PciBuildRequirementsList(IN PPCI_PDO_EXTENSION PdoExtension,
     ULONG InterruptCount = 0;
     if (PdoExtension->MsiInfo.CapabilityOffset) {
 	if (PdoExtension->MsiInfo.ExtendedMessage) {
-	    InterruptCount = PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.TableSize;
+	    InterruptCount = PdoExtension->MsiInfo.ExtendedMessageInfo.MessageControl.NumEntries;
 	} else {
 	    InterruptCount = 1;
 	}
@@ -2045,6 +2045,7 @@ NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	ULONG LengthToMap = PdoExtension->InterruptResourceCount * sizeof(PCI_MSIX_TABLE_ENTRY);
 	PPCI_MSIX_TABLE_ENTRY Table = MmMapIoSpace(TableAddress, LengthToMap, MmNonCached);
 	if (!Table) {
+	    assert(FALSE);
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	for (ULONG i = 0; i < PdoExtension->InterruptResourceCount; i++) {

@@ -194,7 +194,7 @@ typedef struct _PCI_MSI_CAPABILITY {
 } PCI_MSI_CAPABILITY, *PPCI_PCI_CAPABILITY;
 
 typedef struct _PCI_MSIX_MESSAGE_CONTROL {
-    USHORT TableSize : 10;
+    USHORT NumEntries : 11;
     USHORT Reserved : 3;
     USHORT FunctionMask : 1;
     USHORT Enable : 1;
