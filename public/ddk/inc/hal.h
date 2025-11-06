@@ -829,20 +829,27 @@ NTAPI NTSYSAPI NTSTATUS IoReadPartitionTable(IN PDEVICE_OBJECT DeviceObject,
 NTAPI NTSTATUS IoReadPartitionTableEx(IN PDEVICE_OBJECT DeviceObject,
 				      IN PDRIVE_LAYOUT_INFORMATION_EX *DriveLayout);
 
-NTAPI NTSTATUS IoWritePartitionTable(IN PDEVICE_OBJECT DeviceObject,
-				     IN ULONG SectorSize,
-				     IN ULONG SectorsPerTrack,
-				     IN ULONG NumberOfHeads,
-				     IN PDRIVE_LAYOUT_INFORMATION PartitionBuffer);
+NTAPI NTSYSAPI NTSTATUS IoWritePartitionTable(IN PDEVICE_OBJECT DeviceObject,
+					      IN ULONG SectorSize,
+					      IN ULONG SectorsPerTrack,
+					      IN ULONG NumberOfHeads,
+					      IN PDRIVE_LAYOUT_INFORMATION PartitionBuffer);
 
-NTAPI NTSTATUS IoWritePartitionTableEx(IN PDEVICE_OBJECT DeviceObject,
-				       IN PDRIVE_LAYOUT_INFORMATION_EX DriveLayout);
+NTAPI NTSYSAPI NTSTATUS IoWritePartitionTableEx(IN PDEVICE_OBJECT DeviceObject,
+						IN PDRIVE_LAYOUT_INFORMATION_EX DriveLayout);
 
-NTAPI NTSTATUS IoSetPartitionInformation(IN PDEVICE_OBJECT DeviceObject,
-					 IN ULONG SectorSize,
-					 IN ULONG PartitionNumber,
-					 IN ULONG PartitionType);
+NTAPI NTSYSAPI NTSTATUS IoSetPartitionInformation(IN PDEVICE_OBJECT DeviceObject,
+						  IN ULONG SectorSize,
+						  IN ULONG PartitionNumber,
+						  IN ULONG PartitionType);
 
-NTAPI NTSTATUS IoReadDiskSignature(IN PDEVICE_OBJECT DeviceObject,
-				   IN ULONG BytesPerSector,
-				   OUT PDISK_SIGNATURE Signature);
+NTAPI NTSYSAPI NTSTATUS IoSetPartitionInformationEx(IN PDEVICE_OBJECT DeviceObject,
+						    IN ULONG PartitionNumber,
+						    IN PSET_PARTITION_INFORMATION_EX PartitionInfo);
+
+NTAPI NTSYSAPI NTSTATUS IoReadDiskSignature(IN PDEVICE_OBJECT DeviceObject,
+					    IN ULONG BytesPerSector,
+					    OUT PDISK_SIGNATURE Signature);
+
+NTAPI NTSYSAPI NTSTATUS IoCreateDisk(IN PDEVICE_OBJECT DeviceObject,
+				     IN PCREATE_DISK Disk);

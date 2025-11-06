@@ -253,13 +253,15 @@ static inline NTSTATUS IopAllocateNames(IN PCSTR MultiSz,
     ULONG Count = 0;
     if (MultiSz != NULL) {
 	PCSTR Ptr = MultiSz;
-	ULONG Length = strlen(Ptr);
-	Names[Count] = RtlDuplicateString(Ptr, NTOS_IO_TAG);
-	if (Names[Count] == NULL) {
-	    return STATUS_NO_MEMORY;
+	while (*Ptr != '\0') {
+	    ULONG Length = strlen(Ptr);
+	    Names[Count] = RtlDuplicateString(Ptr, NTOS_IO_TAG);
+	    if (Names[Count] == NULL) {
+		return STATUS_NO_MEMORY;
+	    }
+	    Ptr += Length + 1;
+	    Count++;
 	}
-	Ptr += Length + 1;
-	Count++;
     }
     return STATUS_SUCCESS;
 }

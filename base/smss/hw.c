@@ -63,7 +63,8 @@ static struct {
       ARRAYSIZE(StorAhciParameters), StorAhciParameters },
     { "stornvme", L"PCI\\CC_010802\0SCSI\\NVME\0",
       ARRAYSIZE(StorNvmeParameters), StorNvmeParameters },
-    { "disk" }
+    { "disk" },
+    { "partmgr" }
 };
 
 static struct {
@@ -76,7 +77,7 @@ static struct {
     { "Keyboard", "{4D36E96B-E325-11CE-BFC1-08002BE10318}",
       L"*PNP0303\0", NULL, "kbdclass\0" },
     { "Disk", "{4D36E967-E325-11CE-BFC1-08002BE10318}",
-      L"SCSI\\Disk\0", NULL, "disk\0" }
+      L"SCSI\\Disk\0", NULL, "disk\0partmgr\0" }
 };
 
 static LIST_ENTRY SmKnownDeviceList;

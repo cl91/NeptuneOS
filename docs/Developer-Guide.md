@@ -379,7 +379,7 @@ the `IO_RESOURCE_REQUIREMENTS_LIST` structure used in the PnP driver interface.
 
 ##### Synchronization
 
-KEVENT (only between different threads within the same driver process)
+KEVENT (only between different coroutines within the same driver process)
 
 If you allocate the `KEVENT` on the stack and call `KeWaitForSingleObject` to wait for
 the completion of an IRP, you should in general initialize a synchronization event rather

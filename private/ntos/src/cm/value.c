@@ -342,32 +342,32 @@ static VOID CmpDbgDumpPartialResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPT
 	break;
     case CmResourceTypePort:
 	CmDbgPrint("PORT Start 0x%llx Length 0x%x\n",
-		   Desc->u.Port.Start.QuadPart, Desc->u.Port.Length);
+		   Desc->Port.Start.QuadPart, Desc->Port.Length);
 	break;
     case CmResourceTypeInterrupt:
 	CmDbgPrint("INTERRUPT Level 0x%x Vector 0x%x Affinity 0x%x\n",
-		   Desc->u.Interrupt.Level, Desc->u.Interrupt.Vector,
-		   Desc->u.Interrupt.Affinity);
+		   Desc->Interrupt.Level, Desc->Interrupt.Vector,
+		   Desc->Interrupt.Affinity);
 	break;
     case CmResourceTypeMemory:
 	CmDbgPrint("MEMORY Start 0x%llx Length 0x%x\n",
-		   Desc->u.Memory.Start.QuadPart, Desc->u.Memory.Length);
+		   Desc->Memory.Start.QuadPart, Desc->Memory.Length);
 	break;
     case CmResourceTypeDma:
 	CmDbgPrint("DMA Channel 0x%x Port 0x%x Reserved1 0x%x\n",
-		   Desc->u.Dma.Channel, Desc->u.Dma.Port,
-		   Desc->u.Dma.Reserved1);
+		   Desc->Dma.Channel, Desc->Dma.Port,
+		   Desc->Dma.Reserved1);
 	break;
     case CmResourceTypeDeviceSpecific:
 	CmDbgPrint("DEVICE-SPECIFIC DataSize 0x%x Reserved1 0x%x Reserved2 0x%x\n",
-		   Desc->u.DeviceSpecificData.DataSize,
-		   Desc->u.DeviceSpecificData.Reserved1,
-		   Desc->u.DeviceSpecificData.Reserved2);
+		   Desc->DeviceSpecificData.DataSize,
+		   Desc->DeviceSpecificData.Reserved1,
+		   Desc->DeviceSpecificData.Reserved2);
 	break;
     case CmResourceTypeBusNumber:
 	CmDbgPrint("BUS-NUMBER Start 0x%x Length 0x%x Reserved 0x%x\n",
-		   Desc->u.BusNumber.Start, Desc->u.BusNumber.Length,
-		   Desc->u.BusNumber.Reserved);
+		   Desc->BusNumber.Start, Desc->BusNumber.Length,
+		   Desc->BusNumber.Reserved);
 	break;
     case CmResourceTypeMemoryLarge:
 	CmDbgPrint("MEMORY-LARGE\n");

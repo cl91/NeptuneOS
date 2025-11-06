@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Partition Manager"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "partmgr"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "partmgr.sys"
+#include <version.rc>
