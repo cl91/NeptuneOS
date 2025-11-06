@@ -742,7 +742,8 @@ VOID NVMeRunningWaitOnLearnMapping(PNVME_DEVICE_EXTENSION pAE)
 	lbaLengthPower = pLunExt->identifyData.LBAFx[flbas].LBADS;
 	lbaLength = 1 << lbaLengthPower;
 
-	pNVMeSrbExt->pDataBuffer = NVMeAllocatePool(pAE, lbaLength);
+	pNVMeSrbExt->pDataBuffer = NVMeAllocateMem(pAE, lbaLength, MM_ANY_NODE_OK);
+	pNVMeSrbExt->dataBufferSize = lbaLength;
 	if (NULL == pNVMeSrbExt->pDataBuffer) {
 	    /*
 	     * strange that we can't get a small amount of memory
@@ -752,7 +753,7 @@ VOID NVMeRunningWaitOnLearnMapping(PNVME_DEVICE_EXTENSION pAE)
 	    pAE->DriverState.NextDriverState = NVMeStartComplete;
 	    __leave;
 	}
-	PhysAddr = NVMeGetPhysAddr(pAE, pNVMeSrbExt->pDataBuffer);
+	PhysAddr = NVMeGetPhysAddr(pAE, NULL, pNVMeSrbExt->pDataBuffer);
 	pCmd->CDW0.OPC = NVME_READ;
 	pCmd->PRP1 = (ULONGLONG)PhysAddr.QuadPart;
 	pCmd->NSID = pLunExt->namespaceId;
@@ -766,7 +767,8 @@ VOID NVMeRunningWaitOnLearnMapping(PNVME_DEVICE_EXTENSION pAE)
 	}
     } __finally {
 	if ((error == TRUE) && (NULL != pNVMeSrbExt->pDataBuffer)) {
-	    StorPortFreePool((PVOID)pAE, pNVMeSrbExt->pDataBuffer);
+	    StorPortFreeContiguousMemorySpecifyCache((PVOID)pAE, pNVMeSrbExt->pDataBuffer,
+						     lbaLength, MmCached);
 	}
 	if (pAE->DriverState.NextDriverState == NVMeStartComplete ||
 	    pAE->DriverState.NextDriverState == NVMeWaitOnNamespaceReady) {
@@ -860,7 +862,8 @@ VOID NVMeRunningWaitOnNamespaceReady(PNVME_DEVICE_EXTENSION pAE)
 	flbas = pLunExt->identifyData.FLBAS.SupportedCombination;
 	lbaLengthPower = pLunExt->identifyData.LBAFx[flbas].LBADS;
 	lbaLength = 1 << lbaLengthPower;
-	pNVMeSrbExt->pDataBuffer = NVMeAllocatePool(pAE, lbaLength);
+	pNVMeSrbExt->pDataBuffer = NVMeAllocateMem(pAE, lbaLength, MM_ANY_NODE_OK);
+	pNVMeSrbExt->dataBufferSize = lbaLength;
 	if (NULL == pNVMeSrbExt->pDataBuffer) {
 	    /*
 	     * strange that we can't get a small amount of memory
@@ -889,7 +892,8 @@ VOID NVMeRunningWaitOnNamespaceReady(PNVME_DEVICE_EXTENSION pAE)
     } __finally {
 	if ((error == TRUE) && (NULL != pNVMeSrbExt->pDataBuffer) &&
 	    (pAE->ntldrDump == FALSE)) {
-	    StorPortFreePool((PVOID)pAE, pNVMeSrbExt->pDataBuffer);
+	    StorPortFreeContiguousMemorySpecifyCache((PVOID)pAE, pNVMeSrbExt->pDataBuffer,
+						     lbaLength, MmCached);
 	    pNVMeSrbExt->pDataBuffer = NULL;
 	}
 	if ((pAE->DriverState.NextDriverState == NVMeStartComplete) ||

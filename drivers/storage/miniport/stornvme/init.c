@@ -60,14 +60,16 @@
  *     Physical Address - If all resources are allocated and initialized
  *     NULL - If anything goes wrong
  ******************************************************************************/
-STOR_PHYSICAL_ADDRESS NVMeGetPhysAddr(PNVME_DEVICE_EXTENSION pAE, PVOID pVirtAddr)
+STOR_PHYSICAL_ADDRESS NVMeGetPhysAddr(PNVME_DEVICE_EXTENSION pAE,
+				      PSTORAGE_REQUEST_BLOCK pSrb,
+				      PVOID pVirtAddr)
 {
     ULONG MappedSize;
     STOR_PHYSICAL_ADDRESS PhysAddr;
 
     /* Zero out the receiving buffer before converting */
     PhysAddr.QuadPart = 0;
-    PhysAddr = StorPortGetPhysicalAddress(pAE, NULL, pVirtAddr, &MappedSize);
+    PhysAddr = StorPortGetPhysicalAddress(pAE, pSrb, pVirtAddr, &MappedSize);
 
     /* If fails, log the event and print out the error */
     if (PhysAddr.QuadPart == 0) {
@@ -546,8 +548,10 @@ BOOLEAN NVMeEnumMsiMessages(PNVME_DEVICE_EXTENSION pAE)
 	    }
 	} else {
 	    /* Use INTx when failing to retrieve any message information */
-	    if (MsgID == 0)
+	    if (MsgID == 0) {
+		ASSERT(FALSE);
 		pRMT->InterruptType = INT_TYPE_INTX;
+	    }
 	    /* Number of MSI Granted will No of IO Queue + 1 Admin Queue
 	       Incase of Active Core more than Queues supported
 	       Admin Queue MSGID should not be considered*/
@@ -812,7 +816,7 @@ VOID NVMeInitFreeQ(PSUB_QUEUE_INFO pSQI, PNVME_DEVICE_EXTENSION pAE)
 
 	/* Save the address of current list for calculating next list */
 	CurPRPList = (ULONG_PTR)pCmdInfo->pPRPList;
-	pCmdInfo->prpListPhyAddr = NVMeGetPhysAddr(pAE, pCmdInfo->pPRPList);
+	pCmdInfo->prpListPhyAddr = NVMeGetPhysAddr(pAE, NULL, pCmdInfo->pPRPList);
 
 #ifdef DUMB_DRIVER
 	PtrTemp = (ULONG_PTR)((PUCHAR)pSQI->pDlbBuffStartVa);
@@ -1023,7 +1027,7 @@ ULONG NVMeInitSubQueue(PNVME_DEVICE_EXTENSION pAE, USHORT QueueID)
 
     memset(pSQI->pQueueAlloc, 0, pSQI->QueueAllocSize);
 
-    pSQI->SubQStart = NVMeGetPhysAddr(pAE, pSQI->pSubQStart);
+    pSQI->SubQStart = NVMeGetPhysAddr(pAE, NULL, pSQI->pSubQStart);
     /* If fails on converting to physical address, return here */
     if (pSQI->SubQStart.QuadPart == 0)
 	return (STOR_STATUS_INSUFFICIENT_RESOURCES);
@@ -1043,7 +1047,7 @@ ULONG NVMeInitSubQueue(PNVME_DEVICE_EXTENSION pAE, USHORT QueueID)
     pSQI->pPRPListStart = PAGE_ALIGN_BUF_PTR(pSQI->pPRPListAlloc);
     memset(pSQI->pPRPListAlloc, 0, pSQI->PRPListAllocSize);
 
-    pSQI->PRPListStart = NVMeGetPhysAddr(pAE, pSQI->pPRPListStart);
+    pSQI->PRPListStart = NVMeGetPhysAddr(pAE, NULL, pSQI->pPRPListStart);
     /* If fails on converting to physical address, return here */
     if (pSQI->PRPListStart.QuadPart == 0)
 	return (STOR_STATUS_INSUFFICIENT_RESOURCES);
@@ -1158,7 +1162,7 @@ ULONG NVMeInitCplQueue(PNVME_DEVICE_EXTENSION pAE, USHORT QueueID)
     pCQI->pCplQStart = PAGE_ALIGN_BUF_PTR(pCQI->pCplQStart);
     memset(pCQI->pCplQStart, 0, queueSize);
 
-    pCQI->CplQStart = NVMeGetPhysAddr(pAE, pCQI->pCplQStart);
+    pCQI->CplQStart = NVMeGetPhysAddr(pAE, NULL, pCQI->pCplQStart);
     /* If fails on converting to physical address, return here */
     if (pCQI->CplQStart.QuadPart == 0)
 	return (STOR_STATUS_INSUFFICIENT_RESOURCES);
@@ -2011,7 +2015,8 @@ BOOLEAN NVMeInitCallback(PVOID pNVMeDevExt, PVOID pSrbExtension)
 	}
 	/* free the read buffer for namespaceready */
 	if ((pAE->ntldrDump == FALSE) && (NULL != pSrbExt->pDataBuffer)) {
-	    StorPortFreePool((PVOID)pAE, pSrbExt->pDataBuffer);
+	    StorPortFreeContiguousMemorySpecifyCache((PVOID)pAE, pSrbExt->pDataBuffer,
+						     pSrbExt->dataBufferSize, MmCached);
 	    pSrbExt->pDataBuffer = NULL;
 	}
 	break;
@@ -2057,7 +2062,7 @@ BOOLEAN NVMePreparePRPs(PNVME_DEVICE_EXTENSION pAE, PNVME_SRB_EXTENSION pSrbExt,
 	return (FALSE);
 
     /* Go ahead and prepare 1st PRP entries, need at least one PRP entry */
-    PhyAddr = NVMeGetPhysAddr(pAE, pBuffer);
+    PhyAddr = NVMeGetPhysAddr(pAE, pSrbExt->pSrb, pBuffer);
     if (PhyAddr.QuadPart == 0)
 	return (FALSE);
 
@@ -2084,7 +2089,7 @@ BOOLEAN NVMePreparePRPs(PNVME_DEVICE_EXTENSION pAE, PNVME_SRB_EXTENSION pSrbExt,
 	pSubEntry->PRP2 = 0;
     } else {
 	/* Use PRP2 as 2nd PRP entry and return */
-	PhyAddr = NVMeGetPhysAddr(pAE, (PVOID)PtrTemp);
+	PhyAddr = NVMeGetPhysAddr(pAE, pSrbExt->pSrb, (PVOID)PtrTemp);
 	if (PhyAddr.QuadPart == 0)
 	    return (FALSE);
 	pSubEntry->PRP2 = PhyAddr.QuadPart;
@@ -2096,7 +2101,7 @@ BOOLEAN NVMePreparePRPs(PNVME_DEVICE_EXTENSION pAE, PNVME_SRB_EXTENSION pSrbExt,
      * decreasing remaining transfer size and noting the # of PRP entries used
      */
     while (RemainLength) {
-	PhyAddr = NVMeGetPhysAddr(pAE, (PVOID)PtrTemp);
+	PhyAddr = NVMeGetPhysAddr(pAE, pSrbExt->pSrb, (PVOID)PtrTemp);
 	if (PhyAddr.QuadPart == 0)
 	    return (FALSE);
 	*pPrpList = (UINT64)PhyAddr.QuadPart;
@@ -2404,9 +2409,9 @@ BOOLEAN NVMeSetHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
     ULONG PhysicalAddressRangeCount = pAE->HMBdescriptorListCount;
     ULONG HMBsize = (ULONG)(pAE->HMBsize >> 12); // unit: page size
     ULONG HMDlowerAddress =
-	NVMeGetPhysAddr(pAE, pAE->pHMBdescriptorListRangeStart).LowPart;
+	NVMeGetPhysAddr(pAE, NULL, pAE->pHMBdescriptorListRangeStart).LowPart;
     ULONG HMDUpperAddress =
-	NVMeGetPhysAddr(pAE, pAE->pHMBdescriptorListRangeStart).HighPart;
+	NVMeGetPhysAddr(pAE, NULL, pAE->pHMBdescriptorListRangeStart).HighPart;
 
     /* Set up the Host Memory Buffer Size */
     pSetFeaturesCDW12->HSIZE = HMBsize; // memory page size (CC.MPS) units

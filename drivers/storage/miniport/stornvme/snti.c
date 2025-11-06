@@ -4347,7 +4347,7 @@ SNTI_TRANSLATION_STATUS SntiTranslateUnmap(PSTORAGE_REQUEST_BLOCK pSrb)
 	    pPageAlignedDsmRange = PAGE_ALIGN_BUF_PTR(pAlignedDsmRange);
 
 	    /* Point PRP1 to our dedicated DSM range definition buffer */
-	    physAddr = StorPortGetPhysicalAddress(pSrbExt->pNvmeDevExt, NULL,
+	    physAddr = StorPortGetPhysicalAddress(pSrbExt->pNvmeDevExt, pSrb,
 						  pAlignedDsmRange, &paLength);
 
 	    if (physAddr.QuadPart != 0) {
@@ -4363,7 +4363,7 @@ SNTI_TRANSLATION_STATUS SntiTranslateUnmap(PSTORAGE_REQUEST_BLOCK pSrb)
 		    pSrbExt->nvmeSqeUnit.PRP2 = 0;
 		    pSrbExt->numberOfPrpEntries = 1;
 		} else {
-		    physAddr = StorPortGetPhysicalAddress(pSrbExt->pNvmeDevExt, NULL,
+		    physAddr = StorPortGetPhysicalAddress(pSrbExt->pNvmeDevExt, pSrb,
 							  pPageAlignedDsmRange,
 							  &paLength);
 
@@ -6577,7 +6577,7 @@ VOID SntiBuildGetLogPageCmd(PNVME_SRB_EXTENSION pSrbExt, UINT8 logIdentifier)
 	STOR_PHYSICAL_ADDRESS physAddr;
 	ULONG paLength;
 
-	physAddr = StorPortGetPhysicalAddress(pDevExt, NULL, pSrbExt->pDataBuffer,
+	physAddr = StorPortGetPhysicalAddress(pDevExt, pSrbExt->pSrb, pSrbExt->pDataBuffer,
 					      &paLength);
 
 	if (physAddr.QuadPart != 0) {

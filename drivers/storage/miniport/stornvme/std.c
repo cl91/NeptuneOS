@@ -1973,7 +1973,10 @@ VOID IoCompletionRoutine(IN PSTOR_DPC pDpc, IN PVOID pHwDeviceExtension,
 			    /* free the read buffer for learning IO */
 			    ASSERT(pSrbExtension->pDataBuffer);
 			    if (NULL != pSrbExtension->pDataBuffer) {
-				StorPortFreePool((PVOID)pAE, pSrbExtension->pDataBuffer);
+				StorPortFreeContiguousMemorySpecifyCache((PVOID)pAE,
+									 pSrbExtension->pDataBuffer,
+									 pSrbExtension->dataBufferSize,
+									 MmCached);
 				pSrbExtension->pDataBuffer = NULL;
 			    }
 			}
@@ -2569,7 +2572,10 @@ BOOLEAN NVMeHandleSmartAttribs(PVOID pNVMeDevExt, PNVME_SRB_EXTENSION pSrbExtens
     }
 
     /* Free the 4K Data Buffer */
-    StorPortFreePool(pNVMeDevExt, pSrbExtension->pDataBuffer);
+    StorPortFreeContiguousMemorySpecifyCache(pNVMeDevExt,
+					     pSrbExtension->pDataBuffer,
+					     pSrbExtension->dataBufferSize,
+					     MmCached);
     pSrbExtension->pDataBuffer = NULL;
 
     return TRUE;
@@ -2611,7 +2617,10 @@ BOOLEAN NVMeHandleSmartThresholds(PVOID pNVMeDevExt, PNVME_SRB_EXTENSION pSrbExt
 	    smartThresholds->SrbIoCtrl.ReturnCode = SRB_STATUS_ERROR;
 
 	    /* Free the 4K Data Buffer */
-	    StorPortFreePool(pNVMeDevExt, pSrbExtension->pDataBuffer);
+	    StorPortFreeContiguousMemorySpecifyCache(pNVMeDevExt,
+						     pSrbExtension->pDataBuffer,
+						     pSrbExtension->dataBufferSize,
+						     MmCached);
 	    pSrbExtension->pDataBuffer = NULL;
 	} else {
 	    logPageData = (PADMIN_GET_LOG_PAGE_SMART_HEALTH_INFORMATION_LOG_ENTRY)
@@ -2659,7 +2668,10 @@ BOOLEAN NVMeHandleSmartThresholds(PVOID pNVMeDevExt, PNVME_SRB_EXTENSION pSrbExt
 	}
 
 	/* Free the 4K Data Buffer */
-	StorPortFreePool(pNVMeDevExt, pSrbExtension->pDataBuffer);
+	StorPortFreeContiguousMemorySpecifyCache(pNVMeDevExt,
+						 pSrbExtension->pDataBuffer,
+						 pSrbExtension->dataBufferSize,
+						 MmCached);
 	pSrbExtension->pDataBuffer = NULL;
     } else {
 	SET_DATA_LENGTH(pSrbExtension->pSrb, 0);
@@ -2667,7 +2679,10 @@ BOOLEAN NVMeHandleSmartThresholds(PVOID pNVMeDevExt, PNVME_SRB_EXTENSION pSrbExt
 	smartThresholds->SrbIoCtrl.ReturnCode = SRB_STATUS_ERROR;
 
 	/* Free the 4K Data Buffer */
-	StorPortFreePool(pNVMeDevExt, pSrbExtension->pDataBuffer);
+	StorPortFreeContiguousMemorySpecifyCache(pNVMeDevExt,
+						 pSrbExtension->pDataBuffer,
+						 pSrbExtension->dataBufferSize,
+						 MmCached);
 	pSrbExtension->pDataBuffer = NULL;
     }
 
@@ -3047,7 +3062,7 @@ BOOLEAN NVMeAllocateHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
 		       "AllocateHostMemoryBuffer Descriptor list %llx "
 		       "physical %llx size %d\n",
 		       pHMBDescriptorListBuffer,
-		       NVMeGetPhysAddr(pAE, pHMBDescriptorListBuffer),
+		       NVMeGetPhysAddr(pAE, NULL, pHMBDescriptorListBuffer),
 		       HMBdescriptorListSize);
     if (status != STOR_STATUS_SUCCESS) {
 	StorPortDebugPrint(INFO, "NVMeAllocateHostMemoryBuffer return code %08x\n",
@@ -3105,7 +3120,7 @@ BOOLEAN NVMeAllocateHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
 
 	/* save hmb chunk info */
 	pDescriptorEntry[DescNent].BSIZE = HMBchunkSize >> 12; // unit: page size
-	pDescriptorEntry[DescNent].BADD = NVMeGetPhysAddr(pAE, pBuffer).QuadPart;
+	pDescriptorEntry[DescNent].BADD = NVMeGetPhysAddr(pAE, NULL, pBuffer).QuadPart;
 	pDescritorVirAddrList[DescNent] = (ULONGLONG)pBuffer;
 	StorPortDebugPrint(INFO, "allocate entry addr %llx size %d\
 		\n",
@@ -3193,9 +3208,9 @@ BOOLEAN NVMeProcessHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE,
 
     ULONG PhysicalAddressRangeCount = pAE->HMBdescriptorListCount;
     ULONG HMDlowerAddress =
-	NVMeGetPhysAddr(pAE, pAE->pHMBdescriptorListRangeStart).LowPart;
+	NVMeGetPhysAddr(pAE, NULL, pAE->pHMBdescriptorListRangeStart).LowPart;
     ULONG HMDUpperAddress =
-	NVMeGetPhysAddr(pAE, pAE->pHMBdescriptorListRangeStart).HighPart;
+	NVMeGetPhysAddr(pAE, NULL, pAE->pHMBdescriptorListRangeStart).HighPart;
     ULONG HMBsize = (ULONG)(pAE->HMBsize >> 12); // unit: page size
 
     /* Set up the Host Memory Buffer Size */
@@ -3968,8 +3983,13 @@ BOOLEAN NVMeIoctlNamespaceMgmt(PNVME_DEVICE_EXTENSION pDevExt,
 		pNsAttachDW10 =
 		    (PADMIN_NAMESPACE_ATTACHMENT_DW10)&pNvmePtIoctl->NVMeCmd[10];
 		pNsAttachDW10->SEL = NAMESPACE_DETACH;
-		pSrbExt->pDataBuffer = NVMeAllocatePool(pDevExt,
-							sizeof(NVMe_CONTROLLER_LIST));
+		pSrbExt->pDataBuffer = NVMeAllocateMem(pDevExt,
+						       sizeof(NVMe_CONTROLLER_LIST),
+						       MM_ANY_NODE_OK);
+		if (!pSrbExt->pDataBuffer) {
+		    return FALSE;
+		}
+		pSrbExt->dataBufferSize = sizeof(NVMe_CONTROLLER_LIST);
 		memset(pSrbExt->pDataBuffer, 0, sizeof(NVMe_CONTROLLER_LIST));
 		pNsCtrlsList = (PNVMe_CONTROLLER_LIST)pSrbExt->pDataBuffer;
 		pNsCtrlsList->NumberOfIdentifiers = 1;
@@ -4071,7 +4091,10 @@ BOOLEAN NVMeCompletionNsAttachment(PVOID pNVMeDevExt, PNVME_SRB_EXTENSION pSrbEx
 			pNsMgmtCmd->CDW0.OPC = ADMIN_NAMESPACE_MANAGEMENT;
 			pNsMgmtCmd->NSID = pNvmeCmd->NSID;
 			pNvmeCmd->CDW0.OPC = ADMIN_NAMESPACE_MANAGEMENT;
-			StorPortFreePool(pNVMeDevExt, pSrbExt->pDataBuffer);
+			StorPortFreeContiguousMemorySpecifyCache(pNVMeDevExt,
+								 pSrbExt->pDataBuffer,
+								 pSrbExt->dataBufferSize,
+								 MmCached);
 			pNsMgmtDW10 =
 			    (PADMIN_NAMESPACE_MANAGEMENT_DW10)&pNvmePtIoctl->NVMeCmd[10];
 			pNsMgmtDW10->SEL = NAMESPACE_MANAGEMENT_DELETE;
@@ -4105,7 +4128,10 @@ BOOLEAN NVMeCompletionNsAttachment(PVOID pNVMeDevExt, PNVME_SRB_EXTENSION pSrbEx
 	     (pLunExt->offlineReason == DETACH_IN_PROGRESS))) {
 	    // Free memory allocated during delete/detach path
 	    if (pLunExt->offlineReason == DELETE_IN_PROGRESS) {
-		StorPortFreePool(pNVMeDevExt, pSrbExt->pDataBuffer);
+		StorPortFreeContiguousMemorySpecifyCache(pNVMeDevExt,
+							 pSrbExt->pDataBuffer,
+							 pSrbExt->dataBufferSize,
+							 MmCached);
 	    }
 
 	    StorPortDeviceReady(pDevExt, SrbGetPathId((void *)pSrb),
@@ -4967,7 +4993,9 @@ BOOLEAN NVMeProcessPublicIoctl(PNVME_DEVICE_EXTENSION pDevExt,
 	}
 
 	/* Allocate new buffer for NVMe Read Log */
-	pSrbExt->pDataBuffer = NVMeAllocatePool(pDevExt, PAGE_SIZE_IN_4KB);
+	pSrbExt->pDataBuffer = NVMeAllocateMem(pDevExt, PAGE_SIZE_IN_4KB,
+					       MM_ANY_NODE_OK);
+	pSrbExt->dataBufferSize = PAGE_SIZE_IN_4KB;
 
 	/* Set up the GET LOG PAGE command */
 	memset(&pSrbExt->nvmeSqeUnit, 0, sizeof(NVMe_COMMAND));
@@ -4981,7 +5009,7 @@ BOOLEAN NVMeProcessPublicIoctl(PNVME_DEVICE_EXTENSION pDevExt,
 	     << BYTE_SHIFT_2);
 	pSrbExt->nvmeSqeUnit.CDW10 |= (SMART_HEALTH_INFORMATION & DWORD_MASK_LOW_WORD);
 
-	physAddr = StorPortGetPhysicalAddress(pDevExt, NULL, pSrbExt->pDataBuffer,
+	physAddr = StorPortGetPhysicalAddress(pDevExt, pSrb, pSrbExt->pDataBuffer,
 					      &paLength);
 
 	/* This command only requires a single 4K page */
@@ -5021,7 +5049,9 @@ BOOLEAN NVMeProcessPublicIoctl(PNVME_DEVICE_EXTENSION pDevExt,
 	}
 
 	/* Allocate new buffer for NVMe Read Log */
-	pSrbExt->pDataBuffer = NVMeAllocatePool(pDevExt, PAGE_SIZE_IN_4KB);
+	pSrbExt->pDataBuffer = NVMeAllocateMem(pDevExt, PAGE_SIZE_IN_4KB,
+					       MM_ANY_NODE_OK);
+	pSrbExt->dataBufferSize = PAGE_SIZE_IN_4KB;
 
 	/* Set up the GET LOG PAGE command */
 	memset(&pSrbExt->nvmeSqeUnit, 0, sizeof(NVMe_COMMAND));
@@ -5031,13 +5061,12 @@ BOOLEAN NVMeProcessPublicIoctl(PNVME_DEVICE_EXTENSION pDevExt,
 
 	/* DWORD 10 */
 	numDwords = ((sizeof(ADMIN_GET_LOG_PAGE_ERROR_INFORMATION_LOG_ENTRY) /
-		      NUM_BYTES_IN_DWORD) -
-		     1);
+		      NUM_BYTES_IN_DWORD) - 1);
 	pSrbExt->nvmeSqeUnit.CDW10 |= (numDwords << BYTE_SHIFT_2);
 
 	pSrbExt->nvmeSqeUnit.CDW10 |= (SMART_HEALTH_INFORMATION & DWORD_MASK_LOW_WORD);
 
-	physAddr = StorPortGetPhysicalAddress(pDevExt, NULL, pSrbExt->pDataBuffer,
+	physAddr = StorPortGetPhysicalAddress(pDevExt, pSrb, pSrbExt->pDataBuffer,
 					      &paLength);
 
 	/* This command only requires a single 4K page */
