@@ -209,10 +209,73 @@ NTAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,
 			     IN ULONG Length)
 {
     if (!SourceMdl) {
+	assert(FALSE);
 	return NULL;
     }
-    UNIMPLEMENTED_DBGBREAK();
-    return NULL;
+    if (!Length) {
+	assert(FALSE);
+	return NULL;
+    }
+    if (VirtualAddress < MmGetMdlVirtualAddress(SourceMdl)) {
+	assert(FALSE);
+	return NULL;
+    }
+    if ((PUCHAR)VirtualAddress + Length >
+	(PUCHAR)MmGetMdlVirtualAddress(SourceMdl) + SourceMdl->ByteCount) {
+	assert(FALSE);
+	return NULL;
+    }
+
+    /* Determine the starting PFN index and PFN count of the partial MDL */
+    ULONG PfnIndex = 0;
+    PHYSICAL_ADDRESS PhyAddr = MiGetMdlPhysicalAddress(SourceMdl,
+						       VirtualAddress,
+						       &PfnIndex);
+    if (PfnIndex == ULONG_MAX) {
+	assert(FALSE);
+	return NULL;
+    }
+    ULONG PageShift = MDL_PFN_PAGE_LOG2SIZE(SourceMdl->PfnEntries[PfnIndex]);
+    ULONG_PTR OldPfn = SourceMdl->PfnEntries[PfnIndex] >> PageShift;
+    ULONG_PTR NewPfn = PhyAddr.QuadPart >> PageShift;
+    assert(NewPfn >= OldPfn);
+    ULONG PagesToSkip = NewPfn - OldPfn;
+    ULONG OldPageCount = MDL_PFN_PAGE_COUNT(SourceMdl->PfnEntries[PfnIndex]);
+    assert(OldPageCount > PagesToSkip);
+    ULONG NewPageCount = OldPageCount - PagesToSkip;
+    ULONG_PTR NewPfnEntry = (NewPfn << PageShift) | (NewPageCount << MDL_PFN_ATTR_BITS) |
+	(SourceMdl->PfnEntries[PfnIndex] & MDL_PFN_ATTR_MASK);
+    ULONG PfnCount = 0;
+    MiGetMdlPhysicalAddress(SourceMdl, VirtualAddress + Length - 1, &PfnCount);
+    if (PfnCount == ULONG_MAX) {
+	assert(FALSE);
+	return NULL;
+    }
+    if (PfnCount < PfnIndex) {
+	assert(FALSE);
+	return NULL;
+    }
+    PfnCount -= PfnIndex;
+    PfnCount++;
+
+    /* Allocate the partial MDL and copy the PFN database */
+    PMDL PartialMdl = ExAllocatePool(NonPagedPool,
+				    sizeof(MDL) + PfnCount * sizeof(ULONG_PTR));
+    if (!PartialMdl) {
+	return NULL;
+    }
+
+    ULONG Offset = VirtualAddress - MmGetMdlVirtualAddress(SourceMdl);
+    PartialMdl->MappedSystemVa = SourceMdl->MappedSystemVa + Offset;
+    PartialMdl->ByteOffset = SourceMdl->ByteOffset + Offset;
+    PartialMdl->ByteOffset &= MDL_PFN_PAGE_SIZE(SourceMdl->PfnEntries[PfnIndex]) - 1;
+    PartialMdl->ByteCount = Length;
+    PartialMdl->PfnCount = PfnCount;
+    RtlCopyMemory(PartialMdl->PfnEntries, &SourceMdl->PfnEntries[PfnIndex],
+		  PfnCount * sizeof(ULONG_PTR));
+    PartialMdl->PfnEntries[0] = NewPfnEntry;
+
+    return PartialMdl;
 }
 
 NTAPI PMDL IoAllocateMdl(IN PVOID VirtualAddress,
@@ -265,7 +328,7 @@ NTAPI PVOID MmPageEntireDriver(IN PVOID Address)
 }
 
 /*
- * @name MmGetMdlPhysicalAddress
+ * @name MiGetMdlPhysicalAddress
  *
  * Returns the physical address corresponding to the specified offset
  * within the MDL.
@@ -279,18 +342,25 @@ NTAPI PVOID MmPageEntireDriver(IN PVOID Address)
  *    Note that this function doesn't exist in Windows/ReactOS and is
  *    an Neptune OS addition.
  */
-NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
-					       IN PVOID StartVa)
+PHYSICAL_ADDRESS MiGetMdlPhysicalAddress(IN PMDL Mdl,
+					 IN PVOID StartVa,
+					 OUT OPTIONAL PULONG PfnIndex)
 {
     ULONG_PTR CurrentVa = 0;
     PHYSICAL_ADDRESS PhyAddr = { .QuadPart = 0 };
+    if (PfnIndex) {
+	*PfnIndex = ULONG_MAX;
+    }
     for (int i = 0; i < Mdl->PfnCount; i++) {
 	ULONG PageCount = MDL_PFN_PAGE_COUNT(Mdl->PfnEntries[i]);
 	SIZE_T PageSize = MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]);
 	ULONG_PTR NextVa = CurrentVa + PageCount * PageSize;
 	if (CurrentVa <= (ULONG_PTR)StartVa && (ULONG_PTR)StartVa < NextVa) {
 	    PhyAddr.QuadPart = MDL_PFN_PAGE_ADDRESS(Mdl->PfnEntries[i]) +
-		((ULONG_PTR)StartVa & (MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]) - 1));
+		(ULONG_PTR)StartVa - CurrentVa;
+	    if (PfnIndex) {
+		*PfnIndex = i;
+	    }
 	    break;
 	}
 	CurrentVa = NextVa;
@@ -300,7 +370,7 @@ NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
 }
 
 /*
- * @name MmGetMdlPhysicallyContiguousRegion
+ * @name MiGetMdlPhysicallyContiguousRegion
  *
  * Returns the size of the physically contiguous region starting from the
  * specified virtual address of the MDL. If BoundAddrBits is not NULL, it
@@ -320,9 +390,9 @@ NTAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
  * @remarks
  *    This doesn't exist in Windows/ReactOS and is Neptune OS only.
  */
-NTAPI SIZE_T MmGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
-					      IN PVOID StartVa,
-					      IN ULONG BoundAddrBits)
+SIZE_T MiGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
+					IN PVOID StartVa,
+					IN ULONG BoundAddrBits)
 {
     ULONG_PTR CurrentVa = 0;
     for (int i = 0; i < Mdl->PfnCount; i++) {

@@ -246,6 +246,12 @@ VOID IopProcessTimerList();
 
 /* util.c */
 extern LIST_ENTRY IopDmaPoolList;
+PHYSICAL_ADDRESS MiGetMdlPhysicalAddress(IN PMDL Mdl,
+					 IN PVOID StartVa,
+					 OUT OPTIONAL PULONG PfnIndex);
+SIZE_T MiGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
+					IN PVOID StartVa,
+					IN ULONG BoundAddrBits);
 
 /* workitem.c */
 extern LIST_ENTRY IopWorkItemQueue;

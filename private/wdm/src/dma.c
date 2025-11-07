@@ -900,13 +900,13 @@ NTAPI PHYSICAL_ADDRESS HalpMapTransfer(IN PDMA_ADAPTER DmaAdapter,
     assert(AdapterObject != NULL);
 
     /* Physical address corresponding to the transfer start page and offset. */
-    PHYSICAL_ADDRESS PhysicalAddress = MmGetMdlPhysicalAddress(Mdl, CurrentVa);
+    PHYSICAL_ADDRESS PhysicalAddress = MiGetMdlPhysicalAddress(Mdl, CurrentVa, NULL);
 
     /* Calculate the maximum possible size of one single DMA transfer. This
      * consists of pages that are physically contiguous and don't cross the
      * adapter boundary (64KB for ISA controllers and 4GB for PCI devices). */
     ULONG BoundAddrBits = HalpGetAdapterBoundaryAddressBits(AdapterObject);
-    ULONG TransferLength = MmGetMdlPhysicallyContiguousSize(Mdl, CurrentVa,
+    ULONG TransferLength = MiGetMdlPhysicallyContiguousSize(Mdl, CurrentVa,
 							    BoundAddrBits);
 
     /* Special case for bus master adapters with S/G support. We can directly

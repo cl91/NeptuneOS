@@ -1261,13 +1261,6 @@ FORCEINLINE NTAPI PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
     return (PVOID)(ULONG_PTR)Mdl->ByteOffset;
 }
 
-NTAPI NTSYSAPI PHYSICAL_ADDRESS MmGetMdlPhysicalAddress(IN PMDL Mdl,
-							IN PVOID StartVa);
-
-NTAPI NTSYSAPI SIZE_T MmGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
-						       IN PVOID StartVa,
-						       IN ULONG BoundAddrBits);
-
 NTAPI NTSYSAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,
 				      IN PVOID VirtualAddress,
 				      IN ULONG Length);
