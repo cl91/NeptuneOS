@@ -1614,6 +1614,7 @@ NTAPI STOR_PHYSICAL_ADDRESS StorPortGetPhysicalAddress(IN PVOID HwDeviceExtensio
 	PhysicalAddress.QuadPart =
 	    DeviceExtension->UncachedExtensionPhysicalBase.QuadPart + Offset;
 	*Length = DeviceExtension->UncachedExtensionSize - Offset;
+	return PhysicalAddress;
     } else {
 	PMAPPED_ADDRESS Mapping = DeviceExtension->MappedAddressList;
 	while (Mapping) {
