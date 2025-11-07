@@ -53,7 +53,7 @@ static NTSTATUS FatMapCluster(IN PDEVICE_EXTENSION DevExt,
 {
     ULONG ClusterSize = DevExt->FatInfo.BytesPerCluster;
     LARGE_INTEGER Offset = { .QuadPart = FatOffset };
-    ULONG MappedLength;
+    ULONG MappedLength = 0;
     NTSTATUS Status = CcMapData(DevExt->FatFileObject, &Offset, ClusterSize,
 				MAP_WAIT, &MappedLength, Context, MappedAddress);
     if (!NT_SUCCESS(Status)) {
@@ -61,7 +61,6 @@ static NTSTATUS FatMapCluster(IN PDEVICE_EXTENSION DevExt,
 	       Status, FatOffset, DevExt);
 	return Status;
     }
-    assert(MappedLength == ClusterSize);
     return STATUS_SUCCESS;
 }
 

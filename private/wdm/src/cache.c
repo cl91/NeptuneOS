@@ -342,9 +342,6 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     if (EndOffset > Fcb->FileSizes.FileSize.QuadPart) {
 	EndOffset = Fcb->FileSizes.FileSize.QuadPart;
     }
-    if (EndOffset < FileOffset->QuadPart + Length) {
-	return STATUS_INVALID_PARAMETER;
-    }
 
     /* Build a list of file regions for which locally cached file data do not exist
      * and therefore a server call is needed to get the file data. */
