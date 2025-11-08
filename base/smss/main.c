@@ -118,16 +118,16 @@ static VOID SmGetKeyboardInput(IN HANDLE Keyboard,
 
 static VOID SmMountDrives()
 {
-    SmPrint("Mounting drive A... ");
-    UNICODE_STRING FloppyDevice = RTL_CONSTANT_STRING(L"\\Device\\Floppy0");
-    UNICODE_STRING FloppyDosDevice = RTL_CONSTANT_STRING(L"\\??\\A:");
+    SmPrint("Mounting drive C... ");
+    UNICODE_STRING FloppyDevice = RTL_CONSTANT_STRING(L"\\Device\\HarddiskVolume1");
+    UNICODE_STRING FloppyDosDevice = RTL_CONSTANT_STRING(L"\\??\\C:");
     OBJECT_ATTRIBUTES ObjAttr;
     InitializeObjectAttributes(&ObjAttr, &FloppyDosDevice, 0, NULL, NULL);
     HANDLE Symlink = NULL;
     NTSTATUS Status = NtCreateSymbolicLinkObject(&Symlink, SYMBOLIC_LINK_ALL_ACCESS,
 						 &ObjAttr, &FloppyDevice);
     if (!NT_SUCCESS(Status)) {
-	SmPrint("Failed to create symbolic link for drive A (error 0x%08x).\n", Status);
+	SmPrint("Failed to create symbolic link for drive C (error 0x%08x).\n", Status);
 	return;
     }
     NtClose(Symlink);
