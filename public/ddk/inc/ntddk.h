@@ -571,6 +571,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 			    * unique up to the original requestor. */
 	PVOID OutputBuffer; /* Output buffer provided by the client
 			     * process, mapped here */
+	PFILE_OBJECT CreatedFileObject;
 	LIST_ENTRY Link;    /* List entry for IrpQueue, PendingIrpList,
 			     * CleanupIrpList, and ReplyIrpList */
 	union {

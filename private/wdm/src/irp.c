@@ -999,6 +999,9 @@ static VOID IopDeleteIrp(PIRP Irp)
     default:
 	break;
     }
+    if (Irp->Private.CreatedFileObject) {
+	ObDereferenceObject(Irp->Private.CreatedFileObject);
+    }
     IoFreeIrp(Irp);
 }
 
@@ -1054,10 +1057,28 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 {
     ULONG Size = sizeof(IO_PACKET);
     PIO_STACK_LOCATION IoSp = IoGetNextIrpStackLocation(Irp);
+    assert(!IoSp->FileObject);
+    PFILE_OBJECT CreatedFileObject = Irp->Private.CreatedFileObject;
+    ULONG64 FileSize = 0;
+    ULONG64 AllocationSize = 0;
+    ULONG64 ValidDataLength = 0;
+    PFSRTL_COMMON_FCB_HEADER Fcb = CreatedFileObject ? CreatedFileObject->FsContext : NULL;
+    if (Fcb) {
+	FileSize = Fcb->FileSizes.FileSize.QuadPart;
+	AllocationSize = Fcb->FileSizes.AllocationSize.QuadPart;
+	ValidDataLength = Fcb->FileSizes.ValidDataLength.QuadPart;
+    }
+    if (CreatedFileObject) {
+	ObDereferenceObject(CreatedFileObject);
+    }
+    Irp->Private.CreatedFileObject = NULL;
+
     switch (IoSp->MajorFunction) {
     case IRP_MJ_CREATE:
-	assert(IoSp->FileObject);
-	if (NT_SUCCESS(Irp->IoStatus.Status) && IoSp->FileObject->FsContext) {
+    case IRP_MJ_WRITE:
+    case IRP_MJ_SET_INFORMATION:
+	assert(CreatedFileObject);
+	if (NT_SUCCESS(Irp->IoStatus.Status) && Fcb) {
 	    Size += sizeof(IO_RESPONSE_DATA);
 	}
 	break;
@@ -1150,13 +1171,12 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     case IRP_MJ_SET_INFORMATION:
 	/* If the file object is part of a file system, we need to inform the
 	 * server of the file size information. */
-	if (NT_SUCCESS(Irp->IoStatus.Status) && IoSp->FileObject && IoSp->FileObject->FsContext) {
+	if (NT_SUCCESS(Irp->IoStatus.Status) && Fcb) {
 	    Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
 	    PIO_RESPONSE_DATA Ptr = (PIO_RESPONSE_DATA)Dest->ClientMsg.IoCompleted.ResponseData;
-	    PFSRTL_COMMON_FCB_HEADER Fcb = IoSp->FileObject->FsContext;
-	    Ptr->FileSizes.FileSize = Fcb->FileSizes.FileSize.QuadPart;
-	    Ptr->FileSizes.AllocationSize = Fcb->FileSizes.AllocationSize.QuadPart;
-	    Ptr->FileSizes.ValidDataLength = Fcb->FileSizes.ValidDataLength.QuadPart;
+	    Ptr->FileSizes.FileSize = FileSize;
+	    Ptr->FileSizes.AllocationSize = AllocationSize;
+	    Ptr->FileSizes.ValidDataLength = ValidDataLength;
 	}
 	break;
     case IRP_MJ_PNP:
@@ -1916,18 +1936,25 @@ static VOID IopCompleteIrp(IN PIRP Irp)
     assert(Irp->CurrentLocation >= 1);
     assert(Irp->CurrentLocation <= Irp->StackCount);
     while (Irp->CurrentLocation <= Irp->StackCount) {
+	BOOLEAN LastStack = Irp->CurrentLocation == Irp->StackCount;
 	PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+	PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
+	PFILE_OBJECT FileObject = IoStack->FileObject;
+	IoStack->DeviceObject = NULL;
+	IoStack->FileObject = NULL;
 	IoSkipCurrentIrpStackLocation(Irp);
 	NTSTATUS Status = STATUS_CONTINUE_COMPLETION;
 	if (IoStack->CompletionRoutine) {
-	    Status = IoStack->CompletionRoutine(IoStack->DeviceObject,
-						Irp, IoStack->Context);
+	    Status = IoStack->CompletionRoutine(DeviceObject, Irp,
+						IoStack->Context);
 	}
-	if (IoStack->DeviceObject) {
-	    ObDereferenceObject(IoStack->DeviceObject);
+	if (DeviceObject) {
+	    ObDereferenceObject(DeviceObject);
 	}
-	if (IoStack->FileObject) {
-	    ObDereferenceObject(IoStack->FileObject);
+	if (LastStack) {
+	    Irp->Private.CreatedFileObject = FileObject;
+	} else if (FileObject) {
+	    ObDereferenceObject(FileObject);
 	}
 	if (Status == StopCompletion) {
 	    /* Check the list of execution environment and remove us so
@@ -2638,7 +2665,7 @@ NTAPI VOID IoCancelIrp(IN PIRP Irp)
  * This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
-			      IN OUT PIRP Irp)
+			    IN OUT PIRP Irp)
 {
     PAGED_CODE();
 
