@@ -304,9 +304,9 @@ SNTI_TRANSLATION_STATUS SntiTranslateCommand(PNVME_DEVICE_EXTENSION pAdapterExte
 	returnStatus = SntiTranslateInquiry(pSrb);
 	/* set the maximum queue depth per LUN */
 	if (pSrb->SrbStatus == SRB_STATUS_SUCCESS) {
-	    StorPortSetDeviceQueueDepth(pAdapterExtension, SrbGetPathId((void *)pSrb),
-					SrbGetTargetId((void *)pSrb),
-					SrbGetLun((void *)pSrb),
+	    StorPortSetDeviceQueueDepth(pAdapterExtension, SrbGetPathId(pSrb),
+					SrbGetTargetId(pSrb),
+					SrbGetLun(pSrb),
 					SNTI_STORPORT_QUEUE_DEPTH);
 	}
 	break;
