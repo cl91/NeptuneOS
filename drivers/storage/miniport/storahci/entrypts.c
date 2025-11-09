@@ -2100,13 +2100,13 @@ Routine Description:
     AhciInterruptHandler is the interrupt handler for a port.
 
     If the miniport driver requires a large amount of time to process the interrupt it
-must defer processing to a worker routine. This routine must attempt one clear the
-interrupt on the HBA before it returns TRUE.
+    must defer processing to a worker routine. This routine must attempt one clear the
+    interrupt on the HBA before it returns TRUE.
 
 NOTE:
     The following StorPort routines shall not be called from the AhciHwInterrupt routine -
-StorPortCompleteAllRequests and StorPortDeviceBusy. The miniport could however request for
-a worker routine and make the calls in the worker routine.
+    StorPortCompleteAllRequests and StorPortDeviceBusy. The miniport could however request for
+    a worker routine and make the calls in the worker routine.
 
 Called by:
     AhciHwInterrupt
@@ -2152,16 +2152,20 @@ interrupt pending.
     completes with success any outstanding command whose corresponding bit has been cleared in
     the respective register. PxCI and PxSACT are volatile registers; software should only use
     their values to determine commands that have completed, not to determine which commands
-    have previously been issued." 4.1.1 Determine if there was an ATA error on the command
-    completed. Error register is only valid if bit0 of Status is 1 4.1.2 Check to see if the
-    right amount of data transfered set channelExtension->Slot[i]->DataTransferLength = the
-    amount transfered 4.1.3 Otherwise, command completed successfully 5.1 Handle error
-    processing Until the error recovery can be completed, don't let any more IO's come through
+    have previously been issued."
+    4.1.1 Determine if there was an ATA error on the command completed. Error register is only
+    valid if bit0 of Status is 1
+    4.1.2 Check to see if the right amount of data transfered set
+    channelExtension->Slot[i]->DataTransferLength = the amount transfered
+    4.1.3 Otherwise, command completed successfully
+    5.1 Handle error processing
+    Until the error recovery can be completed, don't let any more IO's come through
     AHCI 1.1 Section 5.5.3 - 5.
     "If there were errors, noted in the PxIS register, software performs error recovery
-    actions (see section 6.2.2)." AHCI 1.1 Section 6.2.2.1 Non-Queued Error Recovery (this may
-    take a while, better queue a DPC) Complete further processing in the worker routine and
-    enable interrupts on the channel
+    actions (see section 6.2.2)."
+    AHCI 1.1 Section 6.2.2.1
+    Non-Queued Error Recovery (this may take a while, better queue a DPC)
+    Complete further processing in the worker routine and enable interrupts on the channel
 
 Affected Variables/Registers:
 

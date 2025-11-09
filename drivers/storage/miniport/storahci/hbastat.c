@@ -745,7 +745,7 @@ BOOLEAN P_Running(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
 
 /*
     Search for Device Activity phase.  Use DET and IPM for any signs of life as defined in
-AHCI 1.2 section 10.1.2 and 10.3.1. Polled 3 times in 30ms
+    AHCI 1.2 section 10.1.2 and 10.3.1. Polled 3 times in 30ms
 
 Called By:
     P_Running
@@ -760,9 +760,11 @@ It performs:
     1.1 When looking for device presence, seeing link level power management shall count
         as device present as per 10.3.1
     1.2 Wait for 1 second for DET to show signs of life
-    1.3 After 30ms give up 2.1 When looking for device presence, seeing link level power
+    1.3 After 30ms give up
+    2.1 When looking for device presence, seeing link level power
         management shall count as device present as per 10.3.1
-    2.2 Otherwise continue on to WaitOnDET1 3.1 If DET==3 we are ready for WaitOnFRE already.
+    2.2 Otherwise continue on to WaitOnDET1
+    3.1 If DET==3 we are ready for WaitOnFRE already.
 
 Affected Variables/Registers:
     none
