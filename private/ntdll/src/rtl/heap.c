@@ -222,6 +222,11 @@ NTSTATUS RtlpInitializeHeap(OUT PHEAP Heap,
     /* Memory allocation is always 16-byte aligned, even on 32-bit architectures */
     Flags |= HEAP_CREATE_ALIGN_16;
 
+    /* On debug builds we enable buffer overflow and use after free detections. */
+#if DBG
+    Flags |= HEAP_TAIL_CHECKING_ENABLED | HEAP_FREE_CHECKING_ENABLED;
+#endif
+
     /* Preconditions */
     ASSERT(Heap != NULL);
     ASSERT(Parameters != NULL);
