@@ -3452,18 +3452,16 @@ BOOLEAN RtlpValidateHeapSegment(PHEAP Heap,
 
     /* Check total numbers of UCP and UCR */
     if (Segment->NumberOfUnCommittedPages != UnCommittedPages) {
-	DPRINT1
-	    ("HEAP: Segment %p NumberOfUnCommittedPages is invalid (%x != %x)\n",
-	     Segment, Segment->NumberOfUnCommittedPages, UnCommittedPages);
+	DPRINT1("HEAP: Segment %p NumberOfUnCommittedPages is invalid (%x != %x)\n",
+		Segment, Segment->NumberOfUnCommittedPages, UnCommittedPages);
 
 	return FALSE;
     }
 
     if (Segment->NumberOfUnCommittedRanges != UnCommittedRanges) {
-	DPRINT1
-	    ("HEAP: Segment %p NumberOfUnCommittedRanges is invalid (%x != %x)\n",
-	     Segment, Segment->NumberOfUnCommittedRanges,
-	     UnCommittedRanges);
+	DPRINT1("HEAP: Segment %p NumberOfUnCommittedRanges is invalid (%x != %x)\n",
+		Segment, Segment->NumberOfUnCommittedRanges,
+		UnCommittedRanges);
 
 	return FALSE;
     }
@@ -3493,12 +3491,16 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
     NextEntry = ListHead->Flink;
 
     while (NextEntry != ListHead) {
-	PHEAP_FREE_ENTRY FreeEntry = CONTAINING_RECORD(NextEntry, HEAP_FREE_ENTRY, FreeList);
+	PHEAP_FREE_ENTRY FreeEntry = CONTAINING_RECORD(NextEntry,
+						       HEAP_FREE_ENTRY,
+						       FreeList);
 
 	NextEntry = NextEntry->Flink;
 
 	if (NextEntry != ListHead) {
-	    PHEAP_FREE_ENTRY NextFreeEntry = CONTAINING_RECORD(NextEntry, HEAP_FREE_ENTRY, FreeList);
+	    PHEAP_FREE_ENTRY NextFreeEntry = CONTAINING_RECORD(NextEntry,
+							       HEAP_FREE_ENTRY,
+							       FreeList);
 	    /* Free entries must be sorted */
 	    if (FreeEntry->CommonEntry.Size > NextFreeEntry->CommonEntry.Size) {
 		DPRINT1("Dedicated free entry %p of size %d is not put in order.\n",
@@ -3509,7 +3511,8 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
 	/* Check that the hint is there */
 	if (FreeEntry->CommonEntry.Size > Heap->DeCommitFreeBlockThreshold) {
 	    if (Heap->FreeHints[0] == NULL) {
-		DPRINT1("No hint pointing to the non-dedicated list although there is a free entry %p of size %d.\n",
+		DPRINT1("No hint pointing to the non-dedicated list although there is "
+			"a free entry %p of size %d.\n",
 			FreeEntry, FreeEntry->CommonEntry.Size);
 	    }
 	    if (!RtlTestBit(&Heap->FreeHintBitmap, 0)) {
@@ -3518,7 +3521,8 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
 	    }
 	} else {
 	    if (Heap->FreeHints[FreeEntry->CommonEntry.Size - 1] == NULL) {
-		DPRINT1("No hint pointing to the dedicated list although there is a free entry %p of size %d.\n",
+		DPRINT1("No hint pointing to the dedicated list although there is a "
+			"free entry %p of size %d.\n",
 			FreeEntry, FreeEntry->CommonEntry.Size);
 	    }
 	    if (!RtlTestBit(&Heap->FreeHintBitmap, FreeEntry->CommonEntry.Size - 1)) {
@@ -3585,7 +3589,9 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
     NextEntry = ListHead->Flink;
 
     while (ListHead != NextEntry) {
-	PHEAP_VIRTUAL_ALLOC_ENTRY VirtualAllocBlock = CONTAINING_RECORD(NextEntry, HEAP_VIRTUAL_ALLOC_ENTRY, Entry);
+	PHEAP_VIRTUAL_ALLOC_ENTRY VirtualAllocBlock = CONTAINING_RECORD(NextEntry,
+									HEAP_VIRTUAL_ALLOC_ENTRY,
+									Entry);
 
 	/* We can only check the fill pattern */
 	if (VirtualAllocBlock->BusyBlock.CommonEntry.Flags & HEAP_ENTRY_FILL_PATTERN) {
@@ -3614,7 +3620,8 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
     }
 
     if (FreeListEntriesCount != FreeBlocksCount) {
-	DPRINT1("HEAP: Free blocks count in arena (%u) does not match free blocks number in the free lists (%u)\n",
+	DPRINT1("HEAP: Free blocks count in arena (%u) does not match free blocks "
+		"number in the free lists (%u)\n",
 		FreeBlocksCount, FreeListEntriesCount);
 	return FALSE;
     }
