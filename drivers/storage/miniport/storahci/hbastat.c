@@ -514,6 +514,14 @@ VOID RunNextPort(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension, _In_ BOOLEAN AtD
     }
 }
 
+static VOID AhciChannelStartAttemptWorker(IN PVOID HwDeviceExtension,
+					  IN PVOID Context,
+					  IN PVOID Worker)
+{
+    P_Running(Context, FALSE);
+    StorPortFreeWorker(HwDeviceExtension, Worker);
+}
+
 /*
 
 Called By:
@@ -552,8 +560,25 @@ VOID P_Running_StartAttempt(_In_ PAHCI_CHANNEL_EXTENSION ChannelExtension,
     }
 
     // 2 Starts the Channel Start state machine
-    P_Running(ChannelExtension, FALSE);
-    return;
+    if (AtDIRQL) {
+	PVOID Worker = NULL;
+	ULONG Status = StorPortInitializeWorker(ChannelExtension->AdapterExtension,
+						&Worker);
+	if (Status != STOR_STATUS_SUCCESS) {
+	    assert(FALSE);
+	    return;
+	}
+	Status = StorPortQueueWorkItem(ChannelExtension->AdapterExtension,
+				       AhciChannelStartAttemptWorker,
+				       Worker,
+				       ChannelExtension);
+	if (Status != STOR_STATUS_SUCCESS) {
+	    assert(FALSE);
+	    return;
+	}
+    } else {
+	P_Running(ChannelExtension, FALSE);
+    }
 }
 
 VOID P_Running_Callback(_In_ PVOID AdapterExtension, _In_opt_ PVOID ChannelExtension)
