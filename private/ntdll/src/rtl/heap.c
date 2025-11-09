@@ -1937,8 +1937,9 @@ static PHEAP_ENTRY RtlpSplitEntry(PHEAP Heap,
     FreeSize = InUseEntry->CommonEntry.Size - Index;
 
     /* Update it's size fields (we don't need their data anymore) */
-    InUseEntry->CommonEntry.Size = (USHORT) Index;
-    InUseEntry->CommonEntry.UnusedBytes = (UCHAR) (AllocationSize - Size);
+    InUseEntry->CommonEntry.Size = (USHORT)Index;
+    assert(AllocationSize >= Size);
+    InUseEntry->CommonEntry.UnusedBytes = (UCHAR)(AllocationSize - Size);
 
     /* If there is something to split - do the split */
     if (FreeSize != 0) {
@@ -2505,6 +2506,7 @@ BOOLEAN RtlpGrowBlockInPlace(IN PHEAP Heap,
 	Heap->TotalFreeSize -= FreeEntry->CommonEntry.Size;
     }
 
+    assert((InUseEntry->CommonEntry.Size << HEAP_ENTRY_SHIFT) >= InUseEntry->CommonEntry.UnusedBytes);
     PrevSize =
 	(InUseEntry->CommonEntry.Size << HEAP_ENTRY_SHIFT) - InUseEntry->CommonEntry.UnusedBytes;
     FreeSize -= Index;
@@ -2529,6 +2531,7 @@ BOOLEAN RtlpGrowBlockInPlace(IN PHEAP Heap,
 
     /* Update sizes */
     InUseEntry->CommonEntry.Size = (USHORT) Index;
+    assert((Index << HEAP_ENTRY_SHIFT) >= Size);
     InUseEntry->CommonEntry.UnusedBytes = (UCHAR) ((Index << HEAP_ENTRY_SHIFT) - Size);
 
     /* Check if there is a free space remaining after merging those blocks */
@@ -2776,6 +2779,7 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
 	/* Usual entry */
 	OldIndex = InUseEntry->CommonEntry.Size;
 
+	assert((OldIndex << HEAP_ENTRY_SHIFT) >= InUseEntry->CommonEntry.UnusedBytes);
 	OldSize = (OldIndex << HEAP_ENTRY_SHIFT) - InUseEntry->CommonEntry.UnusedBytes;
     }
 
@@ -2805,10 +2809,12 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
 	    // FIXME Tagging, TagIndex
 
 	    /* Update unused bytes count */
-	    InUseEntry->CommonEntry.UnusedBytes = (UCHAR) (AllocationSize - Size);
+	    assert(AllocationSize >= Size);
+	    InUseEntry->CommonEntry.UnusedBytes = (UCHAR)(AllocationSize - Size);
 	} else {
 	    // FIXME Tagging, SmallTagIndex
-	    InUseEntry->CommonEntry.UnusedBytes = (UCHAR) (AllocationSize - Size);
+	    assert(AllocationSize >= Size);
+	    InUseEntry->CommonEntry.UnusedBytes = (UCHAR)(AllocationSize - Size);
 	}
 
 	/* If new size is bigger than the old size */
@@ -3169,7 +3175,7 @@ SIZE_T RtlSizeHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr)
     // FIXME This is a hack around missing SEH support!
     if (!Heap) {
 	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_HANDLE);
-	return (SIZE_T) - 1;
+	return (SIZE_T)-1;
     }
 
     /* Force flags */
@@ -3184,9 +3190,8 @@ SIZE_T RtlSizeHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr)
 
     /* Return -1 if that entry is free */
     if (!(HeapEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY)) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-	    (STATUS_INVALID_PARAMETER);
-	return (SIZE_T) - 1;
+	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
+	return (SIZE_T)-1;
     }
 
     /* Get size of this block depending if it's a usual or a big one */
@@ -3194,6 +3199,7 @@ SIZE_T RtlSizeHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr)
 	EntrySize = RtlpGetSizeOfBigBlock(HeapEntry);
     } else {
 	/* Calculate it */
+	assert((HeapEntry->CommonEntry.Size << HEAP_ENTRY_SHIFT) >= HeapEntry->CommonEntry.UnusedBytes);
 	EntrySize =
 	    (HeapEntry->CommonEntry.Size << HEAP_ENTRY_SHIFT) - HeapEntry->CommonEntry.UnusedBytes;
     }
@@ -3210,9 +3216,11 @@ BOOLEAN RtlpCheckInUsePattern(PHEAP_ENTRY HeapEntry)
     /* Calculate size */
     if (HeapEntry->CommonEntry.Flags & HEAP_ENTRY_VIRTUAL_ALLOC)
 	Size = RtlpGetSizeOfBigBlock(HeapEntry);
-    else
+    else {
+	assert((HeapEntry->CommonEntry.Size << HEAP_ENTRY_SHIFT) >= HeapEntry->CommonEntry.UnusedBytes);
 	Size =
 	    (HeapEntry->CommonEntry.Size << HEAP_ENTRY_SHIFT) - HeapEntry->CommonEntry.UnusedBytes;
+    }
 
     /* Calculate pointer to the tail part of the block */
     TailPart = (PCHAR) (HeapEntry + 1) + Size;
@@ -3221,8 +3229,16 @@ BOOLEAN RtlpCheckInUsePattern(PHEAP_ENTRY HeapEntry)
     Result = RtlCompareMemory(TailPart, FillPattern, HEAP_ENTRY_SIZE);
 
     if (Result != HEAP_ENTRY_SIZE) {
-	DPRINT1("HEAP: Heap entry (size %zx) %p tail is modified at %p\n",
-		Size, HeapEntry, TailPart + Result);
+	DPRINT1("HEAP: Heap entry (size %zx) %p tail %p is modified at %p\nGot:",
+		Size, HeapEntry, TailPart, TailPart + Result);
+	for (ULONG i = 0; i < HEAP_ENTRY_SIZE; i++) {
+	    DbgPrint(" %02x", (UCHAR)TailPart[i]);
+	}
+	DbgPrint("\nExpected:");
+	for (ULONG i = 0; i < HEAP_ENTRY_SIZE; i++) {
+	    DbgPrint(" %02x", (UCHAR)FillPattern[i]);
+	}
+	DbgPrint("\n");
 	return FALSE;
     }
 
