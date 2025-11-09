@@ -373,7 +373,7 @@ static NTSTATUS PortSendInquirySrb(IN PPDO_DEVICE_EXTENSION PdoExtension)
 
     if (PdoExtension->InquiryBuffer == NULL) {
 	PdoExtension->InquiryBuffer = ExAllocatePoolWithTag(CachedDmaPool,
-							    INQUIRYDATABUFFERSIZE,
+							    sizeof(INQUIRYDATA),
 							    TAG_INQUIRY_DATA);
 	if (PdoExtension->InquiryBuffer == NULL)
 	    return STATUS_INSUFFICIENT_RESOURCES;
