@@ -58,7 +58,7 @@ static PWCHAR PciGetDescriptionMessage(IN ULONG Identifier, OUT PULONG Length)
 	}
 
 	/* Allocate the buffer to hold the message string */
-	Buffer = ExAllocatePoolWithTag(NonPagedPool, TextLength + 1, 'BicP');
+	Buffer = ExAllocatePoolWithTag(NonPagedPool, TextLength + sizeof(WCHAR), 'BicP');
 	if (!Buffer)
 	    return NULL;
 
