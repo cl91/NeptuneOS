@@ -14,6 +14,7 @@ add_compile_options(
     -Wno-incompatible-library-redeclaration
     -Wno-gnu-variable-sized-type-not-at-end
     -fasync-exceptions
+    -fno-inline
     --target=${TRIPLE}
     -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"
 )
