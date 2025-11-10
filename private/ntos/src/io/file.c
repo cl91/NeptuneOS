@@ -396,7 +396,7 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
 	goto out;
     }
     CiFlushPrivateCacheToShared(FileObj->Fcb);
-    if (FileObj->Fcb != FileObj->Fcb->Vcb->VolumeFcb) {
+    if (FileObj->Fcb->Vcb && FileObj->Fcb != FileObj->Fcb->Vcb->VolumeFcb) {
 	CiFlushDirtyDataToVolume(FileObj->Fcb);
     }
 
