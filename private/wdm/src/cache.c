@@ -26,9 +26,8 @@ typedef struct _CACHE_MAP {
 /*
  * Buffer Control Block.
  *
- * A buffer control block (BCB) describes a contiguous region of a cache-enabled
- * file object that is mapped contiguously in virtual memory. All offsets, addresses,
- * and buffer lengths are aligned by FS cluster size. The server caches file objects
+ * A buffer control block (BCB) describes a contiguous region of a cache-enabled file
+ * object that is mapped contiguously in virtual memory. The server caches file objects
  * in terms of view blocks which are 256KB (assuming the page size is 4K) contiguous
  * file blocks. These file blocks are mapped into the driver address space with 256KB
  * (for 4K page size)-aligned address windows. The server-side file objects include
@@ -36,7 +35,7 @@ typedef struct _CACHE_MAP {
  * and the volume file object that represents the entire data stream of the underlying
  * volume device object.
  *
- * However, file system drivers make extensive usage of the so-called "stream file
+ * Additionally, file system drivers make extensive usage of the so-called "stream file
  * objects" in order to access on-disk FS metadata with the benefit of caching. These
  * stream file objects are purely client-side objects and do not have a corresponding
  * server-side object. Instead they are simply a collection of remapped file blocks
@@ -153,7 +152,7 @@ NTAPI NTSTATUS CcInitializeCacheMap(IN PFILE_OBJECT FileObject)
     PDEVICE_OBJECT DeviceObject = FileObject->DeviceObject;
     assert(DeviceObject);
     PVPB Vpb = DeviceObject->Vpb;
-    if (!Vpb || !Vpb->RealDevice || !Vpb->ClusterSize) {
+    if (!Vpb || !Vpb->RealDevice) {
 	/* Volume device must be mounted before calling this routine. */
 	assert(FALSE);
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -319,7 +318,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     PDEVICE_OBJECT DeviceObject = FileObject->DeviceObject;
     assert(DeviceObject);
     PVPB Vpb = DeviceObject->Vpb;
-    if (!Vpb || !Vpb->RealDevice || !Vpb->DeviceObject || !Vpb->ClusterSize) {
+    if (!Vpb || !Vpb->RealDevice || !Vpb->DeviceObject) {
 	/* Volume device must be mounted before calling this routine. */
 	assert(FALSE);
 	return STATUS_INVALID_DEVICE_REQUEST;
@@ -394,10 +393,10 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	}
 	Req->Bcb = NewBcb;
 	LARGE_INTEGER ReadOffset = { .QuadPart = CurrentOffset };
-	DPRINT("CcMapData(FileObj %p, DeviceObj %p, FileOffset 0x%llx, Length 0x%x, "
-	       "ClusterSize %d) Building IRP ReadOffset 0x%llx, ReadLength 0x%x\n",
+	DPRINT("CcMapData(FileObj %p, DeviceObj %p, FileOffset 0x%llx, Length 0x%x)"
+	       "Building IRP ReadOffset 0x%llx, ReadLength 0x%x\n",
 	       FileObject, Vpb->DeviceObject, FileOffset->QuadPart, Length,
-	       Vpb->ClusterSize, CurrentOffset, CurrentLength);
+	       CurrentOffset, CurrentLength);
 	Req->Irp = IoBuildAsynchronousFsdRequest(IRP_MJ_READ, Vpb->DeviceObject, NULL,
 						 CurrentLength, &ReadOffset, NULL);
 	if (!Req->Irp) {

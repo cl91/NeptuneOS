@@ -134,7 +134,6 @@ typedef struct _IO_VOLUME_CONTROL_BLOCK {
     POBJECT_DIRECTORY Subobjects;
     PIO_PACKET ForceDismountMsg; /* Queued to the file system driver in the case of
 				  * a forced dismount. */
-    ULONG ClusterSize;
     BOOLEAN MountInProgress;
     BOOLEAN Dismounted;	/* TRUE if the file system has successfully responded to the
 			 * FSCTL_DISMOUNT_VOLUME call. The VCB will be detached lazily

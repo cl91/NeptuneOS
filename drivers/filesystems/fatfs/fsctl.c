@@ -260,17 +260,8 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 	goto CheckFatX;
     }
 
-    /* We have a valid FAT12/16/32 file system! However, due to the way that our
-     * cache manager works, the data area of the volume must be cluster-aligned.
-     * Some small FAT12/16 volumes may have a non-cluster-aligned (but sector-aligned)
-     * data area. Since this is a small likelihood we do not support mounting these
-     * volumes. The user is advised to reformat the volume to have a cluster-aligned
-     * data area, or set the cluster size to the sector size, or switch to FAT32. */
-    *RecognizedFS = !(FatInfo.DataStart & (FatInfo.SectorsPerCluster - 1));
-    if (!(*RecognizedFS)) {
-	DPRINT("Data area not cluster-aligned. Rejecting mount. Reformat the volume "
-	       "with cluster-aligned data area, or set cluster size to sector size.\n");
-    }
+    /* We have a valid FAT12/16/32 file system! */
+    *RecognizedFS = TRUE;
     if (pFatInfo) {
 	*pFatInfo = FatInfo;
     }
@@ -345,12 +336,7 @@ CheckFatX:
 	FatInfo.SectorsPerCluster;
 
     /* We have a valid FATX file system! */
-    *RecognizedFS = !(FatInfo.DataStart & (FatInfo.SectorsPerCluster - 1));
-    if (!(*RecognizedFS)) {
-	DPRINT("Data area not cluster-aligned. Rejecting mount. Reformat the volume "
-	       "with cluster-aligned data area, or set cluster size to sector size.\n");
-	Status = STATUS_UNRECOGNIZED_VOLUME;
-    }
+    *RecognizedFS = TRUE;
     if (pFatInfo) {
 	*pFatInfo = FatInfo;
     }
@@ -577,7 +563,6 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
     DeviceExt->StorageDevice->Vpb->RealDevice = DeviceExt->StorageDevice;
     DeviceExt->StorageDevice->Vpb->VolumeSize = (ULONG64)FatInfo.Sectors *
 	FatInfo.BytesPerSector;
-    DeviceExt->StorageDevice->Vpb->ClusterSize = FatInfo.BytesPerCluster;
     DeviceExt->StorageDevice->Vpb->Flags |= VPB_MOUNTED;
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 

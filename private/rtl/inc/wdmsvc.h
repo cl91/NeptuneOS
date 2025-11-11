@@ -347,7 +347,6 @@ typedef union _IO_RESPONSE_DATA {
     struct {
 	ULONG64 VolumeSize;
 	GLOBAL_HANDLE VolumeDeviceHandle;
-	ULONG ClusterSize;
     } VolumeMounted;
     struct {
 	ULONG_PTR MdlCount; /* Number of MDLs embedded in this message. This is used

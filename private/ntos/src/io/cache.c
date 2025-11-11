@@ -1017,14 +1017,7 @@ static BOOLEAN CiPagedIoCallback(IN PPENDING_IRP PendingIrp,
     PendingIrp->InterceptorCalled = TRUE;
 
     /* If we got here, we are being called for the first time. Build the file
-     * region mapping. file region mapping must be aligned by cluster size. */
-    if (!IS_ALIGNED_BY(FileOffset, Fcb->Vcb->ClusterSize) ||
-	!IS_ALIGNED_BY(RequestLength, Fcb->Vcb->ClusterSize)) {
-	assert(FALSE);
-	Status = STATUS_INTERNAL_ERROR;
-	goto out;
-    }
-    /* File region length cannot be zero. */
+     * region mapping. File region length cannot be zero. */
     if (!RequestLength) {
 	assert(FALSE);
 	Status = STATUS_INTERNAL_ERROR;

@@ -1276,7 +1276,6 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(IO_RESPONSE_DATA);
 		PIO_RESPONSE_DATA Ptr = (PVOID)Dest->ClientMsg.IoCompleted.ResponseData;
 		Ptr->VolumeMounted.VolumeSize = IoSp->Parameters.MountVolume.Vpb->VolumeSize;
-		Ptr->VolumeMounted.ClusterSize = IoSp->Parameters.MountVolume.Vpb->ClusterSize;
 		Ptr->VolumeMounted.VolumeDeviceHandle =
 		    IopGetDeviceHandle(IoSp->Parameters.MountVolume.Vpb->DeviceObject);
 	    }

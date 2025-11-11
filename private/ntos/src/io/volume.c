@@ -153,7 +153,6 @@ next:
 	    goto out;
 	}
 	DevObj->Vcb->VolumeDevice = VolumeDevice;
-	DevObj->Vcb->ClusterSize = Response->VolumeMounted.ClusterSize;
 	DevObj->Vcb->MountInProgress = FALSE;
 	VolumeDevice->Vcb = DevObj->Vcb;
 	DevObj->Vcb->VolumeFcb->FileSize = Response->VolumeMounted.VolumeSize;
@@ -357,9 +356,9 @@ VOID IopDbgDumpVcb(IN PIO_VOLUME_CONTROL_BLOCK Vcb)
 {
     DbgPrint("Dumping VCB %p\n", Vcb);
     DbgPrint("  VolumeDevice %p StorageDevice %p\n  VolumeFcb %p VolumeFile %p\n"
-	     "  ClusterSize 0x%x MountInProgress %d Dismounted %d\n",
+	     "  MountInProgress %d Dismounted %d\n",
 	     Vcb->VolumeDevice, Vcb->StorageDevice, Vcb->VolumeFcb, Vcb->VolumeFile,
-	     Vcb->ClusterSize, Vcb->MountInProgress, Vcb->Dismounted);
+	     Vcb->MountInProgress, Vcb->Dismounted);
     IopDbgDumpDeviceObject(Vcb->VolumeDevice, 2);
     IopDbgDumpDeviceObject(Vcb->StorageDevice, 2);
     IoDbgDumpFileObject(Vcb->VolumeFile, 2);

@@ -216,7 +216,6 @@ typedef struct _VPB {
     struct _DEVICE_OBJECT *DeviceObject;
     struct _DEVICE_OBJECT *RealDevice;
     ULONG64 VolumeSize;
-    ULONG ClusterSize;
     ULONG SerialNumber;
     ULONG ReferenceCount;
     WCHAR VolumeLabel[MAXIMUM_VOLUME_LABEL_LENGTH / sizeof(WCHAR)];

@@ -984,28 +984,13 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
     }
 
     /* For IRP_MJ_READ and IRP_MJ_WRITE, if the driver specified new offset and
-     * length, update the IO_PACKET. Note that the new length cannot be larger
-     * than the old length, unless the target device is a mounted volume, in which
-     * case the cutoff is the old length rounded up to the cluster size of the
-     * mounted volume. */
+     * length, update the IO_PACKET. Note if the driver specified length beyond
+     * the original IO buffer, the IopMapIoBuffers call below will fail. */
     ULONG NewLength = Msg->ClientMsg.ForwardIrp.NewLength;
-    ULONG ClusterSize = ForwardedTo->Vcb ? ForwardedTo->Vcb->ClusterSize : 0;
     if (Irp->Request.MajorFunction == IRP_MJ_READ) {
-	ULONG OldLength = Irp->Request.OutputBufferLength;
-	if ((NewLength > OldLength) &&
-	    (!ClusterSize || NewLength > ALIGN_UP_BY(OldLength, ClusterSize))) {
-	    assert(FALSE);
-	    return STATUS_INVALID_PARAMETER;
-	}
 	Irp->Request.Read.ByteOffset = Msg->ClientMsg.ForwardIrp.NewOffset;
 	Irp->Request.OutputBufferLength = NewLength;
     } else if (Irp->Request.MajorFunction == IRP_MJ_WRITE) {
-	ULONG OldLength = Irp->Request.InputBufferLength;
-	if ((NewLength > OldLength) &&
-	    (!ClusterSize || NewLength > ALIGN_UP_BY(OldLength, ClusterSize))) {
-	    assert(FALSE);
-	    return STATUS_INVALID_PARAMETER;
-	}
 	Irp->Request.Write.ByteOffset = Msg->ClientMsg.ForwardIrp.NewOffset;
 	Irp->Request.InputBufferLength = NewLength;
     }
