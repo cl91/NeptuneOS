@@ -148,6 +148,10 @@ VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb,
     if (NT_SUCCESS(Irp->IoStatus.Status)) {
 	Irp->IoStatus.Information = Srb->DataTransferLength;
     }
+    assert(Srb->MiniportContext);
+    ExFreePoolWithTag(Srb->MiniportContext, TAG_SRB_EXTENSION);
+    Srb->MiniportContext = NULL;
+    Srb->PortContext = NULL;
     IoCompleteRequest(Irp, IO_NO_INCREMENT);
     if (Ctx->DeallocateMdl) {
 	assert(Ctx->Mdl);
@@ -157,10 +161,6 @@ VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb,
 	HalPutScatterGatherList(Ctx->DmaAdapter, Ctx->SgList, Ctx->WriteToDevice);
     }
     ExFreePoolWithTag(Ctx, TAG_PORT_CONTEXT);
-    Srb->PortContext = NULL;
-    assert(Srb->MiniportContext);
-    ExFreePoolWithTag(Srb->MiniportContext, TAG_SRB_EXTENSION);
-    Srb->MiniportContext = NULL;
 }
 
 /*
