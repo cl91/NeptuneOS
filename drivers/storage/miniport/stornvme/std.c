@@ -1999,7 +1999,7 @@ VOID IoCompletionRoutine(IN PSTOR_DPC pDpc, IN PVOID pHwDeviceExtension,
 		    } else {
 			/*
 			 * if we have a completion routine, call it and then
-			 * complete onlt if this was a host request (srb exsits)
+			 * complete only if this was a host request (srb exsits)
 			 * In this case the completion routine is responsible
 			 * for mapping Srb status
 			 */

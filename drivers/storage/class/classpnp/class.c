@@ -2194,7 +2194,8 @@ NTAPI NTSTATUS ClassReadWrite(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 			    commonExtension->PartitionZeroExtension->DMByteSkew;
 
 			//
-			// In case DEV_USE_16BYTE_CDB flag is not set, R/W request will be translated into READ/WRITE 10 SCSI command.
+			// In case DEV_USE_16BYTE_CDB flag is not set, R/W request will be
+			// translated into READ/WRITE 10 SCSI command.
 			// These SCSI commands have 4 bytes in "Starting LBA" field.
 			// Requests cannot be represented in these SCSI commands should be failed.
 			//
@@ -2638,7 +2639,8 @@ RetryRequest:
 SafeExit:
 
     //
-    // In case DEV_USE_16BYTE_CDB flag is not set, classpnp translates R/W request into READ/WRITE 10 SCSI command.
+    // In case DEV_USE_16BYTE_CDB flag is not set, classpnp translates R/W request into
+    // READ/WRITE 10 SCSI command.
     // These SCSI commands have 2 bytes in "Transfer Blocks" field.
     // Make sure this max length (0xFFFF * sector size) is respected during request split.
     //
@@ -2995,7 +2997,8 @@ NTSTATUS ServiceTransferRequest(PDEVICE_OBJECT Fdo, PIRP Irp, BOOLEAN PostToTime
 
 	/*
          *  We precomputed fdoData->HwMaxXferLen using (MaximumPhysicalPages-1).
-         *  If the buffer is page-aligned, that's one less page crossing so we can add the page back in.
+         *  If the buffer is page-aligned, that's one less page crossing so we can
+	 *  add the page back in.
          *  Note: adapters that return MaximumPhysicalPages=0x10 depend on this to
          *           transfer aligned 64K requests in one piece.
          *  Also note:  make sure adding PAGE_SIZE back in doesn't wrap to zero.
@@ -12771,7 +12774,8 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
     //
     // In addition to the above, we need to ensure that for each of the descriptors in the
     // TokenOperation command:
-    // 1. The number of blocks specified is an exact multiple of the OptimalTransferLengthGranularity.
+    // 1. The number of blocks specified is an exact multiple of the
+    //    OptimalTransferLengthGranularity.
     // 2. The number of blocks specified is limited to the MaximumTransferLength. (We shall
     //    however, limit the number of blocks specified in each descriptor to be a maximum of
     //    OptimalTransferLength or MaximumTransferLength, whichever is lesser).
@@ -12884,9 +12888,9 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
     }
 
     //
-    // Since we do not want very fragmented files to end up causing the WriteUsingToken command to take
-    // too long (and potentially timeout), we will limit the max number of descriptors sent down in a
-    // command.
+    // Since we do not want very fragmented files to end up causing the WriteUsingToken command
+    // to take too long (and potentially timeout), we will limit the max number of descriptors
+    // sent down in a command.
     //
     maxBlockDescrCount = MIN(maxBlockDescrCount, MAX_NUMBER_BLOCK_DEVICE_DESCRIPTORS);
 
@@ -12906,21 +12910,21 @@ NTSTATUS ClasspServiceWriteUsingTokenTransferRequest(IN PDEVICE_OBJECT Fdo,
     // There are potentially two approaches that we can take:
     // 1. Determine how many transfer packets we need (in case we need to split the request), get
     //    them all up-front and then send down all the split WriteUsingToken commands in parallel.
-    //    The benefit of this approach is that the performance will be improved in the success case.
+    //    The benefit of this approach is that performance will be improved in the success case.
     //    But error case handling becomes very complex to handle, since if one of the intermediate
     //    write fails, there is no way to cancel the remaining writes that were sent. Waiting for
     //    such requests to complete in geo-distributed source and target cases can be very time
     //    consuming. The complexity gets worse in the case that the target succeeds only a partial
     //    amount of data for one the of intermediate split commands.
     //                                       [OR]
-    // 2. Until the entire data set range is processed, build the command for as much of the range as
-    //    possible, send down a packet, and once it completes, repeat sequentially in a loop.
+    // 2. Until the entire data set range is processed, build the command for as much of the range
+    //    as possible, send down a packet, and once it completes, repeat sequentially in a loop.
     //    The advantage of this approach is its simplistic nature. In the success case, it will
     //    be less performant as compared to the previous approach, but since the gain of offload
     //    copy is so significant compared to native buffered-copy, the tradeoff is acceptable.
     //    In the failure case the simplicity offers the following benefit - if any command fails,
-    //    there is no further processing that is needed. And the cumulative total bytes that succeeded
-    //    (until the failing split WriteUsingToken command) is easily tracked.
+    //    there is no further processing that is needed. And the cumulative total bytes that
+    //    succeeded (until the failing split WriteUsingToken command) is easily tracked.
     //
     // Given the above, we're going with the second approach.
     //
