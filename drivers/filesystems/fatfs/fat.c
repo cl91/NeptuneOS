@@ -29,38 +29,77 @@ FORCEINLINE BOOLEAN IsFat32(IN PDEVICE_EXTENSION DevExt)
     return (FatType == FAT32) || (FatType == FATX32);
 }
 
-FORCEINLINE PUSHORT Fat12GetBlock(IN PVOID BaseAddress,
-				  IN ULONG Cluster,
-				  OUT OPTIONAL PULONG pEntry)
+FORCEINLINE ULONG Fat12ClusterToFatOffset(IN ULONG Cluster)
 {
-    PUSHORT CBlock = (PUSHORT)((PUCHAR)BaseAddress + Cluster * 12 / 8);
-    ULONG Entry;
-    if ((Cluster % 2) == 0) {
-	Entry = *CBlock & 0x0fff;
-    } else {
-	Entry = *CBlock >> 4;
-    }
-    if (pEntry) {
-	*pEntry = Entry;
-    }
-    return CBlock;
+    return Cluster * 3 / 2;
 }
 
-static NTSTATUS FatMapCluster(IN PDEVICE_EXTENSION DevExt,
-			      IN ULONG64 FatOffset,
-			      OUT PVOID *Context,
-			      OUT PVOID *MappedAddress)
+FORCEINLINE ULONG Fat12GetEntryFromBlock(IN USHORT Block,
+				IN ULONG Cluster)
 {
-    ULONG ClusterSize = DevExt->FatInfo.BytesPerCluster;
+    ULONG Entry;
+    if ((Cluster % 2) == 0) {
+	Entry = Block & 0x0fff;
+    } else {
+	Entry = Block >> 4;
+    }
+    return Entry;
+}
+
+static NTSTATUS MapFatFile(IN PDEVICE_EXTENSION DevExt,
+			   IN ULONG64 FatOffset,
+			   IN ULONG Length,
+			   OUT PVOID *Context,
+			   OUT PVOID *MappedAddress,
+			   OUT ULONG *MappedLength)
+{
     LARGE_INTEGER Offset = { .QuadPart = FatOffset };
-    ULONG MappedLength = 0;
-    NTSTATUS Status = CcMapData(DevExt->FatFileObject, &Offset, ClusterSize,
-				MAP_WAIT, &MappedLength, Context, MappedAddress);
+    NTSTATUS Status = CcMapData(DevExt->FatFileObject, &Offset, Length,
+				MAP_WAIT, MappedLength, Context, MappedAddress);
     if (!NT_SUCCESS(Status)) {
-	DPRINT("CcMapData failed, error = 0x%x, fatoffset = 0x%llx, devext = %p\n",
-	       Status, FatOffset, DevExt);
+	DPRINT("CcMapData failed, error = 0x%x, fatoffset = 0x%llx, length = 0x%x\n",
+	       Status, FatOffset, Length);
 	return Status;
     }
+    DPRINT("Successfully mapped fat file (fat offset 0x%llx, length 0x%x, "
+	   "mapped address %p, mapped length 0x%x\n",
+	   FatOffset, Length, *MappedAddress, *MappedLength);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS ReadFatFile(IN PDEVICE_EXTENSION DevExt,
+			    IN ULONG64 FatOffset,
+			    OUT PVOID Buffer,
+			    IN ULONG Length)
+{
+    LARGE_INTEGER Offset = { .QuadPart = FatOffset };
+    ULONG LengthRead = 0;
+    NTSTATUS Status = CcCopyRead(DevExt->FatFileObject, &Offset, Length,
+				 TRUE, Buffer, &LengthRead);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("CcCopyRead failed, error = 0x%x, fatoffset = 0x%llx, length = 0x%x, "
+	       "length read = 0x%x\n", Status, FatOffset, Length, LengthRead);
+	return Status;
+    }
+    assert(Length == LengthRead);
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS WriteFatFile(IN PDEVICE_EXTENSION DevExt,
+			     IN ULONG64 FatOffset,
+			     IN PVOID Buffer,
+			     IN ULONG Length)
+{
+    LARGE_INTEGER Offset = { .QuadPart = FatOffset };
+    ULONG LengthWritten = 0;
+    NTSTATUS Status = CcCopyWrite(DevExt->FatFileObject, &Offset, Length,
+				  TRUE, Buffer, &LengthWritten);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("CcCopyWrite failed, error = 0x%x, fatoffset = 0x%llx, length = 0x%x, "
+	       "length written = 0x%x\n", Status, FatOffset, Length, LengthWritten);
+	return Status;
+    }
+    assert(Length == LengthWritten);
     return STATUS_SUCCESS;
 }
 
@@ -73,21 +112,19 @@ static NTSTATUS Fat12GetNextCluster(IN PDEVICE_EXTENSION DevExt,
 {
     *NextCluster = 0;
 
-    PVOID Context, BaseAddress;
-    NTSTATUS Status = FatMapCluster(DevExt, 0, &Context, &BaseAddress);
+    ULONG64 FatOffset = Fat12ClusterToFatOffset(CurrentCluster);
+    USHORT Block = 0;
+    NTSTATUS Status = ReadFatFile(DevExt, FatOffset, &Block, 2);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
-
-    ULONG Entry;
-    Fat12GetBlock(BaseAddress, CurrentCluster, &Entry);
+    ULONG Entry = Fat12GetEntryFromBlock(CurrentCluster, Block);
 
     if (Entry >= 0xff8 && Entry <= 0xfff)
 	Entry = 0xffffffff;
 
     ASSERT(Entry != 0);
     *NextCluster = Entry;
-    CcUnpinData(Context);
     return STATUS_SUCCESS;
 }
 
@@ -102,19 +139,18 @@ static NTSTATUS Fat1632GetNextCluster(PDEVICE_EXTENSION DevExt,
 {
     assert(!IsFat12(DevExt));
     BOOLEAN Fat32 = IsFat32(DevExt);
-    ULONG ClusterSize = DevExt->FatInfo.BytesPerCluster;
-    ULONG FatOffset = ROUND_DOWN(CurrentCluster * (Fat32 ? 4 : 2), ClusterSize);
-    PVOID Context, BaseAddress;
-    NTSTATUS Status = FatMapCluster(DevExt, FatOffset, &Context, &BaseAddress);
+    ULONG WordSize = Fat32 ? 4 : 2;
+    ULONG FatOffset = CurrentCluster * WordSize;
+    PUCHAR Buffer[4] = {};
+    NTSTATUS Status = ReadFatFile(DevExt, FatOffset, Buffer, WordSize);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
 
-    PCHAR Ptr = (PCHAR)BaseAddress + (FatOffset % ClusterSize);
     if (Fat32) {
-	CurrentCluster = *(PULONG)Ptr & 0x0fffffff;
+	CurrentCluster = *(PULONG)Buffer & 0x0fffffff;
     } else {
-	CurrentCluster = *(PUSHORT)Ptr;
+	CurrentCluster = *(PUSHORT)Buffer;
     }
 
     ULONG ReservedClusterStart = Fat32 ? 0xffffff8 : 0xfff8;
@@ -129,7 +165,6 @@ static NTSTATUS Fat1632GetNextCluster(PDEVICE_EXTENSION DevExt,
 	if (FatGlobalData->Flags & FAT_BREAK_ON_CORRUPTION)
 	    ASSERT(FALSE);
     }
-    CcUnpinData(Context);
     *NextCluster = CurrentCluster;
     return Status;
 }
@@ -168,36 +203,32 @@ static NTSTATUS Fat12FindAndMarkAvailableCluster(PDEVICE_EXTENSION DevExt,
     ULONG StartCluster = DevExt->LastAvailableCluster;
     *Cluster = 0;
 
-    PVOID Context, BaseAddress;
-    NTSTATUS Status = FatMapCluster(DevExt, 0, &Context, &BaseAddress);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
-
     for (ULONG j = 0; j < 2; j++) {
 	for (ULONG i = StartCluster; i < FatLength; i++) {
-	    ULONG Entry;
-	    PUSHORT CBlock = Fat12GetBlock(BaseAddress, i, &Entry);
+	    ULONG64 FatOffset = Fat12ClusterToFatOffset(i);
+	    USHORT Block = 0;
+	    NTSTATUS Status = ReadFatFile(DevExt, FatOffset, &Block, 2);
+	    if (!NT_SUCCESS(Status)) {
+		return Status;
+	    }
+	    ULONG Entry = Fat12GetEntryFromBlock(i, Block);
 
 	    if (Entry == 0) {
 		DPRINT("Found available cluster 0x%x\n", i);
 		DevExt->LastAvailableCluster = *Cluster = i;
 		if ((i % 2) == 0)
-		    *CBlock = (*CBlock & 0xf000) | 0xfff;
+		    Block = (Block & 0xf000) | 0xfff;
 		else
-		    *CBlock = (*CBlock & 0xf) | 0xfff0;
-		CcSetDirtyData(Context);
-		CcUnpinData(Context);
+		    Block = (Block & 0xf) | 0xfff0;
 		if (DevExt->AvailableClustersValid) {
 		    InterlockedDecrement((PLONG)&DevExt->AvailableClusters);
 		}
-		return STATUS_SUCCESS;
+		return WriteFatFile(DevExt, FatOffset, &Block, 2);
 	    }
 	}
 	FatLength = StartCluster;
 	StartCluster = 2;
     }
-    CcUnpinData(Context);
     return STATUS_DISK_FULL;
 }
 
@@ -210,49 +241,59 @@ static NTSTATUS Fat1632FindAndMarkAvailableCluster(PDEVICE_EXTENSION DevExt,
     assert(!IsFat12(DevExt));
     BOOLEAN Fat32 = IsFat32(DevExt);
     ULONG WordSize = Fat32 ? 4 : 2;
-    ULONG ClusterSize = DevExt->FatInfo.BytesPerCluster;
     ULONG FatLength = DevExt->FatInfo.NumberOfClusters + 2;
     ULONG StartCluster = DevExt->LastAvailableCluster;
     *Cluster = 0;
+    /* Check the clusters after the LastAvailableCluster first, and then check
+     * the clusters before that. */
+    BOOLEAN FirstRound = TRUE;
 
-    for (ULONG j = 0; j < 2; j++) {
-	for (ULONG i = StartCluster; i < FatLength; ) {
-	    PVOID Context, BaseAddress;
-	    NTSTATUS Status = FatMapCluster(DevExt, ROUND_DOWN(i*WordSize, ClusterSize),
-					    &Context, &BaseAddress);
-	    if (!NT_SUCCESS(Status)) {
-		return Status;
-	    }
-	    ULONG_PTR Block = (ULONG_PTR)BaseAddress + (i * WordSize) % ClusterSize;
-	    ULONG_PTR BlockEnd = (ULONG_PTR)BaseAddress + ClusterSize;
-
-	    /* Now mark the whole block as available */
-	    while (Block < BlockEnd && i < FatLength) {
-		ULONG Word = Fat32 ? (*(PULONG)Block & 0x0fffffff) : *(PUSHORT)Block;
-		if (Word == 0) {
-		    DPRINT("Found available cluster 0x%x\n", i);
-		    DevExt->LastAvailableCluster = *Cluster = i;
-		    if (Fat32) {
-			*(PULONG)Block = 0x0fffffff;
-		    } else {
-			*(PUSHORT)Block = 0xffff;
-		    }
-		    CcSetDirtyData(Context);
-		    CcUnpinData(Context);
-		    if (DevExt->AvailableClustersValid)
-			InterlockedDecrement((PLONG)&DevExt->AvailableClusters);
-		    return STATUS_SUCCESS;
-		}
-
-		Block += WordSize;
-		i++;
-	    }
-
-	    CcUnpinData(Context);
+again:
+    assert(FatLength > StartCluster);
+    ULONG CurrentCluster = StartCluster;
+    do {
+	PVOID Context, BaseAddress;
+	ULONG MappedLength = 0;
+	NTSTATUS Status = MapFatFile(DevExt, CurrentCluster * WordSize,
+				     (FatLength - CurrentCluster) * WordSize,
+				     &Context, &BaseAddress, &MappedLength);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
 	}
 
+	ULONG_PTR Block = (ULONG_PTR)BaseAddress;
+	ULONG_PTR BlockEnd = (ULONG_PTR)BaseAddress + MappedLength;
+
+	/* Now mark the whole block as available */
+	while (Block < BlockEnd && CurrentCluster < FatLength) {
+	    ULONG Word = Fat32 ? (*(PULONG)Block & 0x0fffffff) : *(PUSHORT)Block;
+	    if (Word == 0) {
+		DPRINT("Found available cluster 0x%x\n", CurrentCluster);
+		DevExt->LastAvailableCluster = *Cluster = CurrentCluster;
+		if (Fat32) {
+		    *(PULONG)Block = 0x0fffffff;
+		} else {
+		    *(PUSHORT)Block = 0xffff;
+		}
+		CcSetDirtyData(Context);
+		CcUnpinData(Context);
+		if (DevExt->AvailableClustersValid)
+		    InterlockedDecrement((PLONG)&DevExt->AvailableClusters);
+		return STATUS_SUCCESS;
+	    }
+
+	    Block += WordSize;
+	    CurrentCluster++;
+	}
+
+	CcUnpinData(Context);
+    } while (CurrentCluster < FatLength);
+
+    if (FirstRound) {
 	FatLength = StartCluster;
 	StartCluster = 2;
+	FirstRound = FALSE;
+	goto again;
     }
 
     return STATUS_DISK_FULL;
@@ -326,22 +367,20 @@ NTSTATUS GetNextClusterExtend(PDEVICE_EXTENSION DevExt,
  */
 static NTSTATUS Fat12CountAvailableClusters(PDEVICE_EXTENSION DevExt)
 {
-    PVOID Context, BaseAddress;
-    NTSTATUS Status = FatMapCluster(DevExt, 0, &Context, &BaseAddress);
-    if (!NT_SUCCESS(Status)) {
-	return Status;;
-    }
-
     ULONG NumberOfClusters = DevExt->FatInfo.NumberOfClusters + 2;
     ULONG Count = 0;
     for (ULONG i = 2; i < NumberOfClusters; i++) {
-	ULONG Entry;
-	Fat12GetBlock(BaseAddress, i, &Entry);
+	ULONG64 FatOffset = Fat12ClusterToFatOffset(i);
+	USHORT Block = 0;
+	NTSTATUS Status = ReadFatFile(DevExt, FatOffset, &Block, 2);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+	ULONG Entry = Fat12GetEntryFromBlock(i, Block);
 	if (Entry == 0)
 	    Count++;
     }
 
-    CcUnpinData(Context);
     DevExt->AvailableClusters = Count;
     DevExt->AvailableClustersValid = TRUE;
 
@@ -357,31 +396,35 @@ static NTSTATUS Fat1632CountAvailableClusters(IN PDEVICE_EXTENSION DevExt)
     assert(!IsFat12(DevExt));
     BOOLEAN Fat32 = IsFat32(DevExt);
     ULONG WordSize = Fat32 ? 4 : 2;
-    ULONG ClusterSize = DevExt->FatInfo.BytesPerCluster;
-    ULONG FatLength = (DevExt->FatInfo.NumberOfClusters + 2);
+    ULONG FatLength = DevExt->FatInfo.NumberOfClusters + 2;
     ULONG Count = 0;
 
-    for (ULONG i = 2; i < FatLength; ) {
-	PVOID BaseAddress, Context;
-	NTSTATUS Status = FatMapCluster(DevExt, ROUND_DOWN(i*WordSize, ClusterSize),
-					&Context, &BaseAddress);
+    ULONG CurrentCluster = 2;
+    do {
+	PVOID Context, BaseAddress;
+	ULONG MappedLength = 0;
+	NTSTATUS Status = MapFatFile(DevExt, CurrentCluster * WordSize,
+				     (FatLength - CurrentCluster) * WordSize,
+				     &Context, &BaseAddress, &MappedLength);
 	if (!NT_SUCCESS(Status)) {
 	    return Status;
 	}
-	ULONG_PTR Block = (ULONG_PTR)BaseAddress + (i * WordSize) % ClusterSize;
-	ULONG_PTR BlockEnd =  (ULONG_PTR)BaseAddress + ClusterSize;
 
-	/* Now process the whole block */
-	while (Block < BlockEnd && i < FatLength) {
+	ULONG_PTR Block = (ULONG_PTR)BaseAddress;
+	ULONG_PTR BlockEnd = (ULONG_PTR)BaseAddress + MappedLength;
+
+	/* Now mark the whole block as available */
+	while (Block < BlockEnd && CurrentCluster < FatLength) {
 	    ULONG Word = Fat32 ? (*(PULONG)Block & 0x0fffffff) : *(PUSHORT)Block;
-	    if (Word == 0)
+	    if (Word == 0) {
 		Count++;
+	    }
 	    Block += WordSize;
-	    i++;
+	    CurrentCluster++;
 	}
 
 	CcUnpinData(Context);
-    }
+    } while (CurrentCluster < FatLength);
 
     DevExt->AvailableClusters = Count;
     DevExt->AvailableClustersValid = TRUE;
@@ -418,11 +461,10 @@ NTSTATUS WriteCluster(PDEVICE_EXTENSION DevExt,
 {
     BOOLEAN Fat12 = IsFat12(DevExt);
     ULONG WordSize = IsFat32(DevExt) ? 4 : 2;
-    ULONG FatOffset = Fat12 ? (ClusterToWrite*12/8) : (ClusterToWrite*WordSize);
-    ULONG ClusterSize = DevExt->FatInfo.BytesPerCluster;
-    PVOID BaseAddress, Context;
-    NTSTATUS Status = FatMapCluster(DevExt, Fat12 ? 0 : ROUND_DOWN(FatOffset, ClusterSize),
-				    &Context, &BaseAddress);
+    ULONG FatOffset = Fat12 ? Fat12ClusterToFatOffset(ClusterToWrite) :
+	(ClusterToWrite * WordSize);
+    UCHAR Buffer[4] = {};
+    NTSTATUS Status = ReadFatFile(DevExt, FatOffset, Buffer, WordSize);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
@@ -430,34 +472,34 @@ NTSTATUS WriteCluster(PDEVICE_EXTENSION DevExt,
     DPRINT("Writing 0x%x for 0x%x at 0x%x\n", NewValue, ClusterToWrite, FatOffset);
     ULONG OldValue;
     if (Fat12) {
-	PUCHAR CBlock = (PUCHAR)BaseAddress;
 	if ((ClusterToWrite % 2) == 0) {
-	    OldValue = CBlock[FatOffset] + ((CBlock[FatOffset + 1] & 0x0f) << 8);
-	    CBlock[FatOffset] = (UCHAR) NewValue;
-	    CBlock[FatOffset + 1] &= 0xf0;
-	    CBlock[FatOffset + 1] |= (NewValue & 0xf00) >> 8;
+	    OldValue = Buffer[0] | ((Buffer[1] & 0x0f) << 8);
+	    Buffer[0] = NewValue;
+	    Buffer[1] &= 0xf0;
+	    Buffer[1] |= (NewValue & 0xf00) >> 8;
 	} else {
-	    OldValue = (CBlock[FatOffset] >> 4) + (CBlock[FatOffset + 1] << 4);
-	    CBlock[FatOffset] &= 0x0f;
-	    CBlock[FatOffset] |= (NewValue & 0xf) << 4;
-	    CBlock[FatOffset + 1] = (UCHAR) (NewValue >> 4);
+	    OldValue = (Buffer[0] >> 4) + (Buffer[1] << 4);
+	    Buffer[0] &= 0x0f;
+	    Buffer[0] |= (NewValue & 0xf) << 4;
+	    Buffer[1] = NewValue >> 4;
 	}
     } else {
-	PUCHAR Ptr = (PUCHAR)BaseAddress + FatOffset % ClusterSize;
 	if (IsFat16(DevExt)) {
-	    PUSHORT Cluster = (PUSHORT)Ptr;
+	    PUSHORT Cluster = (PUSHORT)Buffer;
 	    OldValue = *Cluster;
-	    *Cluster = (USHORT) NewValue;
+	    *Cluster = NewValue;
 	} else {
-	    PULONG Cluster = (PULONG)Ptr;
+	    PULONG Cluster = (PULONG)Buffer;
 	    OldValue = *Cluster & 0x0fffffff;
 	    *Cluster = (*Cluster & 0xf0000000) | (NewValue & 0x0fffffff);
 	}
     }
 
     /* Write the changed FAT sector(s) to disk */
-    CcSetDirtyData(Context);
-    CcUnpinData(Context);
+    Status = WriteFatFile(DevExt, FatOffset, Buffer, WordSize);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
 
     /* Update the number of available clusters */
     if (DevExt->AvailableClustersValid) {
