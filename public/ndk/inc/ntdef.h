@@ -375,6 +375,7 @@ FORCEINLINE BOOLEAN RemoveEntryList(IN PLIST_ENTRY Entry)
     OldBlink = Entry->Blink;
     OldFlink->Blink = OldBlink;
     OldBlink->Flink = OldFlink;
+    Entry->Flink = Entry->Blink = NULL;
     return (BOOLEAN)(OldFlink == OldBlink);
 }
 

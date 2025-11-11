@@ -573,12 +573,10 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	PFILE_OBJECT CreatedFileObject;
 	LIST_ENTRY Link;    /* List entry for IrpQueue, PendingIrpList,
 			     * CleanupIrpList, and ReplyIrpList */
-	union {
-	    LIST_ENTRY PendingList; /* For master IRP, this is the list of
-				     * all pending assoicated IRPs. */
-	    LIST_ENTRY Link;	/* For associated IRPs, this is the list link
-				 * for PendingList. */
-	} AssociatedIrp;
+	LIST_ENTRY MasterPendingList; /* For master IRP, this is the list of
+				       * all pending assoicated IRPs. */
+	LIST_ENTRY AssociatedIrpLink;	/* For associated IRPs, this is the list link
+					 * for PendingList. */
 	ULONG AssociatedIrpCount; /* Number of associated IRPs of a master IRP. */
 	BOOLEAN MasterCompleted;  /* TRUE if the master IRP is completed but
 				   * its pending associated IRPs have not. */
@@ -952,7 +950,7 @@ FORCEINLINE NTAPI VOID IoInitializeIrp(IN PIRP Irp,
     /* CurrentLocation points to the top of the IO stack, ie. immediately
      * after the IO stack space, indicating that the IO stack is empty. */
     Irp->CurrentLocation = StackSize + 1;
-    InitializeListHead(&Irp->Private.AssociatedIrp.PendingList);
+    InitializeListHead(&Irp->Private.MasterPendingList);
 }
 
 /*

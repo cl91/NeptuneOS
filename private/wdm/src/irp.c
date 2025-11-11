@@ -872,20 +872,18 @@ NTAPI VOID IoReuseIrp(IN OUT PIRP Irp,
 NTAPI VOID IoFreeIrp(IN PIRP Irp)
 {
     assert(Irp->Size);
-    if (Irp->MasterIrp) {
+    if (Irp->MasterIrp && ListHasEntry(&Irp->MasterIrp->Private.MasterPendingList,
+				       &Irp->Private.AssociatedIrpLink)) {
 	/* The IRP is an associated IRP of a master IRP. This can happen if the driver
 	 * forwards an associated IRP without expecting a completion notification.
 	 * Detach the IRP from its master. */
-	assert(ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
-			    &Irp->Private.AssociatedIrp.Link));
-	RemoveEntryList(&Irp->Private.AssociatedIrp.Link);
+	RemoveEntryList(&Irp->Private.AssociatedIrpLink);
 	Irp->MasterIrp = NULL;
     } else {
 	/* If the IRP is a master IRP itself, detach it from all its associated IRPs. */
-	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList, IRP,
-		     Private.AssociatedIrp.Link) {
-	    RemoveEntryList(&AssociatedIrp->Private.AssociatedIrp.Link);
-	    InitializeListHead(&AssociatedIrp->Private.AssociatedIrp.PendingList);
+	LoopOverList(AssociatedIrp, &Irp->Private.MasterPendingList, IRP,
+		     Private.AssociatedIrpLink) {
+	    RemoveEntryList(&AssociatedIrp->Private.AssociatedIrpLink);
 	    AssociatedIrp->MasterIrp = NULL;
 	}
     }
@@ -1293,8 +1291,8 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     /* If the IRP itself is a master IRP, set the MasterSent member of all its
      * assoicated IRPs to TRUE. */
     if (!Irp->MasterIrp) {
-	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList,
-		     IRP, Private.AssociatedIrp.Link) {
+	LoopOverList(AssociatedIrp, &Irp->Private.MasterPendingList,
+		     IRP, Private.AssociatedIrpLink) {
 	    AssociatedIrp->Private.MasterIrpSent = TRUE;
 	}
     }
@@ -1345,8 +1343,8 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
     } else {
 	/* If the IRP itself is a master IRP, set the MasterSent member of all its
 	 * associated IRPs to TRUE. */
-	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList,
-		     IRP, Private.AssociatedIrp.Link) {
+	LoopOverList(AssociatedIrp, &Irp->Private.MasterPendingList,
+		     IRP, Private.AssociatedIrpLink) {
 	    AssociatedIrp->Private.MasterIrpSent = TRUE;
 	}
     }
@@ -1469,8 +1467,8 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
     /* If the IRP itself is a master IRP, set the MasterSent member of all its
      * assoicated IRPs to TRUE. */
     if (!Irp->MasterIrp) {
-	LoopOverList(AssociatedIrp, &Irp->Private.AssociatedIrp.PendingList,
-		     IRP, Private.AssociatedIrp.Link) {
+	LoopOverList(AssociatedIrp, &Irp->Private.MasterPendingList,
+		     IRP, Private.AssociatedIrpLink) {
 	    AssociatedIrp->Private.MasterIrpSent = TRUE;
 	}
     }
@@ -1853,11 +1851,18 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
     DbgPrint("    IO Status Block Status 0x%08x Information %p UserIosb %p UserEvent %p\n",
 	     Irp->IoStatus.Status, (PVOID) Irp->IoStatus.Information,
 	     Irp->UserIosb, Irp->UserEvent);
+    DbgPrint("    MasterIrp %p\n", Irp->MasterIrp);
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p "
 	     "OutputBuffer %p NotifyCompletion %s\n",
 	     (PVOID)Irp->Private.OriginalRequestor,
 	     Irp->Private.Identifier, Irp->Private.OutputBuffer,
 	     Irp->Private.NotifyCompletion ? "TRUE" : "FALSE");
+    DbgPrint("    PRIV AssociatedIrpCount %d MasterPendingList FL %p BL %p "
+	     "AssociatedIrpLink FL %p BL %p MasterCompleted %d MasterIrpSent %d\n",
+	     Irp->Private.AssociatedIrpCount, Irp->Private.MasterPendingList.Flink,
+	     Irp->Private.MasterPendingList.Blink, Irp->Private.AssociatedIrpLink.Flink,
+	     Irp->Private.AssociatedIrpLink.Blink, Irp->Private.MasterCompleted,
+	     Irp->Private.MasterIrpSent);
     if (Irp->CurrentLocation <= Irp->StackCount && Irp->CurrentLocation >= 1) {
 	IoDbgDumpIoStackLocation(IoGetCurrentIrpStackLocation(Irp));
     }
@@ -1919,7 +1924,7 @@ static VOID IopCompleteIrp(IN PIRP Irp)
     /* If the IRP has any pending associated IRPs, stop the completion, but
      * set MasterCompleted to TRUE so when all pending associated IRPs are
      * completed, we can complete the master IRP. */
-    if (!Irp->MasterIrp && !IsListEmpty(&Irp->Private.AssociatedIrp.PendingList)) {
+    if (!Irp->MasterIrp && !IsListEmpty(&Irp->Private.MasterPendingList)) {
 	Irp->Private.MasterCompleted = TRUE;
 	return;
     }
@@ -1991,11 +1996,11 @@ static VOID IopCompleteIrp(IN PIRP Irp)
     if (Irp->MasterIrp) {
 	PIRP MasterIrp = Irp->MasterIrp;
 	Irp->MasterIrp = NULL;
-	assert(ListHasEntry(&MasterIrp->Private.AssociatedIrp.PendingList,
-			    &Irp->Private.AssociatedIrp.Link));
-	RemoveEntryList(&Irp->Private.AssociatedIrp.Link);
+	assert(ListHasEntry(&MasterIrp->Private.MasterPendingList,
+			    &Irp->Private.AssociatedIrpLink));
+	RemoveEntryList(&Irp->Private.AssociatedIrpLink);
 	if (MasterIrp->Private.MasterCompleted &&
-	    IsListEmpty(&MasterIrp->Private.AssociatedIrp.PendingList)) {
+	    IsListEmpty(&MasterIrp->Private.MasterPendingList)) {
 	    IopCompleteIrp(MasterIrp);
 	}
     }
@@ -2720,13 +2725,11 @@ NTAPI NTSTATUS IoCallDriver(IN PDEVICE_OBJECT DeviceObject,
     if (Irp->MasterIrp) {
 	/* We don't support forwarding associated IRPs in the DPC or ISR thread. */
 	assert(IoThreadIsAtPassiveLevel());
-	/* The master IRP cannot be an associated IRP of another IRP. */
-	assert(!Irp->MasterIrp->MasterIrp);
-	assert(!ListHasEntry(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
-			     &Irp->Private.AssociatedIrp.Link));
+	assert(!ListHasEntry(&Irp->MasterIrp->Private.MasterPendingList,
+			     &Irp->Private.AssociatedIrpLink));
 	Irp->MasterIrp->Private.AssociatedIrpCount++;
-	InsertTailList(&Irp->MasterIrp->Private.AssociatedIrp.PendingList,
-		       &Irp->Private.AssociatedIrp.Link);
+	InsertTailList(&Irp->MasterIrp->Private.MasterPendingList,
+		       &Irp->Private.AssociatedIrpLink);
     }
 
     return STATUS_PENDING;
