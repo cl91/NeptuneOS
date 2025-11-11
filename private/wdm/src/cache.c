@@ -376,7 +376,11 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	ULONG CurrentLength = EndOffset - CurrentOffset;
 	PBUFFER_CONTROL_BLOCK NextBcb = AVL_NODE_TO_BCB(AvlGetNextNodeSafe(&CurrentBcb->Node));
 	if (NextBcb && EndOffset > NextBcb->Node.Key) {
+	    assert(NextBcb->Node.Key >= CurrentOffset);
 	    CurrentLength = NextBcb->Node.Key - CurrentOffset;
+	}
+	if (!CurrentLength) {
+	    break;
 	}
 	PBUFFER_CONTROL_BLOCK NewBcb = ExAllocatePool(NonPagedPool,
 						      sizeof(BUFFER_CONTROL_BLOCK));
