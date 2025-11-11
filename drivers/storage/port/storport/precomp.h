@@ -161,6 +161,24 @@ FORCEINLINE NTSTATUS ForwardIrpAndForget(_In_ PDEVICE_OBJECT LowerDevice,
     return IoCallDriver(LowerDevice, Irp);
 }
 
+FORCEINLINE BOOLEAN QueryIsDeviceProperty(IN STORAGE_PROPERTY_ID Id)
+{
+    switch (Id) {
+    case StorageAdapterProperty:
+    case StorageMiniportProperty:
+    case StorageAccessAlignmentProperty:
+    case StorageAdapterRpmbProperty:
+    case StorageAdapterCryptoProperty:
+    case StorageAdapterProtocolSpecificProperty:
+    case StorageAdapterTemperatureProperty:
+    case StorageAdapterPhysicalTopologyProperty:
+    case StorageAdapterSerialNumberProperty:
+	return FALSE;
+    default:
+	return TRUE;
+    }
+}
+
 /* fdo.c */
 
 NTSTATUS PortFdoScsi(IN PDEVICE_OBJECT DeviceObject,

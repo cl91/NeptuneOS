@@ -397,17 +397,23 @@ done:
     return Status;
 }
 
-
 static NTSTATUS PortPdoIoctlStorageQueryProperty(IN PPDO_DEVICE_EXTENSION PdoExt,
 						 IN PFDO_DEVICE_EXTENSION FdoExt,
 						 IN OUT PVOID Buffer,
 						 IN ULONG InputLength,
 						 IN ULONG OutputLength,
-						 OUT ULONG_PTR *Information)
+						 IN OUT PIRP Irp)
 {
     PSTORAGE_PROPERTY_QUERY Query = Buffer;
     if (InputLength < FIELD_OFFSET(STORAGE_PROPERTY_QUERY, AdditionalParameters)) {
         return STATUS_INVALID_DEVICE_REQUEST;
+    }
+    /* For adapter description query, we forward the IRP to the FDO. */
+    if (!QueryIsDeviceProperty(Query->PropertyId)) {
+	IoMarkIrpPending(Irp);
+	IoSkipCurrentIrpStackLocation(Irp);
+	IoCallDriver(FdoExt->Device, Irp);
+	return STATUS_PENDING;
     }
 
     switch (Query->QueryType) {
@@ -421,7 +427,7 @@ static NTSTATUS PortPdoIoctlStorageQueryProperty(IN PPDO_DEVICE_EXTENSION PdoExt
 	SizeNeeded += sizeof(InquiryData->VendorId) + sizeof(InquiryData->ProductId) +
 	    sizeof(InquiryData->ProductRevisionLevel) + 3;
 	/* TODO: Make VPD_SERIAL_NUMBER INQUIRY during port enumeration and return it here. */
-	*Information = SizeNeeded;
+	Irp->IoStatus.Information = SizeNeeded;
 	if (OutputLength < sizeof(STORAGE_DESCRIPTOR_HEADER)) {
 	    return STATUS_BUFFER_TOO_SMALL;
 	}
@@ -540,8 +546,7 @@ NTSTATUS PortPdoDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     case IOCTL_STORAGE_QUERY_PROPERTY:
 	DPRINT1("IRP_MJ_DEVICE_CONTROL / IOCTL_STORAGE_QUERY_PROPERTY\n");
 	Status = PortPdoIoctlStorageQueryProperty(PdoExt, FdoExt, Buffer,
-						  InputLength, OutputLength,
-						  &Irp->IoStatus.Information);
+						  InputLength, OutputLength, Irp);
 	break;
 
     case IOCTL_SCSI_PASS_THROUGH:

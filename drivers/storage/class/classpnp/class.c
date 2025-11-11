@@ -1720,7 +1720,8 @@ NTSTATUS ClassPnpStartDevice(IN PDEVICE_OBJECT DeviceObject)
 		    (PVOID *)&fdoExtension->MiniportDescriptor);
 
 		//
-		// function ClassGetDescriptor returns succeed with buffer "fdoExtension->MiniportDescriptor" allocated.
+		// function ClassGetDescriptor returns succeed with buffer
+		// "fdoExtension->MiniportDescriptor" allocated.
 		//
 		if (NT_SUCCESS(status) &&
 		    (fdoExtension->MiniportDescriptor->Portdriver != StoragePortCodeSetStorport &&
