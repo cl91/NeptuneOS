@@ -225,7 +225,7 @@ NTSTATUS PortFdoInitDma(IN PFDO_DEVICE_EXTENSION FdoExt,
 	.MaximumLength = PortConfig->MaximumTransferLength,
 	.Dma64BitAddresses = PortConfig->Dma64BitAddresses
     };
-    FdoExt->DmaAdapter = HalGetAdapter(&DevDesc, &FdoExt->NumberOfMapRegisters);
+    FdoExt->DmaAdapter = HalGetAdapter(&DevDesc, NULL);
     if (!FdoExt->DmaAdapter) {
 	assert(FALSE);
 	return STATUS_INSUFFICIENT_RESOURCES;
@@ -818,8 +818,7 @@ static NTSTATUS PortFdoIoctlStorageQueryProperty(IN PFDO_DEVICE_EXTENSION FdoExt
 	    return STATUS_SUCCESS;
 	}
 	PPORT_CONFIGURATION_INFORMATION PortConfig = &Miniport->PortConfig;
-	Descriptor->MaximumPhysicalPages = min(PortConfig->NumberOfPhysicalBreaks,
-					       FdoExt->NumberOfMapRegisters);
+	Descriptor->MaximumPhysicalPages = PortConfig->NumberOfPhysicalBreaks;
 	Descriptor->MaximumTransferLength = PortConfig->MaximumTransferLength;
 	Descriptor->AlignmentMask = PortConfig->AlignmentMask;
 	Descriptor->AdapterUsesPio = FALSE;

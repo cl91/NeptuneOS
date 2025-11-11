@@ -256,7 +256,7 @@ static PSYSTEM_DMA_ADAPTER HalpDmaGetSystemAdapter(IN PDEVICE_DESCRIPTION Desc)
  * @remarks This routine must be called at PASSIVE_LEVEL.
  */
 NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
-				 OUT PULONG NumberOfMapRegisters)
+				 OUT OPTIONAL PULONG NumberOfMapRegisters)
 {
     PAGED_CODE();
 
@@ -382,15 +382,8 @@ NTAPI PDMA_ADAPTER HalGetAdapter(IN PDEVICE_DESCRIPTION DeviceDescription,
 	AdapterObject->MaxMapRegs = (DeviceDescription->InterfaceType == Isa) ? 1 : 0;
     }
 
-    if (AdapterObject->MaxMapRegs) {
+    if (NumberOfMapRegisters) {
 	*NumberOfMapRegisters = AdapterObject->MaxMapRegs;
-    } else {
-	/* If the device does not need any map registers, the ReactOS implementation
-	 * actually returns a non-zero value for the NumberOfMapRegisters parameter
-	 * despite the fact that future DMA operations will ignore this parameter.
-	 * I'm not sure why this is needed but it seems that some drivers expect
-	 * this to be non-zero, so we will follow the ReactOS implementation here. */
-	*NumberOfMapRegisters = BYTES_TO_PAGES(MaximumLength) + 1;
     }
 
     InitializeListHead(&AdapterObject->MapRegisterList);

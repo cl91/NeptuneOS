@@ -118,8 +118,6 @@ typedef struct _FDO_DEVICE_EXTENSION {
     ULONG NumberfOfConnectedInterrupts;
     PINTERRUPT_INFO ConnectedInterrupts;
     PDMA_ADAPTER DmaAdapter;
-    ULONG NumberOfMapRegisters;
-    PVOID MapRegisterBase;
 
     LIST_ENTRY PdoListHead;
     ULONG PdoCount;
