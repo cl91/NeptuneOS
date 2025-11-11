@@ -239,6 +239,9 @@ static NTSTATUS FatReadWriteDisk(IN PFAT_IRP_CONTEXT IrpContext,
 ByeBye:
     LoopOverList(Req, &ReqList, DISK_IO_REQUEST, Link) {
 	if (Req->Irp) {
+	    if (!Write && Stack->MinorFunction == IRP_MN_MDL) {
+		IoSkipCurrentIrpStackLocation(Req->Irp);
+	    }
 	    IoFreeIrp(Req->Irp);
 	}
 	ExFreePool(Req);
