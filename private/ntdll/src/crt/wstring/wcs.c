@@ -138,7 +138,7 @@ INT CDECL wcsncpy_s(wchar_t *wcDest, size_t numElement,
 	return EINVAL;
     }
 
-    size = min(strlenW(wcSrc), count);
+    size = wcsnlen(wcSrc, count);
 
     if (size >= numElement) {
 	return ERANGE;
@@ -211,7 +211,7 @@ INT CDECL wcsncat_s(wchar_t *dst, size_t elem,
 	    ret = STRUNCATE;
 	}
     } else
-	srclen = min(strlenW(src), count);
+	srclen = wcsnlen(src, count);
     if (srclen < (elem - dststart)) {
 	memcpy(&dst[dststart], src, srclen * sizeof(wchar_t));
 	dst[dststart + srclen] = '\0';
