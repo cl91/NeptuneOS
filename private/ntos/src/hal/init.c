@@ -2,17 +2,6 @@
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 
-typedef enum _HAL_SYSTEM_TIMER_TYPE {
-    HalSystemTimerPit,
-    HalSystemTimerHpet
-} HAL_SYSTEM_TIMER_TYPE;
-
-#ifdef _M_IX86
-static HAL_SYSTEM_TIMER_TYPE HalpSystemTimerType = HalSystemTimerPit;
-#else
-static HAL_SYSTEM_TIMER_TYPE HalpSystemTimerType = HalSystemTimerHpet;
-#endif
-
 static LIST_ENTRY HalpX86IoPortList;
 
 NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count)
@@ -77,12 +66,11 @@ VOID __outbyte(IN USHORT PortNum,
 NTSTATUS HalEnableSystemTimer(OUT PIRQ_HANDLER IrqHandler,
 			      IN ULONG64 Period)
 {
-    switch (HalpSystemTimerType) {
-    case HalSystemTimerPit:
-	return HalpEnablePit(IrqHandler, Period);
-    case HalSystemTimerHpet:
-	return HalpEnableHpet(IrqHandler, Period);
+    /* Try HPET first. If that fails, try PIT. */
+    if (NT_SUCCESS(HalpEnableHpet(IrqHandler, Period))) {
+	return STATUS_SUCCESS;
     }
+    return HalpEnablePit(IrqHandler, Period);
 }
 
 #endif	/* defined(_M_IX86) || defined(_M_AMD64) */
