@@ -150,7 +150,7 @@ static VOID KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 	case SEL4_BOOTINFO_HEADER_FDT:
 	    /* TODO: Record FDT information */
 	    break;
-	case SEL4_BOOTINFO_HEADER_EFI_SYSTBL_PTR:
+	case SEL4_BOOTINFO_HEADER_X86_EFI_SYSTBL_PTR:
 	    if (BootInfoHeader->len == sizeof(ULONG) + sizeof(seL4_BootInfoHeader)) {
 		HalRegisterEfiSystemTablePointer(*(PULONG)(BootInfoHeader+1),
 						 sizeof(ULONG));
@@ -309,7 +309,7 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 	case SEL4_BOOTINFO_HEADER_FDT:
 	    DbgPrint("    fdt of size 0x%zx\n", BootInfoHeader->len);
 	    break;
-	case SEL4_BOOTINFO_HEADER_EFI_SYSTBL_PTR:
+	case SEL4_BOOTINFO_HEADER_X86_EFI_SYSTBL_PTR:
 	    DbgPrint("    efi system table pointer of size 0x%zx\n", BootInfoHeader->len);
 	    if (BootInfoHeader->len == sizeof(ULONG) + sizeof(seL4_BootInfoHeader)) {
 		DbgPrint("        efi system table at physical address 0x%x\n",
