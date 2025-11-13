@@ -50,13 +50,12 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
     NumSlots = (DirContext.LongNameU.Length / sizeof(WCHAR) + 12) / 13 + 1;
     DPRINT("NameLen = 0x%zx, NumSlots = %u\n",
 	   DirContext.LongNameU.Length / sizeof(WCHAR), NumSlots);
-    PUCHAR Buffer = ExAllocatePoolWithTag(NonPagedPool,
-					  (NumSlots - 1) * sizeof(FAT_DIR_ENTRY),
-					  TAG_DIRENT);
+    PFAT_DIR_ENTRY Buffer = ExAllocatePoolWithTag(NonPagedPool,
+						  NumSlots * sizeof(FAT_DIR_ENTRY),
+						  TAG_DIRENT);
     if (!Buffer) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
-    RtlZeroMemory(Buffer, (NumSlots - 1) * sizeof(FAT_DIR_ENTRY));
     Slots = (PSLOT)Buffer;
 
     NameA.Buffer = Name;
@@ -283,66 +282,21 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
     /* No need to init cache here, FatFindDirSpace() will have done it for us */
     ASSERT(BooleanFlagOn(ParentFcb->Flags, FCB_CACHE_INITIALIZED));
 
-    ULONG EntriesPerCluster = DeviceExt->FatInfo.BytesPerCluster / sizeof(FAT_DIR_ENTRY);
+    RtlCopyMemory(Buffer + (NumSlots - 1), &DirContext.DirEntry.Fat,
+		  sizeof(FAT_DIR_ENTRY));
     LARGE_INTEGER FileOffset = {
 	.HighPart = 0,
 	.LowPart = DirContext.StartIndex * sizeof(FAT_DIR_ENTRY)
     };
-    PVOID Context;
-    ULONG MappedLength;
-    PFAT_DIR_ENTRY FatEntry;
-    if (DirContext.StartIndex / EntriesPerCluster == DirContext.DirIndex / EntriesPerCluster) {
-	/* One cluster */
-	Status = CcMapData(ParentFcb->FileObject, &FileOffset,
-			   NumSlots * sizeof(FAT_DIR_ENTRY), MAP_WAIT,
-			   &MappedLength, &Context, (PVOID *)&FatEntry);
-	if (!NT_SUCCESS(Status)) {
-	    ExFreePoolWithTag(Buffer, TAG_DIRENT);
-	    return Status;
-	}
-	assert(MappedLength == NumSlots * sizeof(FAT_DIR_ENTRY));
-
-	if (NumSlots > 1) {
-	    RtlCopyMemory(FatEntry, Buffer, (NumSlots - 1) * sizeof(FAT_DIR_ENTRY));
-	}
-	RtlCopyMemory(FatEntry + (NumSlots - 1), &DirContext.DirEntry.Fat,
-		      sizeof(FAT_DIR_ENTRY));
-    } else {
-	/* Two clusters */
-	ULONG SizeInFirstCluster = DeviceExt->FatInfo.BytesPerCluster -
-	    (DirContext.StartIndex * sizeof(FAT_DIR_ENTRY)) %
-	    DeviceExt->FatInfo.BytesPerCluster;
-	ULONG EntriesInFirstCluster = SizeInFirstCluster / sizeof(FAT_DIR_ENTRY);
-	Status = CcMapData(ParentFcb->FileObject, &FileOffset, SizeInFirstCluster, MAP_WAIT,
-			   &MappedLength, &Context, (PVOID *)&FatEntry);
-	if (!NT_SUCCESS(Status)) {
-	    ExFreePoolWithTag(Buffer, TAG_DIRENT);
-	    return Status;
-	}
-	assert(MappedLength == SizeInFirstCluster);
-
-	RtlCopyMemory(FatEntry, Buffer, SizeInFirstCluster);
-	CcSetDirtyData(Context);
-	CcUnpinData(Context);
-	FileOffset.LowPart += SizeInFirstCluster;
-	Status = CcMapData(ParentFcb->FileObject, &FileOffset,
-			   NumSlots * sizeof(FAT_DIR_ENTRY) - SizeInFirstCluster,
-			   MAP_WAIT, &MappedLength, &Context, (PVOID *)&FatEntry);
-	if (!NT_SUCCESS(Status)) {
-	    ExFreePoolWithTag(Buffer, TAG_DIRENT);
-	    return Status;
-	}
-	assert(MappedLength == (NumSlots * sizeof(FAT_DIR_ENTRY) - SizeInFirstCluster));
-
-	if (NumSlots - 1 > EntriesInFirstCluster) {
-	    RtlCopyMemory(FatEntry, (PVOID) (Buffer + SizeInFirstCluster),
-			  (NumSlots - 1 - i) * sizeof(FAT_DIR_ENTRY));
-	}
-	RtlCopyMemory(FatEntry + NumSlots - 1 - EntriesInFirstCluster,
-		      &DirContext.DirEntry.Fat, sizeof(FAT_DIR_ENTRY));
+    ULONG BytesWritten = 0;
+    Status = CcCopyWrite(ParentFcb->FileObject, &FileOffset,
+			 NumSlots * sizeof(FAT_DIR_ENTRY), TRUE, Buffer, &BytesWritten);
+    ExFreePoolWithTag(Buffer, TAG_DIRENT);
+    Buffer = NULL;
+    if (!NT_SUCCESS(Status)) {
+	return Status;
     }
-    CcSetDirtyData(Context);
-    CcUnpinData(Context);
+    assert(BytesWritten == NumSlots * sizeof(FAT_DIR_ENTRY));
 
     if (MoveContext) {
 	/* We're modifying an existing FCB - likely rename/move */
@@ -351,7 +305,6 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
 	Status = FatMakeFcbFromDirEntry(DeviceExt, ParentFcb, &DirContext, Fcb);
     }
     if (!NT_SUCCESS(Status)) {
-	ExFreePoolWithTag(Buffer, TAG_DIRENT);
 	return Status;
     }
 
@@ -361,19 +314,19 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
     if (IsDirectory) {
 	Status = FatFcbInitializeCacheFromVolume(DeviceExt, (*Fcb));
 	if (!NT_SUCCESS(Status)) {
-	    ExFreePoolWithTag(Buffer, TAG_DIRENT);
 	    return Status;
 	}
 
 	FileOffset.QuadPart = 0;
-	Status = CcMapData((*Fcb)->FileObject, &FileOffset,
-			   DeviceExt->FatInfo.BytesPerCluster, MAP_WAIT,
+	ULONG SizeToMap = sizeof(FAT_DIR_ENTRY) * 2;
+	PVOID Context;
+	ULONG MappedLength;
+	PFAT_DIR_ENTRY FatEntry;
+	Status = CcMapData((*Fcb)->FileObject, &FileOffset, SizeToMap, MAP_WAIT,
 			   &MappedLength, &Context, (PVOID *)&FatEntry);
-	if (!NT_SUCCESS(Status)) {
-	    ExFreePoolWithTag(Buffer, TAG_DIRENT);
+	if (!NT_SUCCESS(Status) || SizeToMap != MappedLength) {
 	    return Status;
 	}
-	assert(MappedLength == DeviceExt->FatInfo.BytesPerCluster);
 
 	/* Clear the new directory cluster if not moving */
 	if (!MoveContext) {
@@ -394,7 +347,6 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
 	CcSetDirtyData(Context);
 	CcUnpinData(Context);
     }
-    ExFreePoolWithTag(Buffer, TAG_DIRENT);
     DPRINT("AddEntry OK!\n");
     return STATUS_SUCCESS;
 }
@@ -406,9 +358,6 @@ static NTSTATUS DelEntry(IN PDEVICE_EXTENSION DeviceExt,
 			 IN PFATFCB Fcb,
 			 OUT PFAT_MOVE_CONTEXT MoveContext)
 {
-    ULONG CurrentCluster = 0, NextCluster;
-    PVOID Context = NULL;
-    PFAT_DIR_ENTRY DirEntry = NULL;
     NTSTATUS Status;
 
     ASSERT(Fcb);
@@ -421,48 +370,49 @@ static NTSTATUS DelEntry(IN PDEVICE_EXTENSION DeviceExt,
 
     DPRINT("delEntry PathName \'%wZ\'\n", &Fcb->PathNameU);
     DPRINT("delete entry: %u to %u\n", Fcb->StartIndex, Fcb->DirIndex);
-    LARGE_INTEGER Offset = { .QuadPart = 0 };
-    ULONG ClusterSize = DeviceExt->FatInfo.BytesPerCluster;
-    for (ULONG i = Fcb->StartIndex; i <= Fcb->DirIndex; i++) {
-	if (Context == NULL || ((i * sizeof(FAT_DIR_ENTRY)) % ClusterSize) == 0) {
-	    if (Context) {
-		CcSetDirtyData(Context);
-		CcUnpinData(Context);
-	    }
-	    Offset.LowPart = (i * sizeof(FAT_DIR_ENTRY) / ClusterSize) * ClusterSize;
-	    ULONG MappedLength;
-	    Status = CcMapData(Fcb->ParentFcb->FileObject, &Offset, ClusterSize,
-			       MAP_WAIT, &MappedLength, &Context, (PVOID *)&DirEntry);
-	    if (!NT_SUCCESS(Status)) {
-		return Status;
-	    }
-	    assert(MappedLength == ClusterSize);
-	}
-	DirEntry[i % (ClusterSize / sizeof(FAT_DIR_ENTRY))].Filename[0] = 0xe5;
-	if (i == Fcb->DirIndex) {
-	    ULONG Idx = i % (ClusterSize / sizeof(FAT_DIR_ENTRY));
-	    CurrentCluster = FatDirEntryGetFirstCluster(DeviceExt,
-							(PDIR_ENTRY)&DirEntry[Idx]);
-	}
+    assert(Fcb->DirIndex >= Fcb->StartIndex);
+    ULONG NumSlots = Fcb->DirIndex - Fcb->StartIndex + 1;
+    ULONG SizeToMap = NumSlots * sizeof(FAT_DIR_ENTRY);
+    PFAT_DIR_ENTRY Buffer = ExAllocatePoolWithTag(NonPagedPool, SizeToMap, TAG_DIRENT);
+    if (!Buffer) {
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
+    LARGE_INTEGER Offset = { .QuadPart = Fcb->StartIndex * sizeof(FAT_DIR_ENTRY) };
+    ULONG SizeCompleted = 0;
+    Status = CcCopyRead(Fcb->ParentFcb->FileObject, &Offset, SizeToMap, TRUE,
+			Buffer, &SizeCompleted);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    assert(SizeCompleted == SizeToMap);
+
+    /* Update the first byte of file name and write it back to disk */
+    for (ULONG i = 0; i < NumSlots; i++) {
+	Buffer[i].Filename[0] = 0xe5;
+    }
+    Status = CcCopyWrite(Fcb->ParentFcb->FileObject, &Offset, SizeToMap, TRUE,
+			 Buffer, &SizeCompleted);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    assert(SizeCompleted == SizeToMap);
+
+    PFAT_DIR_ENTRY LastEntry = &Buffer[NumSlots-1];
+    ULONG CurrentCluster = FatDirEntryGetFirstCluster(DeviceExt,
+						      (PDIR_ENTRY)LastEntry);
 
     /* In case of moving, save properties */
     if (MoveContext != NULL) {
-	DirEntry = &DirEntry[Fcb->DirIndex % (ClusterSize / sizeof(FAT_DIR_ENTRY))];
 	MoveContext->FirstCluster = CurrentCluster;
-	MoveContext->FileSize = DirEntry->FileSize;
-	MoveContext->CreationTime = DirEntry->CreationTime;
-	MoveContext->CreationDate = DirEntry->CreationDate;
-    }
-
-    if (Context) {
-	CcSetDirtyData(Context);
-	CcUnpinData(Context);
+	MoveContext->FileSize = LastEntry->FileSize;
+	MoveContext->CreationTime = LastEntry->CreationTime;
+	MoveContext->CreationDate = LastEntry->CreationDate;
     }
 
     /* In case of moving, don't delete data */
     if (!MoveContext) {
 	while (CurrentCluster && CurrentCluster != 0xffffffff) {
+	    ULONG NextCluster;
 	    Status = GetNextCluster(DeviceExt, CurrentCluster, &NextCluster);
 	    if (!NT_SUCCESS(Status)) {
 		return Status;
@@ -542,7 +492,7 @@ static BOOLEAN IsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 }
 
 static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
-				OUT PVOID *pCluster,
+				OUT PVOID *pSector,
 				IN PFATFCB DirFcb,
 				IN PFAT_DIRENTRY_CONTEXT DirContext,
 				IN BOOLEAN First)
@@ -562,10 +512,10 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
     DirContext->LongNameU.Length = 0;
     DirContext->LongNameU.Buffer[0] = UNICODE_NULL;
 
-    ULONG ClusterSize = DirContext->DeviceExt->FatInfo.BytesPerCluster;
+    ULONG SectorSize = DirContext->DeviceExt->FatInfo.BytesPerSector;
     FileOffset.HighPart = 0;
     FileOffset.LowPart = ROUND_DOWN(DirContext->DirIndex * sizeof(FAT_DIR_ENTRY),
-				    ClusterSize);
+				    SectorSize);
 
     NTSTATUS Status = FatFcbInitializeCacheFromVolume(DirContext->DeviceExt, DirFcb);
     if (!NT_SUCCESS(Status)) {
@@ -573,8 +523,8 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
     }
 
     ULONG MappedLength;
-    ULONG EntriesPerCluster = ClusterSize / sizeof(FAT_DIR_ENTRY);
-    if (!(*pContext) || !(DirContext->DirIndex % EntriesPerCluster)) {
+    ULONG EntriesPerSector = SectorSize / sizeof(FAT_DIR_ENTRY);
+    if (!(*pContext) || !(DirContext->DirIndex % EntriesPerSector)) {
 	if (*pContext) {
 	    CcUnpinData(*pContext);
 	}
@@ -584,16 +534,16 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 	    return STATUS_NO_MORE_ENTRIES;
 	}
 
-	Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize,
-			   MAP_WAIT, &MappedLength, pContext, pCluster);
+	Status = CcMapData(DirFcb->FileObject, &FileOffset, SectorSize,
+			   MAP_WAIT, &MappedLength, pContext, pSector);
 	if (!NT_SUCCESS(Status)) {
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
-	assert(MappedLength == ClusterSize);
+	assert(MappedLength == SectorSize);
     }
 
-    FatDirEntry = (PFAT_DIR_ENTRY)(*pCluster) + DirContext->DirIndex % EntriesPerCluster;
+    FatDirEntry = (PFAT_DIR_ENTRY)(*pSector) + DirContext->DirIndex % EntriesPerSector;
     LongNameEntry = (PSLOT)FatDirEntry;
     DirMap = 0;
 
@@ -608,24 +558,24 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 	    DirContext->DirIndex--;
 	    Back = TRUE;
 
-	    if ((DirContext->DirIndex % EntriesPerCluster) == EntriesPerCluster - 1) {
+	    if ((DirContext->DirIndex % EntriesPerSector) == EntriesPerSector - 1) {
 		CcUnpinData(*pContext);
-		FileOffset.LowPart -= ClusterSize;
+		FileOffset.LowPart -= SectorSize;
 
 		if (FileOffset.LowPart >= DirFcb->Base.FileSizes.FileSize.LowPart) {
 		    *pContext = NULL;
 		    return STATUS_NO_MORE_ENTRIES;
 		}
 
-		Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize,
-				   MAP_WAIT, &MappedLength, pContext, pCluster);
+		Status = CcMapData(DirFcb->FileObject, &FileOffset, SectorSize,
+				   MAP_WAIT, &MappedLength, pContext, pSector);
 		if (!NT_SUCCESS(Status)) {
 		    *pContext = NULL;
 		    return STATUS_NO_MORE_ENTRIES;
 		}
-		assert(MappedLength == ClusterSize);
+		assert(MappedLength == SectorSize);
 
-		FatDirEntry = (PFAT_DIR_ENTRY)(*pCluster) + DirContext->DirIndex % EntriesPerCluster;
+		FatDirEntry = (PFAT_DIR_ENTRY)(*pSector) + DirContext->DirIndex % EntriesPerSector;
 		LongNameEntry = (PSLOT)FatDirEntry;
 	    } else {
 		FatDirEntry--;
@@ -637,25 +587,25 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 	    (FAT_ENTRY_DELETED(FatDirEntry) || !FAT_ENTRY_LONG(FatDirEntry))) {
 	    DirContext->DirIndex++;
 
-	    if ((DirContext->DirIndex % EntriesPerCluster) == 0) {
+	    if ((DirContext->DirIndex % EntriesPerSector) == 0) {
 		CcUnpinData(*pContext);
-		FileOffset.LowPart += ClusterSize;
+		FileOffset.LowPart += SectorSize;
 
 		if (FileOffset.LowPart >= DirFcb->Base.FileSizes.FileSize.LowPart) {
 		    *pContext = NULL;
 		    return STATUS_NO_MORE_ENTRIES;
 		}
 
-		Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize,
-				   MAP_WAIT, &MappedLength, pContext, pCluster);
+		Status = CcMapData(DirFcb->FileObject, &FileOffset, SectorSize,
+				   MAP_WAIT, &MappedLength, pContext, pSector);
 		if (!NT_SUCCESS(Status)) {
 		    *pContext = NULL;
 		    return STATUS_NO_MORE_ENTRIES;
 		}
-		assert(MappedLength == ClusterSize);
+		assert(MappedLength == SectorSize);
 
-		FatDirEntry = (PFAT_DIR_ENTRY)(*pCluster);
-		LongNameEntry = (PSLOT)(*pCluster);
+		FatDirEntry = (PFAT_DIR_ENTRY)(*pSector);
+		LongNameEntry = (PSLOT)(*pSector);
 	    } else {
 		FatDirEntry++;
 		LongNameEntry++;
@@ -754,24 +704,24 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 
 	DirContext->DirIndex++;
 
-	if ((DirContext->DirIndex % EntriesPerCluster) == 0) {
+	if ((DirContext->DirIndex % EntriesPerSector) == 0) {
 	    CcUnpinData(*pContext);
-	    FileOffset.LowPart += ClusterSize;
+	    FileOffset.LowPart += SectorSize;
 
 	    if (FileOffset.LowPart >= DirFcb->Base.FileSizes.FileSize.LowPart) {
 		*pContext = NULL;
 		return STATUS_NO_MORE_ENTRIES;
 	    }
 
-	    Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize,
-			       MAP_WAIT, &MappedLength, pContext, pCluster);
+	    Status = CcMapData(DirFcb->FileObject, &FileOffset, SectorSize,
+			       MAP_WAIT, &MappedLength, pContext, pSector);
 	    if (!NT_SUCCESS(Status)) {
 		*pContext = NULL;
 		return STATUS_NO_MORE_ENTRIES;
 	    }
 
-	    FatDirEntry = (PFAT_DIR_ENTRY)(*pCluster);
-	    LongNameEntry = (PSLOT)(*pCluster);
+	    FatDirEntry = (PFAT_DIR_ENTRY)(*pSector);
+	    LongNameEntry = (PSLOT)(*pSector);
 	} else {
 	    FatDirEntry++;
 	    LongNameEntry++;
