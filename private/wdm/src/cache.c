@@ -397,7 +397,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	}
 	Req->Bcb = NewBcb;
 	LARGE_INTEGER ReadOffset = { .QuadPart = CurrentOffset };
-	DPRINT("CcMapData(FileObj %p, DeviceObj %p, FileOffset 0x%llx, Length 0x%x)"
+	DPRINT("CcMapData(FileObj %p, DeviceObj %p, FileOffset 0x%llx, Length 0x%x) "
 	       "Building IRP ReadOffset 0x%llx, ReadLength 0x%x\n",
 	       FileObject, Vpb->DeviceObject, FileOffset->QuadPart, Length,
 	       CurrentOffset, CurrentLength);
