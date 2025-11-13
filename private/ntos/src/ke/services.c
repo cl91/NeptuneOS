@@ -919,7 +919,8 @@ VOID KiDispatchExecutiveServices()
 		seL4_Reply(seL4_MessageInfo_new(0, 0, 0, 0));
 	    }
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER) {
-	    /* The system thread has faulted. For system threads we always terminate the thread. */
+	    /* The system thread has faulted. For system threads we always terminate the
+	     * thread. */
 	    PSYSTEM_THREAD Thread = (PSYSTEM_THREAD)GLOBAL_HANDLE_TO_OBJECT(Badge);
 	    seL4_Fault_t Fault = seL4_getFault(Request);
 #ifdef CONFIG_DEBUG_BUILD
@@ -968,8 +969,9 @@ VOID KiDispatchExecutiveServices()
 		    NumApc = KiDeliverApc(Thread, MsgBufferEnd, &MoreToCome);
 		}
 		if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
-		    /* Before we reply to the client, on debug build we check that the async function has
-		     * correctly poped the async stack (by using ASYNC_RETURN rather than return). */
+		    /* Before we reply to the client, on debug build we check that the async
+		     * function has correctly poped the async stack (by using ASYNC_RETURN
+		     * rather than return). */
 		    KiCheckAsyncStackEmpty(Thread);
 		    KiReplyThread(ReplyCapSaved ? Thread : NULL, Status, NumApc, MoreToCome);
 		}
@@ -998,8 +1000,9 @@ VOID KiDispatchExecutiveServices()
 		if (Status == STATUS_USER_APC) {
 		    NumApc = KiDeliverApc(ReadyThread, ReadyThread->MsgBufferEnd, &MoreToCome);
 		}
-		/* Before we reply to the client, on debug build we check that the async function has
-		 * correctly poped the async stack (by using ASYNC_RETURN rather than return). */
+		/* Before we reply to the client, on debug build we check that the async
+		 * function has correctly poped the async stack (by using ASYNC_RETURN
+		 * rather than return). */
 		KiCheckAsyncStackEmpty(ReadyThread);
 		/* We return the service status via the zeroth message register and
 		 * the number of APCs via the label of the message */
