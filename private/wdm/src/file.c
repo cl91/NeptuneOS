@@ -98,6 +98,7 @@ NTAPI PFILE_OBJECT IoCreateStreamFileObject(IN PDEVICE_OBJECT DeviceObject)
     }
     ObInitializeObject(FileObject, CLIENT_OBJECT_FILE, FILE_OBJECT);
     FileObject->DeviceObject = DeviceObject;
+    ObReferenceObject(DeviceObject);
     FileObject->Flags = FO_STREAM_FILE;
     InsertTailList(&IopFileObjectList, &FileObject->Private.Link);
     return FileObject;
