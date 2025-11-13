@@ -158,20 +158,21 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 	RtlRaiseStatus(Status);
 	return Status;
     }
+    seL4_IRQHandler_Ack(Interrupt->IrqHandlerCap);
 
     while (TRUE) {
+	seL4_Wait(Interrupt->NotificationCap, NULL);
 	int AckError = seL4_IRQHandler_Ack(Interrupt->IrqHandlerCap);
 	if (AckError != 0) {
 	    DbgTrace("Failed to ACK IRQ handler cap %zd for vector %d. Error:",
 		     Interrupt->IrqHandlerCap, Interrupt->Vector);
 	    KeDbgDumpIPCError(AckError);
 	}
-	/* Signal the DPC thread to check for the DPC queue */
-	IopSignalDpcNotification();
-	seL4_Wait(Interrupt->NotificationCap, NULL);
 	IoAcquireInterruptMutex(Interrupt);
 	Interrupt->ServiceRoutine(Interrupt, Interrupt->ServiceContext);
 	IoReleaseInterruptMutex(Interrupt);
+	/* Signal the DPC thread to check for the DPC queue */
+	IopSignalDpcNotification();
     }
     return 0;
 }
