@@ -1478,13 +1478,14 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 {
     DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
 	     Stack->MajorFunction, Stack->MinorFunction, Stack->Flags, Stack->Control);
-    DbgPrint("    DeviceObject %p(%p, ext %p, drv %p, refcount %d) "
+    DbgPrint("    DeviceObject %p(%p, ext %p, drv %p, refcount %d stacksize %d) "
 	     "FileObject %p(%p, fcb %p, refcount %d) "
 	     "CompletionRoutine %p Context %p\n",
 	     Stack->DeviceObject, (PVOID)IopGetDeviceHandle(Stack->DeviceObject),
 	     Stack->DeviceObject ? Stack->DeviceObject->DeviceExtension : NULL,
 	     Stack->DeviceObject ? Stack->DeviceObject->DriverObject : NULL,
 	     Stack->DeviceObject ? ObGetObjectRefCount(Stack->DeviceObject) : 0,
+	     Stack->DeviceObject ? Stack->DeviceObject->StackSize : 0,
 	     Stack->FileObject, (PVOID)IopGetFileHandle(Stack->FileObject),
 	     Stack->FileObject ? Stack->FileObject->FsContext : NULL,
 	     Stack->FileObject ? ObGetObjectRefCount(Stack->FileObject) : 0,
@@ -1852,10 +1853,11 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
 	     Irp->UserIosb, Irp->UserEvent);
     DbgPrint("    MasterIrp %p\n", Irp->MasterIrp);
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p "
-	     "OutputBuffer %p NotifyCompletion %s\n",
+	     "OutputBuffer %p NotifyCompletion %s CreatedFileObject %p\n",
 	     (PVOID)Irp->Private.OriginalRequestor,
 	     Irp->Private.Identifier, Irp->Private.OutputBuffer,
-	     Irp->Private.NotifyCompletion ? "TRUE" : "FALSE");
+	     Irp->Private.NotifyCompletion ? "TRUE" : "FALSE",
+	     Irp->Private.CreatedFileObject);
     DbgPrint("    PRIV AssociatedIrpCount %d MasterPendingList FL %p BL %p "
 	     "AssociatedIrpLink FL %p BL %p MasterCompleted %d MasterIrpSent %d\n",
 	     Irp->Private.AssociatedIrpCount, Irp->Private.MasterPendingList.Flink,
