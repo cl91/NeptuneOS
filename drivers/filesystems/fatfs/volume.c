@@ -300,8 +300,8 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
     ULONG MappedLength;
     Status = CcMapData(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
 		       MAP_WAIT, &MappedLength, &Context, (PVOID *)&Entry);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
+    if (!NT_SUCCESS(Status) || MappedLength != SizeDirEntry) {
+	return !NT_SUCCESS(Status) ? Status : STATUS_UNSUCCESSFUL;
     }
     assert(MappedLength == SizeDirEntry);
 
@@ -328,7 +328,7 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 		Status = CcMapData(pRootFcb->FileObject, &FileOffset,
 				   SizeDirEntry, MAP_WAIT, &MappedLength,
 				   &Context, (PVOID *)&Entry);
-		if (!NT_SUCCESS(Status)) {
+		if (!NT_SUCCESS(Status) || MappedLength != SizeDirEntry) {
 		    Context = NULL;
 		    break;
 		}
@@ -352,13 +352,12 @@ static NTSTATUS FsdSetFsLabelInformation(PDEVICE_OBJECT DeviceObject,
 	    Status = CcMapData(pRootFcb->FileObject, &FileOffset, SizeDirEntry,
 			       MAP_WAIT, &MappedLength, &Context, (PVOID *)&Entry);
 
-	    if (NT_SUCCESS(Status)) {
-		assert(MappedLength == SizeDirEntry);
+	    if (NT_SUCCESS(Status) && MappedLength == SizeDirEntry) {
 		RtlCopyMemory(Entry, &VolumeLabelDirEntry, SizeDirEntry);
 		CcSetDirtyData(Context);
-		CcUnpinData(Context);
 		Status = STATUS_SUCCESS;
 	    }
+	    CcUnpinData(Context);
 	}
     }
 

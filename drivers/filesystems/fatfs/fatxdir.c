@@ -150,7 +150,7 @@ static NTSTATUS DelEntry(IN PDEVICE_EXTENSION DeviceExt,
     ULONG MappedLength = 0;
     Status = CcMapData(Fcb->ParentFcb->FileObject, &Offset, ClusterSize,
 		       MAP_WAIT, &MappedLength, &Context, (PVOID *)&DirEntry);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status) || MappedLength != ClusterSize) {
 	DPRINT1("CcMapData(Offset %x:%x, Length %d) failed\n",
 		Offset.HighPart, Offset.LowPart, ClusterSize);
 	return Status;
@@ -214,7 +214,7 @@ static BOOLEAN IsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 	    ULONG MappedLength;
 	    Status = CcMapData(Fcb->FileObject, &FileOffset, sizeof(FATX_DIR_ENTRY),
 			       MAP_WAIT, &MappedLength, &Context, (PVOID *)&FatXDirEntry);
-	    if (!NT_SUCCESS(Status)) {
+	    if (!NT_SUCCESS(Status) || MappedLength != sizeof(FATX_DIR_ENTRY)) {
 		return TRUE;
 	    }
 	    assert(MappedLength == sizeof(FATX_DIR_ENTRY));
@@ -308,7 +308,7 @@ static NTSTATUS GetNextDirEntry(PVOID *pContext, PVOID *pCluster, IN PFATFCB Dir
 
 	Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize, MAP_WAIT,
 			   &MappedLength, pContext, pCluster);
-	if (!NT_SUCCESS(Status)) {
+	if (!NT_SUCCESS(Status) || MappedLength != ClusterSize) {
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
@@ -344,7 +344,7 @@ static NTSTATUS GetNextDirEntry(PVOID *pContext, PVOID *pCluster, IN PFATFCB Dir
 
 	    Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize,
 			       MAP_WAIT, &MappedLength, pContext, pCluster);
-	    if (!NT_SUCCESS(Status)) {
+	    if (!NT_SUCCESS(Status) || MappedLength != ClusterSize) {
 		*pContext = NULL;
 		return STATUS_NO_MORE_ENTRIES;
 	    }

@@ -402,6 +402,9 @@ static NTSTATUS ReadVolumeLabel(IN PVOID Device,
 		ULONG MappedLength;
 		Status = CcMapData(pFcb->FileObject, &FileOffset, SizeDirEntry,
 				   MAP_WAIT, &MappedLength, &Context, (PVOID *)&Entry);
+		if (MappedLength != SizeDirEntry) {
+		    Status = STATUS_NONE_MAPPED;
+		}
 	    } else {
 		Status = FatReadDisk((PDEVICE_OBJECT)Device, &FileOffset,
 				     ClusterSize, (PUCHAR)Buffer, TRUE);

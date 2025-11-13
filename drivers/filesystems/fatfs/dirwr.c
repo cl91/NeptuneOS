@@ -137,7 +137,7 @@ NTSTATUS FatRenameEntry(IN PDEVICE_EXTENSION DeviceExt,
 	ULONG MappedLength;
 	Status = CcMapData(Fcb->ParentFcb->FileObject, &Offset, ClusterSize,
 			   MAP_WAIT, &MappedLength, &Context, (PVOID *)&DirEntry);
-	if (!NT_SUCCESS(Status)) {
+	if (!NT_SUCCESS(Status) || MappedLength != ClusterSize) {
 	    DPRINT1("CcMapData(Offset %x:%x, Length %d) failed\n",
 		    Offset.HighPart, Offset.LowPart, ClusterSize);
 	    return Status;
@@ -210,7 +210,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 	    }
 	    Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize, MAP_WAIT,
 			       &MappedLength, &Context, (PVOID *)&FatEntry);
-	    if (!NT_SUCCESS(Status)) {
+	    if (!NT_SUCCESS(Status) || MappedLength != ClusterSize) {
 		return FALSE;
 	    }
 	    assert(MappedLength == ClusterSize);
@@ -259,7 +259,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 	    FileOffset.LowPart = DirFcb->Base.FileSizes.FileSize.QuadPart - ClusterSize;
 	    Status = CcMapData(DirFcb->FileObject, &FileOffset, ClusterSize, MAP_WAIT,
 			       &MappedLength, &Context, (PVOID *)&FatEntry);
-	    if (!NT_SUCCESS(Status)) {
+	    if (!NT_SUCCESS(Status) || MappedLength != ClusterSize) {
 		return FALSE;
 	    }
 	    assert(MappedLength == ClusterSize);
@@ -273,7 +273,7 @@ BOOLEAN FatFindDirSpace(IN PDEVICE_EXTENSION DeviceExt,
 	    FileOffset.LowPart = (*pStart + NumSlots) * SizeDirEntry;
 	    Status = CcMapData(DirFcb->FileObject, &FileOffset, SizeDirEntry,
 			       MAP_WAIT, &MappedLength, &Context, (PVOID *)&FatEntry);
-	    if (!NT_SUCCESS(Status)) {
+	    if (!NT_SUCCESS(Status) || MappedLength != ClusterSize) {
 		return FALSE;
 	    }
 	    assert(MappedLength == SizeDirEntry);

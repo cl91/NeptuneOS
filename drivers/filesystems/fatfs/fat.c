@@ -548,7 +548,7 @@ NTSTATUS GetDirtyStatus(PDEVICE_EXTENSION DevExt,
     ULONG MappedLength;
     NTSTATUS Status = CcMapData(DevExt->VolumeFcb->FileObject, &Offset,
 				Length, MAP_WAIT, &MappedLength, &Context, &Sector);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status) || MappedLength != Length) {
 	return Status;
     }
     assert(MappedLength == Length);
@@ -597,7 +597,7 @@ NTSTATUS SetDirtyStatus(PDEVICE_EXTENSION DevExt, BOOLEAN DirtyStatus)
     ULONG MappedLength;
     NTSTATUS Status = CcMapData(DevExt->VolumeFcb->FileObject, &Offset,
 				Length, MAP_WAIT, &MappedLength, &Context, &Sector);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status) || MappedLength != Length) {
 	return Status;
     }
     assert(MappedLength == Length);
@@ -642,7 +642,7 @@ NTSTATUS Fat32UpdateFreeClustersCount(PDEVICE_EXTENSION DevExt)
     PFSINFO_SECTOR Sector;
     NTSTATUS Status = CcMapData(DevExt->VolumeFcb->FileObject, &Offset,
 				Length, MAP_WAIT, &MappedLength, &Context, (PVOID *)&Sector);
-    if (!NT_SUCCESS(Status)) {
+    if (!NT_SUCCESS(Status) || MappedLength != Length) {
 	return Status;
     }
     assert(MappedLength == Length);

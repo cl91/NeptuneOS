@@ -461,7 +461,7 @@ static BOOLEAN IsDirectoryEmpty(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
 	    ULONG MappedLength;
 	    Status = CcMapData(Fcb->FileObject, &FileOffset, sizeof(FAT_DIR_ENTRY),
 			       MAP_WAIT, &MappedLength, &Context, (PVOID *)&FatDirEntry);
-	    if (!NT_SUCCESS(Status)) {
+	    if (!NT_SUCCESS(Status) || MappedLength != sizeof(FAT_DIR_ENTRY)) {
 		return TRUE;
 	    }
 	    assert(MappedLength == sizeof(FAT_DIR_ENTRY));
@@ -536,7 +536,7 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 
 	Status = CcMapData(DirFcb->FileObject, &FileOffset, SectorSize,
 			   MAP_WAIT, &MappedLength, pContext, pSector);
-	if (!NT_SUCCESS(Status)) {
+	if (!NT_SUCCESS(Status) || MappedLength != SectorSize) {
 	    *pContext = NULL;
 	    return STATUS_NO_MORE_ENTRIES;
 	}
@@ -569,7 +569,7 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 
 		Status = CcMapData(DirFcb->FileObject, &FileOffset, SectorSize,
 				   MAP_WAIT, &MappedLength, pContext, pSector);
-		if (!NT_SUCCESS(Status)) {
+		if (!NT_SUCCESS(Status) || MappedLength != SectorSize) {
 		    *pContext = NULL;
 		    return STATUS_NO_MORE_ENTRIES;
 		}
@@ -598,7 +598,7 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 
 		Status = CcMapData(DirFcb->FileObject, &FileOffset, SectorSize,
 				   MAP_WAIT, &MappedLength, pContext, pSector);
-		if (!NT_SUCCESS(Status)) {
+		if (!NT_SUCCESS(Status) || MappedLength != SectorSize) {
 		    *pContext = NULL;
 		    return STATUS_NO_MORE_ENTRIES;
 		}
@@ -715,7 +715,7 @@ static NTSTATUS GetNextDirEntry(OUT PVOID *pContext,
 
 	    Status = CcMapData(DirFcb->FileObject, &FileOffset, SectorSize,
 			       MAP_WAIT, &MappedLength, pContext, pSector);
-	    if (!NT_SUCCESS(Status)) {
+	    if (!NT_SUCCESS(Status) || MappedLength != SectorSize) {
 		*pContext = NULL;
 		return STATUS_NO_MORE_ENTRIES;
 	    }
