@@ -87,8 +87,8 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
     assert(Self != NULL);
     assert(Path != NULL);
     assert(Object != NULL);
-    DbgTrace("Inserting subobject %p (path %s) for device object %p\n",
-	     Object, Path, Self);
+    DbgTrace("Inserting subobject %p (path %s, type %d) for device object %p\n",
+	     Object, Path, ObObjectGetType(Object), Self);
 
     /* The object to be inserted must be a file object. */
     if (!ObObjectIsType(Object, OBJECT_TYPE_FILE)) {
@@ -129,20 +129,17 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 	return STATUS_SUCCESS;
     }
 
-    PCSTR ObjName = Path + ObLocateLastPathSeparator(Path) + 1;
-    /* If the object name is empty (ie. if the path ends in "\", which means it's a
-     * directory file), we insert into the object directory using name "." */
-    if (!ObjName[0]) {
-	ObjName = ".";
+    /* Otherwise, the path must start with '\' */
+    if (Path[0] != OBJ_NAME_PATH_SEPARATOR) {
+	return STATUS_OBJECT_PATH_SYNTAX_BAD;
     }
+    Path++;
 
-    /* Create the parent object directory if it does not exist. */
-    POBJECT_DIRECTORY ParentDir = NULL;
-    RET_ERR(ObCreateParentDirectory(DevObj->Vcb->Subobjects, Path, &ParentDir));
-    assert(ParentDir);
-
-    /* Insert the file object under the object directory. */
-    return ObDirectoryObjectInsertObject(ParentDir, Object, ObjName);
+    /* Insert the file object under the subobject directory. The parent directories
+     * along the object path will be created if needed. If the final component of
+     * the object path is empty, (ie. if the path ends in "\", which means it's a
+     * directory file), we insert into the parent directory using name "." */
+    return ObDirectoryObjectInsertPath(DevObj->Vcb->Subobjects, Object, Path, ".", TRUE);
 }
 
 NTSTATUS IopDeviceObjectCloseProc(IN ASYNC_STATE State,
@@ -437,6 +434,7 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
     }
     if (DevObj->Vcb) {
 	PIO_VOLUME_CONTROL_BLOCK Vcb = DevObj->Vcb;
+	ObRemoveEmptySubDirectories(Vcb->Subobjects);
 	assert(ObGetObjectRefCount(Vcb->Subobjects) == 1);
 	ObDereferenceObject(Vcb->Subobjects);
 	Vcb->StorageDevice->Vcb = NULL;

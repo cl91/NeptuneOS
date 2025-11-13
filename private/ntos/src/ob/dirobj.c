@@ -3,7 +3,6 @@
 #define OBP_DIROBJ_HASH_BUCKETS 37
 typedef struct _OBJECT_DIRECTORY {
     LIST_ENTRY HashBuckets[OBP_DIROBJ_HASH_BUCKETS];
-    PIO_FILE_OBJECT FileObject;
 } OBJECT_DIRECTORY;
 
 typedef struct _OBJECT_DIRECTORY_ENTRY {
@@ -79,11 +78,11 @@ static NTSTATUS ObpLookupDirectoryEntry(IN POBJECT_DIRECTORY Directory,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS ObDirectoryObjectSearchObject(IN POBJECT_DIRECTORY Directory,
-				       IN PCSTR Name,
-				       IN ULONG Length, /* Excluding trailing '\0' */
-				       IN BOOLEAN CaseInsensitive,
-				       OUT POBJECT *FoundObject)
+FORCEINLINE NTSTATUS ObpDirectoryObjectSearchObject(IN POBJECT_DIRECTORY Directory,
+						    IN PCSTR Name,
+						    IN ULONG Length, /* Excluding trailing '\0' */
+						    IN BOOLEAN CaseInsensitive,
+						    OUT POBJECT *FoundObject)
 {
     return ObpLookupDirectoryEntry(Directory, Name, Length, CaseInsensitive,
 				   FoundObject, NULL);
@@ -124,7 +123,7 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
     }
 
     /* Look for the named object under the directory. */
-    RET_ERR_EX(ObDirectoryObjectSearchObject(Directory, Path, NameLength,
+    RET_ERR_EX(ObpDirectoryObjectSearchObject(Directory, Path, NameLength,
 					     CaseInsensitive, FoundObject),
 	       {
 		   ObDbg("Path %s not found\n", Path);
@@ -164,7 +163,7 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
 	/* If we are opening an object directory as a file, look for the file
 	 * object with name ".". This is so in the very early stage of the boot
 	 * ntdll can open a file handle to the boot modules directory. */
-	RET_ERR(ObDirectoryObjectSearchObject(DirObj, ".", 1,
+	RET_ERR(ObpDirectoryObjectSearchObject(DirObj, ".", 1,
 					      FALSE, pOpenedInstance));
 	ObpReferenceObject(*pOpenedInstance);
 	*pRemainingPath = SubPath;
@@ -218,11 +217,44 @@ static NTSTATUS ObpDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS ObDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
-				       IN POBJECT Object,
-				       IN PCSTR Name)
+/*
+ * Insert the object with the given path under the directory object, creating
+ * the intermediate directory objects along the object path if necessary.
+ * If the path string ends with '\', the object will be inserted with the given
+ * EmptyObjectName.
+ */
+NTSTATUS ObDirectoryObjectInsertPath(IN POBJECT_DIRECTORY Directory,
+				     IN POBJECT Object,
+				     IN PCSTR Path,
+				     IN PCSTR EmptyObjectName,
+				     IN BOOLEAN CaseInsensitive)
 {
-    return ObpDirectoryObjectInsertObject(Directory, Object, Name, strlen(Name));
+    assert(Path[0] != OBJ_NAME_PATH_SEPARATOR);
+    ULONG Sep = ObLocateFirstPathSeparator(Path);
+    while (Sep && Path[Sep] == OBJ_NAME_PATH_SEPARATOR) {
+	POBJECT_DIRECTORY ChildDir = NULL;
+	NTSTATUS Status = ObpLookupDirectoryEntry(Directory, Path, Sep, CaseInsensitive,
+						  (POBJECT *)&ChildDir, NULL);
+	if (!NT_SUCCESS(Status)) {
+	    RET_ERR(ObCreateObject(OBJECT_TYPE_DIRECTORY, (POBJECT *)&ChildDir, NULL));
+	    RET_ERR_EX(ObpDirectoryObjectInsertObject(Directory, ChildDir, Path, Sep),
+		       ObDereferenceObject(ChildDir));
+	    OBJECT_TO_OBJECT_HEADER(ChildDir)->ParentObject = Directory;
+	    ObpReferenceObject(Directory);
+	}
+	Path += Sep + 1;
+	Directory = ChildDir;
+	Sep = ObLocateFirstPathSeparator(Path);
+    }
+
+    if (*Path) {
+	assert(Sep);
+	assert(Path[Sep] == '\0');
+	return ObpDirectoryObjectInsertObject(Directory, Object, Path, Sep);
+    } else {
+	return ObpDirectoryObjectInsertObject(Directory, Object,
+					      EmptyObjectName, strlen(EmptyObjectName));
+    }
 }
 
 /*
@@ -239,7 +271,7 @@ static NTSTATUS ObpDirectoryObjectInsertProc(IN POBJECT Self,
     assert(Name != NULL);
     assert(Object != NULL);
 
-    return ObDirectoryObjectInsertObject(Directory, Object, Name);
+    return ObpDirectoryObjectInsertObject(Directory, Object, Name, strlen(Name));
 }
 
 VOID ObDirectoryObjectRemoveObject(IN POBJECT Subobject)
@@ -279,6 +311,25 @@ static VOID ObpDirectoryObjectDeleteProc(IN POBJECT Self)
      * the object manager does that for us */
 }
 
+static VOID ObpRemoveEmptySubDirectoryVisitor(IN POBJECT Object,
+					      IN OPTIONAL PVOID Context)
+{
+    if (ObObjectIsType(Object, OBJECT_TYPE_DIRECTORY)) {
+	POBJECT_DIRECTORY DirObj = Object;
+	ObRemoveEmptySubDirectories(DirObj);
+	if (!ObDirectoryGetObjectCount(DirObj)) {
+	    ObRemoveObject(DirObj);
+	}
+    }
+}
+
+/* Traverse the directory object and remove all empty subdirectories. */
+VOID ObRemoveEmptySubDirectories(IN POBJECT_DIRECTORY DirectoryObject)
+{
+    ObDirectoryObjectVisitObject(DirectoryObject,
+				 ObpRemoveEmptySubDirectoryVisitor, NULL);
+}
+
 NTSTATUS ObpInitDirectoryObjectType()
 {
     OBJECT_TYPE_INITIALIZER TypeInfo = {
@@ -309,44 +360,6 @@ NTSTATUS ObCreateDirectoryEx(IN OPTIONAL POBJECT Parent,
 	*DirObj = Directory;
     }
     return STATUS_SUCCESS;
-}
-
-NTSTATUS ObCreateParentDirectory(IN OPTIONAL POBJECT RootDirectory,
-				 IN PCSTR ObjectPath,
-				 OUT OPTIONAL POBJECT_DIRECTORY *ParentDir)
-{
-    /* Parse the object path against the root directory until failure. */
-    POBJECT ParentObj = NULL;
-    PCSTR ObjectName = NULL, StringToFree = NULL;
-    NTSTATUS Status = ObpParseObjectByName(RootDirectory, ObjectPath, FALSE,
-					   &ParentObj, &ObjectName, &StringToFree);
-    if (!ParentObj || !ObObjectIsType(ParentObj, OBJECT_TYPE_DIRECTORY)) {
-	Status = STATUS_OBJECT_NAME_INVALID;
-	goto out;
-    }
-    Status = STATUS_SUCCESS;
-    ULONG Sep = ObLocateFirstPathSeparator(ObjectName);
-    while (Sep && ObjectName[Sep] == OBJ_NAME_PATH_SEPARATOR && ObjectName[Sep+1]) {
-	POBJECT_DIRECTORY DirObj = NULL;
-	Status = ObCreateObject(OBJECT_TYPE_DIRECTORY, (POBJECT *)&DirObj, NULL);
-	if (!NT_SUCCESS(Status)) {
-	    break;
-	}
-	Status = ObpDirectoryObjectInsertObject(ParentObj, DirObj, ObjectName, Sep);
-	if (!NT_SUCCESS(Status)) {
-	    break;
-	}
-	ObjectName += Sep + 1;
-	ParentObj = DirObj;
-	Sep = ObLocateFirstPathSeparator(ObjectName);
-    }
-    assert(ParentObj && ObObjectIsType(ParentObj, OBJECT_TYPE_DIRECTORY));
-    *ParentDir = ParentObj;
-out:
-    if (StringToFree) {
-	ExFreePoolWithTag(StringToFree, OB_PARSE_TAG);
-    }
-    return Status;
 }
 
 POBJECT_DIRECTORY ObGetParentDirectory(IN POBJECT Object)

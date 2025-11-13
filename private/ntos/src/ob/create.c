@@ -56,10 +56,6 @@ NTSTATUS ObCreateObjectType(IN OBJECT_TYPE_ENUM Type,
  * directory is assumed. In this case you must specify an absolute
  * path.
  *
- * If OBJ_CREATE_DIR_IF flag is specified, intermediate directory objects
- * will be created if they don't yet exist. You cannot specify OBJ_NO_PARSE
- * if you have specified OBJ_CREATE_DIR_IF.
- *
  * Calling ObInsertObject does not increase the refcount of the object
  * itself, but will increase the refcount of the parent object, so the
  * parent object will not be deleted.

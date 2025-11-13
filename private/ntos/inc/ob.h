@@ -450,9 +450,11 @@ static inline ULONG ObLocateFirstPathSeparator(IN PCSTR Path)
 {
     /* Extract the name of the sub-object, which will be whatever is before
      * the first OBJ_NAME_PATH_SEPARATOR. The remaining path will be whatever
-     * is left after the first OBJ_NAME_PATH_SEPARATOR (possibly empty). */
+     * is left after the first OBJ_NAME_PATH_SEPARATOR (possibly empty). If
+     * the path does not contain a path separator, the index will point to the
+     * trailing NUL byte. */
     ULONG Idx = 0;
-    for (PCSTR Ptr = Path; *Ptr && *Ptr != OBJ_NAME_PATH_SEPARATOR; Ptr++) {
+    while (Path[Idx] && Path[Idx] != OBJ_NAME_PATH_SEPARATOR) {
 	Idx++;
     }
     return Idx;
@@ -512,19 +514,14 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
 NTSTATUS ObCreateDirectoryEx(IN OPTIONAL POBJECT Parent,
 			     IN PCSTR DirectoryPath,
                              OUT OPTIONAL POBJECT_DIRECTORY *DirObj);
-NTSTATUS ObDirectoryObjectSearchObject(IN POBJECT_DIRECTORY Directory,
-				       IN PCSTR Name,
-				       IN ULONG Length, /* Excluding trailing '\0' */
-				       IN BOOLEAN CaseInsensitive,
-				       OUT POBJECT *FoundObject);
-NTSTATUS ObDirectoryObjectInsertObject(IN POBJECT_DIRECTORY Directory,
-                                       IN POBJECT Object,
-				       IN PCSTR Name);
+NTSTATUS ObDirectoryObjectInsertPath(IN POBJECT_DIRECTORY Directory,
+				     IN POBJECT Object,
+				     IN PCSTR Path,
+				     IN PCSTR EmptyObjectName,
+				     IN BOOLEAN CaseInsensitive);
 VOID ObDirectoryObjectRemoveObject(IN POBJECT Subobject);
+VOID ObRemoveEmptySubDirectories(IN POBJECT_DIRECTORY DirectoryObject);
 SIZE_T ObDirectoryGetObjectCount(IN POBJECT_DIRECTORY DirObj);
-NTSTATUS ObCreateParentDirectory(IN OPTIONAL POBJECT RootDirectory,
-                                 IN PCSTR ObjectPath,
-                                 OUT OPTIONAL POBJECT_DIRECTORY *ParentDir);
 POBJECT_DIRECTORY ObGetParentDirectory(IN POBJECT Object);
 typedef VOID (*POB_DIRECTORY_OBJECT_VISITOR)(IN POBJECT Object,
 					     IN OPTIONAL PVOID Context);
