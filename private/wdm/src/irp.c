@@ -1075,7 +1075,6 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     case IRP_MJ_CREATE:
     case IRP_MJ_WRITE:
     case IRP_MJ_SET_INFORMATION:
-	assert(CreatedFileObject);
 	if (NT_SUCCESS(Irp->IoStatus.Status) && Fcb) {
 	    Size += sizeof(IO_RESPONSE_DATA);
 	}
