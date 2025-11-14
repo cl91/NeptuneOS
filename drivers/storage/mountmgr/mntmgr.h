@@ -148,7 +148,6 @@ typedef struct _UNIQUE_ID_WORK_ITEM {
 /* mountmgr.c */
 
 extern UNICODE_STRING DosDevicesMount;
-extern PDEVICE_OBJECT gdeviceObject;
 extern UNICODE_STRING ReparseIndex;
 extern UNICODE_STRING DeviceFloppy;
 extern UNICODE_STRING DeviceMount;

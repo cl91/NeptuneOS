@@ -30,7 +30,7 @@
 GUID MountedDevicesGuid = { 0x53F5630D, 0xB6BF, 0x11D0,
 			    { 0x94, 0xF2, 0x00, 0xA0, 0xC9, 0x1E, 0xFB, 0x8B } };
 
-PDEVICE_OBJECT gdeviceObject;
+static PDEVICE_OBJECT MountMgrDeviceObject;
 KEVENT UnloadEvent;
 LONG Unloading;
 
@@ -609,10 +609,10 @@ VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
     UNREFERENCED_PARAMETER(DriverObject);
 
     /* Don't get notification any longer */
-    IoUnregisterShutdownNotification(gdeviceObject);
+    IoUnregisterShutdownNotification(MountMgrDeviceObject);
 
     /* Free registry buffer */
-    DeviceExtension = gdeviceObject->DeviceExtension;
+    DeviceExtension = MountMgrDeviceObject->DeviceExtension;
     if (DeviceExtension->RegistryPath.Buffer) {
 	FreePool(DeviceExtension->RegistryPath.Buffer);
 	DeviceExtension->RegistryPath.Buffer = NULL;
@@ -688,7 +688,7 @@ VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
     KeReleaseSemaphore(&(DeviceExtension->DeviceLock), IO_NO_INCREMENT, 1, FALSE);
 
     GlobalDeleteSymbolicLink(&DosDevicesMount);
-    IoDeleteDevice(gdeviceObject);
+    IoDeleteDevice(MountMgrDeviceObject);
 }
 
 /**
@@ -1564,7 +1564,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DriverObject->MajorFunction[IRP_MJ_CLEANUP] = MountMgrCleanup;
     DriverObject->MajorFunction[IRP_MJ_SHUTDOWN] = MountMgrShutdown;
 
-    gdeviceObject = DeviceObject;
+    MountMgrDeviceObject = DeviceObject;
 
     Status = IoRegisterShutdownNotification(DeviceObject);
     if (!NT_SUCCESS(Status)) {
