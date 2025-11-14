@@ -146,7 +146,8 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
     BOOLEAN PartitionInfoIsValid = FALSE;
     PARTITION_INFORMATION PartitionInfo;
     if (FatInfo.FixedMedia || DiskGeometry.MediaType == RemovableMedia) {
-	// We have found a hard disk
+	/* We have found a hard disk. Now ask partmgr for the partition info.
+	 * Note this call will only succeed for MBR partitions. */
 	Size = sizeof(PARTITION_INFORMATION);
 	Status = FatBlockDeviceIoControl(DeviceToMount,
 					 IOCTL_DISK_GET_PARTITION_INFO,
@@ -154,7 +155,7 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 					 &Size, OverrideVerify);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT("FatBlockDeviceIoControl failed (%x)\n", Status);
-	    return Status;
+	    goto check;
 	}
 
 	DPRINT("Partition Information:\n");
@@ -187,7 +188,8 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 
     /* Even if PartitionInfoIsValid is FALSE, we will still check if
      * the boot sector is a FAT boot sector. This mostly applies to floppy
-     * and ZIP disks formatted using the FAT file system. */
+     * and ZIP disks formatted using the FAT file system, and GPT disks. */
+check:
     PBOOT_SECTOR Boot = ExAllocatePoolWithTag(NonPagedPool,
 					      DiskGeometry.BytesPerSector,
 					      TAG_BUFFER);
@@ -271,7 +273,7 @@ static NTSTATUS FatHasFileSystem(PDEVICE_OBJECT DeviceToMount,
 CheckFatX:
     ExFreePoolWithTag(Boot, TAG_BUFFER);
 
-    /* XBox hard drives must have a partition table, so return error
+    /* XBox hard drives must have an MBR partition table, so return error
      * if partition info is invalid. */
     if (!PartitionInfoIsValid) {
 	return STATUS_UNRECOGNIZED_VOLUME;
