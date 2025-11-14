@@ -296,7 +296,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* Now, ensure output buffer can hold everything */
     Stack = IoGetCurrentIrpStackLocation(Irp);
-    MountPoints = (PMOUNTMGR_MOUNT_POINTS)Irp->AssociatedIrp.SystemBuffer;
+    MountPoints = (PMOUNTMGR_MOUNT_POINTS)Irp->SystemBuffer;
     RtlZeroMemory(MountPoints, Stack->Parameters.DeviceIoControl.OutputBufferLength);
 
     /* Ensure we set output to let user reallocate! */
@@ -501,7 +501,7 @@ NTSTATUS QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* Get output buffer */
     Stack = IoGetCurrentIrpStackLocation(Irp);
-    MountPoints = (PMOUNTMGR_MOUNT_POINTS)Irp->AssociatedIrp.SystemBuffer;
+    MountPoints = (PMOUNTMGR_MOUNT_POINTS)Irp->SystemBuffer;
 
     /* Compute output length */
     TotalLength = DeviceInformation->UniqueId->UniqueIdLength +

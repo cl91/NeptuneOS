@@ -266,18 +266,18 @@ VOID MountMgrNotify(IN PDEVICE_EXTENSION DeviceExtension)
     IoAcquireCancelSpinLock(&OldIrql);
     while (!IsListEmpty(&(DeviceExtension->IrpListHead))) {
 	NextEntry = RemoveHeadList(&(DeviceExtension->IrpListHead));
-	Irp = CONTAINING_RECORD(NextEntry, IRP, Tail.Overlay.ListEntry);
+	Irp = CONTAINING_RECORD(NextEntry, IRP, Tail.ListEntry);
 	IoSetCancelRoutine(Irp, NULL);
-	InsertTailList(&CopyList, &(Irp->Tail.Overlay.ListEntry));
+	InsertTailList(&CopyList, &(Irp->Tail.ListEntry));
     }
     IoReleaseCancelSpinLock(OldIrql);
 
     /* Then, notify them one by one */
     while (!IsListEmpty(&CopyList)) {
 	NextEntry = RemoveHeadList(&CopyList);
-	Irp = CONTAINING_RECORD(NextEntry, IRP, Tail.Overlay.ListEntry);
+	Irp = CONTAINING_RECORD(NextEntry, IRP, Tail.ListEntry);
 
-	*((PULONG)Irp->AssociatedIrp.SystemBuffer) = DeviceExtension->EpicNumber;
+	*((PULONG)Irp->SystemBuffer) = DeviceExtension->EpicNumber;
 	Irp->IoStatus.Information = sizeof(DeviceExtension->EpicNumber);
 
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -435,7 +435,7 @@ VOID NTAPI UniqueIdChangeNotifyWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID C
 	return;
     }
 
-    UniqueIdChange = WorkItem->Irp->AssociatedIrp.SystemBuffer;
+    UniqueIdChange = WorkItem->Irp->SystemBuffer;
     /* Get the old unique ID */
     OldUniqueId = AllocatePool(UniqueIdChange->OldUniqueIdLength +
 			       sizeof(MOUNTDEV_UNIQUE_ID));
@@ -527,9 +527,8 @@ VOID IssueUniqueIdChangeNotifyWorker(IN PUNIQUE_ID_WORK_ITEM WorkItem,
 	return;
     }
 
-    Irp->AssociatedIrp.SystemBuffer = WorkItem->IrpBuffer;
-    Irp->Tail.Overlay.Thread = PsGetCurrentThread();
-    RtlCopyMemory(Irp->AssociatedIrp.SystemBuffer, UniqueId,
+    Irp->SystemBuffer = WorkItem->IrpBuffer;
+    RtlCopyMemory(Irp->SystemBuffer, UniqueId,
 		  UniqueId->UniqueIdLength + sizeof(USHORT));
 
     Stack = IoGetNextIrpStackLocation(Irp);

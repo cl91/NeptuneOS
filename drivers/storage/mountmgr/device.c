@@ -40,7 +40,7 @@ MountMgrChangeNotify(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 
     /* Get the I/O buffer */
     Stack = IoGetCurrentIrpStackLocation(Irp);
-    ChangeNotify = (PMOUNTMGR_CHANGE_NOTIFY_INFO)Irp->AssociatedIrp.SystemBuffer;
+    ChangeNotify = (PMOUNTMGR_CHANGE_NOTIFY_INFO)Irp->SystemBuffer;
 
     /* Validate it */
     if (Stack->Parameters.DeviceIoControl.OutputBufferLength <
@@ -64,7 +64,7 @@ MountMgrChangeNotify(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
     }
     /* Otherwise queue the IRP to be notified with the next epic number change */
     else {
-	InsertTailList(&(DeviceExtension->IrpListHead), &(Irp->Tail.Overlay.ListEntry));
+	InsertTailList(&(DeviceExtension->IrpListHead), &(Irp->Tail.ListEntry));
 	IoMarkIrpPending(Irp);
 	IoSetCancelRoutine(Irp, MountMgrCancel);
 	Status = STATUS_PENDING;
@@ -106,7 +106,7 @@ MountMgrSetAutoMount(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 
     /* Change the state only if there is a real difference
      * with the user-provided NewState (normalized) */
-    SetState = (PMOUNTMGR_SET_AUTO_MOUNT)Irp->AssociatedIrp.SystemBuffer;
+    SetState = (PMOUNTMGR_SET_AUTO_MOUNT)Irp->SystemBuffer;
     if ((SetState->NewState != Enabled) == DeviceExtension->NoAutoMount) {
 	Irp->IoStatus.Information = 0;
 	return STATUS_SUCCESS;
@@ -135,7 +135,7 @@ MountMgrQueryAutoMount(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    QueryState = (PMOUNTMGR_QUERY_AUTO_MOUNT)Irp->AssociatedIrp.SystemBuffer;
+    QueryState = (PMOUNTMGR_QUERY_AUTO_MOUNT)Irp->SystemBuffer;
     QueryState->CurrentState = !DeviceExtension->NoAutoMount;
     Irp->IoStatus.Information = sizeof(MOUNTMGR_QUERY_AUTO_MOUNT);
 
@@ -232,7 +232,7 @@ MountMgrCreatePoint(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    Point = (PMOUNTMGR_CREATE_POINT_INPUT)Irp->AssociatedIrp.SystemBuffer;
+    Point = (PMOUNTMGR_CREATE_POINT_INPUT)Irp->SystemBuffer;
 
     MaxLength = MAX((Point->DeviceNameOffset + Point->DeviceNameLength),
 		    (Point->SymbolicLinkNameLength + Point->SymbolicLinkNameOffset));
@@ -313,7 +313,7 @@ IsFtVolume(IN PUNICODE_STRING SymbolicName)
     DeviceObject = IoGetAttachedDeviceReference(FileDeviceObject);
 
     /* FT volume can't be removable */
-    if (FileDeviceObject->Characteristics & FILE_REMOVABLE_MEDIA) {
+    if (FileDeviceObject->Flags & FILE_REMOVABLE_MEDIA) {
 	ObDereferenceObject(DeviceObject);
 	ObDereferenceObject(FileObject);
 	return FALSE;
@@ -573,7 +573,7 @@ MountMgrNextDriveLetter(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    DriveLetterTarget = (PMOUNTMGR_DRIVE_LETTER_TARGET)Irp->AssociatedIrp.SystemBuffer;
+    DriveLetterTarget = (PMOUNTMGR_DRIVE_LETTER_TARGET)Irp->SystemBuffer;
     if (FIELD_OFFSET(MOUNTMGR_DRIVE_LETTER_TARGET, DeviceName) +
 	    DriveLetterTarget->DeviceNameLength >
 	Stack->Parameters.DeviceIoControl.InputBufferLength) {
@@ -587,8 +587,7 @@ MountMgrNextDriveLetter(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
     Status = MountMgrNextDriveLetterWorker(DeviceExtension, &DeviceName,
 					   &DriveLetterInformation);
     if (NT_SUCCESS(Status)) {
-	*(PMOUNTMGR_DRIVE_LETTER_INFORMATION)Irp->AssociatedIrp.SystemBuffer =
-	    DriveLetterInformation;
+	*(PMOUNTMGR_DRIVE_LETTER_INFORMATION)Irp->SystemBuffer = DriveLetterInformation;
 	Irp->IoStatus.Information = sizeof(MOUNTMGR_DRIVE_LETTER_INFORMATION);
     }
 
@@ -754,7 +753,7 @@ MountMgrQueryDosVolumePath(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
     }
 
     /* Ensure we have received UNICODE_STRING */
-    Target = (PMOUNTMGR_TARGET_NAME)Irp->AssociatedIrp.SystemBuffer;
+    Target = (PMOUNTMGR_TARGET_NAME)Irp->SystemBuffer;
     if (Target->DeviceNameLength & 1) {
 	return STATUS_INVALID_PARAMETER;
     }
@@ -907,7 +906,7 @@ TryWithVolumeName:
 	return STATUS_NOT_FOUND;
 
     /* Get the output buffer */
-    Output = (PMOUNTMGR_VOLUME_PATHS)Irp->AssociatedIrp.SystemBuffer;
+    Output = (PMOUNTMGR_VOLUME_PATHS)Irp->SystemBuffer;
 
     /* At least, we will return our length */
     Output->MultiSzLength = DeviceLength + 2 * sizeof(UNICODE_NULL);
@@ -1324,7 +1323,7 @@ MountMgrQueryDosVolumePaths(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
     }
 
     /* Ensure we have received UNICODE_STRING */
-    Target = (PMOUNTMGR_TARGET_NAME)Irp->AssociatedIrp.SystemBuffer;
+    Target = (PMOUNTMGR_TARGET_NAME)Irp->SystemBuffer;
     if (Target->DeviceNameLength & 1) {
 	return STATUS_INVALID_PARAMETER;
     }
@@ -1413,7 +1412,7 @@ MountMgrQueryDosVolumePaths(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
     }
 
     /* Get the output buffer */
-    Output = (PMOUNTMGR_VOLUME_PATHS)Irp->AssociatedIrp.SystemBuffer;
+    Output = (PMOUNTMGR_VOLUME_PATHS)Irp->SystemBuffer;
 
     /* Set required size */
     Output->MultiSzLength = Paths->MultiSzLength;
@@ -1455,7 +1454,7 @@ MountMgrKeepLinksWhenOffline(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    Target = (PMOUNTMGR_TARGET_NAME)Irp->AssociatedIrp.SystemBuffer;
+    Target = (PMOUNTMGR_TARGET_NAME)Irp->SystemBuffer;
     if (FIELD_OFFSET(MOUNTMGR_TARGET_NAME, DeviceName) + Target->DeviceNameLength >
 	Stack->Parameters.DeviceIoControl.InputBufferLength) {
 	return STATUS_INVALID_PARAMETER;
@@ -1496,7 +1495,7 @@ MountMgrVolumeArrivalNotification(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP 
 	return STATUS_INVALID_PARAMETER;
     }
 
-    Target = (PMOUNTMGR_TARGET_NAME)Irp->AssociatedIrp.SystemBuffer;
+    Target = (PMOUNTMGR_TARGET_NAME)Irp->SystemBuffer;
     if (FIELD_OFFSET(MOUNTMGR_TARGET_NAME, DeviceName) + Target->DeviceNameLength >
 	Stack->Parameters.DeviceIoControl.InputBufferLength) {
 	return STATUS_INVALID_PARAMETER;
@@ -1537,7 +1536,7 @@ MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    MountPoint = (PMOUNTMGR_MOUNT_POINT)Irp->AssociatedIrp.SystemBuffer;
+    MountPoint = (PMOUNTMGR_MOUNT_POINT)Irp->SystemBuffer;
     if (!MountPoint->SymbolicLinkNameLength) {
 	MountPoint->SymbolicLinkNameOffset = 0;
     }
@@ -1667,7 +1666,7 @@ MountMgrDeletePoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
     }
 
     /* Query points */
-    MountPoint = (PMOUNTMGR_MOUNT_POINT)Irp->AssociatedIrp.SystemBuffer;
+    MountPoint = (PMOUNTMGR_MOUNT_POINT)Irp->SystemBuffer;
     CreateNoDrive = (MountPoint->SymbolicLinkNameOffset &&
 		     MountPoint->SymbolicLinkNameLength);
 
@@ -1677,7 +1676,7 @@ MountMgrDeletePoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
     }
 
     /* For all the points matching the request */
-    MountPoints = (PMOUNTMGR_MOUNT_POINTS)Irp->AssociatedIrp.SystemBuffer;
+    MountPoints = (PMOUNTMGR_MOUNT_POINTS)Irp->SystemBuffer;
     for (Link = 0; Link < MountPoints->NumberOfMountPoints; Link++) {
 	SymbolicName.Length = MountPoints->MountPoints[Link].SymbolicLinkNameLength;
 	SymbolicName.MaximumLength = SymbolicName.Length + sizeof(WCHAR);
@@ -1762,7 +1761,7 @@ MountMgrDeletePointsDbOnly(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 	return Status;
     }
 
-    MountPoints = (PMOUNTMGR_MOUNT_POINTS)Irp->AssociatedIrp.SystemBuffer;
+    MountPoints = (PMOUNTMGR_MOUNT_POINTS)Irp->SystemBuffer;
     if (MountPoints->NumberOfMountPoints == 0) {
 	return Status;
     }
@@ -1843,7 +1842,7 @@ MountMgrVolumeMountPointChanged(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Ir
 	return STATUS_INVALID_PARAMETER;
     }
 
-    VolumeMountPoint = (PMOUNTMGR_VOLUME_MOUNT_POINT)Irp->AssociatedIrp.SystemBuffer;
+    VolumeMountPoint = (PMOUNTMGR_VOLUME_MOUNT_POINT)Irp->SystemBuffer;
 
     if (((ULONG)VolumeMountPoint->SourceVolumeNameLength +
 	 VolumeMountPoint->TargetVolumeNameLength) <
