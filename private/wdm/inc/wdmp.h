@@ -46,16 +46,24 @@
 /*
  * Open the specified registry key
  */
+static inline NTSTATUS IopOpenKeyEx(OUT PHANDLE KeyHandle,
+				    IN HANDLE ParentKey,
+				    IN PUNICODE_STRING Name,
+				    IN ACCESS_MASK DesiredAccess)
+{
+    *KeyHandle = NULL;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, Name,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+			       ParentKey, NULL);
+    return NtOpenKey(KeyHandle, DesiredAccess, &ObjectAttributes);
+}
+
 static inline NTSTATUS IopOpenKey(IN UNICODE_STRING Key,
 				  OUT HANDLE *KeyHandle)
 {
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    InitializeObjectAttributes(&ObjectAttributes, &Key,
-			       OBJ_CASE_INSENSITIVE, NULL, NULL);
-    TRACE_(NTOSPNP, "Opening key %wZ\n", &Key);
-    return NtOpenKey(KeyHandle, KEY_READ, &ObjectAttributes);
+    return IopOpenKeyEx(KeyHandle, NULL, &Key, KEY_READ);
 }
-
 
 static inline NTSTATUS IopQueryValueKey(IN HANDLE KeyHandle,
 					IN PWCHAR ValueName,

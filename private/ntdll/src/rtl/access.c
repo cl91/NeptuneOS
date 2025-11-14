@@ -1,0 +1,55 @@
+/*
+ * COPYRIGHT:       See COPYING in the top level directory
+ * PROJECT:         ReactOS system libraries
+ * FILE:            lib/rtl/access.c
+ * PURPOSE:         Access rights handling functions
+ * PROGRAMMERS:     Eric Kohl
+ */
+
+/* INCLUDES *****************************************************************/
+
+#include "rtlp.h"
+
+/* FUNCTIONS ***************************************************************/
+
+/*
+ * @implemented
+ */
+NTAPI BOOLEAN RtlAreAllAccessesGranted(IN ACCESS_MASK GrantedAccess,
+				       IN ACCESS_MASK DesiredAccess)
+{
+    /* Return if there's no leftover bits after granting all of them */
+    return !(~GrantedAccess & DesiredAccess);
+}
+
+/*
+ * @implemented
+ */
+NTAPI BOOLEAN RtlAreAnyAccessesGranted(IN ACCESS_MASK GrantedAccess,
+				       IN ACCESS_MASK DesiredAccess)
+{
+    /* Return if there's any leftover bits after granting all of them */
+    return ((GrantedAccess & DesiredAccess) != 0);
+}
+
+/*
+ * @implemented
+ */
+NTAPI VOID RtlMapGenericMask(IN OUT PACCESS_MASK AccessMask,
+			     IN PGENERIC_MAPPING GenericMapping)
+{
+    /* Convert mappings */
+    if (*AccessMask & GENERIC_READ)
+	*AccessMask |= GenericMapping->GenericRead;
+    if (*AccessMask & GENERIC_WRITE)
+	*AccessMask |= GenericMapping->GenericWrite;
+    if (*AccessMask & GENERIC_EXECUTE)
+	*AccessMask |= GenericMapping->GenericExecute;
+    if (*AccessMask & GENERIC_ALL)
+	*AccessMask |= GenericMapping->GenericAll;
+
+    /* Clear generic flags */
+    *AccessMask &= ~(GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE | GENERIC_ALL);
+}
+
+/* EOF */

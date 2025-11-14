@@ -167,3 +167,12 @@ NTSTATUS NtOpenSymbolicLinkObject(IN ASYNC_STATE AsyncState,
 {
     UNIMPLEMENTED;
 }
+
+NTSTATUS NtQuerySymbolicLinkObject(IN ASYNC_STATE AsyncState,
+                                   IN PTHREAD Thread,
+                                   IN HANDLE SymbolicLinkHandle,
+                                   IN OUT PUNICODE_STRING LinkName,
+                                   OUT OPTIONAL ULONG *ReturnLength)
+{
+    UNIMPLEMENTED;
+}

@@ -858,19 +858,6 @@ NTAPI NTSTATUS IoDeleteSymbolicLink(IN PUNICODE_STRING SymbolicLinkName)
     return Status;
 }
 
-static NTSTATUS IopOpenKeyEx(OUT PHANDLE KeyHandle,
-			     IN HANDLE ParentKey,
-			     IN PUNICODE_STRING Name,
-			     IN ACCESS_MASK DesiredAccess)
-{
-    *KeyHandle = NULL;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    InitializeObjectAttributes(&ObjectAttributes, Name,
-			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
-			       ParentKey, NULL);
-    return NtOpenKey(KeyHandle, DesiredAccess, &ObjectAttributes);
-}
-
 /**
  * @name IoOpenDeviceRegistryKey
  *

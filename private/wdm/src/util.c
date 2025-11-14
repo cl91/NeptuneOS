@@ -679,3 +679,12 @@ NTSTATUS IoWritePciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
 {
     return IopReadWritePciConfigSpace(DeviceObject, TRUE, Buffer, Offset, Length);
 }
+
+/*
+ * UUID helper routines
+ */
+NTAPI NTSTATUS ExUuidCreate(OUT UUID *Uuid)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}

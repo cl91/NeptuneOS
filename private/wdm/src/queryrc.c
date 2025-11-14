@@ -83,6 +83,110 @@ static PWSTR ArcTypes[] = {
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
+static NTSTATUS IopCreateRegistryKeyEx(OUT PHANDLE Handle,
+				       IN OPTIONAL HANDLE RootHandle,
+				       IN PUNICODE_STRING KeyName,
+				       IN ACCESS_MASK DesiredAccess,
+				       IN ULONG CreateOptions,
+				       OUT OPTIONAL PULONG Disposition)
+{
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    ULONG KeyDisposition, RootHandleIndex = 0, i = 1, NestedCloseLevel = 0;
+    USHORT Length;
+    HANDLE HandleArray[2];
+    BOOLEAN Recursing = TRUE;
+    PWCHAR pp, p, p1;
+    UNICODE_STRING KeyString;
+    NTSTATUS Status = STATUS_SUCCESS;
+    PAGED_CODE();
+
+    /* P1 is start, pp is end */
+    p1 = KeyName->Buffer;
+    pp = (PVOID)((ULONG_PTR)p1 + KeyName->Length);
+
+    /* Create the target key */
+    InitializeObjectAttributes(&ObjectAttributes, KeyName,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, RootHandle,
+			       NULL);
+    Status = NtCreateKey(&HandleArray[i], DesiredAccess, &ObjectAttributes, 0, NULL,
+			 CreateOptions, &KeyDisposition);
+
+    /* Now we check if this failed */
+    if ((Status == STATUS_OBJECT_NAME_NOT_FOUND) && (RootHandle)) {
+	/* Target key failed, so we'll need to create its parent. Setup array */
+	HandleArray[0] = NULL;
+	HandleArray[1] = RootHandle;
+
+	/* Keep recursing for each missing parent */
+	while (Recursing) {
+	    /* And if we're deep enough, close the last handle */
+	    if (NestedCloseLevel > 1)
+		NtClose(HandleArray[RootHandleIndex]);
+
+	    /* We're setup to ping-pong between the two handle array entries */
+	    RootHandleIndex = i;
+	    i = (i + 1) & 1;
+
+	    /* Clear the one we're attempting to open now */
+	    HandleArray[i] = NULL;
+
+	    /* Process the parent key name */
+	    for (p = p1; ((p < pp) && (*p != OBJ_NAME_PATH_SEPARATOR)); p++)
+		;
+	    Length = (USHORT)(p - p1) * sizeof(WCHAR);
+
+	    /* Is there a parent name? */
+	    if (Length) {
+		/* Build the unicode string for it */
+		KeyString.Buffer = p1;
+		KeyString.Length = KeyString.MaximumLength = Length;
+
+		/* Now try opening the parent */
+		InitializeObjectAttributes(&ObjectAttributes, &KeyString,
+					   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+					   HandleArray[RootHandleIndex], NULL);
+		Status = NtCreateKey(&HandleArray[i], DesiredAccess, &ObjectAttributes, 0,
+				     NULL, CreateOptions, &KeyDisposition);
+		if (NT_SUCCESS(Status)) {
+		    /* It worked, we have one more handle */
+		    NestedCloseLevel++;
+		} else {
+		    /* Parent key creation failed, abandon loop */
+		    Recursing = FALSE;
+		    continue;
+		}
+	    } else {
+		/* We don't have a parent name, probably corrupted key name */
+		Status = STATUS_INVALID_PARAMETER;
+		Recursing = FALSE;
+		continue;
+	    }
+
+	    /* Now see if there's more parents to create */
+	    p1 = p + 1;
+	    if ((p == pp) || (p1 == pp)) {
+		/* We're done, hopefully successfully, so stop */
+		Recursing = FALSE;
+	    }
+	}
+
+	/* Outer loop check for handle nesting that requires closing the top handle */
+	if (NestedCloseLevel > 1)
+	    NtClose(HandleArray[RootHandleIndex]);
+    }
+
+    /* Check if we broke out of the loop due to success */
+    if (NT_SUCCESS(Status)) {
+	/* Return the target handle (we closed all the parent ones) and disposition */
+	*Handle = HandleArray[i];
+	if (Disposition)
+	    *Disposition = KeyDisposition;
+    }
+
+    /* Return the success state */
+    return Status;
+}
+
 /*
  * Append "\\%d" to the given unicode string, where %d is the given integer.
  */
@@ -902,4 +1006,45 @@ NTAPI NTSTATUS IoReportHalResourceUsage(IN PUNICODE_STRING HalDescription,
     NtClose(DescriptionKey);
 
     return (Status);
+}
+
+/*
+ * @implemented
+ */
+NTAPI NTSTATUS IoSetSystemPartition(IN PUNICODE_STRING VolumeNameString)
+{
+    NTSTATUS Status;
+    HANDLE RootHandle, KeyHandle;
+    UNICODE_STRING HKLMSystem, KeyString;
+    WCHAR Buffer[sizeof(L"SystemPartition") / sizeof(WCHAR)];
+
+    RtlInitUnicodeString(&HKLMSystem, L"\\REGISTRY\\MACHINE\\SYSTEM");
+
+    /* Open registry to save data (HKLM\SYSTEM) */
+    Status = IopOpenKeyEx(&RootHandle, NULL, &HKLMSystem, KEY_ALL_ACCESS);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    /* Create or open Setup subkey */
+    KeyString.Buffer = Buffer;
+    KeyString.Length = sizeof(L"Setup") - sizeof(UNICODE_NULL);
+    KeyString.MaximumLength = sizeof(L"Setup");
+    RtlCopyMemory(Buffer, L"Setup", sizeof(L"Setup"));
+    Status = IopCreateRegistryKeyEx(&KeyHandle, RootHandle, &KeyString, KEY_ALL_ACCESS,
+				    REG_OPTION_NON_VOLATILE, NULL);
+    NtClose(RootHandle);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    /* Store caller value */
+    KeyString.Length = sizeof(L"SystemPartition") - sizeof(UNICODE_NULL);
+    KeyString.MaximumLength = sizeof(L"SystemPartition");
+    RtlCopyMemory(Buffer, L"SystemPartition", sizeof(L"SystemPartition"));
+    Status = NtSetValueKey(KeyHandle, &KeyString, 0, REG_SZ, VolumeNameString->Buffer,
+			   VolumeNameString->Length + sizeof(UNICODE_NULL));
+    NtClose(KeyHandle);
+
+    return Status;
 }

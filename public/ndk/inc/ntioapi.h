@@ -4,6 +4,7 @@
 #include <ntseapi.h>
 #include <ntkeapi.h>
 #include <debug.h>
+#include <guiddef.h>
 
 #define METHOD_BUFFERED                   0
 #define METHOD_IN_DIRECT                  1
@@ -788,6 +789,84 @@ typedef struct _FILE_FS_CONTROL_INFORMATION {
     LARGE_INTEGER DefaultQuotaLimit;
     ULONG FileSystemControlFlags;
 } FILE_FS_CONTROL_INFORMATION, *PFILE_FS_CONTROL_INFORMATION;
+
+typedef struct _REPARSE_DATA_BUFFER {
+    ULONG ReparseTag;
+    USHORT ReparseDataLength;
+    USHORT Reserved;
+    union {
+	struct {
+	    USHORT SubstituteNameOffset;
+	    USHORT SubstituteNameLength;
+	    USHORT PrintNameOffset;
+	    USHORT PrintNameLength;
+	    ULONG Flags;
+	    WCHAR PathBuffer[1];
+	} SymbolicLinkReparseBuffer;
+	struct {
+	    USHORT SubstituteNameOffset;
+	    USHORT SubstituteNameLength;
+	    USHORT PrintNameOffset;
+	    USHORT PrintNameLength;
+	    WCHAR PathBuffer[1];
+	} MountPointReparseBuffer;
+	struct {
+	    UCHAR DataBuffer[1];
+	} GenericReparseBuffer;
+    };
+} REPARSE_DATA_BUFFER, *PREPARSE_DATA_BUFFER;
+
+#define REPARSE_DATA_BUFFER_HEADER_SIZE				\
+    FIELD_OFFSET(REPARSE_DATA_BUFFER, GenericReparseBuffer)
+
+typedef struct _REPARSE_GUID_DATA_BUFFER {
+    ULONG ReparseTag;
+    USHORT ReparseDataLength;
+    USHORT Reserved;
+    GUID ReparseGuid;
+    struct {
+	UCHAR DataBuffer[1];
+    } GenericReparseBuffer;
+} REPARSE_GUID_DATA_BUFFER, *PREPARSE_GUID_DATA_BUFFER;
+
+#define REPARSE_GUID_DATA_BUFFER_HEADER_SIZE				\
+    FIELD_OFFSET(REPARSE_GUID_DATA_BUFFER, GenericReparseBuffer)
+
+#define MAXIMUM_REPARSE_DATA_BUFFER_SIZE      ( 16 * 1024 )
+
+/* Reserved reparse tags */
+#define IO_REPARSE_TAG_RESERVED_ZERO            (0)
+#define IO_REPARSE_TAG_RESERVED_ONE             (1)
+#define IO_REPARSE_TAG_RESERVED_RANGE           IO_REPARSE_TAG_RESERVED_ONE
+
+#define IsReparseTagMicrosoft(Tag)              (((Tag) & 0x80000000))
+#define IsReparseTagNameSurrogate(Tag)          (((Tag) & 0x20000000))
+
+#define IO_REPARSE_TAG_VALID_VALUES             (0xF000FFFF)
+
+#define IsReparseTagValid(Tag)						\
+    (!((Tag) & ~IO_REPARSE_TAG_VALID_VALUES) &&	((Tag) > IO_REPARSE_TAG_RESERVED_RANGE))
+
+/* Microsoft reparse point tags */
+#define IO_REPARSE_TAG_MOUNT_POINT              (0xA0000003L)
+#define IO_REPARSE_TAG_HSM                      (0xC0000004L)
+#define IO_REPARSE_TAG_DRIVE_EXTENDER           (0x80000005L)
+#define IO_REPARSE_TAG_HSM2                     (0x80000006L)
+#define IO_REPARSE_TAG_SIS                      (0x80000007L)
+#define IO_REPARSE_TAG_WIM                      (0x80000008L)
+#define IO_REPARSE_TAG_CSV                      (0x80000009L)
+#define IO_REPARSE_TAG_DFS                      (0x8000000AL)
+#define IO_REPARSE_TAG_FILTER_MANAGER           (0x8000000BL)
+#define IO_REPARSE_TAG_SYMLINK                  (0xA000000CL)
+#define IO_REPARSE_TAG_IIS_CACHE                (0xA0000010L)
+#define IO_REPARSE_TAG_DFSR                     (0x80000012L)
+
+#include <pshpack4.h>
+typedef struct _REPARSE_INDEX_KEY {
+    ULONG FileReparseTag;
+    LARGE_INTEGER FileId;
+} REPARSE_INDEX_KEY, *PREPARSE_INDEX_KEY;
+#include <poppack.h>
 
 typedef struct _FILE_FS_SIZE_INFORMATION {
     LARGE_INTEGER TotalAllocationUnits;

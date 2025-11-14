@@ -107,6 +107,12 @@
     <parameter annotation="in" type="HANDLE" name="EventHandle" />
   </svc>
 
+  <svc name="NtOpenEvent">
+    <parameter annotation="out" type="ptr::HANDLE" name="EventHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+  </svc>
+
   <svc name="NtCreatePort">
     <parameter annotation="out" type="ptr::HANDLE" name="PortHandle" />
     <parameter annotation="out" type="ptr::HANDLE" name="CommPortHandle" />
@@ -180,6 +186,15 @@
     <parameter annotation="in" type="TOKEN_INFORMATION_CLASS" name="TokenInformationClass" />
     <parameter annotation="out" type="buf::Void" name="TokenInformationBuffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="TokenInformationLength" />
+    <parameter annotation="out opt" type="bufsize::ULONG" name="ReturnLength" />
+  </svc>
+
+  <svc name="NtAdjustPrivilegesToken">
+    <parameter annotation="in" type="HANDLE" name="TokenHandle" />
+    <parameter annotation="in" type="BOOLEAN" name="DisableAllPrivileges" />
+    <parameter annotation="in" type="PVOID" name="NewState" />
+    <parameter annotation="in" type="bufsize::ULONG" name="BufferLength" />
+    <parameter annotation="out opt" type="buf::Void" name="PreviousState" />
     <parameter annotation="out opt" type="bufsize::ULONG" name="ReturnLength" />
   </svc>
 
@@ -267,6 +282,14 @@
     <parameter annotation="out opt" type="bufsize::ULONG" name="ReturnLength" />
   </svc>
 
+  <svc name="NtQueryObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+    <parameter annotation="in" type="OBJECT_INFORMATION_CLASS" name="ObjectInformationClass" />
+    <parameter annotation="out" type="buf::Void" name="ObjectInformationBuffer" />
+    <parameter annotation="in" type="bufsize::ULONG" name="ObjectInformationLength" />
+    <parameter annotation="out opt" type="bufsize::ULONG" name="ReturnLength" />
+  </svc>
+
   <svc name="NtQueryInformationProcess">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PROCESS_INFORMATION_CLASS" name="ProcessInformationClass" />
@@ -309,6 +332,20 @@
     <parameter annotation="in" type="ULONG" name="CreateOptions" />
     <parameter annotation="in opt" type="buf::Void" name="EaBuffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="EaLength" />
+  </svc>
+
+  <svc name="NtQuerySecurityObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
+    <parameter annotation="out" type="buf::Void" name="DescriptorBuffer" />
+    <parameter annotation="in" type="bufsize::ULONG" name="DescriptorBufferLength" />
+    <parameter annotation="out" type="bufsize::ULONG" name="RequiredLength" />
+  </svc>
+
+  <svc name="NtSetSecurityObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
+    <parameter annotation="in" type="PVOID" name="DescriptorBuffer" />
   </svc>
 
   <svc name="NtOpenFile">
@@ -543,6 +580,12 @@
     <parameter annotation="out" type="ptr::HANDLE" name="SymbolicLinkHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+  </svc>
+
+  <svc name="NtQuerySymbolicLinkObject">
+    <parameter annotation="in" type="HANDLE" name="SymbolicLinkHandle" />
+    <parameter annotation="in out" type="ptr::UNICODE_STRING" name="LinkName" />
+    <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
   </svc>
 
   <svc name="NtMakeTemporaryObject">

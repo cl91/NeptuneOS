@@ -289,6 +289,27 @@ IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
     return STATUS_NOT_IMPLEMENTED;
 }
 
+
+NTAPI NTSTATUS IoUnregisterPlugPlayNotification(IN PVOID NotificationEntry)
+{
+    PAGED_CODE();
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTAPI NTSTATUS IoRegisterShutdownNotification(IN PDEVICE_OBJECT DeviceObject)
+{
+    PAGED_CODE();
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+NTAPI VOID IoUnregisterShutdownNotification(PDEVICE_OBJECT DeviceObject)
+{
+    PAGED_CODE();
+    UNIMPLEMENTED;
+}
+
 struct _IO_MAPPING_TABLE;
 
 /*

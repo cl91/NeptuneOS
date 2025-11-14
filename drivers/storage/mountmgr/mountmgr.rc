@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Mount Point Manager"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "mountmgr.sys"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "mountmgr.sys"
+#include <version.rc>

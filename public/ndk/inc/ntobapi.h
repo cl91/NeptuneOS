@@ -60,6 +60,16 @@ C_ASSERT(sizeof(OBJECT_ATTRIBUTES) == sizeof(OBJECT_ATTRIBUTES_ANSI));
 #define DIRECTORY_CREATE_SUBDIRECTORY           0x0008
 #define DIRECTORY_ALL_ACCESS                    (STANDARD_RIGHTS_REQUIRED | 0xF)
 
+typedef enum _OBJECT_INFORMATION_CLASS {
+    ObjectBasicInformation,
+    ObjectNameInformation,
+    ObjectTypeInformation,
+    ObjectTypesInformation,
+    ObjectHandleFlagInformation,
+    ObjectSessionInformation,
+    MaxObjectInfoClass
+} OBJECT_INFORMATION_CLASS;
+
 /*
  * Object Information Types for NtQueryInformationObject
  */
@@ -102,8 +112,18 @@ NTAPI NTSYSAPI NTSTATUS NtOpenSymbolicLinkObject(OUT PHANDLE SymbolicLinkHandle,
 						 IN ACCESS_MASK DesiredAccess,
 						 IN POBJECT_ATTRIBUTES ObjectAttributes);
 
+NTAPI NTSYSAPI NTSTATUS NtQuerySymbolicLinkObject(IN HANDLE SymbolicLinkHandle,
+						  IN OUT PUNICODE_STRING LinkName,
+						  OUT OPTIONAL ULONG *ReturnedLength);
+
 NTAPI NTSYSAPI NTSTATUS NtMakePermanentObject(IN HANDLE Object);
 
 NTAPI NTSYSAPI NTSTATUS NtMakeTemporaryObject(IN HANDLE Handle);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryObject(IN HANDLE ObjectHandle,
+				      IN OBJECT_INFORMATION_CLASS ObjectInformationClass,
+				      OUT PVOID ObjectInformation,
+				      IN ULONG Length,
+				      OUT PULONG ResultLength);
 
 #endif

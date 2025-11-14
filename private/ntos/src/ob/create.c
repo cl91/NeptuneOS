@@ -1,8 +1,4 @@
 #include "obp.h"
-#include "ex.h"
-#include "ntdef.h"
-#include "ntstatus.h"
-#include "ob.h"
 
 static OBJECT_TYPE ObpObjectTypes[MAX_NUM_OBJECT_TYPES];
 LIST_ENTRY ObpObjectList;

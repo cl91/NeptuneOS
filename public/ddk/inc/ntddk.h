@@ -239,9 +239,7 @@ typedef struct _OBJECT_HEADER {
  * represents waitable objects on the server. However we avoid using
  * this name on the driver side due to potential confusion with the
  * dispatch routines of IRPs (dispatcher objects have nothing to do
- * with dispatch routines of IRPs). The waitable objects on the driver
- * side may or may not have a corresponding server-side object (KTIMER
- * does have a server-side object, but KEVENT does not).
+ * with dispatch routines of IRPs).
  */
 typedef struct POINTER_ALIGNMENT _WAITABLE_OBJECT_HEADER {
     OBJECT_HEADER Header;
@@ -1680,6 +1678,8 @@ typedef struct _DISK_SIGNATURE {
     };
 } DISK_SIGNATURE, *PDISK_SIGNATURE;
 
+NTAPI NTSYSAPI NTSTATUS IoSetSystemPartition(IN PUNICODE_STRING VolumeNameString);
+
 /*
  * Porting guide: remove the WaitMode parameter as all wait happens
  * in user mode.
@@ -2068,6 +2068,8 @@ FORCEINLINE PEVENT_DESCRIPTOR EventDescOrKeyword(IN PEVENT_DESCRIPTOR EventDescr
 typedef NTSTATUS (NTAPI *PDRIVER_NOTIFICATION_CALLBACK_ROUTINE)(IN PVOID NotificationStructure,
 								IN OUT OPTIONAL PVOID Context);
 
+#define PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES    0x00000001
+
 NTAPI NTSYSAPI NTSTATUS
 IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
 			       IN ULONG EventCategoryFlags,
@@ -2076,6 +2078,12 @@ IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
 			       IN PDRIVER_NOTIFICATION_CALLBACK_ROUTINE CallbackRoutine,
 			       IN OUT OPTIONAL PVOID Context,
 			       OUT PVOID *NotificationEntry);
+
+NTAPI NTSYSAPI NTSTATUS IoUnregisterPlugPlayNotification(IN PVOID NotificationEntry);
+
+NTAPI NTSYSAPI NTSTATUS IoRegisterShutdownNotification(IN PDEVICE_OBJECT DeviceObject);
+
+NTAPI NTSYSAPI VOID IoUnregisterShutdownNotification(IN PDEVICE_OBJECT DeviceObject);
 
 typedef struct _DEVICE_INTERFACE_CHANGE_NOTIFICATION {
     USHORT Version;
@@ -2143,3 +2151,8 @@ FORCEINLINE IO_PRIORITY_HINT IoGetIoPriorityHint(IN PIRP Irp)
 {
     return IoPriorityNormal;
 }
+
+/*
+ * UUID helper routines
+ */
+NTAPI NTSYSAPI NTSTATUS ExUuidCreate(OUT UUID *Uuid);

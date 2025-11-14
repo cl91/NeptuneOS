@@ -50,3 +50,15 @@ NTSTATUS NtQueryInformationToken(IN ASYNC_STATE AsyncState,
 {
     UNIMPLEMENTED;
 }
+
+NTSTATUS NtAdjustPrivilegesToken(IN ASYNC_STATE AsyncState,
+                                 IN PTHREAD Thread,
+                                 IN HANDLE TokenHandle,
+                                 IN BOOLEAN DisableAllPrivileges,
+                                 IN PVOID NewState,
+                                 IN ULONG BufferLength,
+                                 OUT OPTIONAL PVOID PreviousState,
+                                 OUT OPTIONAL ULONG *ReturnLength)
+{
+    UNIMPLEMENTED;
+}

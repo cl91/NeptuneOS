@@ -711,6 +711,350 @@ typedef enum _HEAP_INFORMATION_CLASS {
 } HEAP_INFORMATION_CLASS;
 
 /*
+ * ACE Structure
+ */
+typedef struct _ACE {
+    ACE_HEADER Header;
+    ACCESS_MASK AccessMask;
+} ACE, *PACE;
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAccessAllowedAce(IN OUT PACL Acl,
+					       IN ULONG Revision,
+					       IN ACCESS_MASK AccessMask,
+					       IN PSID Sid);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAccessAllowedAceEx(IN OUT PACL Acl,
+						 IN ULONG Revision,
+						 IN ULONG Flags,
+						 IN ACCESS_MASK AccessMask,
+						 IN PSID Sid);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAccessAllowedObjectAce(IN OUT PACL Acl,
+						     IN ULONG Revision,
+						     IN ULONG Flags,
+						     IN ACCESS_MASK AccessMask,
+						     IN OPTIONAL GUID *ObjectTypeGuid,
+						     IN OPTIONAL GUID *InheritedObjectTypeGuid,
+						     IN PSID Sid);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAccessDeniedAce(IN PACL Acl,
+					      IN ULONG Revision,
+					      IN ACCESS_MASK AccessMask,
+					      IN PSID Sid);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAccessDeniedAceEx(IN OUT PACL Acl,
+						IN ULONG Revision,
+						IN ULONG Flags,
+						IN ACCESS_MASK AccessMask,
+						IN PSID Sid);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAccessDeniedObjectAce(IN OUT PACL Acl,
+						    IN ULONG Revision,
+						    IN ULONG Flags,
+						    IN ACCESS_MASK AccessMask,
+						    IN OPTIONAL GUID *ObjectTypeGuid,
+						    IN OPTIONAL GUID *InheritedObjectTypeGuid,
+						    IN PSID Sid);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAuditAccessAce(IN PACL Acl,
+					     IN ULONG Revision,
+					     IN ACCESS_MASK AccessMask,
+					     IN PSID Sid,
+					     IN BOOLEAN Success,
+					     IN BOOLEAN Failure);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAuditAccessAceEx(IN PACL Acl,
+					       IN ULONG Revision,
+					       IN ULONG Flags,
+					       IN ACCESS_MASK AccessMask,
+					       IN PSID Sid,
+					       IN BOOLEAN Success,
+					       IN BOOLEAN Failure);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAuditAccessObjectAce(IN PACL Acl,
+						   IN ULONG Revision,
+						   IN ULONG Flags,
+						   IN ACCESS_MASK AccessMask,
+						   IN OPTIONAL GUID *ObjectTypeGuid,
+						   IN OPTIONAL GUID *InheritedObjectTypeGuid,
+						   IN PSID Sid,
+						   IN BOOLEAN Success,
+						   IN BOOLEAN Failure);
+
+NTAPI NTSYSAPI NTSTATUS RtlCreateAcl(IN PACL Acl, IN ULONG AclSize, IN ULONG AclRevision);
+
+NTAPI NTSYSAPI NTSTATUS RtlGetAce(IN PACL Acl, IN ULONG AceIndex, OUT PVOID *Ace);
+
+NTAPI NTSYSAPI NTSYSAPI BOOLEAN RtlValidAcl(IN PACL Acl);
+
+NTAPI NTSYSAPI NTSTATUS RtlAddAce(IN PACL Acl,
+				  IN ULONG AclRevision,
+				  IN ULONG StartingIndex,
+				  IN PVOID AceList,
+				  IN ULONG AceListLength);
+
+NTAPI NTSYSAPI NTSTATUS RtlDeleteAce(IN PACL Acl, IN ULONG AceIndex);
+
+typedef enum _ACL_INFORMATION_CLASS {
+    AclRevisionInformation = 1,
+    AclSizeInformation
+} ACL_INFORMATION_CLASS;
+
+typedef struct _ACL_REVISION_INFORMATION {
+    DWORD AclRevision;
+} ACL_REVISION_INFORMATION, *PACL_REVISION_INFORMATION;
+
+typedef struct _ACL_SIZE_INFORMATION {
+    DWORD AceCount;
+    DWORD AclBytesInUse;
+    DWORD AclBytesFree;
+} ACL_SIZE_INFORMATION, *PACL_SIZE_INFORMATION;
+
+NTAPI NTSYSAPI NTSTATUS RtlQueryInformationAcl(IN PACL Acl,
+					       IN PVOID Information,
+					       IN ULONG InformationLength,
+					       IN ACL_INFORMATION_CLASS InformationClass);
+
+NTAPI NTSYSAPI NTSTATUS RtlSetInformationAcl(IN PACL Acl,
+					     IN PVOID Information,
+					     IN ULONG InformationLength,
+					     IN ACL_INFORMATION_CLASS InformationClass);
+
+NTAPI NTSYSAPI NTSTATUS RtlDefaultNpAcl(OUT PACL *pAcl);
+
+/*
+ * Security descriptor routines
+ */
+
+NTAPI NTSYSAPI NTSTATUS RtlCreateSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+						    IN ULONG Revision);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlCreateSecurityDescriptorRelative(IN PISECURITY_DESCRIPTOR_RELATIVE SecurityDescriptor,
+				    IN ULONG Revision);
+
+NTAPI NTSYSAPI ULONG RtlLengthSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor);
+
+NTAPI NTSYSAPI NTSTATUS RtlGetDaclSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+						     OUT PBOOLEAN DaclPresent,
+						     OUT PACL *Dacl,
+						     OUT PBOOLEAN DaclDefaulted);
+
+NTAPI NTSYSAPI NTSTATUS RtlGetSaclSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+						     OUT PBOOLEAN SaclPresent,
+						     OUT PACL *Sacl,
+						     OUT PBOOLEAN SaclDefaulted);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlGetOwnerSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+			      OUT PSID *Owner,
+			      OUT PBOOLEAN OwnerDefaulted);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlGetGroupSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+			      OUT PSID *Group,
+			      OUT PBOOLEAN GroupDefaulted);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetDaclSecurityDescriptor(IN OUT PSECURITY_DESCRIPTOR SecurityDescriptor,
+			     IN BOOLEAN DaclPresent,
+			     IN PACL Dacl,
+			     IN BOOLEAN DaclDefaulted);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetSaclSecurityDescriptor(IN OUT PSECURITY_DESCRIPTOR SecurityDescriptor,
+			     IN BOOLEAN SaclPresent,
+			     IN PACL Sacl,
+			     IN BOOLEAN SaclDefaulted);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetOwnerSecurityDescriptor(IN OUT PSECURITY_DESCRIPTOR SecurityDescriptor,
+			      IN PSID Owner,
+			      IN BOOLEAN OwnerDefaulted);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetGroupSecurityDescriptor(IN OUT PSECURITY_DESCRIPTOR SecurityDescriptor,
+			      IN PSID Group,
+			      IN BOOLEAN GroupDefaulted);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlGetControlSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+				OUT PSECURITY_DESCRIPTOR_CONTROL Control,
+				OUT PULONG Revision);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetControlSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+				IN SECURITY_DESCRIPTOR_CONTROL ControlBitsOfInterest,
+				IN SECURITY_DESCRIPTOR_CONTROL ControlBitsToSet);
+
+NTAPI NTSYSAPI BOOLEAN
+RtlGetSecurityDescriptorRMControl(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+				  OUT PUCHAR RMControl);
+
+NTAPI NTSYSAPI VOID
+RtlSetSecurityDescriptorRMControl(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+				  IN PUCHAR RMControl);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetAttributesSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+				   IN SECURITY_DESCRIPTOR_CONTROL Control,
+				   OUT PULONG Revision);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlCopySecurityDescriptor(IN PSECURITY_DESCRIPTOR pSourceSecurityDescriptor,
+			  OUT PSECURITY_DESCRIPTOR *pDestinationSecurityDescriptor);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlAbsoluteToSelfRelativeSD(IN PSECURITY_DESCRIPTOR AbsoluteSecurityDescriptor,
+			    IN OUT PSECURITY_DESCRIPTOR SelfRelativeSecurityDescriptor,
+			    IN PULONG BufferLength);
+
+NTAPI NTSYSAPI NTSTATUS RtlMakeSelfRelativeSD(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+					      OUT PSECURITY_DESCRIPTOR SelfRelativeSD,
+					      IN OUT PULONG BufferLength);
+
+NTAPI NTSYSAPI NTSTATUS RtlSelfRelativeToAbsoluteSD(IN PSECURITY_DESCRIPTOR SelfRelativeSD,
+						    OUT PSECURITY_DESCRIPTOR AbsoluteSD,
+						    IN PULONG AbsoluteSDSize,
+						    IN PACL Dacl,
+						    IN PULONG DaclSize,
+						    IN PACL Sacl,
+						    IN PULONG SaclSize,
+						    IN PSID Owner,
+						    IN PULONG OwnerSize,
+						    IN PSID PrimaryGroup,
+						    IN PULONG PrimaryGroupSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlSelfRelativeToAbsoluteSD2(IN OUT PSECURITY_DESCRIPTOR SelfRelativeSD,
+						     OUT PULONG BufferSize);
+
+NTAPI NTSYSAPI BOOLEAN RtlValidSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor);
+
+NTAPI NTSYSAPI BOOLEAN
+RtlValidRelativeSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptorInput,
+				   IN ULONG SecurityDescriptorLength,
+				   IN SECURITY_INFORMATION RequiredInformation);
+
+typedef struct _RTL_ACE_DATA {
+    UCHAR AceType;
+    UCHAR InheritFlags;
+    UCHAR AceFlags;
+    ACCESS_MASK Mask;
+    PSID *Sid;
+} RTL_ACE_DATA, *PRTL_ACE_DATA;
+
+NTAPI NTSYSAPI NTSTATUS RtlCreateAndSetSD(IN PRTL_ACE_DATA AceData,
+					  IN ULONG AceCount,
+					  IN OPTIONAL PSID OwnerSid,
+					  IN OPTIONAL PSID GroupSid,
+					  OUT PSECURITY_DESCRIPTOR *NewDescriptor);
+
+NTAPI NTSYSAPI NTSTATUS RtlDeleteSecurityObject(IN PSECURITY_DESCRIPTOR *ObjectDescriptor);
+
+NTAPI NTSYSAPI NTSTATUS RtlNewSecurityObject(IN PSECURITY_DESCRIPTOR ParentDescriptor,
+					     IN PSECURITY_DESCRIPTOR CreatorDescriptor,
+					     OUT PSECURITY_DESCRIPTOR *NewDescriptor,
+					     IN BOOLEAN IsDirectoryObject,
+					     IN HANDLE Token,
+					     IN PGENERIC_MAPPING GenericMapping);
+
+NTAPI NTSYSAPI NTSTATUS RtlNewSecurityObjectEx(IN PSECURITY_DESCRIPTOR ParentDescriptor,
+					       IN PSECURITY_DESCRIPTOR CreatorDescriptor,
+					       OUT PSECURITY_DESCRIPTOR *NewDescriptor,
+					       IN LPGUID ObjectType,
+					       IN BOOLEAN IsDirectoryObject,
+					       IN ULONG AutoInheritFlags,
+					       IN HANDLE Token,
+					       IN PGENERIC_MAPPING GenericMapping);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlNewSecurityObjectWithMultipleInheritance(IN PSECURITY_DESCRIPTOR ParentDescriptor,
+					    IN PSECURITY_DESCRIPTOR CreatorDescriptor,
+					    OUT PSECURITY_DESCRIPTOR *NewDescriptor,
+					    IN LPGUID *ObjectTypes,
+					    IN ULONG GuidCount,
+					    IN BOOLEAN IsDirectoryObject,
+					    IN ULONG AutoInheritFlags,
+					    IN HANDLE Token,
+					    IN PGENERIC_MAPPING GenericMapping);
+
+NTAPI NTSYSAPI NTSTATUS RtlNewInstanceSecurityObject(IN BOOLEAN ParentDescriptorChanged,
+						     IN BOOLEAN CreatorDescriptorChanged,
+						     IN PLUID OldClientTokenModifiedId,
+						     OUT PLUID NewClientTokenModifiedId,
+						     IN PSECURITY_DESCRIPTOR ParentDescriptor,
+						     IN PSECURITY_DESCRIPTOR CreatorDescriptor,
+						     OUT PSECURITY_DESCRIPTOR *NewDescriptor,
+						     IN BOOLEAN IsDirectoryObject,
+						     IN HANDLE Token,
+						     IN PGENERIC_MAPPING GenericMapping);
+
+NTAPI NTSYSAPI NTSTATUS RtlCreateUserSecurityObject(IN PRTL_ACE_DATA AceData,
+						    IN ULONG AceCount,
+						    IN PSID OwnerSid,
+						    IN PSID GroupSid,
+						    IN BOOLEAN IsDirectoryObject,
+						    IN PGENERIC_MAPPING GenericMapping,
+						    OUT PSECURITY_DESCRIPTOR *NewDescriptor);
+
+NTAPI NTSYSAPI NTSTATUS RtlNewSecurityGrantedAccess(IN ACCESS_MASK DesiredAccess,
+						    OUT PPRIVILEGE_SET Privileges,
+						    IN OUT PULONG Length,
+						    IN HANDLE Token,
+						    IN PGENERIC_MAPPING GenericMapping,
+						    OUT PACCESS_MASK RemainingDesiredAccess);
+
+NTAPI NTSYSAPI NTSTATUS RtlQuerySecurityObject(IN PSECURITY_DESCRIPTOR ObjectDescriptor,
+					       IN SECURITY_INFORMATION SecurityInformation,
+					       OUT PSECURITY_DESCRIPTOR ResultantDescriptor,
+					       IN ULONG DescriptorLength,
+					       OUT PULONG ReturnLength);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetSecurityObject(IN SECURITY_INFORMATION SecurityInformation,
+		     IN PSECURITY_DESCRIPTOR ModificationDescriptor,
+		     IN OUT PSECURITY_DESCRIPTOR *ObjectsSecurityDescriptor,
+		     IN PGENERIC_MAPPING GenericMapping,
+		     IN OPTIONAL HANDLE Token);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetSecurityObjectEx(IN SECURITY_INFORMATION SecurityInformation,
+		       IN PSECURITY_DESCRIPTOR ModificationDescriptor,
+		       IN OUT PSECURITY_DESCRIPTOR *ObjectsSecurityDescriptor,
+		       IN ULONG AutoInheritFlags,
+		       IN PGENERIC_MAPPING GenericMapping,
+		       IN OPTIONAL HANDLE Token);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlConvertToAutoInheritSecurityObject(IN PSECURITY_DESCRIPTOR ParentDescriptor,
+				      IN PSECURITY_DESCRIPTOR CreatorDescriptor,
+				      OUT PSECURITY_DESCRIPTOR *NewDescriptor,
+				      IN LPGUID ObjectType,
+				      IN BOOLEAN IsDirectoryObject,
+				      IN PGENERIC_MAPPING GenericMapping);
+
+/*
+ * RTL Secure Memory callbacks
+ */
+typedef NTSTATUS (NTAPI *PRTL_SECURE_MEMORY_CACHE_CALLBACK)(IN PVOID Address,
+							    IN SIZE_T Length);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlRegisterSecureMemoryCacheCallback(IN PRTL_SECURE_MEMORY_CACHE_CALLBACK Callback);
+
+NTAPI NTSYSAPI BOOLEAN RtlFlushSecureMemoryCache(IN PVOID MemoryCache,
+						 IN OPTIONAL SIZE_T MemoryLength);
+
+NTAPI NTSYSAPI BOOLEAN RtlAreAllAccessesGranted(IN ACCESS_MASK GrantedAccess,
+						IN ACCESS_MASK DesiredAccess);
+
+NTAPI NTSYSAPI BOOLEAN RtlAreAnyAccessesGranted(IN ACCESS_MASK GrantedAccess,
+						IN ACCESS_MASK DesiredAccess);
+
+NTAPI NTSYSAPI VOID RtlMapGenericMask(IN OUT PACCESS_MASK AccessMask,
+				      IN PGENERIC_MAPPING GenericMapping);
+
+/*
  * Singly Linked Lists
  */
 typedef struct _SINGLE_LIST_ENTRY {
@@ -2461,6 +2805,12 @@ NTAPI NTSYSAPI NTSTATUS RtlAllocateAndInitializeSid(IN PSID_IDENTIFIER_AUTHORITY
 NTAPI NTSYSAPI NTSTATUS RtlConvertSidToUnicodeString(IN PUNICODE_STRING String,
 						     IN PSID Sid,
 						     IN BOOLEAN AllocateBuffer);
+
+/*
+ * System volume information folder routines
+ */
+NTAPI NTSYSAPI NTSTATUS
+RtlCreateSystemVolumeInformationFolder(IN PUNICODE_STRING VolumeRootPath);
 
 typedef struct _OSVERSIONINFO {
   ULONG dwOSVersionInfoSize;

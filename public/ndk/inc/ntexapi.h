@@ -866,6 +866,10 @@ NTAPI NTSYSAPI NTSTATUS NtClearEvent(IN HANDLE EventHandle);
 NTAPI NTSYSAPI NTSTATUS NtResetEvent(IN HANDLE EventHandle,
 				     OUT OPTIONAL PLONG NumberOfWaitingThreads);
 
+NTAPI NTSYSAPI NTSTATUS NtOpenEvent(OUT HANDLE *EventHandle,
+				    IN ACCESS_MASK DesiredAccess,
+				    IN POBJECT_ATTRIBUTES ObjectAttributes);
+
 NTAPI NTSYSAPI NTSTATUS NtSetDefaultLocale(IN BOOLEAN UserProfile,
 					   IN LCID DefaultLocaleId);
 

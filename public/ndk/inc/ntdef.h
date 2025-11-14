@@ -67,6 +67,21 @@
 #define NTSYSCALLAPI
 #endif
 
+#define IN
+#define OUT
+#define OPTIONAL
+
+#define _ANONYMOUS_UNION
+#define _ANONYMOUS_STRUCT
+#define DUMMYSTRUCTNAME
+#define DUMMYSTRUCTNAME2
+#define DUMMYSTRUCTNAME3
+#define DUMMYSTRUCTNAME4
+#define DUMMYSTRUCTNAME5
+#define DUMMYUNIONNAME
+#define DUMMYUNIONNAME2
+#define ANYSIZE_ARRAY 1
+
 #undef CONST
 #define CONST const
 #define VOID void
@@ -179,6 +194,7 @@ typedef uint64_t UINT64,  *PUINT64;
 
 #define MAXUCHAR	(0xFF)
 #define MAXUSHORT	USHORT_MAX
+#define MAXSHORT        (0X7FFF)
 #define MAXULONG	ULONG_MAX
 #define MAXULONGLONG	ULONG64_MAX
 #define MAXULONG_PTR	ULONG_PTR_MAX
@@ -236,20 +252,27 @@ typedef union _ULARGE_INTEGER {
     ULONGLONG QuadPart;
 } ULARGE_INTEGER, *PULARGE_INTEGER;
 
-#define IN
-#define OUT
-#define OPTIONAL
+/* Locally Unique Identifier */
+typedef struct _LUID {
+    ULONG LowPart;
+    LONG HighPart;
+} LUID, *PLUID;
 
-#define _ANONYMOUS_UNION
-#define _ANONYMOUS_STRUCT
-#define DUMMYSTRUCTNAME
-#define DUMMYSTRUCTNAME2
-#define DUMMYSTRUCTNAME3
-#define DUMMYSTRUCTNAME4
-#define DUMMYSTRUCTNAME5
-#define DUMMYUNIONNAME
-#define DUMMYUNIONNAME2
-#define ANYSIZE_ARRAY 1
+/*
+ * LUID helper routines
+ */
+FORCEINLINE BOOLEAN RtlEqualLuid(IN PLUID L1, IN PLUID L2) {
+    return L1->HighPart == L2->HighPart && L1->LowPart  == L2->LowPart;
+}
+
+FORCEINLINE LUID RtlConvertUlongToLuid(IN ULONG Ulong)
+{
+    LUID TempLuid;
+
+    TempLuid.LowPart = Ulong;
+    TempLuid.HighPart = 0;
+    return TempLuid;
+}
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))

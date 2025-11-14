@@ -33,7 +33,7 @@ typedef struct _GUID {
     unsigned short Data2;
     unsigned short Data3;
     unsigned char Data4[8];
-} GUID;
+} GUID, UUID;
 #endif	/* !defined(GUID_DEFINED) */
 
 #ifndef FAR

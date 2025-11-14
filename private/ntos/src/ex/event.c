@@ -154,6 +154,15 @@ NTSTATUS NtClearEvent(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS NtOpenEvent(IN ASYNC_STATE AsyncState,
+                     IN PTHREAD Thread,
+                     OUT HANDLE *EventHandle,
+                     IN ACCESS_MASK DesiredAccess,
+                     IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
+{
+    UNIMPLEMENTED;
+}
+
 /* If the object is a dispatcher object, return the dispatcher header.
  * Otherwise return NULL. */
 static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
