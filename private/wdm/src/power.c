@@ -4,6 +4,7 @@ static NTAPI NTSTATUS PopRequestPowerIrpCompletion(IN PDEVICE_OBJECT DeviceObjec
 						   IN PIRP Irp,
 						   IN OPTIONAL PVOID Context)
 {
+    UNREFERENCED_PARAMETER(DeviceObject);
     PIO_STACK_LOCATION Stack = IoGetCurrentIrpStackLocation(Irp);
     PREQUEST_POWER_COMPLETE CompletionRoutine = Context;
 

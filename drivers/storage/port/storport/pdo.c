@@ -259,6 +259,8 @@ static NTSTATUS PortStartPacket(IN OUT PPDO_DEVICE_EXTENSION PdoExt,
 	if (!NT_SUCCESS(Status)) {
 	    goto done;
 	}
+    } else {
+	PortStartMiniportIo(PdoExt->FdoExtension->Device, NULL, Ctx);
     }
 done:
     if (!NT_SUCCESS(Status)) {

@@ -1086,17 +1086,12 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		NT_ASSERT(IsListEmpty(&diskData->FlushContext.CurrList));
 
 		while (!IsListEmpty(&diskData->FlushContext.NextList)) {
-		    PLIST_ENTRY listEntry = RemoveHeadList(
-			&diskData->FlushContext.NextList);
+		    PLIST_ENTRY listEntry = RemoveHeadList(&diskData->FlushContext.NextList);
 		    InsertTailList(&diskData->FlushContext.CurrList, listEntry);
 		}
 
-#ifndef __REACTOS__
-		// ReactOS hits this assert, because CurrIrp can already be freed at this point
-		// and it's possible that NextIrp has the same pointer value
-		NT_ASSERT(diskData->FlushContext.CurrIrp !=
-			  diskData->FlushContext.NextIrp);
-#endif
+		NT_ASSERT(!diskData->FlushContext.CurrIrp);
+		NT_ASSERT(diskData->FlushContext.NextIrp == Irp);
 		diskData->FlushContext.CurrIrp = diskData->FlushContext.NextIrp;
 		diskData->FlushContext.NextIrp = NULL;
 
@@ -1258,6 +1253,7 @@ NTAPI NTSTATUS DiskShutdownFlush(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	// Set up IoCompletion routine address.
 	//
 
+	srbEx->ClassContext = fdoExtension->CommonExtension.DeviceObject;
 	IoSetCompletionRoutine(Irp, ClassIoComplete, srbEx, TRUE, TRUE, TRUE);
 
 	//
@@ -1348,12 +1344,9 @@ VOID DiskFlushDispatch(IN PDEVICE_OBJECT Fdo, IN PDISK_GROUP_CONTEXT FlushContex
 	// Set up SCSI SRB extended data fields
 	//
 
-	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) +
-	    sizeof(STOR_ADDR_BTL8);
-	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <=
-	    srbEx->SrbLength) {
-	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx +
-						      srbEx->SrbExDataOffset[0]);
+	srbEx->SrbExDataOffset[0] = sizeof(STORAGE_REQUEST_BLOCK) + sizeof(STOR_ADDR_BTL8);
+	if ((srbEx->SrbExDataOffset[0] + sizeof(SRBEX_DATA_SCSI_CDB16)) <= srbEx->SrbLength) {
+	    srbExDataCdb16 = (PSRBEX_DATA_SCSI_CDB16)((PUCHAR)srbEx + srbEx->SrbExDataOffset[0]);
 	    srbExDataCdb16->Type = SrbExDataTypeScsiCdb16;
 	    srbExDataCdb16->Length = SRBEX_DATA_SCSI_CDB16_LENGTH;
 	    srbExDataCdb16->CdbLength = 10;
@@ -1399,6 +1392,8 @@ VOID DiskFlushDispatch(IN PDEVICE_OBJECT Fdo, IN PDISK_GROUP_CONTEXT FlushContex
     irpSp->MajorFunction = IRP_MJ_SCSI;
     irpSp->Parameters.Scsi.Srb = srbEx;
 
+    /* Pass the FDO in the IRP so we can retrieve it in DiskFlushComplete. */
+    FlushContext->CurrIrp->Tail.DriverContext[0] = Fdo;
     IoSetCompletionRoutine(FlushContext->CurrIrp, DiskFlushComplete,
 			   (PVOID)(ULONG_PTR)SyncCacheStatus, TRUE, TRUE, TRUE);
 
@@ -1423,7 +1418,7 @@ Routine Description:
 
 Arguments:
 
-    Fdo - The device object which requested the completion routine
+    Unused - Unused device object. The FDO is retrieved from the IRP
     Irp - The irp that is being completed
     Context - If disk had write cache enabled and SYNC CACHE command was sent as
               1st part of FLUSH processing, then context must carry the completion
@@ -1434,8 +1429,14 @@ Return Value:
     STATUS_SUCCESS if successful, an error code otherwise
 
 --*/
-NTAPI NTSTATUS DiskFlushComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Context)
+static NTAPI NTSTATUS DiskFlushComplete(IN PDEVICE_OBJECT Unused,
+					IN PIRP Irp,
+					IN PVOID Context)
 {
+    UNREFERENCED_PARAMETER(Unused);
+    PDEVICE_OBJECT Fdo = Irp->Tail.DriverContext[0];
+    ASSERT(Fdo);
+    ASSERT_FDO(Fdo);
     PDISK_GROUP_CONTEXT FlushContext;
     NTSTATUS status;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt;
@@ -1461,6 +1462,7 @@ NTAPI NTSTATUS DiskFlushComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Co
 
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_SCSI,
 		"DiskFlushComplete: completing irp %p\n", Irp));
+    FlushContext->Srb.SrbEx.ClassContext = Fdo;
     status = ClassIoComplete(Fdo, Irp, &FlushContext->Srb.SrbEx);
 
     //
@@ -1490,6 +1492,8 @@ NTAPI NTSTATUS DiskFlushComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Co
 	ClassReleaseRemoveLock(Fdo, tempIrp);
 	ClassCompleteRequest(Fdo, tempIrp, IO_NO_INCREMENT);
     }
+
+    FlushContext->CurrIrp = NULL;
 
     //
     // Notify the next group's representative that it may go ahead now
@@ -2315,7 +2319,7 @@ VOID ResetBus(IN PDEVICE_OBJECT Fdo)
 
     ClassAcquireRemoveLock(Fdo, irp);
 
-    IoSetCompletionRoutine(irp, (PIO_COMPLETION_ROUTINE)ClassAsynchronousCompletion,
+    IoSetCompletionRoutine(irp, ClassAsynchronousCompletion,
 			   context, TRUE, TRUE, TRUE);
 
     irpStack = IoGetNextIrpStackLocation(irp);

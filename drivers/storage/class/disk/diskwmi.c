@@ -27,28 +27,32 @@ Revision History:
 #include "diskwmi.tmh"
 #endif
 
-NTSTATUS DiskSendFailurePredictIoctl(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				     PSTORAGE_PREDICT_FAILURE checkFailure);
+static NTSTATUS DiskSendFailurePredictIoctl(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					    PSTORAGE_PREDICT_FAILURE checkFailure);
 
-NTSTATUS DiskGetIdentifyInfo(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			     PBOOLEAN SupportSmart);
+static NTSTATUS DiskGetIdentifyInfo(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				    PBOOLEAN SupportSmart);
 
-NTSTATUS DiskDetectFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-				     PFAILURE_PREDICTION_METHOD FailurePredictCapability,
-				     BOOLEAN ScsiAddressAvailable);
+static NTSTATUS DiskDetectFailurePrediction(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+					    PFAILURE_PREDICTION_METHOD FailurePredictCapability,
+					    BOOLEAN ScsiAddressAvailable);
 
-NTSTATUS DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-					  PSTORAGE_FAILURE_PREDICT_THRESHOLDS Thresholds);
+static NTSTATUS DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+						 PSTORAGE_FAILURE_PREDICT_THRESHOLDS Thresholds);
 
-NTSTATUS DiskReadSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			  IN UCHAR SectorCount, IN UCHAR LogAddress, OUT PUCHAR Buffer);
+static NTSTATUS DiskReadSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				 IN UCHAR SectorCount,
+				 IN UCHAR LogAddress,
+				 OUT PUCHAR Buffer);
 
-NTSTATUS DiskWriteSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
-			   IN UCHAR SectorCount, IN UCHAR LogAddress, IN PUCHAR Buffer);
+static NTSTATUS DiskWriteSmartLog(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
+				  IN UCHAR SectorCount,
+				  IN UCHAR LogAddress,
+				  IN PUCHAR Buffer);
 
-IO_WORKITEM_ROUTINE DiskReregWorker;
+static IO_WORKITEM_ROUTINE DiskReregWorker;
 
-IO_COMPLETION_ROUTINE DiskInfoExceptionComplete;
+static IO_COMPLETION_ROUTINE DiskInfoExceptionComplete;
 
 //
 // WMI reregistration globals
@@ -1125,7 +1129,7 @@ NTSTATUS DiskReadFailurePredictThresholds(PFUNCTIONAL_DEVICE_EXTENSION FdoExtens
     return status;
 }
 
-NTAPI VOID DiskReregWorker(IN PDEVICE_OBJECT DevObject, IN PVOID Context)
+static NTAPI VOID DiskReregWorker(IN PDEVICE_OBJECT DevObject, IN PVOID Context)
 {
     PDISKREREGREQUEST reregRequest;
     NTSTATUS status;
@@ -1233,14 +1237,19 @@ NTSTATUS DiskPostReregisterRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp)
     return (status);
 }
 
-NTAPI NTSTATUS DiskInfoExceptionComplete(PDEVICE_OBJECT DeviceObject, PIRP Irp,
-					 PVOID Context)
+static NTAPI NTSTATUS DiskInfoExceptionComplete(PDEVICE_OBJECT Unused,
+						PIRP Irp,
+						PVOID Context)
 {
+    UNREFERENCED_PARAMETER(Unused);
+    PSTORAGE_REQUEST_BLOCK srbEx = Context;
+    assert(srbEx);
+    PDEVICE_OBJECT DeviceObject = srbEx->ClassContext;
+    assert(DeviceObject);
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PDISK_DATA diskData = (PDISK_DATA)(commonExtension->DriverData);
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PIO_STACK_LOCATION nextIrpStack = IoGetNextIrpStackLocation(Irp);
-    PSTORAGE_REQUEST_BLOCK srbEx = Context;
     NTSTATUS status;
     BOOLEAN retry;
     ULONG retryInterval;
@@ -1554,6 +1563,7 @@ NTSTATUS DiskInfoExceptionCheck(PFUNCTIONAL_DEVICE_EXTENSION FdoExtension)
     irpStack->MajorFunction = IRP_MJ_SCSI;
     irpStack->Parameters.Scsi.Srb = srbEx;
 
+    srbEx->ClassContext = FdoExtension->DeviceObject;
     IoSetCompletionRoutine(irp, DiskInfoExceptionComplete, srbEx, TRUE, TRUE, TRUE);
 
     irp->UserBuffer = modeData;

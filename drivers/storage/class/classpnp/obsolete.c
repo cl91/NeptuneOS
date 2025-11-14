@@ -80,7 +80,7 @@ Routine Description:
 
 Arguments:
 
-    Fdo - Supplies the functional device object which represents the target.
+    DeviceObject - Unused. The FDO is retrieved from the SRB.
 
     Irp - Supplies the Irp which has completed.
 
@@ -91,14 +91,16 @@ Return Value:
     NT status
 
 --*/
-NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT Fdo,
+NTAPI NTSTATUS ClassIoCompleteAssociated(IN PDEVICE_OBJECT DeviceObject,
 					 IN PIRP Irp,
 					 IN PVOID Context)
 {
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
-
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PSTORAGE_REQUEST_BLOCK srb = Context;
+    assert(srb);
+    PDEVICE_OBJECT Fdo = srb->ClassContext;
+    assert(Fdo);
+    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
     PIRP originalIrp = Irp->MasterIrp;
     LONG irpCount;
@@ -389,8 +391,10 @@ VOID RetryRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp, PSTORAGE_REQUEST_BLOCK 
     nextIrpStack->Parameters.Scsi.Srb = Srb;
 
     if (Associated) {
+	Srb->ClassContext = DeviceObject;
 	IoSetCompletionRoutine(Irp, ClassIoCompleteAssociated, Srb, TRUE, TRUE, TRUE);
     } else {
+	Srb->ClassContext = DeviceObject;
 	IoSetCompletionRoutine(Irp, ClassIoComplete, Srb, TRUE, TRUE, TRUE);
     }
 
@@ -432,6 +436,7 @@ Return Value:
 --*/
 NTAPI NTSTATUS ClassBuildRequest(IN PDEVICE_OBJECT Fdo, IN PIRP Irp)
 {
+    ASSERT_FDO(Fdo);
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
     PSTORAGE_REQUEST_BLOCK srb;
@@ -662,6 +667,7 @@ VOID ClasspBuildRequestEx(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
     // Set up IoCompletion routine address.
     //
 
+    Srb->ClassContext = FdoExtension->CommonExtension.DeviceObject;
     IoSetCompletionRoutine(Irp, ClassIoComplete, Srb, TRUE, TRUE, TRUE);
 }
 

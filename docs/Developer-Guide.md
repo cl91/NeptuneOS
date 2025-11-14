@@ -377,6 +377,19 @@ the `IO_RESOURCE_REQUIREMENTS_LIST` structure used in the PnP driver interface.
 
 #### Low-level Device Drivers
 
+##### IO Completion Routine
+
+When an IO completion routine of an IRP is called, the IO stack location of the IRP points
+to the stack location at the point when `IoCallDriver` was called, ie. the stack location
+behind the location for the current driver. To access the IO request parameters, use
+`IoGetNextIrpStackLocation` rathern than `IoGetCurrentIrpStackLocation`. The device object
+passed into the IO completion routine is the device object on which `IoCallDriver` is called.
+`IoCallDriver` advances the IO stack location to point to the one belonging to the current
+driver, and sets its device object member. In other words, on entrance of an IO completion
+routine, we have `DeviceObject == IoGetNextIrpStackLocation(Irp)->DeviceObject`. Note this
+is different from Windows and ReactOS, which requires attention when porting drivers. As an
+example, compare the `ClassIoComplete` routine in `classpnp.sys` with the Windows version.
+
 ##### Synchronization
 
 KEVENT (only between different coroutines within the same driver process)

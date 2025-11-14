@@ -2784,7 +2784,7 @@ NTAPI NTSTATUS ClassSendStartUnit(IN PDEVICE_OBJECT Fdo)
 
     ClassAcquireRemoveLock(Fdo, irp);
 
-    IoSetCompletionRoutine(irp, (PIO_COMPLETION_ROUTINE)ClassAsynchronousCompletion,
+    IoSetCompletionRoutine(irp, ClassAsynchronousCompletion,
 			   context, TRUE, TRUE, TRUE);
 
     PIO_STACK_LOCATION irpStack = IoGetNextIrpStackLocation(irp);
@@ -2820,8 +2820,8 @@ Routine Description:
 
 Arguments:
 
-    DeviceObject - The device object for the logical unit; however since this
-        is the top stack location the value is NULL.
+    Unused - Unused device object. The device object for the logical unit is retrieved
+             from the Context.
 
     Irp - Supplies a pointer to the Irp to be processed.
 
@@ -2832,7 +2832,7 @@ Return Value:
     None.
 
 --*/
-NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject,
+NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT Unused,
 					   PIRP Irp,
 					   PVOID Context)
 {
@@ -2842,9 +2842,7 @@ NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT DeviceObject,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    if (DeviceObject == NULL) {
-	DeviceObject = context->DeviceObject;
-    }
+    PDEVICE_OBJECT DeviceObject = context->DeviceObject;
 
     PSTORAGE_REQUEST_BLOCK srb = &context->Srb.SrbEx;
 
@@ -3237,8 +3235,8 @@ Routine Description:
 
 Arguments:
 
-    Fdo - Supplies the device object which represents the logical
-        unit.
+    Fdo - Unused. The device object which represents the logical unit
+          is obtained from the SRB.
 
     Irp - Supplies the Irp which has completed.
 
@@ -3249,10 +3247,13 @@ Return Value:
     NT status
 
 --*/
-NTAPI NTSTATUS ClassIoComplete(IN PDEVICE_OBJECT Fdo, IN PIRP Irp, IN PVOID Context)
+NTAPI NTSTATUS ClassIoComplete(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN PVOID Context)
 {
+    UNREFERENCED_PARAMETER(DeviceObject);
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
     PSTORAGE_REQUEST_BLOCK srb = Context;
+    PDEVICE_OBJECT Fdo = srb->ClassContext;
+    assert(Fdo);
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
     NTSTATUS status;
@@ -6300,9 +6301,11 @@ NTAPI NTSTATUS ClassSendSrbAsynchronous(IN PDEVICE_OBJECT Fdo,
     irpStack->Parameters.Others.Argument4 = (PVOID)MAXIMUM_RETRIES;
 
     //
-    // Set up IoCompletion routine address.
+    // Set up IoCompletion routine address. Note since the device object passed into
+    // the completion routine will be the lower device object (as passed in IoCallDriver),
+    // we need to save the FDO pointer in the Srb so we can later retrieve it.
     //
-
+    Srb->ClassContext = Fdo;
     IoSetCompletionRoutine(Irp, ClassIoComplete, Srb, TRUE, TRUE, TRUE);
 
     //
@@ -6945,8 +6948,8 @@ NTAPI NTSTATUS ClassDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN OUT PIRP Ir
 	    // and prepare the irp for the port driver
 	    //
 
-	    IoSetCompletionRoutine(irp2, ClassCheckVerifyComplete, NULL, TRUE, TRUE,
-				   TRUE);
+	    IoSetCompletionRoutine(irp2, ClassCheckVerifyComplete, DeviceObject,
+				   TRUE, TRUE, TRUE);
 
 	    IoSetNextIrpStackLocation(irp2);
 	    newStack = IoGetCurrentIrpStackLocation(irp2);
@@ -8370,27 +8373,27 @@ Routine Description:
 
 Arguments:
 
-    Fdo - Supplies the functional device object which represents the logical unit.
+    Fdo - Unused.
 
     Irp - Supplies the Irp which has completed.
 
-    Context - NULL
+    Context - Supplies the functional device object which represents the logical unit.
 
 Return Value:
 
     NT status
 
 --*/
-NTAPI NTSTATUS ClassCheckVerifyComplete(IN PDEVICE_OBJECT Fdo,
+NTAPI NTSTATUS ClassCheckVerifyComplete(IN PDEVICE_OBJECT DeviceObject,
 					IN PIRP Irp,
 					IN PVOID Context)
 {
+    UNREFERENCED_PARAMETER(DeviceObject);
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
+    PDEVICE_OBJECT Fdo = Context;
     PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Fdo->DeviceExtension;
 
     PIRP originalIrp;
-
-    UNREFERENCED_PARAMETER(Context);
 
     ASSERT_FDO(Fdo);
 
