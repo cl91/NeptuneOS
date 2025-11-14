@@ -25,16 +25,12 @@
 
 #include "mntmgr.h"
 
-#define NDEBUG
-#include <debug.h>
-
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
-			  IN PUNICODE_STRING SymbolicLinkName,
-			  IN PUNICODE_STRING DeviceName)
+NTSTATUS MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
+				   IN PUNICODE_STRING SymbolicLinkName,
+				   IN PUNICODE_STRING DeviceName)
 {
     NTSTATUS Status;
     PLIST_ENTRY DeviceEntry;
@@ -211,10 +207,10 @@ MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS
-QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp,
-		      IN PMOUNTDEV_UNIQUE_ID UniqueId OPTIONAL,
-		      IN PUNICODE_STRING SymbolicName OPTIONAL)
+NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
+			       IN PIRP Irp,
+			       IN OPTIONAL PMOUNTDEV_UNIQUE_ID UniqueId,
+			       IN OPTIONAL PUNICODE_STRING SymbolicName)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -419,9 +415,9 @@ QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp,
 /*
  * @implemented
  */
-NTSTATUS
-QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
-				IN PUNICODE_STRING SymbolicName, IN PIRP Irp)
+NTSTATUS QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
+					 IN PUNICODE_STRING SymbolicName,
+					 IN PIRP Irp)
 {
     NTSTATUS Status;
     ULONG TotalLength;

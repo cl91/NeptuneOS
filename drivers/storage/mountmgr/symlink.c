@@ -25,9 +25,6 @@
 
 #include "mntmgr.h"
 
-#define NDEBUG
-#include <debug.h>
-
 /* Deprecated Windows 2000/XP versions of IOCTL_MOUNTDEV_LINK_[CREATED|DELETED]
  * without access protection, that were updated in Windows 2003.
  * They are sent to MountMgr clients if they do not recognize the new IOCTLs
@@ -48,14 +45,13 @@ UNICODE_STRING DosGlobal = RTL_CONSTANT_STRING(L"\\GLOBAL??\\");
 UNICODE_STRING Global = RTL_CONSTANT_STRING(L"\\??\\");
 UNICODE_STRING SafeVolumes = RTL_CONSTANT_STRING(L"\\Device\\VolumesSafeForWriteAccess");
 UNICODE_STRING Volume = RTL_CONSTANT_STRING(L"\\??\\Volume");
-UNICODE_STRING ReparseIndex = RTL_CONSTANT_STRING(L"\\$Extend\\$Reparse:$R:$INDEX_"
-						  L"ALLOCATION");
+UNICODE_STRING ReparseIndex = RTL_CONSTANT_STRING(L"\\$Extend\\$Reparse:$R:$INDEX_ALLOCATION");
 
 /*
  * @implemented
  */
-NTSTATUS
-CreateStringWithGlobal(IN PUNICODE_STRING DosName, OUT PUNICODE_STRING GlobalString)
+NTSTATUS CreateStringWithGlobal(IN PUNICODE_STRING DosName,
+				OUT PUNICODE_STRING GlobalString)
 {
     UNICODE_STRING IntGlobal;
 
@@ -110,8 +106,8 @@ CreateStringWithGlobal(IN PUNICODE_STRING DosName, OUT PUNICODE_STRING GlobalStr
 /*
  * @implemented
  */
-NTSTATUS
-GlobalCreateSymbolicLink(IN PUNICODE_STRING DosName, IN PUNICODE_STRING DeviceName)
+NTSTATUS GlobalCreateSymbolicLink(IN PUNICODE_STRING DosName,
+				  IN PUNICODE_STRING DeviceName)
 {
     NTSTATUS Status;
     UNICODE_STRING GlobalName;
@@ -133,8 +129,7 @@ GlobalCreateSymbolicLink(IN PUNICODE_STRING DosName, IN PUNICODE_STRING DeviceNa
 /*
  * @implemented
  */
-NTSTATUS
-GlobalDeleteSymbolicLink(IN PUNICODE_STRING DosName)
+NTSTATUS GlobalDeleteSymbolicLink(IN PUNICODE_STRING DosName)
 {
     NTSTATUS Status;
     UNICODE_STRING GlobalName;
@@ -268,11 +263,12 @@ Cleanup:
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-SymbolicLinkNamesFromUniqueIdCount(IN PWSTR ValueName, IN ULONG ValueType,
-				   IN PVOID ValueData, IN ULONG ValueLength,
-				   IN PVOID Context, IN PVOID EntryContext)
+static NTAPI NTSTATUS SymbolicLinkNamesFromUniqueIdCount(IN PWSTR ValueName,
+							 IN ULONG ValueType,
+							 IN PVOID ValueData,
+							 IN ULONG ValueLength,
+							 IN PVOID Context,
+							 IN PVOID EntryContext)
 {
     UNICODE_STRING ValueNameString;
     PMOUNTDEV_UNIQUE_ID UniqueId = Context;
@@ -298,11 +294,12 @@ SymbolicLinkNamesFromUniqueIdCount(IN PWSTR ValueName, IN ULONG ValueType,
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-SymbolicLinkNamesFromUniqueIdQuery(IN PWSTR ValueName, IN ULONG ValueType,
-				   IN PVOID ValueData, IN ULONG ValueLength,
-				   IN PVOID Context, IN PVOID EntryContext)
+static NTAPI NTSTATUS SymbolicLinkNamesFromUniqueIdQuery(IN PWSTR ValueName,
+							 IN ULONG ValueType,
+							 IN PVOID ValueData,
+							 IN ULONG ValueLength,
+							 IN PVOID Context,
+							 IN PVOID EntryContext)
 {
     UNICODE_STRING ValueNameString;
     PMOUNTDEV_UNIQUE_ID UniqueId = Context;
@@ -347,8 +344,8 @@ SymbolicLinkNamesFromUniqueIdQuery(IN PWSTR ValueName, IN ULONG ValueType,
 /*
  * @implemented
  */
-NTSTATUS
-CreateNewVolumeName(OUT PUNICODE_STRING VolumeName, IN PGUID VolumeGuid OPTIONAL)
+NTSTATUS CreateNewVolumeName(OUT PUNICODE_STRING VolumeName,
+			     IN OPTIONAL PGUID VolumeGuid)
 {
     GUID Guid;
     NTSTATUS Status;
@@ -390,13 +387,14 @@ CreateNewVolumeName(OUT PUNICODE_STRING VolumeName, IN PGUID VolumeGuid OPTIONAL
 /*
  * @implemented
  */
-NTSTATUS
-QuerySymbolicLinkNamesFromStorage(IN PDEVICE_EXTENSION DeviceExtension,
-				  IN PDEVICE_INFORMATION DeviceInformation,
-				  IN PUNICODE_STRING SuggestedLinkName,
-				  IN BOOLEAN UseOnlyIfThereAreNoOtherLinks,
-				  OUT PUNICODE_STRING *SymLinks, OUT PULONG SymLinkCount,
-				  IN BOOLEAN HasGuid, IN LPGUID Guid)
+NTSTATUS QuerySymbolicLinkNamesFromStorage(IN PDEVICE_EXTENSION DeviceExtension,
+					   IN PDEVICE_INFORMATION DeviceInformation,
+					   IN PUNICODE_STRING SuggestedLinkName,
+					   IN BOOLEAN UseOnlyIfThereAreNoOtherLinks,
+					   OUT PUNICODE_STRING *SymLinks,
+					   OUT PULONG SymLinkCount,
+					   IN BOOLEAN HasGuid,
+					   IN LPGUID Guid)
 {
     NTSTATUS Status;
     BOOLEAN WriteNew;
@@ -491,8 +489,8 @@ QuerySymbolicLinkNamesFromStorage(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-PSAVED_LINK_INFORMATION
-RemoveSavedLinks(IN PDEVICE_EXTENSION DeviceExtension, IN PMOUNTDEV_UNIQUE_ID UniqueId)
+PSAVED_LINK_INFORMATION RemoveSavedLinks(IN PDEVICE_EXTENSION DeviceExtension,
+					 IN PMOUNTDEV_UNIQUE_ID UniqueId)
 {
     PLIST_ENTRY NextEntry;
     PSAVED_LINK_INFORMATION SavedLinkInformation;
@@ -528,10 +526,9 @@ RemoveSavedLinks(IN PDEVICE_EXTENSION DeviceExtension, IN PMOUNTDEV_UNIQUE_ID Un
 /*
  * @implemented
  */
-NTSTATUS
-QuerySuggestedLinkName(IN PUNICODE_STRING SymbolicName,
-		       OUT PUNICODE_STRING SuggestedLinkName,
-		       OUT PBOOLEAN UseOnlyIfThereAreNoOtherLinks)
+NTSTATUS QuerySuggestedLinkName(IN PUNICODE_STRING SymbolicName,
+				OUT PUNICODE_STRING SuggestedLinkName,
+				OUT PBOOLEAN UseOnlyIfThereAreNoOtherLinks)
 {
     NTSTATUS Status;
     USHORT NameLength;
@@ -611,9 +608,9 @@ Dereference:
 /*
  * @implemented
  */
-BOOLEAN
-RedirectSavedLink(IN PSAVED_LINK_INFORMATION SavedLinkInformation,
-		  IN PUNICODE_STRING DosName, IN PUNICODE_STRING NewLink)
+BOOLEAN RedirectSavedLink(IN PSAVED_LINK_INFORMATION SavedLinkInformation,
+			  IN PUNICODE_STRING DosName,
+			  IN PUNICODE_STRING NewLink)
 {
     PLIST_ENTRY NextEntry;
     PSYMLINK_INFORMATION SymlinkInformation;
@@ -692,15 +689,12 @@ VOID DeleteSymbolicLinkNameFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 	    }
 	}
     }
-
-    return;
 }
 
 /*
  * @implemented
  */
-BOOLEAN
-IsDriveLetter(PUNICODE_STRING SymbolicName)
+BOOLEAN IsDriveLetter(PUNICODE_STRING SymbolicName)
 {
     WCHAR Letter, Colon;
 
@@ -732,9 +726,8 @@ IsDriveLetter(PUNICODE_STRING SymbolicName)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrQuerySymbolicLink(IN PUNICODE_STRING SymbolicName,
-			  IN OUT PUNICODE_STRING LinkTarget)
+NTSTATUS MountMgrQuerySymbolicLink(IN PUNICODE_STRING SymbolicName,
+				   IN OUT PUNICODE_STRING LinkTarget)
 {
     NTSTATUS Status;
     HANDLE LinkHandle;

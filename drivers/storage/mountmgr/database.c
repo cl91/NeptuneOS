@@ -25,9 +25,6 @@
 
 #include "mntmgr.h"
 
-#define NDEBUG
-#include <debug.h>
-
 PWSTR DatabasePath = L"\\Registry\\Machine\\System\\MountedDevices";
 PWSTR OfflinePath = L"\\Registry\\Machine\\System\\MountedDevices\\Offline";
 
@@ -474,7 +471,7 @@ NTSTATUS WriteUniqueIdToMaster(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-static NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
+NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 {
     ULONG Offset;
     NTSTATUS Status;

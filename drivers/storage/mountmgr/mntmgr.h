@@ -111,7 +111,7 @@ typedef struct _RECONCILE_WORK_ITEM {
     PIO_WORKITEM WorkItem;
     PWORKER_THREAD_ROUTINE WorkerRoutine;
     PVOID Context;
-    RECONCILE_WORK_ITEM_CONTEXT;
+    RECONCILE_WORK_ITEM_CONTEXT ReconcileWorkItemContext;
 } RECONCILE_WORK_ITEM, *PRECONCILE_WORK_ITEM;
 
 typedef struct _MIGRATE_WORK_ITEM {
@@ -161,38 +161,40 @@ extern UNICODE_STRING Volume;
 extern KEVENT UnloadEvent;
 extern LONG Unloading;
 
-CODE_SEG("INIT")
 DRIVER_INITIALIZE DriverEntry;
 
-_IRQL_requires_(PASSIVE_LEVEL) NTSTATUS MountMgrSendSyncDeviceIoCtl(
-    _In_ ULONG IoControlCode, _In_ PDEVICE_OBJECT DeviceObject,
-    _In_reads_bytes_opt_(InputBufferLength) PVOID InputBuffer,
-    _In_ ULONG InputBufferLength,
-    _Out_writes_bytes_opt_(OutputBufferLength) PVOID OutputBuffer,
-    _In_ ULONG OutputBufferLength, _In_opt_ PFILE_OBJECT FileObject);
+NTSTATUS MountMgrSendSyncDeviceIoCtl(IN ULONG IoControlCode,
+				     IN PDEVICE_OBJECT DeviceObject,
+				     IN OPTIONAL PVOID InputBuffer,
+				     IN ULONG InputBufferLength,
+				     OUT OPTIONAL PVOID OutputBuffer,
+				     IN ULONG OutputBufferLength,
+				     IN OPTIONAL PFILE_OBJECT FileObject);
 
-VOID NTAPI MountMgrCancel(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
+NTAPI VOID MountMgrCancel(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp);
 
-NTSTATUS
-MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION Extension,
-			     IN PUNICODE_STRING SymbolicName, IN BOOLEAN FromVolume);
+NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION Extension,
+				      IN PUNICODE_STRING SymbolicName,
+				      IN BOOLEAN FromVolume);
 
 VOID MountMgrMountedDeviceRemoval(IN PDEVICE_EXTENSION Extension,
 				  IN PUNICODE_STRING DeviceName);
 
-NTSTATUS
-FindDeviceInfo(IN PDEVICE_EXTENSION DeviceExtension, IN PUNICODE_STRING SymbolicName,
-	       IN BOOLEAN DeviceNameGiven, OUT PDEVICE_INFORMATION *DeviceInformation);
+NTSTATUS FindDeviceInfo(IN PDEVICE_EXTENSION DeviceExtension,
+			IN PUNICODE_STRING SymbolicName,
+			IN BOOLEAN DeviceNameGiven,
+			OUT PDEVICE_INFORMATION *DeviceInformation);
 
 VOID MountMgrFreeDeadDeviceInfo(IN PDEVICE_INFORMATION DeviceInformation);
 
-NTSTATUS
-QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
-		       _Out_opt_ PUNICODE_STRING DeviceName,
-		       _Out_opt_ PMOUNTDEV_UNIQUE_ID *UniqueId,
-		       _Out_opt_ PBOOLEAN Removable, _Out_opt_ PBOOLEAN GptDriveLetter,
-		       _Out_opt_ PBOOLEAN HasGuid, _Inout_opt_ LPGUID StableGuid,
-		       _Out_opt_ PBOOLEAN IsFT);
+NTSTATUS QueryDeviceInformation(IN PUNICODE_STRING SymbolicName,
+				OUT OPTIONAL PUNICODE_STRING DeviceName,
+				OUT OPTIONAL PMOUNTDEV_UNIQUE_ID *UniqueId,
+				OUT OPTIONAL PBOOLEAN Removable,
+				OUT OPTIONAL PBOOLEAN GptDriveLetter,
+				OUT OPTIONAL PBOOLEAN HasGuid,
+				IN OUT OPTIONAL LPGUID StableGuid,
+				OUT OPTIONAL PBOOLEAN IsFT);
 
 BOOLEAN
 HasDriveLetter(IN PDEVICE_INFORMATION DeviceInformation);
@@ -223,37 +225,35 @@ VOID DeleteRegistryDriveLetter(IN PMOUNTDEV_UNIQUE_ID UniqueId);
 
 VOID DeleteNoDriveLetterEntry(IN PMOUNTDEV_UNIQUE_ID UniqueId);
 
-NTSTATUS
-QueryVolumeName(IN HANDLE RootDirectory,
-		IN PFILE_REPARSE_POINT_INFORMATION ReparsePointInformation,
-		IN PUNICODE_STRING FileName OPTIONAL, OUT PUNICODE_STRING SymbolicName,
-		OUT PUNICODE_STRING VolumeName);
+NTSTATUS QueryVolumeName(IN HANDLE RootDirectory,
+			 IN PFILE_REPARSE_POINT_INFORMATION ReparsePointInformation,
+			 IN OPTIONAL PUNICODE_STRING FileName,
+			 OUT PUNICODE_STRING SymbolicName,
+			 OUT PUNICODE_STRING VolumeName);
 
-HANDLE
-OpenRemoteDatabase(IN PDEVICE_INFORMATION DeviceInformation, IN BOOLEAN MigrateDatabase);
+HANDLE OpenRemoteDatabase(IN PDEVICE_INFORMATION DeviceInformation,
+			  IN BOOLEAN MigrateDatabase);
 
-PDATABASE_ENTRY
-GetRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset);
+PDATABASE_ENTRY GetRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset);
 
-NTSTATUS
-WriteRemoteDatabaseEntry(IN HANDLE Database, IN LONG Offset, IN PDATABASE_ENTRY Entry);
+NTSTATUS WriteRemoteDatabaseEntry(IN HANDLE Database,
+				  IN LONG Offset,
+				  IN PDATABASE_ENTRY Entry);
 
-NTSTATUS
-CloseRemoteDatabase(IN HANDLE Database);
+NTSTATUS CloseRemoteDatabase(IN HANDLE Database);
 
-NTSTATUS
-AddRemoteDatabaseEntry(IN HANDLE Database, IN PDATABASE_ENTRY Entry);
+NTSTATUS AddRemoteDatabaseEntry(IN HANDLE Database, IN PDATABASE_ENTRY Entry);
 
-NTSTATUS
-DeleteRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset);
+NTSTATUS DeleteRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset);
 
-VOID NTAPI ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter);
+NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter);
 
 /* device.c */
 
 DRIVER_DISPATCH MountMgrDeviceControl;
 
 /* notify.c */
+
 VOID IssueUniqueIdChangeNotifyWorker(IN PUNIQUE_ID_WORK_ITEM WorkItem,
 				     IN PMOUNTDEV_UNIQUE_ID UniqueId);
 
@@ -274,80 +274,79 @@ VOID PostOnlineNotification(IN PDEVICE_EXTENSION DeviceExtension,
 VOID MountMgrNotify(IN PDEVICE_EXTENSION DeviceExtension);
 
 VOID MountMgrNotifyNameChange(IN PDEVICE_EXTENSION DeviceExtension,
-			      IN PUNICODE_STRING DeviceName, IN BOOLEAN ValidateVolume);
+			      IN PUNICODE_STRING DeviceName,
+			      IN BOOLEAN ValidateVolume);
 
 /* uniqueid.c */
+
 VOID MountMgrUniqueIdChangeRoutine(IN PDEVICE_EXTENSION DeviceExtension,
 				   IN PMOUNTDEV_UNIQUE_ID OldUniqueId,
 				   IN PMOUNTDEV_UNIQUE_ID NewUniqueId);
 
 VOID CreateNoDriveLetterEntry(IN PMOUNTDEV_UNIQUE_ID UniqueId);
 
-BOOLEAN
-HasNoDriveLetterEntry(IN PMOUNTDEV_UNIQUE_ID UniqueId);
+BOOLEAN HasNoDriveLetterEntry(IN PMOUNTDEV_UNIQUE_ID UniqueId);
 
 VOID UpdateReplicatedUniqueIds(IN PDEVICE_INFORMATION DeviceInformation,
 			       IN PDATABASE_ENTRY DatabaseEntry);
 
-BOOLEAN
-IsUniqueIdPresent(IN PDEVICE_EXTENSION DeviceExtension, IN PDATABASE_ENTRY DatabaseEntry);
+BOOLEAN IsUniqueIdPresent(IN PDEVICE_EXTENSION DeviceExtension,
+			  IN PDATABASE_ENTRY DatabaseEntry);
 
 /* point.c */
-NTSTATUS
-MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
-			  IN PUNICODE_STRING SymbolicLinkName,
-			  IN PUNICODE_STRING DeviceName);
+
+NTSTATUS MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
+				   IN PUNICODE_STRING SymbolicLinkName,
+				   IN PUNICODE_STRING DeviceName);
 
 NTSTATUS
 QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
 				IN PUNICODE_STRING SymbolicName, IN PIRP Irp);
 
-NTSTATUS
-QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp,
-		      IN PMOUNTDEV_UNIQUE_ID UniqueId OPTIONAL,
-		      IN PUNICODE_STRING SymbolicName OPTIONAL);
+NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
+			       IN PIRP Irp,
+			       IN OPTIONAL PMOUNTDEV_UNIQUE_ID UniqueId,
+			       IN OPTIONAL PUNICODE_STRING SymbolicName);
 
 /* symlink.c */
-NTSTATUS
-GlobalCreateSymbolicLink(IN PUNICODE_STRING DosName, IN PUNICODE_STRING DeviceName);
 
-NTSTATUS
-GlobalDeleteSymbolicLink(IN PUNICODE_STRING DosName);
+NTSTATUS GlobalCreateSymbolicLink(IN PUNICODE_STRING DosName,
+				  IN PUNICODE_STRING DeviceName);
 
-NTSTATUS
-QuerySuggestedLinkName(IN PUNICODE_STRING SymbolicName,
-		       OUT PUNICODE_STRING SuggestedLinkName,
-		       OUT PBOOLEAN UseOnlyIfThereAreNoOtherLinks);
+NTSTATUS GlobalDeleteSymbolicLink(IN PUNICODE_STRING DosName);
 
-NTSTATUS
-QuerySymbolicLinkNamesFromStorage(IN PDEVICE_EXTENSION DeviceExtension,
-				  IN PDEVICE_INFORMATION DeviceInformation,
-				  IN PUNICODE_STRING SuggestedLinkName,
-				  IN BOOLEAN UseOnlyIfThereAreNoOtherLinks,
-				  OUT PUNICODE_STRING *SymLinks, OUT PULONG SymLinkCount,
-				  IN BOOLEAN HasGuid, IN LPGUID Guid);
+NTSTATUS QuerySuggestedLinkName(IN PUNICODE_STRING SymbolicName,
+				OUT PUNICODE_STRING SuggestedLinkName,
+				OUT PBOOLEAN UseOnlyIfThereAreNoOtherLinks);
 
-PSAVED_LINK_INFORMATION
-RemoveSavedLinks(IN PDEVICE_EXTENSION DeviceExtension, IN PMOUNTDEV_UNIQUE_ID UniqueId);
+NTSTATUS QuerySymbolicLinkNamesFromStorage(IN PDEVICE_EXTENSION DeviceExtension,
+					   IN PDEVICE_INFORMATION DeviceInformation,
+					   IN PUNICODE_STRING SuggestedLinkName,
+					   IN BOOLEAN UseOnlyIfThereAreNoOtherLinks,
+					   OUT PUNICODE_STRING *SymLinks,
+					   OUT PULONG SymLinkCount,
+					   IN BOOLEAN HasGuid,
+					   IN LPGUID Guid);
 
-BOOLEAN
-RedirectSavedLink(IN PSAVED_LINK_INFORMATION SavedLinkInformation,
-		  IN PUNICODE_STRING DosName, IN PUNICODE_STRING NewLink);
+PSAVED_LINK_INFORMATION RemoveSavedLinks(IN PDEVICE_EXTENSION DeviceExtension,
+					 IN PMOUNTDEV_UNIQUE_ID UniqueId);
+
+BOOLEAN RedirectSavedLink(IN PSAVED_LINK_INFORMATION SavedLinkInformation,
+			  IN PUNICODE_STRING DosName,
+			  IN PUNICODE_STRING NewLink);
 
 VOID SendLinkCreated(IN PUNICODE_STRING SymbolicName);
 
-NTSTATUS
-CreateNewVolumeName(OUT PUNICODE_STRING VolumeName, IN PGUID VolumeGuid OPTIONAL);
+NTSTATUS CreateNewVolumeName(OUT PUNICODE_STRING VolumeName,
+			     IN OPTIONAL PGUID VolumeGuid);
 
-BOOLEAN
-IsDriveLetter(PUNICODE_STRING SymbolicName);
+BOOLEAN IsDriveLetter(PUNICODE_STRING SymbolicName);
 
 VOID DeleteSymbolicLinkNameFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 				      IN PUNICODE_STRING SymbolicLink,
 				      IN BOOLEAN MarkOffline);
 
-NTSTATUS
-MountMgrQuerySymbolicLink(IN PUNICODE_STRING SymbolicName,
-			  IN OUT PUNICODE_STRING LinkTarget);
+NTSTATUS MountMgrQuerySymbolicLink(IN PUNICODE_STRING SymbolicName,
+				   IN OUT PUNICODE_STRING LinkTarget);
 
 #endif /* _MNTMGR_H_ */

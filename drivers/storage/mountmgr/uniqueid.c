@@ -25,16 +25,15 @@
 
 #include "mntmgr.h"
 
-#define NDEBUG
-#include <debug.h>
-
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-ChangeUniqueIdRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData,
-		      IN ULONG ValueLength, IN PVOID Context, IN PVOID EntryContext)
+NTAPI NTSTATUS ChangeUniqueIdRoutine(IN PWSTR ValueName,
+				     IN ULONG ValueType,
+				     IN PVOID ValueData,
+				     IN ULONG ValueLength,
+				     IN PVOID Context,
+				     IN PVOID EntryContext)
 {
     PMOUNTDEV_UNIQUE_ID OldUniqueId = Context;
     PMOUNTDEV_UNIQUE_ID NewUniqueId = EntryContext;
@@ -189,8 +188,8 @@ VOID MountMgrUniqueIdChangeRoutine(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-BOOLEAN
-IsUniqueIdPresent(IN PDEVICE_EXTENSION DeviceExtension, IN PDATABASE_ENTRY DatabaseEntry)
+BOOLEAN IsUniqueIdPresent(IN PDEVICE_EXTENSION DeviceExtension,
+			  IN PDATABASE_ENTRY DatabaseEntry)
 {
     PLIST_ENTRY NextEntry;
     PDEVICE_INFORMATION DeviceInformation;
@@ -279,10 +278,12 @@ VOID CreateNoDriveLetterEntry(IN PMOUNTDEV_UNIQUE_ID UniqueId)
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-CheckForNoDriveLetterEntry(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData,
-			   IN ULONG ValueLength, IN PVOID Context, IN PVOID EntryContext)
+static NTAPI NTSTATUS CheckForNoDriveLetterEntry(IN PWSTR ValueName,
+						 IN ULONG ValueType,
+						 IN PVOID ValueData,
+						 IN ULONG ValueLength,
+						 IN PVOID Context,
+						 IN PVOID EntryContext)
 {
     PBOOLEAN EntryPresent = EntryContext;
     PMOUNTDEV_UNIQUE_ID UniqueId = Context;
@@ -304,8 +305,7 @@ CheckForNoDriveLetterEntry(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID Valu
 /*
  * @implemented
  */
-BOOLEAN
-HasNoDriveLetterEntry(IN PMOUNTDEV_UNIQUE_ID UniqueId)
+BOOLEAN HasNoDriveLetterEntry(IN PMOUNTDEV_UNIQUE_ID UniqueId)
 {
     BOOLEAN EntryPresent = FALSE;
     RTL_QUERY_REGISTRY_TABLE QueryTable[2];
@@ -378,6 +378,4 @@ VOID UpdateReplicatedUniqueIds(IN PDEVICE_INFORMATION DeviceInformation,
     /* And insert into replicated unique IDs list */
     InsertTailList(&DeviceInformation->ReplicatedUniqueIdsListHead,
 		   &NewEntry->ReplicatedUniqueIdsListEntry);
-
-    return;
 }

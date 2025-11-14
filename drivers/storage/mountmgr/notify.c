@@ -28,9 +28,6 @@
 
 #include <ioevent.h>
 
-#define NDEBUG
-#include <debug.h>
-
 /*
  * @implemented
  */

@@ -26,13 +26,8 @@
 
 #include "mntmgr.h"
 
-#define NDEBUG
-#include <debug.h>
-
 /* FIXME */
-GUID MountedDevicesGuid = { 0x53F5630D,
-			    0xB6BF,
-			    0x11D0,
+GUID MountedDevicesGuid = { 0x53F5630D, 0xB6BF, 0x11D0,
 			    { 0x94, 0xF2, 0x00, 0xA0, 0xC9, 0x1E, 0xFB, 0x8B } };
 
 PDEVICE_OBJECT gdeviceObject;
@@ -1389,8 +1384,8 @@ static NTAPI NTSTATUS MountMgrCreateClose(IN PDEVICE_OBJECT DeviceObject,
 /*
  * @implemented
  */
-static NTAPI VOID MountMgrCancel(IN PDEVICE_OBJECT DeviceObject,
-				 IN PIRP Irp)
+NTAPI VOID MountMgrCancel(IN PDEVICE_OBJECT DeviceObject,
+			  IN PIRP Irp)
 {
     UNREFERENCED_PARAMETER(DeviceObject);
 
