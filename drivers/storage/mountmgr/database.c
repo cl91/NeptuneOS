@@ -31,9 +31,8 @@
 PWSTR DatabasePath = L"\\Registry\\Machine\\System\\MountedDevices";
 PWSTR OfflinePath = L"\\Registry\\Machine\\System\\MountedDevices\\Offline";
 
-UNICODE_STRING RemoteDatabase = RTL_CONSTANT_STRING(L"\\System Volume "
-						    L"Information\\MountPointManagerRemot"
-						    L"eDatabase");
+UNICODE_STRING RemoteDatabase = RTL_CONSTANT_STRING(L"\\System Volume Information\\"
+						    L"MountPointManagerRemoteDatabase");
 
 /*
  * @implemented
@@ -58,8 +57,7 @@ LONG GetRemoteDatabaseSize(IN HANDLE Database)
 /*
  * @implemented
  */
-NTSTATUS
-AddRemoteDatabaseEntry(IN HANDLE Database, IN PDATABASE_ENTRY Entry)
+NTSTATUS AddRemoteDatabaseEntry(IN HANDLE Database, IN PDATABASE_ENTRY Entry)
 {
     LARGE_INTEGER Size;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -74,8 +72,7 @@ AddRemoteDatabaseEntry(IN HANDLE Database, IN PDATABASE_ENTRY Entry)
 /*
  * @implemented
  */
-NTSTATUS
-CloseRemoteDatabase(IN HANDLE Database)
+NTSTATUS CloseRemoteDatabase(IN HANDLE Database)
 {
     return NtClose(Database);
 }
@@ -83,8 +80,7 @@ CloseRemoteDatabase(IN HANDLE Database)
 /*
  * @implemented
  */
-NTSTATUS
-TruncateRemoteDatabase(IN HANDLE Database, IN LONG NewSize)
+NTSTATUS TruncateRemoteDatabase(IN HANDLE Database, IN LONG NewSize)
 {
     NTSTATUS Status;
     IO_STATUS_BLOCK IoStatusBlock;
@@ -111,8 +107,7 @@ TruncateRemoteDatabase(IN HANDLE Database, IN LONG NewSize)
 /*
  * @implemented
  */
-PDATABASE_ENTRY
-GetRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset)
+PDATABASE_ENTRY GetRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset)
 {
     NTSTATUS Status;
     ULONG EntrySize;
@@ -165,8 +160,8 @@ GetRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset)
 /*
  * @implemented
  */
-NTSTATUS
-WriteRemoteDatabaseEntry(IN HANDLE Database, IN LONG Offset, IN PDATABASE_ENTRY Entry)
+NTSTATUS WriteRemoteDatabaseEntry(IN HANDLE Database, IN LONG Offset,
+				  IN PDATABASE_ENTRY Entry)
 {
     NTSTATUS Status;
     LARGE_INTEGER ByteOffset;
@@ -187,8 +182,7 @@ WriteRemoteDatabaseEntry(IN HANDLE Database, IN LONG Offset, IN PDATABASE_ENTRY 
 /*
  * @implemented
  */
-NTSTATUS
-DeleteRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset)
+NTSTATUS DeleteRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset)
 {
     ULONG EndSize;
     PVOID TmpBuffer;
@@ -267,11 +261,12 @@ DeleteRemoteDatabaseEntry(IN HANDLE Database, IN LONG StartingOffset)
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-DeleteFromLocalDatabaseRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData,
-			       IN ULONG ValueLength, IN PVOID Context,
-			       IN PVOID EntryContext)
+static NTAPI NTSTATUS DeleteFromLocalDatabaseRoutine(IN PWSTR ValueName,
+						     IN ULONG ValueType,
+						     IN PVOID ValueData,
+						     IN ULONG ValueLength,
+						     IN PVOID Context,
+						     IN PVOID EntryContext)
 {
     PMOUNTDEV_UNIQUE_ID UniqueId = Context;
 
@@ -306,8 +301,7 @@ VOID DeleteFromLocalDatabase(IN PUNICODE_STRING SymbolicLink,
 /*
  * @implemented
  */
-NTSTATUS
-WaitForRemoteDatabaseSemaphore(IN PDEVICE_EXTENSION DeviceExtension)
+NTSTATUS WaitForRemoteDatabaseSemaphore(IN PDEVICE_EXTENSION DeviceExtension)
 {
     NTSTATUS Status;
     LARGE_INTEGER Timeout;
@@ -334,10 +328,12 @@ VOID ReleaseRemoteDatabaseSemaphore(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-QueryUniqueIdQueryRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData,
-			  IN ULONG ValueLength, IN PVOID Context, IN PVOID EntryContext)
+static NTAPI NTSTATUS QueryUniqueIdQueryRoutine(IN PWSTR ValueName,
+						IN ULONG ValueType,
+						IN PVOID ValueData,
+						IN ULONG ValueLength,
+						IN PVOID Context,
+						IN PVOID EntryContext)
 {
     PMOUNTDEV_UNIQUE_ID IntUniqueId;
     PMOUNTDEV_UNIQUE_ID *UniqueId;
@@ -368,10 +364,9 @@ QueryUniqueIdQueryRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID Value
 /*
  * @implemented
  */
-NTSTATUS
-QueryUniqueIdFromMaster(IN PDEVICE_EXTENSION DeviceExtension,
-			IN PUNICODE_STRING SymbolicName,
-			OUT PMOUNTDEV_UNIQUE_ID *UniqueId)
+static NTSTATUS QueryUniqueIdFromMaster(IN PDEVICE_EXTENSION DeviceExtension,
+					IN PUNICODE_STRING SymbolicName,
+					OUT PMOUNTDEV_UNIQUE_ID *UniqueId)
 {
     NTSTATUS Status;
     PDEVICE_INFORMATION DeviceInformation;
@@ -413,9 +408,8 @@ QueryUniqueIdFromMaster(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS
-WriteUniqueIdToMaster(IN PDEVICE_EXTENSION DeviceExtension,
-		      IN PDATABASE_ENTRY DatabaseEntry)
+NTSTATUS WriteUniqueIdToMaster(IN PDEVICE_EXTENSION DeviceExtension,
+			       IN PDATABASE_ENTRY DatabaseEntry)
 {
     NTSTATUS Status;
     PWCHAR SymbolicName;
@@ -480,7 +474,7 @@ WriteUniqueIdToMaster(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-VOID NTAPI ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
+static NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 {
     ULONG Offset;
     NTSTATUS Status;
@@ -1015,7 +1009,7 @@ ReleaseRDS:
 /*
  * @implemented
  */
-VOID NTAPI WorkerThread(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
+static NTAPI VOID WorkerThread(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 {
     ULONG i;
     KEVENT Event;
@@ -1112,9 +1106,9 @@ VOID NTAPI WorkerThread(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 /*
  * @implemented
  */
-NTSTATUS
-QueueWorkItem(IN PDEVICE_EXTENSION DeviceExtension, IN PRECONCILE_WORK_ITEM WorkItem,
-	      IN PVOID Context)
+NTSTATUS QueueWorkItem(IN PDEVICE_EXTENSION DeviceExtension,
+		       IN PRECONCILE_WORK_ITEM WorkItem,
+		       IN PVOID Context)
 {
     KIRQL OldIrql;
 
@@ -1142,11 +1136,11 @@ QueueWorkItem(IN PDEVICE_EXTENSION DeviceExtension, IN PRECONCILE_WORK_ITEM Work
 /*
  * @implemented
  */
-NTSTATUS
-QueryVolumeName(IN HANDLE RootDirectory,
-		IN PFILE_REPARSE_POINT_INFORMATION ReparsePointInformation,
-		IN PUNICODE_STRING FileName OPTIONAL, OUT PUNICODE_STRING SymbolicName,
-		OUT PUNICODE_STRING VolumeName)
+NTSTATUS QueryVolumeName(IN HANDLE RootDirectory,
+			 IN PFILE_REPARSE_POINT_INFORMATION ReparsePointInformation,
+			 IN PUNICODE_STRING FileName OPTIONAL,
+			 OUT PUNICODE_STRING SymbolicName,
+			 OUT PUNICODE_STRING VolumeName)
 {
     HANDLE Handle;
     NTSTATUS Status;
@@ -1466,7 +1460,8 @@ VOID ReconcileAllDatabasesWithMaster(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-VOID NTAPI CreateRemoteDatabaseWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
+static NTAPI VOID CreateRemoteDatabaseWorker(IN PDEVICE_OBJECT DeviceObject,
+					     IN PVOID Context)
 {
     NTSTATUS Status;
     HANDLE Database = 0;
@@ -1552,8 +1547,8 @@ Cleanup:
 /*
  * @implemented
  */
-NTSTATUS
-CreateRemoteDatabase(IN PDEVICE_INFORMATION DeviceInformation, IN OUT PHANDLE Database)
+NTSTATUS CreateRemoteDatabase(IN PDEVICE_INFORMATION DeviceInformation,
+			      IN OUT PHANDLE Database)
 {
     KEVENT Event;
     NTSTATUS Status;
@@ -1595,8 +1590,8 @@ CreateRemoteDatabase(IN PDEVICE_INFORMATION DeviceInformation, IN OUT PHANDLE Da
 /*
  * @implemented
  */
-HANDLE
-OpenRemoteDatabase(IN PDEVICE_INFORMATION DeviceInformation, IN BOOLEAN MigrateDatabase)
+HANDLE OpenRemoteDatabase(IN PDEVICE_INFORMATION DeviceInformation,
+			  IN BOOLEAN MigrateDatabase)
 {
     HANDLE Database;
     NTSTATUS Status;
@@ -1739,10 +1734,12 @@ VOID ChangeRemoteDatabaseUniqueId(IN PDEVICE_INFORMATION DeviceInformation,
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-DeleteDriveLetterRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData,
-			 IN ULONG ValueLength, IN PVOID Context, IN PVOID EntryContext)
+static NTAPI NTSTATUS DeleteDriveLetterRoutine(IN PWSTR ValueName,
+					       IN ULONG ValueType,
+					       IN PVOID ValueData,
+					       IN ULONG ValueLength,
+					       IN PVOID Context,
+					       IN PVOID EntryContext)
 {
     PMOUNTDEV_UNIQUE_ID UniqueId;
     UNICODE_STRING RegistryEntry;
@@ -1791,11 +1788,12 @@ VOID DeleteRegistryDriveLetter(IN PMOUNTDEV_UNIQUE_ID UniqueId)
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-DeleteNoDriveLetterEntryRoutine(IN PWSTR ValueName, IN ULONG ValueType,
-				IN PVOID ValueData, IN ULONG ValueLength,
-				IN PVOID Context, IN PVOID EntryContext)
+static NTAPI NTSTATUS DeleteNoDriveLetterEntryRoutine(IN PWSTR ValueName,
+						      IN ULONG ValueType,
+						      IN PVOID ValueData,
+						      IN ULONG ValueLength,
+						      IN PVOID Context,
+						      IN PVOID EntryContext)
 {
     PMOUNTDEV_UNIQUE_ID UniqueId = Context;
 
