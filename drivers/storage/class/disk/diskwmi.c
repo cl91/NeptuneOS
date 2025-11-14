@@ -1155,7 +1155,6 @@ static NTAPI VOID DiskReregWorker(IN PDEVICE_OBJECT DevObject, IN PVOID Context)
 	    //
 	    ClassReleaseRemoveLock(deviceObject, irp);
 
-	    IoFreeMdl(irp->MdlAddress);
 	    IoFreeIrp(irp);
 
 	    FREE_POOL(reregRequest);
@@ -1448,7 +1447,6 @@ static NTAPI NTSTATUS DiskInfoExceptionComplete(PDEVICE_OBJECT Unused,
 	}
 
 	ClassReleaseRemoveLock(DeviceObject, Irp);
-	IoFreeMdl(Irp->MdlAddress);
 	IoFreeIrp(Irp);
     }
 
