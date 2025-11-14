@@ -25,6 +25,7 @@
  */
 
 #include "mntmgr.h"
+#include "ntddstor.h"
 
 /* FIXME */
 GUID MountedDevicesGuid = { 0x53F5630D, 0xB6BF, 0x11D0,
@@ -271,7 +272,7 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
     }
 
     /* Check if it's removable & return to the user (if asked to) */
-    IsRemovable = (FileObject->DeviceObject->Characteristics & FILE_REMOVABLE_MEDIA);
+    IsRemovable = (FileObject->DeviceObject->Flags & FILE_REMOVABLE_MEDIA);
     if (Removable) {
 	*Removable = IsRemovable;
     }
@@ -1389,7 +1390,7 @@ NTAPI VOID MountMgrCancel(IN PDEVICE_OBJECT DeviceObject,
 {
     UNREFERENCED_PARAMETER(DeviceObject);
 
-    RemoveEntryList(&(Irp->Tail.Overlay.ListEntry));
+    RemoveEntryList(&(Irp->Tail.ListEntry));
 
     IoReleaseCancelSpinLock(Irp->CancelIrql);
 
@@ -1431,7 +1432,7 @@ static NTAPI NTSTATUS MountMgrCleanup(IN PDEVICE_OBJECT DeviceObject,
     /* Otherwise, cancel all the IRPs */
     NextEntry = DeviceExtension->IrpListHead.Flink;
     do {
-	ListIrp = CONTAINING_RECORD(NextEntry, IRP, Tail.Overlay.ListEntry);
+	ListIrp = CONTAINING_RECORD(NextEntry, IRP, Tail.ListEntry);
 	if (IoGetCurrentIrpStackLocation(ListIrp)->FileObject == FileObject) {
 	    ListIrp->Cancel = TRUE;
 	    ListIrp->CancelIrql = OldIrql;
