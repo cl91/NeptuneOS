@@ -59,6 +59,7 @@ static NTSTATUS MapFatFile(IN PDEVICE_EXTENSION DevExt,
     if (!NT_SUCCESS(Status)) {
 	DPRINT("CcMapData failed, error = 0x%x, fatoffset = 0x%llx, length = 0x%x\n",
 	       Status, FatOffset, Length);
+	assert(FALSE);
 	return Status;
     }
     DPRINT("Successfully mapped fat file (fat offset 0x%llx, length 0x%x, "
@@ -549,6 +550,7 @@ NTSTATUS GetDirtyStatus(PDEVICE_EXTENSION DevExt,
     NTSTATUS Status = CcMapData(DevExt->VolumeFcb->FileObject, &Offset,
 				Length, MAP_WAIT, &MappedLength, &Context, &Sector);
     if (!NT_SUCCESS(Status) || MappedLength != Length) {
+	assert(FALSE);
 	return Status;
     }
     assert(MappedLength == Length);
@@ -598,6 +600,7 @@ NTSTATUS SetDirtyStatus(PDEVICE_EXTENSION DevExt, BOOLEAN DirtyStatus)
     NTSTATUS Status = CcMapData(DevExt->VolumeFcb->FileObject, &Offset,
 				Length, MAP_WAIT, &MappedLength, &Context, &Sector);
     if (!NT_SUCCESS(Status) || MappedLength != Length) {
+	assert(FALSE);
 	return Status;
     }
     assert(MappedLength == Length);
@@ -643,6 +646,7 @@ NTSTATUS Fat32UpdateFreeClustersCount(PDEVICE_EXTENSION DevExt)
     NTSTATUS Status = CcMapData(DevExt->VolumeFcb->FileObject, &Offset,
 				Length, MAP_WAIT, &MappedLength, &Context, (PVOID *)&Sector);
     if (!NT_SUCCESS(Status) || MappedLength != Length) {
+	assert(FALSE);
 	return Status;
     }
     assert(MappedLength == Length);
