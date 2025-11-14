@@ -793,7 +793,15 @@ NTSTATUS SubmitTransferPacket(PTRANSFER_PACKET Pkt)
     // and this causes problems.
     //
     if (Pkt->UsePartialMdl == FALSE) {
-	Pkt->Irp->MdlAddress = Pkt->OriginalIrp->MdlAddress;
+	if (Pkt->Irp != Pkt->OriginalIrp && Pkt->OriginalIrp->MdlAddress) {
+	    ULONG MdlSize = sizeof(MDL) +
+		Pkt->OriginalIrp->MdlAddress->PfnCount * sizeof(ULONG_PTR);
+	    Pkt->Irp->MdlAddress = ExAllocatePool(NonPagedPool, MdlSize);
+	    if (!Pkt->Irp->MdlAddress) {
+		return STATUS_INSUFFICIENT_RESOURCES;
+	    }
+	    RtlCopyMemory(Pkt->Irp->MdlAddress, Pkt->OriginalIrp->MdlAddress, MdlSize);
+	}
     } else {
 	Pkt->Irp->MdlAddress = IoBuildPartialMdl(Pkt->OriginalIrp->MdlAddress,
 						 SrbGetDataBuffer(Pkt->Srb),
