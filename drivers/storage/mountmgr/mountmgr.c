@@ -621,8 +621,6 @@ VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
 
     InterlockedExchange(&Unloading, TRUE);
 
-    KeInitializeEvent(&UnloadEvent, NotificationEvent, FALSE);
-
     /* Wait for workers to finish */
     if (InterlockedIncrement(&DeviceExtension->WorkerReferences) > 0) {
 	KeSetEvent(&DeviceExtension->WorkerSemaphore);
@@ -1446,8 +1444,6 @@ static NTAPI NTSTATUS MountMgrShutdown(IN PDEVICE_OBJECT DeviceObject,
 
     InterlockedExchange(&Unloading, TRUE);
 
-    KeInitializeEvent(&UnloadEvent, NotificationEvent, FALSE);
-
     /* Wait for workers */
     if (InterlockedIncrement(&DeviceExtension->WorkerReferences) > 0) {
 	KeSetEvent(&DeviceExtension->WorkerSemaphore);
@@ -1472,6 +1468,8 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     PDEVICE_OBJECT DeviceObject;
     PDEVICE_EXTENSION DeviceExtension;
 
+    KeInitializeEvent(&UnloadEvent, NotificationEvent, FALSE);
+
     RtlCreateRegistryKey(RTL_REGISTRY_ABSOLUTE, DatabasePath);
 
     Status = IoCreateDevice(DriverObject, sizeof(DEVICE_EXTENSION), &DeviceMount,
@@ -1493,6 +1491,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 
     KeInitializeEvent(&DeviceExtension->DeviceLock, SynchronizationEvent, TRUE);
     KeInitializeEvent(&DeviceExtension->RemoteDatabaseLock, SynchronizationEvent, TRUE);
+    KeInitializeEvent(&DeviceExtension->OnlineNotificationEvent, SynchronizationEvent, FALSE);
 
     InitializeListHead(&DeviceExtension->IrpListHead);
     DeviceExtension->EpicNumber = 1;

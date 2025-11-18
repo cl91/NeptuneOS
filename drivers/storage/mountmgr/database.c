@@ -1510,7 +1510,7 @@ NTSTATUS CreateRemoteDatabase(IN PDEVICE_INFORMATION DeviceInformation,
     NTSTATUS Status;
     PMIGRATE_WORK_ITEM WorkItem;
 
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
     /* Allocate a work item dedicated to migration */
     WorkItem = AllocatePool(sizeof(MIGRATE_WORK_ITEM));

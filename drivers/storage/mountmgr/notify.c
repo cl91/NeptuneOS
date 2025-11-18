@@ -75,7 +75,7 @@ VOID NTAPI SendOnlineNotificationWorker(IN PDEVICE_OBJECT DeviceObject,
 
     /* If there are no notifications running any longer, reset event */
     if (--DeviceExtension->OnlineNotificationCount == 0) {
-	KeSetEvent(&(DeviceExtension->OnlineNotificationEvent));
+	KeSetEvent(&DeviceExtension->OnlineNotificationEvent);
     }
 
     /* If there are still notifications in queue */
@@ -147,14 +147,11 @@ VOID PostOnlineNotification(IN PDEVICE_EXTENSION DeviceExtension,
  */
 VOID WaitForOnlinesToComplete(IN PDEVICE_EXTENSION DeviceExtension)
 {
-    KeInitializeEvent(&(DeviceExtension->OnlineNotificationEvent), NotificationEvent,
-		      FALSE);
-
     /* Just wait all the worker are done */
     if (DeviceExtension->OnlineNotificationCount != 1) {
 	DeviceExtension->OnlineNotificationCount--;
 
-	KeWaitForSingleObject(&(DeviceExtension->OnlineNotificationEvent), Executive,
+	KeWaitForSingleObject(&DeviceExtension->OnlineNotificationEvent, Executive,
 			      KernelMode, FALSE, NULL);
 
 	DeviceExtension->OnlineNotificationCount++;
@@ -314,7 +311,7 @@ VOID MountMgrNotifyNameChange(IN PDEVICE_EXTENSION DeviceExtension,
 
     DeviceObject = IoGetAttachedDeviceReference(FileObject->DeviceObject);
 
-    KeInitializeEvent(&Event, NotificationEvent, FALSE);
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
 
     /* Set up empty IRP (yes, yes!) */
     Irp = IoBuildDeviceIoControlRequest(0, DeviceObject, NULL, 0, NULL, 0, FALSE, &Event,
