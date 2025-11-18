@@ -496,13 +496,13 @@ PSAVED_LINK_INFORMATION RemoveSavedLinks(IN PDEVICE_EXTENSION DeviceExtension,
     PSAVED_LINK_INFORMATION SavedLinkInformation;
 
     /* No saved links? Easy! */
-    if (IsListEmpty(&(DeviceExtension->SavedLinksListHead))) {
+    if (IsListEmpty(&DeviceExtension->SavedLinksListHead)) {
 	return NULL;
     }
 
     /* Now, browse saved links */
     for (NextEntry = DeviceExtension->SavedLinksListHead.Flink;
-	 NextEntry != &(DeviceExtension->SavedLinksListHead);
+	 NextEntry != &DeviceExtension->SavedLinksListHead;
 	 NextEntry = NextEntry->Flink) {
 	SavedLinkInformation = CONTAINING_RECORD(NextEntry, SAVED_LINK_INFORMATION,
 						 SavedLinksListEntry);
@@ -513,7 +513,7 @@ PSAVED_LINK_INFORMATION RemoveSavedLinks(IN PDEVICE_EXTENSION DeviceExtension,
 				 UniqueId->UniqueId,
 				 UniqueId->UniqueIdLength) == UniqueId->UniqueIdLength) {
 		/* Remove it and return it */
-		RemoveEntryList(&(SavedLinkInformation->SavedLinksListEntry));
+		RemoveEntryList(&SavedLinkInformation->SavedLinksListEntry);
 		return SavedLinkInformation;
 	    }
 	}
@@ -617,19 +617,19 @@ BOOLEAN RedirectSavedLink(IN PSAVED_LINK_INFORMATION SavedLinkInformation,
 
     /* Find the link */
     for (NextEntry = SavedLinkInformation->SymbolicLinksListHead.Flink;
-	 NextEntry != &(SavedLinkInformation->SymbolicLinksListHead);
+	 NextEntry != &SavedLinkInformation->SymbolicLinksListHead;
 	 NextEntry = NextEntry->Flink) {
 	SymlinkInformation = CONTAINING_RECORD(NextEntry, SYMLINK_INFORMATION,
 					       SymbolicLinksListEntry);
 
-	if (!RtlEqualUnicodeString(DosName, &(SymlinkInformation->Name), TRUE)) {
+	if (!RtlEqualUnicodeString(DosName, &SymlinkInformation->Name, TRUE)) {
 	    /* Delete old link */
 	    GlobalDeleteSymbolicLink(DosName);
 	    /* Set its new location */
 	    GlobalCreateSymbolicLink(DosName, NewLink);
 
 	    /* And remove it from the list (not valid any more) */
-	    RemoveEntryList(&(SymlinkInformation->SymbolicLinksListEntry));
+	    RemoveEntryList(&SymlinkInformation->SymbolicLinksListEntry);
 	    FreePool(SymlinkInformation->Name.Buffer);
 	    FreePool(SymlinkInformation);
 
@@ -652,33 +652,33 @@ VOID DeleteSymbolicLinkNameFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
     PSYMLINK_INFORMATION SymlinkInformation;
 
     /* First of all, ensure we have devices */
-    if (IsListEmpty(&(DeviceExtension->DeviceListHead))) {
+    if (IsListEmpty(&DeviceExtension->DeviceListHead)) {
 	return;
     }
 
     /* Then, look for the symbolic name */
     for (DeviceEntry = DeviceExtension->DeviceListHead.Flink;
-	 DeviceEntry != &(DeviceExtension->DeviceListHead);
+	 DeviceEntry != &DeviceExtension->DeviceListHead;
 	 DeviceEntry = DeviceEntry->Flink) {
 	DeviceInformation = CONTAINING_RECORD(DeviceEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 
 	for (SymbolEntry = DeviceInformation->SymbolicLinksListHead.Flink;
-	     SymbolEntry != &(DeviceInformation->SymbolicLinksListHead);
+	     SymbolEntry != &DeviceInformation->SymbolicLinksListHead;
 	     SymbolEntry = SymbolEntry->Flink) {
 	    SymlinkInformation = CONTAINING_RECORD(SymbolEntry, SYMLINK_INFORMATION,
 						   SymbolicLinksListEntry);
 
 	    /* One we have found it */
-	    if (RtlCompareUnicodeString(SymbolicLink, &(SymlinkInformation->Name),
+	    if (RtlCompareUnicodeString(SymbolicLink, &SymlinkInformation->Name,
 					TRUE) == 0) {
 		/* Check if caller just want it to be offline */
 		if (MarkOffline) {
 		    SymlinkInformation->Online = FALSE;
 		} else {
 		    /* If not, delete it & notify */
-		    SendLinkDeleted(&(DeviceInformation->SymbolicName), SymbolicLink);
-		    RemoveEntryList(&(SymlinkInformation->SymbolicLinksListEntry));
+		    SendLinkDeleted(&DeviceInformation->SymbolicName, SymbolicLink);
+		    RemoveEntryList(&SymlinkInformation->SymbolicLinksListEntry);
 
 		    FreePool(SymlinkInformation->Name.Buffer);
 		    FreePool(SymlinkInformation);

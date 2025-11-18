@@ -379,7 +379,7 @@ VOID RemoveWorkItem(IN PUNIQUE_ID_WORK_ITEM WorkItem)
 {
     PDEVICE_EXTENSION DeviceExtension = WorkItem->DeviceExtension;
 
-    KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode, FALSE,
+    KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode, FALSE,
 			  NULL);
 
     /* If even if being worked, it's too late */
@@ -388,7 +388,7 @@ VOID RemoveWorkItem(IN PUNIQUE_ID_WORK_ITEM WorkItem)
 	KeSetEvent(WorkItem->Event);
     } else {
 	/* Otherwise, remove it from the list, and delete it */
-	RemoveEntryList(&(WorkItem->UniqueIdWorkerItemListEntry));
+	RemoveEntryList(&WorkItem->UniqueIdWorkerItemListEntry);
 	KeSetEvent(&DeviceExtension->DeviceLock);
 	IoFreeIrp(WorkItem->Irp);
 	FreePool(WorkItem->DeviceName.Buffer);
@@ -485,7 +485,7 @@ VOID IssueUniqueIdChangeNotifyWorker(IN PUNIQUE_ID_WORK_ITEM WorkItem,
     PDEVICE_OBJECT DeviceObject;
 
     /* Get the device object */
-    Status = IoGetDeviceObjectPointer(&(WorkItem->DeviceName), FILE_READ_ATTRIBUTES,
+    Status = IoGetDeviceObjectPointer(&WorkItem->DeviceName, FILE_READ_ATTRIBUTES,
 				      &FileObject, &DeviceObject);
     if (!NT_SUCCESS(Status)) {
 	RemoveWorkItem(WorkItem);
@@ -599,10 +599,10 @@ VOID IssueUniqueIdChangeNotify(IN PDEVICE_EXTENSION DeviceExtension,
     WorkItem->IrpBufferLength = sizeof(MOUNTDEV_UNIQUE_ID_CHANGE_NOTIFY_OUTPUT) + 1024;
 
     /* Add the worker in the list */
-    KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode, FALSE,
+    KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode, FALSE,
 			  NULL);
-    InsertHeadList(&(DeviceExtension->UniqueIdWorkerItemListHead),
-		   &(WorkItem->UniqueIdWorkerItemListEntry));
+    InsertHeadList(&DeviceExtension->UniqueIdWorkerItemListHead,
+		   &WorkItem->UniqueIdWorkerItemListEntry);
     KeSetEvent(&DeviceExtension->DeviceLock);
 
     /* And call the worker */

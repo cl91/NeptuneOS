@@ -69,7 +69,7 @@ VOID MountMgrUniqueIdChangeRoutine(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* Synchronise with remote databases */
     Status = WaitForRemoteDatabaseSemaphore(DeviceExtension);
-    KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode, FALSE,
+    KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode, FALSE,
 			  NULL);
 
     RtlZeroMemory(QueryTable, sizeof(QueryTable));
@@ -83,7 +83,7 @@ VOID MountMgrUniqueIdChangeRoutine(IN PDEVICE_EXTENSION DeviceExtension,
     /* Browse all the devices to find the one that
      * owns the old unique ID
      */
-    ListHead = &(DeviceExtension->DeviceListHead);
+    ListHead = &DeviceExtension->DeviceListHead;
     NextEntry = ListHead->Flink;
     while (ListHead != NextEntry) {
 	DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
@@ -133,14 +133,14 @@ VOID MountMgrUniqueIdChangeRoutine(IN PDEVICE_EXTENSION DeviceExtension,
     RtlCopyMemory(UniqueId->UniqueId, NewUniqueId->UniqueId, NewUniqueId->UniqueIdLength);
 
     /* Now, check if it's required to update replicated unique IDs as well */
-    ListHead = &(DeviceExtension->DeviceListHead);
+    ListHead = &DeviceExtension->DeviceListHead;
     NextEntry = ListHead->Flink;
     while (ListHead != NextEntry) {
 	DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 	ResyncNeeded = FALSE;
 
-	ReplicatedHead = &(DeviceInformation->ReplicatedUniqueIdsListHead);
+	ReplicatedHead = &DeviceInformation->ReplicatedUniqueIdsListHead;
 	NextReplicated = ReplicatedHead->Flink;
 	while (ReplicatedHead != NextReplicated) {
 	    DuplicateId = CONTAINING_RECORD(NextReplicated, UNIQUE_ID_REPLICATE,
@@ -200,13 +200,13 @@ BOOLEAN IsUniqueIdPresent(IN PDEVICE_EXTENSION DeviceExtension,
      * (___) ORLY?
      *  " "
      */
-    if (IsListEmpty(&(DeviceExtension->DeviceListHead))) {
+    if (IsListEmpty(&DeviceExtension->DeviceListHead)) {
 	return FALSE;
     }
 
     /* Now we know that we have devices, find the one */
     for (NextEntry = DeviceExtension->DeviceListHead.Flink;
-	 NextEntry != &(DeviceExtension->DeviceListHead); NextEntry = NextEntry->Flink) {
+	 NextEntry != &DeviceExtension->DeviceListHead; NextEntry = NextEntry->Flink) {
 	DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 
@@ -331,7 +331,7 @@ VOID UpdateReplicatedUniqueIds(IN PDEVICE_INFORMATION DeviceInformation,
 
     /* Browse all the device replicated unique IDs */
     for (NextEntry = DeviceInformation->ReplicatedUniqueIdsListHead.Flink;
-	 NextEntry != &(DeviceInformation->ReplicatedUniqueIdsListHead);
+	 NextEntry != &DeviceInformation->ReplicatedUniqueIdsListHead;
 	 NextEntry = NextEntry->Flink) {
 	ReplicatedUniqueId = CONTAINING_RECORD(NextEntry, UNIQUE_ID_REPLICATE,
 					       ReplicatedUniqueIdsListEntry);
@@ -352,7 +352,7 @@ VOID UpdateReplicatedUniqueIds(IN PDEVICE_INFORMATION DeviceInformation,
     }
 
     /* We found the unique ID, no need to continue */
-    if (NextEntry != &(DeviceInformation->ReplicatedUniqueIdsListHead)) {
+    if (NextEntry != &DeviceInformation->ReplicatedUniqueIdsListHead) {
 	return;
     }
 

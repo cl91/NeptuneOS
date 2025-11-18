@@ -487,10 +487,10 @@ NTSTATUS FindDeviceInfo(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* Look for device information matching devive */
     for (NextEntry = DeviceExtension->DeviceListHead.Flink;
-	 NextEntry != &(DeviceExtension->DeviceListHead); NextEntry = NextEntry->Flink) {
+	 NextEntry != &DeviceExtension->DeviceListHead; NextEntry = NextEntry->Flink) {
 	DeviceInfo = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION, DeviceListEntry);
 
-	if (RtlEqualUnicodeString(&DeviceName, &(DeviceInfo->DeviceName), TRUE)) {
+	if (RtlEqualUnicodeString(&DeviceName, &DeviceInfo->DeviceName, TRUE)) {
 	    break;
 	}
     }
@@ -501,7 +501,7 @@ NTSTATUS FindDeviceInfo(IN PDEVICE_EXTENSION DeviceExtension,
     }
 
     /* Return found information */
-    if (NextEntry == &(DeviceExtension->DeviceListHead)) {
+    if (NextEntry == &DeviceExtension->DeviceListHead) {
 	return STATUS_OBJECT_NAME_NOT_FOUND;
     }
 
@@ -529,18 +529,18 @@ VOID MountMgrFreeMountedDeviceInfo(IN PDEVICE_INFORMATION DeviceInformation)
     PASSOCIATED_DEVICE_ENTRY AssociatedDevice;
 
     /* Purge symbolic links list */
-    while (!IsListEmpty(&(DeviceInformation->SymbolicLinksListHead))) {
-	NextEntry = RemoveHeadList(&(DeviceInformation->SymbolicLinksListHead));
+    while (!IsListEmpty(&DeviceInformation->SymbolicLinksListHead)) {
+	NextEntry = RemoveHeadList(&DeviceInformation->SymbolicLinksListHead);
 	SymLink = CONTAINING_RECORD(NextEntry, SYMLINK_INFORMATION,
 				    SymbolicLinksListEntry);
 
-	GlobalDeleteSymbolicLink(&(SymLink->Name));
+	GlobalDeleteSymbolicLink(&SymLink->Name);
 	FreePool(SymLink->Name.Buffer);
     }
 
     /* Purge replicated unique IDs list */
-    while (!IsListEmpty(&(DeviceInformation->ReplicatedUniqueIdsListHead))) {
-	NextEntry = RemoveHeadList(&(DeviceInformation->ReplicatedUniqueIdsListHead));
+    while (!IsListEmpty(&DeviceInformation->ReplicatedUniqueIdsListHead)) {
+	NextEntry = RemoveHeadList(&DeviceInformation->ReplicatedUniqueIdsListHead);
 	UniqueId = CONTAINING_RECORD(NextEntry, UNIQUE_ID_REPLICATE,
 				     ReplicatedUniqueIdsListEntry);
 
@@ -548,8 +548,8 @@ VOID MountMgrFreeMountedDeviceInfo(IN PDEVICE_INFORMATION DeviceInformation)
 	FreePool(UniqueId);
     }
 
-    while (!IsListEmpty(&(DeviceInformation->AssociatedDevicesHead))) {
-	NextEntry = RemoveHeadList(&(DeviceInformation->AssociatedDevicesHead));
+    while (!IsListEmpty(&DeviceInformation->AssociatedDevicesHead)) {
+	NextEntry = RemoveHeadList(&DeviceInformation->AssociatedDevicesHead);
 	AssociatedDevice = CONTAINING_RECORD(NextEntry, ASSOCIATED_DEVICE_ENTRY,
 					     AssociatedDevicesEntry);
 
@@ -580,13 +580,13 @@ VOID MountMgrFreeSavedLink(IN PSAVED_LINK_INFORMATION SavedLinkInformation)
     PSYMLINK_INFORMATION SymlinkInformation;
 
     /* For all the saved links */
-    while (!IsListEmpty(&(SavedLinkInformation->SymbolicLinksListHead))) {
-	NextEntry = RemoveHeadList(&(SavedLinkInformation->SymbolicLinksListHead));
+    while (!IsListEmpty(&SavedLinkInformation->SymbolicLinksListHead)) {
+	NextEntry = RemoveHeadList(&SavedLinkInformation->SymbolicLinksListHead);
 	SymlinkInformation = CONTAINING_RECORD(NextEntry, SYMLINK_INFORMATION,
 					       SymbolicLinksListEntry);
 
 	/* Remove from system & free */
-	GlobalDeleteSymbolicLink(&(SymlinkInformation->Name));
+	GlobalDeleteSymbolicLink(&SymlinkInformation->Name);
 	FreePool(SymlinkInformation->Name.Buffer);
 	FreePool(SymlinkInformation);
     }
@@ -627,35 +627,35 @@ VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
 
 	KeWaitForSingleObject(&UnloadEvent, Executive, KernelMode, FALSE, NULL);
     } else {
-	InterlockedDecrement(&(DeviceExtension->WorkerReferences));
+	InterlockedDecrement(&DeviceExtension->WorkerReferences);
     }
 
     /* Don't get any notification any longer² */
     IoUnregisterPlugPlayNotification(DeviceExtension->NotificationEntry);
 
     /* Acquire the driver exclusively */
-    KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode, FALSE,
+    KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode, FALSE,
 			  NULL);
 
     /* Clear offline devices list */
-    while (!IsListEmpty(&(DeviceExtension->OfflineDeviceListHead))) {
-	NextEntry = RemoveHeadList(&(DeviceExtension->OfflineDeviceListHead));
+    while (!IsListEmpty(&DeviceExtension->OfflineDeviceListHead)) {
+	NextEntry = RemoveHeadList(&DeviceExtension->OfflineDeviceListHead);
 	DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 	MountMgrFreeDeadDeviceInfo(DeviceInformation);
     }
 
     /* Clear saved links list */
-    while (!IsListEmpty(&(DeviceExtension->SavedLinksListHead))) {
-	NextEntry = RemoveHeadList(&(DeviceExtension->SavedLinksListHead));
+    while (!IsListEmpty(&DeviceExtension->SavedLinksListHead)) {
+	NextEntry = RemoveHeadList(&DeviceExtension->SavedLinksListHead);
 	SavedLinkInformation = CONTAINING_RECORD(NextEntry, SAVED_LINK_INFORMATION,
 						 SavedLinksListEntry);
 	MountMgrFreeSavedLink(SavedLinkInformation);
     }
 
     /* Clear workers list */
-    while (!IsListEmpty(&(DeviceExtension->UniqueIdWorkerItemListHead))) {
-	NextEntry = RemoveHeadList(&(DeviceExtension->UniqueIdWorkerItemListHead));
+    while (!IsListEmpty(&DeviceExtension->UniqueIdWorkerItemListHead)) {
+	NextEntry = RemoveHeadList(&DeviceExtension->UniqueIdWorkerItemListHead);
 	WorkItem = CONTAINING_RECORD(NextEntry, UNIQUE_ID_WORK_ITEM,
 				     UniqueIdWorkerItemListEntry);
 
@@ -672,7 +672,7 @@ VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
 	FreePool(WorkItem->IrpBuffer);
 	FreePool(WorkItem);
 
-	KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode,
+	KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode,
 			      FALSE, NULL);
     }
 
@@ -749,12 +749,11 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* Initialise device structure */
     RtlZeroMemory(DeviceInformation, sizeof(DEVICE_INFORMATION));
-    InitializeListHead(&(DeviceInformation->SymbolicLinksListHead));
-    InitializeListHead(&(DeviceInformation->ReplicatedUniqueIdsListHead));
-    InitializeListHead(&(DeviceInformation->AssociatedDevicesHead));
+    InitializeListHead(&DeviceInformation->SymbolicLinksListHead);
+    InitializeListHead(&DeviceInformation->ReplicatedUniqueIdsListHead);
+    InitializeListHead(&DeviceInformation->AssociatedDevicesHead);
     DeviceInformation->SymbolicName.Length = SymbolicName->Length;
-    DeviceInformation->SymbolicName.MaximumLength = SymbolicName->Length +
-						    sizeof(UNICODE_NULL);
+    DeviceInformation->SymbolicName.MaximumLength = SymbolicName->Length + sizeof(UNICODE_NULL);
     DeviceInformation->SymbolicName.Buffer = AllocatePool(
 	DeviceInformation->SymbolicName.MaximumLength);
     if (!DeviceInformation->SymbolicName.Buffer) {
@@ -772,29 +771,29 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* Query as much data as possible about device */
     Status = QueryDeviceInformation(SymbolicName, &TargetDeviceName, &UniqueId,
-				    &(DeviceInformation->Removable), &HasGptDriveLetter,
+				    &DeviceInformation->Removable, &HasGptDriveLetter,
 				    &HasGuid, &StableGuid, &IsFT);
     if (!NT_SUCCESS(Status)) {
-	KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode,
+	KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode,
 			      FALSE, NULL);
 
 	for (NextEntry = DeviceExtension->OfflineDeviceListHead.Flink;
-	     NextEntry != &(DeviceExtension->OfflineDeviceListHead);
+	     NextEntry != &DeviceExtension->OfflineDeviceListHead;
 	     NextEntry = NextEntry->Flink) {
 	    CurrentDevice = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 
-	    if (RtlEqualUnicodeString(&(DeviceInformation->SymbolicName),
-				      &(CurrentDevice->SymbolicName), TRUE)) {
+	    if (RtlEqualUnicodeString(&DeviceInformation->SymbolicName,
+				      &CurrentDevice->SymbolicName, TRUE)) {
 		break;
 	    }
 	}
 
-	if (NextEntry != &(DeviceExtension->OfflineDeviceListHead)) {
+	if (NextEntry != &DeviceExtension->OfflineDeviceListHead) {
 	    MountMgrFreeDeadDeviceInfo(DeviceInformation);
 	} else {
-	    InsertTailList(&(DeviceExtension->OfflineDeviceListHead),
-			   &(DeviceInformation->DeviceListEntry));
+	    InsertTailList(&DeviceExtension->OfflineDeviceListHead,
+			   &DeviceInformation->DeviceListEntry);
 	}
 
 	KeSetEvent(&DeviceExtension->DeviceLock);
@@ -818,7 +817,7 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
     }
 
     /* Check suggested link name */
-    Status = QuerySuggestedLinkName(&(DeviceInformation->SymbolicName),
+    Status = QuerySuggestedLinkName(&DeviceInformation->SymbolicName,
 				    &SuggestedLinkName, &UseOnlyIfThereAreNoOtherLinks);
     if (!NT_SUCCESS(Status)) {
 	SuggestedLinkName.Buffer = NULL;
@@ -831,22 +830,22 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
     }
 
     /* Acquire driver exclusively */
-    KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode, FALSE,
+    KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode, FALSE,
 			  NULL);
 
     /* Check if we already have device in to prevent double registration */
     for (NextEntry = DeviceExtension->DeviceListHead.Flink;
-	 NextEntry != &(DeviceExtension->DeviceListHead); NextEntry = NextEntry->Flink) {
+	 NextEntry != &DeviceExtension->DeviceListHead; NextEntry = NextEntry->Flink) {
 	CurrentDevice = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION, DeviceListEntry);
 
-	if (RtlEqualUnicodeString(&(CurrentDevice->DeviceName), &TargetDeviceName,
+	if (RtlEqualUnicodeString(&CurrentDevice->DeviceName, &TargetDeviceName,
 				  TRUE)) {
 	    break;
 	}
     }
 
     /* If we found it, clear ours, and return success, all correct */
-    if (NextEntry != &(DeviceExtension->DeviceListHead)) {
+    if (NextEntry != &DeviceExtension->DeviceListHead) {
 	if (SuggestedLinkName.Buffer) {
 	    FreePool(SuggestedLinkName.Buffer);
 	}
@@ -1011,18 +1010,18 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
 	SymlinkInformation->Name = SymLinks[i];
 	SymlinkInformation->Online = TRUE;
 
-	InsertTailList(&(DeviceInformation->SymbolicLinksListHead),
-		       &(SymlinkInformation->SymbolicLinksListEntry));
+	InsertTailList(&DeviceInformation->SymbolicLinksListHead,
+		       &SymlinkInformation->SymbolicLinksListEntry);
     }
 
     /* Now, for all the recreated symlinks, notify their recreation */
     for (NextEntry = DeviceInformation->SymbolicLinksListHead.Flink;
-	 NextEntry != &(DeviceInformation->SymbolicLinksListHead);
+	 NextEntry != &DeviceInformation->SymbolicLinksListHead;
 	 NextEntry = NextEntry->Flink) {
 	SymlinkInformation = CONTAINING_RECORD(NextEntry, SYMLINK_INFORMATION,
 					       SymbolicLinksListEntry);
 
-	SendLinkCreated(&(SymlinkInformation->Name));
+	SendLinkCreated(&SymlinkInformation->Name);
     }
 
     /* If we had saved links, it's time to free them */
@@ -1051,8 +1050,8 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
 	    else {
 		SymlinkInformation->Name = VolumeName;
 		SymlinkInformation->Online = TRUE;
-		InsertTailList(&(DeviceInformation->SymbolicLinksListHead),
-			       &(SymlinkInformation->SymbolicLinksListEntry));
+		InsertTailList(&DeviceInformation->SymbolicLinksListHead,
+			       &SymlinkInformation->SymbolicLinksListEntry);
 
 		SendLinkCreated(&VolumeName);
 	    }
@@ -1086,8 +1085,8 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
 	    } else {
 		SymlinkInformation->Name = DriveLetter;
 		SymlinkInformation->Online = TRUE;
-		InsertTailList(&(DeviceInformation->SymbolicLinksListHead),
-			       &(SymlinkInformation->SymbolicLinksListEntry));
+		InsertTailList(&DeviceInformation->SymbolicLinksListHead,
+			       &SymlinkInformation->SymbolicLinksListEntry);
 
 		SendLinkCreated(&DriveLetter);
 	    }
@@ -1100,8 +1099,8 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
     }
 
     /* Finally, insert the device into our devices list */
-    InsertTailList(&(DeviceExtension->DeviceListHead),
-		   &(DeviceInformation->DeviceListEntry));
+    InsertTailList(&DeviceExtension->DeviceListHead,
+		   &DeviceInformation->DeviceListEntry);
 
     /* Copy device unique ID */
     NewUniqueId = AllocatePool(UniqueId->UniqueIdLength + sizeof(MOUNTDEV_UNIQUE_ID));
@@ -1144,7 +1143,7 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
      * Now it's back, local databases sync will be required
      */
     if (DeviceExtension->AutomaticDriveLetter) {
-	KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode,
+	KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode,
 			      FALSE, NULL);
 
 	ReconcileThisDatabaseWithMaster(DeviceExtension, DeviceInformation);
@@ -1181,23 +1180,23 @@ VOID MountMgrMountedDeviceRemoval(IN PDEVICE_EXTENSION DeviceExtension,
     PDEVICE_INFORMATION DeviceInformation, CurrentDevice;
 
     /* Acquire device exclusively */
-    KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode, FALSE,
+    KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode, FALSE,
 			  NULL);
 
     /* Look for the leaving device */
     for (NextEntry = DeviceExtension->DeviceListHead.Flink;
-	 NextEntry != &(DeviceExtension->DeviceListHead); NextEntry = NextEntry->Flink) {
+	 NextEntry != &DeviceExtension->DeviceListHead; NextEntry = NextEntry->Flink) {
 	DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 
-	if (!RtlCompareUnicodeString(&(DeviceInformation->SymbolicName), DeviceName,
+	if (!RtlCompareUnicodeString(&DeviceInformation->SymbolicName, DeviceName,
 				     TRUE)) {
 	    break;
 	}
     }
 
     /* If we found it */
-    if (NextEntry != &(DeviceExtension->DeviceListHead)) {
+    if (NextEntry != &DeviceExtension->DeviceListHead) {
 	/* If it's asked to keep links, then, prepare to save them */
 	if (DeviceInformation->KeepLinks) {
 	    SavedLinkInformation = AllocatePool(sizeof(SAVED_LINK_INFORMATION));
@@ -1208,34 +1207,34 @@ VOID MountMgrMountedDeviceRemoval(IN PDEVICE_EXTENSION DeviceExtension,
 
 	/* If it's possible (and asked), start to save them */
 	if (DeviceInformation->KeepLinks) {
-	    InsertTailList(&(DeviceExtension->SavedLinksListHead),
-			   &(SavedLinkInformation->SavedLinksListEntry));
-	    InitializeListHead(&(SavedLinkInformation->SymbolicLinksListHead));
+	    InsertTailList(&DeviceExtension->SavedLinksListHead,
+			   &SavedLinkInformation->SavedLinksListEntry);
+	    InitializeListHead(&SavedLinkInformation->SymbolicLinksListHead);
 	    SavedLinkInformation->UniqueId = DeviceInformation->UniqueId;
 	}
 
 	/* For all the symlinks */
-	while (!IsListEmpty(&(DeviceInformation->SymbolicLinksListHead))) {
-	    NextEntry = RemoveHeadList(&(DeviceInformation->SymbolicLinksListHead));
+	while (!IsListEmpty(&DeviceInformation->SymbolicLinksListHead)) {
+	    NextEntry = RemoveHeadList(&DeviceInformation->SymbolicLinksListHead);
 	    SymlinkInformation = CONTAINING_RECORD(NextEntry, SYMLINK_INFORMATION,
 						   SymbolicLinksListEntry);
 
 	    /* If we have to, save the link */
 	    if (DeviceInformation->KeepLinks) {
-		InsertTailList(&(SavedLinkInformation->SymbolicLinksListHead),
-			       &(SymlinkInformation->SymbolicLinksListEntry));
+		InsertTailList(&SavedLinkInformation->SymbolicLinksListHead,
+			       &SymlinkInformation->SymbolicLinksListEntry);
 	    }
 	    /* Otherwise, just release it */
 	    else {
-		GlobalDeleteSymbolicLink(&(SymlinkInformation->Name));
+		GlobalDeleteSymbolicLink(&SymlinkInformation->Name);
 		FreePool(SymlinkInformation->Name.Buffer);
 		FreePool(SymlinkInformation);
 	    }
 	}
 
 	/* Free all the replicated unique IDs */
-	while (!IsListEmpty(&(DeviceInformation->ReplicatedUniqueIdsListHead))) {
-	    NextEntry = RemoveHeadList(&(DeviceInformation->ReplicatedUniqueIdsListHead));
+	while (!IsListEmpty(&DeviceInformation->ReplicatedUniqueIdsListHead)) {
+	    NextEntry = RemoveHeadList(&DeviceInformation->ReplicatedUniqueIdsListHead);
 	    UniqueIdReplicate = CONTAINING_RECORD(NextEntry, UNIQUE_ID_REPLICATE,
 						  ReplicatedUniqueIdsListEntry);
 
@@ -1243,8 +1242,8 @@ VOID MountMgrMountedDeviceRemoval(IN PDEVICE_EXTENSION DeviceExtension,
 	    FreePool(UniqueIdReplicate);
 	}
 
-	while (!IsListEmpty(&(DeviceInformation->AssociatedDevicesHead))) {
-	    NextEntry = RemoveHeadList(&(DeviceInformation->AssociatedDevicesHead));
+	while (!IsListEmpty(&DeviceInformation->AssociatedDevicesHead)) {
+	    NextEntry = RemoveHeadList(&DeviceInformation->AssociatedDevicesHead);
 	    AssociatedDevice = CONTAINING_RECORD(NextEntry, ASSOCIATED_DEVICE_ENTRY,
 						 AssociatedDevicesEntry);
 
@@ -1254,19 +1253,19 @@ VOID MountMgrMountedDeviceRemoval(IN PDEVICE_EXTENSION DeviceExtension,
 	}
 
 	/* Remove device from the device list */
-	RemoveEntryList(&(DeviceInformation->DeviceListEntry));
+	RemoveEntryList(&DeviceInformation->DeviceListEntry);
 
 	/* If there are still devices, check if some were associated with ours */
-	if (!IsListEmpty(&(DeviceInformation->DeviceListEntry))) {
+	if (!IsListEmpty(&DeviceInformation->DeviceListEntry)) {
 	    for (NextEntry = DeviceExtension->DeviceListHead.Flink;
-		 NextEntry != &(DeviceExtension->DeviceListHead);
+		 NextEntry != &DeviceExtension->DeviceListHead;
 		 NextEntry = NextEntry->Flink) {
 		CurrentDevice = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 						  DeviceListEntry);
 
 		/* And then, remove them */
 		DeviceEntry = CurrentDevice->AssociatedDevicesHead.Flink;
-		while (DeviceEntry != &(CurrentDevice->AssociatedDevicesHead)) {
+		while (DeviceEntry != &CurrentDevice->AssociatedDevicesHead) {
 		    AssociatedDevice = CONTAINING_RECORD(NextEntry,
 							 ASSOCIATED_DEVICE_ENTRY,
 							 AssociatedDevicesEntry);
@@ -1276,7 +1275,7 @@ VOID MountMgrMountedDeviceRemoval(IN PDEVICE_EXTENSION DeviceExtension,
 			continue;
 		    }
 
-		    RemoveEntryList(&(AssociatedDevice->AssociatedDevicesEntry));
+		    RemoveEntryList(&AssociatedDevice->AssociatedDevicesEntry);
 		    FreePool(AssociatedDevice->String.Buffer);
 		    FreePool(AssociatedDevice);
 		}
@@ -1301,15 +1300,15 @@ VOID MountMgrMountedDeviceRemoval(IN PDEVICE_EXTENSION DeviceExtension,
     } else {
 	/* We didn't find device, perhaps because it was offline */
 	for (NextEntry = DeviceExtension->OfflineDeviceListHead.Flink;
-	     NextEntry != &(DeviceExtension->OfflineDeviceListHead);
+	     NextEntry != &DeviceExtension->OfflineDeviceListHead;
 	     NextEntry = NextEntry->Flink) {
 	    DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 						  DeviceListEntry);
 
 	    /* It was, remove it */
-	    if (RtlCompareUnicodeString(&(DeviceInformation->SymbolicName), DeviceName,
+	    if (RtlCompareUnicodeString(&DeviceInformation->SymbolicName, DeviceName,
 					TRUE) == 0) {
-		RemoveEntryList(&(DeviceInformation->DeviceListEntry));
+		RemoveEntryList(&DeviceInformation->DeviceListEntry);
 		MountMgrFreeDeadDeviceInfo(DeviceInformation);
 		break;
 	    }
@@ -1335,10 +1334,10 @@ static NTAPI NTSTATUS MountMgrMountedDeviceNotification(IN PVOID NotificationStr
     Notification = NotificationStructure;
 
     /* Dispatch according to the event */
-    if (IsEqualGUID(&(Notification->Event), &GUID_DEVICE_INTERFACE_ARRIVAL)) {
+    if (IsEqualGUID(&Notification->Event, &GUID_DEVICE_INTERFACE_ARRIVAL)) {
 	MountMgrMountedDeviceArrival(DeviceExtension, Notification->SymbolicLinkName,
 				     FALSE);
-    } else if (IsEqualGUID(&(Notification->Event), &GUID_DEVICE_INTERFACE_REMOVAL)) {
+    } else if (IsEqualGUID(&Notification->Event, &GUID_DEVICE_INTERFACE_REMOVAL)) {
 	MountMgrMountedDeviceRemoval(DeviceExtension, Notification->SymbolicLinkName);
     }
 
@@ -1404,7 +1403,7 @@ static NTAPI NTSTATUS MountMgrCleanup(IN PDEVICE_OBJECT DeviceObject,
     FileObject = Stack->FileObject;
 
     /* If IRP list if empty, it's OK */
-    if (IsListEmpty(&(DeviceExtension->IrpListHead))) {
+    if (IsListEmpty(&DeviceExtension->IrpListHead)) {
 	Irp->IoStatus.Status = STATUS_SUCCESS;
 	Irp->IoStatus.Information = 0;
 	IoCompleteRequest(Irp, IO_NO_INCREMENT);
@@ -1423,7 +1422,7 @@ static NTAPI NTSTATUS MountMgrCleanup(IN PDEVICE_OBJECT DeviceObject,
 	}
 
 	NextEntry = NextEntry->Flink;
-    } while (NextEntry != &(DeviceExtension->IrpListHead));
+    } while (NextEntry != &DeviceExtension->IrpListHead);
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
     Irp->IoStatus.Information = 0;
@@ -1449,7 +1448,7 @@ static NTAPI NTSTATUS MountMgrShutdown(IN PDEVICE_OBJECT DeviceObject,
 	KeSetEvent(&DeviceExtension->WorkerSemaphore);
 	KeWaitForSingleObject(&UnloadEvent, Executive, KernelMode, FALSE, NULL);
     } else {
-	InterlockedDecrement(&(DeviceExtension->WorkerReferences));
+	InterlockedDecrement(&DeviceExtension->WorkerReferences);
     }
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -1528,7 +1527,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 	EventCategoryDeviceInterfaceChange,
 	PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES, &MountedDevicesGuid,
 	DriverObject, MountMgrMountedDeviceNotification, DeviceExtension,
-	&(DeviceExtension->NotificationEntry));
+	&DeviceExtension->NotificationEntry);
 
     if (!NT_SUCCESS(Status)) {
 	IoDeleteDevice(DeviceObject);

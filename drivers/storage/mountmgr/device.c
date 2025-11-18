@@ -2468,7 +2468,7 @@ MountMgrDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	KeSetEvent(&DeviceExtension->DeviceLock);
 
 	LockStatus = WaitForRemoteDatabaseSemaphore(DeviceExtension);
-	KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode,
+	KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode,
 			      FALSE, NULL);
 	Status = MountMgrVolumeMountPointCreated(DeviceExtension, Irp, LockStatus);
 	if (NT_SUCCESS(LockStatus)) {
@@ -2481,7 +2481,7 @@ MountMgrDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	KeSetEvent(&DeviceExtension->DeviceLock);
 
 	LockStatus = WaitForRemoteDatabaseSemaphore(DeviceExtension);
-	KeWaitForSingleObject(&(DeviceExtension->DeviceLock), Executive, KernelMode,
+	KeWaitForSingleObject(&DeviceExtension->DeviceLock, Executive, KernelMode,
 			      FALSE, NULL);
 	Status = MountMgrVolumeMountPointDeleted(DeviceExtension, Irp, LockStatus);
 	if (NT_SUCCESS(LockStatus)) {

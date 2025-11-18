@@ -48,12 +48,12 @@ NTSTATUS MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* First of all, try to find device */
     for (DeviceEntry = DeviceExtension->DeviceListHead.Flink;
-	 DeviceEntry != &(DeviceExtension->DeviceListHead);
+	 DeviceEntry != &DeviceExtension->DeviceListHead;
 	 DeviceEntry = DeviceEntry->Flink) {
 	DeviceInformation = CONTAINING_RECORD(DeviceEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 
-	if (RtlEqualUnicodeString(&TargetDeviceName, &(DeviceInformation->DeviceName),
+	if (RtlEqualUnicodeString(&TargetDeviceName, &DeviceInformation->DeviceName,
 				  TRUE)) {
 	    break;
 	}
@@ -72,7 +72,7 @@ NTSTATUS MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
     SymLink.MaximumLength = SymbolicLinkName->Length + sizeof(UNICODE_NULL);
 
     /* If we didn't find device */
-    if (DeviceEntry == &(DeviceExtension->DeviceListHead)) {
+    if (DeviceEntry == &DeviceExtension->DeviceListHead) {
 	/* Then, try with unique ID */
 	Status = QueryDeviceInformation(SymbolicLinkName, NULL, &UniqueId, NULL, NULL,
 					NULL, NULL, NULL);
@@ -164,7 +164,7 @@ NTSTATUS MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
     SymlinkInformation->Online = TRUE;
     InsertTailList(&DeviceInformation->SymbolicLinksListHead,
 		   &SymlinkInformation->SymbolicLinksListEntry);
-    SendLinkCreated(&(SymlinkInformation->Name));
+    SendLinkCreated(&SymlinkInformation->Name);
 
     /* If we have a drive letter */
     if (IsDriveLetter(&SymLink)) {
@@ -181,7 +181,7 @@ NTSTATUS MountMgrCreatePointWorker(IN PDEVICE_EXTENSION DeviceExtension,
      */
     if (MOUNTMGR_IS_VOLUME_NAME(&SymLink) && DeviceExtension->AutomaticDriveLetter) {
 	for (DeviceEntry = DeviceExtension->DeviceListHead.Flink;
-	     DeviceEntry != &(DeviceExtension->DeviceListHead);
+	     DeviceEntry != &DeviceExtension->DeviceListHead;
 	     DeviceEntry = DeviceEntry->Flink) {
 	    DeviceInfo = CONTAINING_RECORD(DeviceEntry, DEVICE_INFORMATION,
 					   DeviceListEntry);
@@ -235,7 +235,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
     TotalSize = 0;
     TotalSymLinks = 0;
     for (DeviceEntry = DeviceExtension->DeviceListHead.Flink;
-	 DeviceEntry != &(DeviceExtension->DeviceListHead);
+	 DeviceEntry != &DeviceExtension->DeviceListHead;
 	 DeviceEntry = DeviceEntry->Flink) {
 	DeviceInformation = CONTAINING_RECORD(DeviceEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
@@ -254,7 +254,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 	}
 	/* Or, if we had a symlink, it has to match */
 	else if (SymbolicName) {
-	    if (!RtlEqualUnicodeString(&DeviceName, &(DeviceInformation->DeviceName),
+	    if (!RtlEqualUnicodeString(&DeviceName, &DeviceInformation->DeviceName,
 				       TRUE)) {
 		continue;
 	    }
@@ -266,7 +266,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 
 	/* And count number of symlinks (and their size) */
 	for (SymlinksEntry = DeviceInformation->SymbolicLinksListHead.Flink;
-	     SymlinksEntry != &(DeviceInformation->SymbolicLinksListHead);
+	     SymlinksEntry != &DeviceInformation->SymbolicLinksListHead;
 	     SymlinksEntry = SymlinksEntry->Flink) {
 	    SymlinkInformation = CONTAINING_RECORD(SymlinksEntry, SYMLINK_INFORMATION,
 						   SymbolicLinksListEntry);
@@ -285,7 +285,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* If we were looking for specific item, ensure we found it */
     if (UniqueId || SymbolicName) {
-	if (DeviceEntry == &(DeviceExtension->DeviceListHead)) {
+	if (DeviceEntry == &DeviceExtension->DeviceListHead) {
 	    if (SymbolicName) {
 		FreePool(DeviceName.Buffer);
 	    }
@@ -320,7 +320,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 		TotalSymLinks * sizeof(MOUNTMGR_MOUNT_POINT);
     TotalSymLinks = 0;
     for (DeviceEntry = DeviceExtension->DeviceListHead.Flink;
-	 DeviceEntry != &(DeviceExtension->DeviceListHead);
+	 DeviceEntry != &DeviceExtension->DeviceListHead;
 	 DeviceEntry = DeviceEntry->Flink) {
 	DeviceInformation = CONTAINING_RECORD(DeviceEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
@@ -337,7 +337,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 		continue;
 	    }
 	} else if (SymbolicName) {
-	    if (!RtlEqualUnicodeString(&DeviceName, &(DeviceInformation->DeviceName),
+	    if (!RtlEqualUnicodeString(&DeviceName, &DeviceInformation->DeviceName,
 				       TRUE)) {
 		continue;
 	    }
@@ -366,7 +366,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 
 	/* Now we've got it, but all the data */
 	for (SymlinksEntry = DeviceInformation->SymbolicLinksListHead.Flink;
-	     SymlinksEntry != &(DeviceInformation->SymbolicLinksListHead);
+	     SymlinksEntry != &DeviceInformation->SymbolicLinksListHead;
 	     SymlinksEntry = SymlinksEntry->Flink) {
 	    SymlinkInformation = CONTAINING_RECORD(SymlinksEntry, SYMLINK_INFORMATION,
 						   SymbolicLinksListEntry);
@@ -434,12 +434,12 @@ NTSTATUS QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
     if (NT_SUCCESS(Status)) {
 	/* Look for the device information */
 	for (DeviceEntry = DeviceExtension->DeviceListHead.Flink;
-	     DeviceEntry != &(DeviceExtension->DeviceListHead);
+	     DeviceEntry != &DeviceExtension->DeviceListHead;
 	     DeviceEntry = DeviceEntry->Flink) {
 	    DeviceInformation = CONTAINING_RECORD(DeviceEntry, DEVICE_INFORMATION,
 						  DeviceListEntry);
 
-	    if (RtlEqualUnicodeString(&DeviceName, &(DeviceInformation->DeviceName),
+	    if (RtlEqualUnicodeString(&DeviceName, &DeviceInformation->DeviceName,
 				      TRUE)) {
 		break;
 	    }
@@ -447,13 +447,13 @@ NTSTATUS QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
 
 	FreePool(DeviceName.Buffer);
 
-	if (DeviceEntry == &(DeviceExtension->DeviceListHead)) {
+	if (DeviceEntry == &DeviceExtension->DeviceListHead) {
 	    return STATUS_INVALID_PARAMETER;
 	}
 
 	/* Check for the link */
 	for (SymlinksEntry = DeviceInformation->SymbolicLinksListHead.Flink;
-	     SymlinksEntry != &(DeviceInformation->SymbolicLinksListHead);
+	     SymlinksEntry != &DeviceInformation->SymbolicLinksListHead;
 	     SymlinksEntry = SymlinksEntry->Flink) {
 	    SymlinkInformation = CONTAINING_RECORD(SymlinksEntry, SYMLINK_INFORMATION,
 						   SymbolicLinksListEntry);
@@ -463,7 +463,7 @@ NTSTATUS QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
 	    }
 	}
 
-	if (SymlinksEntry == &(DeviceInformation->SymbolicLinksListHead)) {
+	if (SymlinksEntry == &DeviceInformation->SymbolicLinksListHead) {
 	    return STATUS_INVALID_PARAMETER;
 	}
     } else {
@@ -471,13 +471,13 @@ NTSTATUS QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
 	 * that has the given link...
 	 */
 	for (DeviceEntry = DeviceExtension->DeviceListHead.Flink;
-	     DeviceEntry != &(DeviceExtension->DeviceListHead);
+	     DeviceEntry != &DeviceExtension->DeviceListHead;
 	     DeviceEntry = DeviceEntry->Flink) {
 	    DeviceInformation = CONTAINING_RECORD(DeviceEntry, DEVICE_INFORMATION,
 						  DeviceListEntry);
 
 	    for (SymlinksEntry = DeviceInformation->SymbolicLinksListHead.Flink;
-		 SymlinksEntry != &(DeviceInformation->SymbolicLinksListHead);
+		 SymlinksEntry != &DeviceInformation->SymbolicLinksListHead;
 		 SymlinksEntry = SymlinksEntry->Flink) {
 		SymlinkInformation = CONTAINING_RECORD(SymlinksEntry, SYMLINK_INFORMATION,
 						       SymbolicLinksListEntry);
@@ -488,13 +488,13 @@ NTSTATUS QueryPointsFromSymbolicLinkName(IN PDEVICE_EXTENSION DeviceExtension,
 		}
 	    }
 
-	    if (SymlinksEntry != &(DeviceInformation->SymbolicLinksListHead)) {
+	    if (SymlinksEntry != &DeviceInformation->SymbolicLinksListHead) {
 		break;
 	    }
 	}
 
 	/* Even that way we didn't find, give up! */
-	if (DeviceEntry == &(DeviceExtension->DeviceListHead)) {
+	if (DeviceEntry == &DeviceExtension->DeviceListHead) {
 	    return STATUS_OBJECT_NAME_NOT_FOUND;
 	}
     }
