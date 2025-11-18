@@ -357,736 +357,735 @@
 #define WmiMonitorRawEEdidV1BlockGuid {0xfaee1471,0x5149,0x4a68, {0xac,0x2c,0xbf,0x96,0xec,0x09,0xf0,0x04}}
 #define WmiMonitorSupportedDisplayFeaturesGuid {0x9fa9c28b,0x5e5c,0x4035, {0xa5,0xf8,0x67,0xd4,0x55,0x4f,0x8d,0x04}}
 
-#if !(defined(MIDL_PASS))
+#ifndef MIDL_PASS
 
-DEFINE_GUID(FrequencyRangeDescriptor_GUID, 0xf4546078, 0xf3b2, 0x417e,
-	    0x94, 0xcd, 0x47, 0xea, 0x30, 0x6c, 0x57, 0x51);
-DEFINE_GUID(IdleAccountingEx_GUID, 0xd67abd39, 0x81f8, 0x4a5e, 0x81, 0x52,
-	    0x72, 0xe3, 0x1e, 0xc9, 0x12, 0xee);
-DEFINE_GUID(IdleAccounting_GUID, 0xe2a26f78, 0xae07, 0x4ee0, 0xa3, 0x0f,
-	    0xce, 0x35, 0x4f, 0x5a, 0x94, 0xcd);
-DEFINE_GUID(IdleStateAccountingEx_GUID, 0x3e0d7b2c, 0x401b, 0x480f, 0x83,
-	    0x03, 0xd0, 0xc2, 0x0e, 0xa1, 0xa7, 0xd8);
-DEFINE_GUID(IdleStateAccounting_GUID, 0x5280028a, 0xc24f, 0x43ec, 0xb2,
-	    0x7d, 0xa9, 0x60, 0xa7, 0x0e, 0x31, 0x9a);
-DEFINE_GUID(IdleStateBucketEx_GUID, 0xe53e0a7d, 0x36f0, 0x4a77, 0x87, 0x9e,
-	    0x9c, 0x6b, 0x5e, 0x4a, 0x85, 0x54);
-DEFINE_GUID(KernelIdleStateChange_GUID, 0x4838fe4f, 0xf71c, 0x4e51, 0x9e,
-	    0xcc, 0x84, 0x30, 0xa7, 0xac, 0x4c, 0x6c);
-DEFINE_GUID(KernelIdleState_GUID, 0x46bdcf4a, 0xe076, 0x4550, 0x82, 0xb2,
-	    0x9f, 0x32, 0xed, 0xed, 0x3e, 0x7f);
-DEFINE_GUID(KernelIdleStates_GUID, 0xba138e10, 0xe250, 0x4ad7, 0x86, 0x16,
-	    0xcf, 0x1a, 0x7a, 0xd4, 0x10, 0xe7);
-DEFINE_GUID(KernelPerfStateChange_GUID, 0xa5b32ddd, 0x7f39, 0x4abc, 0xb8,
-	    0x92, 0x90, 0x0e, 0x43, 0xb5, 0x9e, 0xbb);
-DEFINE_GUID(KernelPerfStateDomainChange_GUID, 0x995e6b7f, 0xd653, 0x497a,
-	    0xb9, 0x78, 0x36, 0xa3, 0x0c, 0x29, 0xbf, 0x01);
-DEFINE_GUID(KernelPerfState_GUID, 0x8c7980e1, 0xf62b, 0x419e, 0xaa, 0x82,
-	    0x27, 0x6c, 0x8d, 0x06, 0x4a, 0x1f);
-DEFINE_GUID(KernelPerfStates_GUID, 0x5708cc20, 0x7d40, 0x4bf4, 0xb4, 0xaa,
-	    0x2b, 0x01, 0x33, 0x8d, 0x01, 0x26);
-DEFINE_GUID(KernelThermalConstraintChange_GUID, 0xa852c2c8, 0x1a4c, 0x423b,
-	    0x8c, 0x2c, 0xf3, 0x0d, 0x82, 0x93, 0x1a, 0x88);
-DEFINE_GUID(KernelThermalPolicyChange_GUID, 0xaca5a8f7, 0x96ca, 0x4397,
-	    0xba, 0xde, 0x43, 0xbe, 0x2f, 0x57, 0x7d, 0x51);
-DEFINE_GUID(MSAcpiInfo_GUID, 0x5daf38ae, 0xf6f8, 0x4d90, 0x81, 0x99, 0xeb,
-	    0xde, 0x68, 0x00, 0xec, 0x3b);
-DEFINE_GUID(MSAcpi_ThermalZoneTemperature_GUID, 0xa1bc18c0, 0xa7c8, 0x11d1,
-	    0xbf, 0x3c, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSAgp_Information_GUID, 0x8c27fbed, 0x1c7b, 0x47e4, 0xa6, 0x49,
-	    0x0e, 0x38, 0x9d, 0x3a, 0xda, 0x4f);
-DEFINE_GUID(MSChangerParameters_GUID, 0x24eb52ac, 0x7c77, 0x438b, 0xab,
-	    0x61, 0xd0, 0x24, 0xda, 0xb0, 0xc0, 0x3a);
-DEFINE_GUID(MSChangerProblemDeviceError_GUID, 0x56b396a8, 0x0b95, 0x42fe,
-	    0xbb, 0xce, 0xd3, 0x6f, 0xda, 0x90, 0x4f, 0x8e);
-DEFINE_GUID(MSChangerProblemEvent_GUID, 0x45db06a5, 0x20d5, 0x4de3, 0xa3,
-	    0x6c, 0x3a, 0xb9, 0x74, 0x60, 0x0a, 0x4c);
-DEFINE_GUID(MSDeviceUI_FirmwareRevision_GUID, 0x4504b1d4, 0xc5ee, 0x4df6,
-	    0x95, 0x1f, 0x16, 0x18, 0x0e, 0x3d, 0xd8, 0x15);
-DEFINE_GUID(MSDiskDriver_Geometry_GUID, 0x25007f51, 0x57c2, 0x11d1, 0xa5,
-	    0x28, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSDiskDriver_PerformanceData_GUID, 0xbdd865d2, 0xd7c1, 0x11d0,
-	    0xa5, 0x01, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSDiskDriver_Performance_GUID, 0xbdd865d1, 0xd7c1, 0x11d0,
-	    0xa5, 0x01, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSIde_PortDeviceInfo_GUID, 0x53f5630f, 0xb6bf, 0x11d0, 0x94,
-	    0xf2, 0x00, 0xa0, 0xc9, 0x1e, 0xfb, 0x8b);
-DEFINE_GUID(MSKeyboard_ClassInformation_GUID, 0x4731f899, 0x71cb, 0x11d1,
-	    0xa5, 0x2c, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSKeyboard_ExtendedID_GUID, 0x6ac4e23d, 0xa950, 0x4518, 0x8b,
-	    0x2b, 0xaa, 0x4d, 0xcd, 0x5f, 0xe1, 0x4a);
-DEFINE_GUID(MSKeyboard_PortInformation_GUID, 0x4731f89a, 0x71cb, 0x11d1,
-	    0xa5, 0x2c, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSMCAEvent_BusError_GUID, 0x1ee17050, 0x0039, 0x40f7, 0x9e,
-	    0xad, 0x14, 0xad, 0x51, 0x61, 0x2c, 0xb2);
-DEFINE_GUID(MSMCAEvent_CPUError_GUID, 0x5ce27cde, 0xd179, 0x4c68, 0x93,
-	    0x7f, 0xa0, 0x7b, 0x8c, 0xc2, 0xea, 0x39);
-DEFINE_GUID(MSMCAEvent_Header_GUID, 0x6381c27f, 0xc8fa, 0x4da7, 0x89, 0x53,
-	    0xb8, 0x68, 0x33, 0x73, 0x6e, 0x15);
-DEFINE_GUID(MSMCAEvent_InvalidError_GUID, 0x477b769b, 0x785c, 0x48dd, 0xa0,
-	    0x2e, 0x57, 0xe0, 0x51, 0xbe, 0x7b, 0x85);
-DEFINE_GUID(MSMCAEvent_MemoryError_GUID, 0x433eea38, 0xc1a7, 0x48f1, 0x88,
-	    0x4f, 0xb6, 0x87, 0x5f, 0x17, 0x6c, 0xc7);
-DEFINE_GUID(MSMCAEvent_MemoryHierarchyError_GUID, 0xcede75a0, 0xa77f,
-	    0x452b, 0x8f, 0x2f, 0x54, 0x1f, 0x92, 0x6d, 0xb0, 0xf9);
-DEFINE_GUID(MSMCAEvent_MemoryPageRemoved_GUID, 0x84e9ddb6, 0xe233, 0x4dfc,
-	    0x98, 0x8c, 0x74, 0x12, 0xc8, 0x75, 0x4f, 0xec);
-DEFINE_GUID(MSMCAEvent_PCIBusError_GUID, 0xa14a5594, 0x25de, 0x410e, 0x9b,
-	    0x92, 0x80, 0xf0, 0x80, 0x1a, 0xec, 0x07);
-DEFINE_GUID(MSMCAEvent_PCIComponentError_GUID, 0x805caf4e, 0x336c, 0x4eb2,
-	    0x8c, 0x0c, 0x02, 0xf3, 0x51, 0xcb, 0xf1, 0x3c);
-DEFINE_GUID(MSMCAEvent_PlatformSpecificError_GUID, 0x2d2434aa, 0xef83,
-	    0x4200, 0xba, 0x24, 0xde, 0x36, 0x6c, 0x41, 0x5f, 0x7b);
-DEFINE_GUID(MSMCAEvent_SMBIOSError_GUID, 0x4184df1b, 0xedfe, 0x406b, 0xb1,
-	    0x72, 0x54, 0xc9, 0x1f, 0xbd, 0x9b, 0xaf);
-DEFINE_GUID(MSMCAEvent_SwitchToCMCPolling_GUID, 0x39c14290, 0xf036, 0x4999,
-	    0xb8, 0xa1, 0xb6, 0xf8, 0x71, 0xfb, 0x32, 0x9e);
-DEFINE_GUID(MSMCAEvent_SwitchToCPEPolling_GUID, 0xd5c870ce, 0x4ed0, 0x4fdc,
-	    0xbb, 0x54, 0x8b, 0x45, 0x2c, 0x18, 0x79, 0x7e);
-DEFINE_GUID(MSMCAEvent_SystemEventError_GUID, 0xbdba4b12, 0x8d00, 0x4570,
-	    0xb9, 0xb2, 0x3f, 0xde, 0xcf, 0x1d, 0x56, 0x61);
-DEFINE_GUID(MSMCAEvent_TLBError_GUID, 0xb161eeab, 0xac03, 0x4c2b, 0xae,
-	    0x7a, 0x5a, 0x37, 0x68, 0xf7, 0x0e, 0x85);
-DEFINE_GUID(MSMCAInfo_Entry_GUID, 0x9e77a308, 0x6b82, 0x4fc1, 0xab, 0x41,
-	    0x0a, 0x55, 0x86, 0x7c, 0x35, 0xc2);
-DEFINE_GUID(MSMCAInfo_RawCMCEvent_GUID, 0x2f1a8a9d, 0x7988, 0x457f, 0xa1,
-	    0x7a, 0x89, 0x79, 0xe8, 0x20, 0x43, 0xc5);
-DEFINE_GUID(MSMCAInfo_RawCorrectedPlatformEvent_GUID, 0x6b629d5e, 0xe63c,
-	    0x48a3, 0x9e, 0xbb, 0x97, 0x42, 0x27, 0x07, 0x52, 0x65);
-DEFINE_GUID(MSMCAInfo_RawMCAData_GUID, 0x23602a8a, 0xdadd, 0x462f, 0x9a,
-	    0xe5, 0x30, 0xfa, 0x2c, 0x37, 0xdd, 0x5b);
-DEFINE_GUID(MSMCAInfo_RawMCAEvent_GUID, 0x2f1a8a9f, 0x7988, 0x457f, 0xa1,
-	    0x7a, 0x89, 0x79, 0xe8, 0x20, 0x43, 0xc5);
-DEFINE_GUID(MSMouse_ClassInformation_GUID, 0x4731f89b, 0x71cb, 0x11d1,
-	    0xa5, 0x2c, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSMouse_PortInformation_GUID, 0x4731f89c, 0x71cb, 0x11d1, 0xa5,
-	    0x2c, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSNdis_80211_AddWEP_GUID, 0x4307bff0, 0x2129, 0x11d4, 0x97,
-	    0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_AuthenticationMode_GUID, 0x43920a24, 0x2129,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_BSSIList_GUID, 0x69526f9a, 0x2062, 0x11d4, 0x97,
-	    0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_BaseServiceSetIdentifier_GUID, 0x2504b6c2, 0x1fa5,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_BssIdListScan_GUID, 0x0d9e01e1, 0xba70, 0x11d4,
-	    0xb6, 0x75, 0x00, 0x20, 0x48, 0x57, 0x03, 0x37);
-DEFINE_GUID(MSNdis_80211_ConfigurationFH_GUID, 0x4a800b8c, 0x2068, 0x11d4,
-	    0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_ConfigurationInfo_GUID, 0x220c16fc, 0xb9a8,
-	    0x11d4, 0xb6, 0x75, 0x00, 0x20, 0x48, 0x57, 0x03, 0x37);
-DEFINE_GUID(MSNdis_80211_Configuration_GUID, 0x4a4df982, 0x2068, 0x11d4,
-	    0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_DataRates_GUID, 0x49db8722, 0x2068, 0x11d4, 0x97,
-	    0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_DesiredDataRates_GUID, 0x452ee08e, 0x2536, 0x11d4,
-	    0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_Disassociate_GUID, 0x43671f40, 0x2129, 0x11d4,
-	    0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_FragmentationThreshold_GUID, 0x69aaa7c4, 0x2062,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_InfrastructureMode_GUID, 0x697d5a7e, 0x2062,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_NetworkInfrastructure_GUID, 0x34e1fa48, 0xb9b6,
-	    0x11d4, 0xb6, 0x75, 0x00, 0x20, 0x48, 0x57, 0x03, 0x37);
-DEFINE_GUID(MSNdis_80211_NetworkTypeInUse_GUID, 0x857e2326, 0x2041, 0x11d4,
-	    0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_NetworkType_GUID, 0xe779ab61, 0xb9ab, 0x11d4,
-	    0xb6, 0x75, 0x00, 0x20, 0x48, 0x57, 0x03, 0x37);
-DEFINE_GUID(MSNdis_80211_NetworkTypesSupported_GUID, 0x8531d6e6, 0x2041,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_NumberOfAntennas_GUID, 0x01779336, 0x2064, 0x11d4,
-	    0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_PowerMode_GUID, 0x85be837c, 0x2041, 0x11d4, 0x97,
-	    0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_PrivacyFilter_GUID, 0x6733c4e9, 0x4792, 0x11d4,
-	    0x97, 0xf1, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_RTSThreshold_GUID, 0x0134d07e, 0x2064, 0x11d4,
-	    0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_ReceiveAntennaSelected_GUID, 0x01ac07a2, 0x2064,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_ReceivedSignalStrengthEventTrigger_GUID,
-	    0x155689b8, 0x2053, 0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79,
-	    0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_ReceivedSignalStrength_GUID, 0x1507db16, 0x2053,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_ReloadDefaults_GUID, 0x748b14e8, 0x32ee, 0x4425,
-	    0xb9, 0x1b, 0xc9, 0x84, 0x8c, 0x58, 0xb5, 0x5a);
-DEFINE_GUID(MSNdis_80211_RemoveWEP_GUID, 0x433c345c, 0x2129, 0x11d4, 0x97,
-	    0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_ServiceSetIdentifier_GUID, 0x7d2a90ea, 0x2041,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_Statistics_GUID, 0x42bb73b0, 0x2129, 0x11d4, 0x97,
-	    0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_TransmitAntennaSelected_GUID, 0x01dbb74a, 0x2064,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_TransmitPowerLevel_GUID, 0x11e6ba76, 0x2053,
-	    0x11d4, 0x97, 0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_80211_WEPStatus_GUID, 0xb027a21f, 0x3cfa, 0x4125, 0x80,
-	    0x0b, 0x3f, 0x7a, 0x18, 0xfd, 0xdc, 0xdc);
-DEFINE_GUID(MSNdis_80211_WLanBssId_GUID, 0x6929e718, 0x2062, 0x11d4, 0x97,
-	    0xeb, 0x00, 0xc0, 0x4f, 0x79, 0xc4, 0x03);
-DEFINE_GUID(MSNdis_AtmHardwareCurrentAddress_GUID, 0x791ad1a1, 0xe35c,
-	    0x11d0, 0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmMaxAal0PacketSize_GUID, 0x791ad1a5, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmMaxAal1PacketSize_GUID, 0x791ad1a6, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmMaxAal34PacketSize_GUID, 0x791ad1a7, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmMaxAal5PacketSize_GUID, 0x791ad191, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmMaxActiveVciBits_GUID, 0x791ad1a3, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmMaxActiveVcs_GUID, 0x791ad1a2, 0xe35c, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmMaxActiveVpiBits_GUID, 0x791ad1a4, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmReceiveCellsDropped_GUID, 0x0a21480c, 0xe35f, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmReceiveCellsOk_GUID, 0x0a21480a, 0xe35f, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmSupportedAalTypes_GUID, 0x791ad1a0, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmSupportedServiceCategory_GUID, 0x791ad19f, 0xe35c,
-	    0x11d0, 0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmSupportedVcRates_GUID, 0x791ad19e, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_AtmTransmitCellsOk_GUID, 0x0a21480b, 0xe35f, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoDriverVersion_GUID, 0x791ad198, 0xe35c, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoHardwareStatus_GUID, 0x791ad192, 0xe35c, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoLinkSpeed_GUID, 0x791ad195, 0xe35c, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoMacOptions_GUID, 0x791ad19a, 0xe35c, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoMediaConnectStatus_GUID, 0x791ad19b, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoMediaInUse_GUID, 0x791ad194, 0xe35c, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoMediaSupported_GUID, 0x791ad193, 0xe35c, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoMinimumLinkSpeed_GUID, 0x791ad19d, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoReceivePduErrors_GUID, 0x0a214808, 0xe35f, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoReceivePdusNoBuffer_GUID, 0x0a214809, 0xe35f, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoReceivePdusOk_GUID, 0x0a214806, 0xe35f, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoTransmitPduErrors_GUID, 0x0a214807, 0xe35f, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoTransmitPdusOk_GUID, 0x0a214805, 0xe35f, 0x11d0, 0x96,
-	    0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoVendorDescription_GUID, 0x791ad197, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoVendorDriverVersion_GUID, 0x791ad19c, 0xe35c, 0x11d0,
-	    0x96, 0x92, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CoVendorId_GUID, 0x791ad196, 0xe35c, 0x11d0, 0x96, 0x92,
-	    0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CountedString_GUID, 0x146360a5, 0x88dd, 0x11dd, 0x94,
-	    0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_CurrentLookahead_GUID, 0x5ec10361, 0xa61a, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_CurrentPacketFilter_GUID, 0x5ec10360, 0xa61a, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_DeviceWakeOnMagicPacketOnly_GUID, 0xa14f1c97, 0x8839,
-	    0x4f8a, 0x99, 0x96, 0xa2, 0x89, 0x96, 0xeb, 0xbf, 0x1d);
-DEFINE_GUID(MSNdis_DriverVersion_GUID, 0x5ec10362, 0xa61a, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_EnumerateAdapterEx_GUID, 0x16716917, 0x4306, 0x4be4,
-	    0x9b, 0x5a, 0x38, 0x09, 0xae, 0x44, 0xb1, 0x25);
-DEFINE_GUID(MSNdis_EnumerateAdapter_GUID, 0x981f2d7f, 0xb1f3, 0x11d0, 0x8d,
-	    0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_EnumeratePorts_GUID, 0xf1d6abe8, 0x15e4, 0x4407, 0x81,
-	    0xb7, 0x6b, 0x83, 0x0c, 0x77, 0x7c, 0xd9);
-DEFINE_GUID(MSNdis_EnumerateReceiveFilters_GUID, 0x3f2c141d, 0x83bc,
-	    0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_EnumerateReceiveQueues_GUID, 0x3f2c141b, 0x83bc, 0x11dd,
-	    0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_EthernetCurrentAddress_GUID, 0x44795700, 0xa61b, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_EthernetMacOptions_GUID, 0x44795703, 0xa61b, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_EthernetMaximumMulticastListSize_GUID, 0x44795702,
-	    0xa61b, 0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35,
-	    0x8c);
-DEFINE_GUID(MSNdis_EthernetMoreTransmitCollisions_GUID, 0x44795706, 0xa61b,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_EthernetMulticastList_GUID, 0x44795701, 0xa61b, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_EthernetOneTransmitCollision_GUID, 0x44795705, 0xa61b,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_EthernetPermanentAddress_GUID, 0x447956ff, 0xa61b,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_EthernetReceiveErrorAlignment_GUID, 0x44795704, 0xa61b,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiAttachmentType_GUID, 0xacf1403d, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiDownstreamNodeLong_GUID, 0xacf1403f, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiFrameErrors_GUID, 0xacf14040, 0xa61c, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiFramesLost_GUID, 0xacf14041, 0xa61c, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiLConnectionState_GUID, 0xacf14045, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiLctFailures_GUID, 0xacf14043, 0xa61c, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiLemRejects_GUID, 0xacf14044, 0xa61c, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiLongCurrentAddress_GUID, 0xacf14036, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiLongMaximumListSize_GUID, 0xacf14038, 0xa61c,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiLongMulticastList_GUID, 0xacf14037, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiLongPermanentAddress_GUID, 0xacf14035, 0xa61c,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiRingManagmentState_GUID, 0xacf14042, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiShortCurrentAddress_GUID, 0xacf1403a, 0xa61c,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiShortMaximumListSize_GUID, 0xacf1403c, 0xa61c,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiShortMulticastList_GUID, 0xacf1403b, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiShortPermanentAddress_GUID, 0xacf14039, 0xa61c,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_FddiUpstreamNodeLong_GUID, 0xacf1403e, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_GroupAffinity_GUID, 0xf786fbd5, 0xc049, 0x11dd, 0xb8,
-	    0x85, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_HDSplitCurrentConfig_GUID, 0x81d1303c, 0xab00, 0x4e49,
-	    0x80, 0xb1, 0x5e, 0x6e, 0x0b, 0xf9, 0xbe, 0x53);
-DEFINE_GUID(MSNdis_HDSplitParameters_GUID, 0x1131c56a, 0x0a5a, 0x4d79,
-	    0x8d, 0xde, 0x1e, 0x6f, 0x17, 0x80, 0x05, 0xee);
-DEFINE_GUID(MSNdis_HardwareStatus_GUID, 0x5ec10354, 0xa61a, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_InterruptModerationParameters_GUID, 0x09f58643, 0x31fb,
-	    0x45b5, 0x85, 0x2b, 0x09, 0xb4, 0xd3, 0xff, 0x37, 0x65);
-DEFINE_GUID(MSNdis_LinkParameters_GUID, 0x29380131, 0xa312, 0x4400, 0xbe,
-	    0x0c, 0x53, 0x87, 0x7a, 0x41, 0xc4, 0x65);
-DEFINE_GUID(MSNdis_LinkSpeed_GUID, 0x5ec10359, 0xa61a, 0x11d0, 0x8d, 0xd4,
-	    0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_LinkStateData_GUID, 0x5b26b94f, 0x0272, 0x4d4c, 0x87,
-	    0x44, 0xbd, 0x84, 0xbe, 0x42, 0x1f, 0x3b);
-DEFINE_GUID(MSNdis_LinkState_GUID, 0xba1f4c14, 0xa945, 0x4762, 0xb9, 0x16,
-	    0x0b, 0x55, 0x15, 0xb6, 0xf4, 0x3a);
-DEFINE_GUID(MSNdis_MacOptions_GUID, 0x5ec10365, 0xa61a, 0x11d0, 0x8d, 0xd4,
-	    0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_MaximumFrameSize_GUID, 0x5ec10358, 0xa61a, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_MaximumLookahead_GUID, 0x5ec10357, 0xa61a, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_MaximumSendPackets_GUID, 0x5ec10367, 0xa61a, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_MaximumTotalSize_GUID, 0x5ec10363, 0xa61a, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_MediaConnectStatus_GUID, 0x5ec10366, 0xa61a, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_MediaInUse_GUID, 0x5ec10356, 0xa61a, 0x11d0, 0x8d, 0xd4,
-	    0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_MediaSupported_GUID, 0x5ec10355, 0xa61a, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_NdisEnumerateVc_GUID, 0x981f2d82, 0xb1f3, 0x11d0, 0x8d,
-	    0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_NetworkAddress_GUID, 0xb5bd98b7, 0x0201, 0x11d1, 0xa5,
-	    0x0e, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSNdis_NetworkLinkSpeed_GUID, 0x60fc6b57, 0x0f66, 0x11d1, 0x96,
-	    0xa7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_NetworkShortAddress_GUID, 0xb5bd98b8, 0x0201, 0x11d1,
-	    0xa5, 0x0e, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSNdis_NicSwitchCapabilities_GUID, 0xdb80dd1c, 0x59ae, 0x48e7,
-	    0xb7, 0xec, 0xf9, 0xbe, 0x2c, 0x4b, 0x8c, 0xb0);
-DEFINE_GUID(MSNdis_NotifyAdapterArrival_GUID, 0x981f2d81, 0xb1f3, 0x11d0,
-	    0x8d, 0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_NotifyAdapterRemoval_GUID, 0x981f2d80, 0xb1f3, 0x11d0,
-	    0x8d, 0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_NotifyFilterArrival_GUID, 0x0b6d3c89, 0x5917, 0x43ca,
-	    0xb5, 0x78, 0xd0, 0x1a, 0x79, 0x67, 0xc4, 0x1c);
-DEFINE_GUID(MSNdis_NotifyFilterRemoval_GUID, 0x1f177cd9, 0x5955, 0x4721,
-	    0x9f, 0x6a, 0x78, 0xeb, 0xdf, 0xae, 0xf8, 0x89);
-DEFINE_GUID(MSNdis_NotifyVcArrival_GUID, 0x182f9e0c, 0xb1f3, 0x11d0, 0x8d,
-	    0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_NotifyVcRemoval_GUID, 0x981f2d79, 0xb1f3, 0x11d0, 0x8d,
-	    0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_ObjectHeader_GUID, 0x2b1831b2, 0x2216, 0x4ede, 0xa4,
-	    0x69, 0x9f, 0xe3, 0xdd, 0x6d, 0x5a, 0x7e);
-DEFINE_GUID(MSNdis_PMAdminConfigParam_GUID, 0x492dc449, 0x13d9, 0x4bd6,
-	    0x89, 0xd4, 0x96, 0xe3, 0x53, 0x4e, 0x6a, 0x05);
-DEFINE_GUID(MSNdis_PMAdminConfigState_GUID, 0x0cffd0fc, 0x8333, 0x4000,
-	    0x9a, 0x3b, 0x20, 0x07, 0x35, 0xd6, 0x98, 0xf9);
-DEFINE_GUID(MSNdis_PMAdminConfig_GUID, 0x1528d111, 0x708a, 0x4ca4, 0x92,
-	    0x15, 0xc0, 0x57, 0x71, 0x16, 0x1c, 0xda);
-DEFINE_GUID(MSNdis_PMCapabilitiesParam_GUID, 0xcccb122d, 0xd5c4, 0x4ee1,
-	    0x80, 0x01, 0xb8, 0xad, 0x6d, 0x3c, 0xe8, 0x76);
-DEFINE_GUID(MSNdis_PMCapabilities_GUID, 0xb2cf76e3, 0xb3ae, 0x4394, 0xa0,
-	    0x1f, 0x33, 0x8c, 0x98, 0x70, 0xe9, 0x39);
-DEFINE_GUID(MSNdis_PMCapabilityState_GUID, 0xc1cc6857, 0x1a26, 0x4f6d,
-	    0xab, 0x98, 0x29, 0x1f, 0x0c, 0x3b, 0xbd, 0x4c);
-DEFINE_GUID(MSNdis_PciDeviceProperty_GUID, 0x0573f70f, 0xded8, 0x401c,
-	    0x8b, 0x56, 0xa6, 0x2b, 0xb5, 0x28, 0xc0, 0xe2);
-DEFINE_GUID(MSNdis_PhysicalMediumType_GUID, 0x418ca16d, 0x3937, 0x4208,
-	    0x94, 0x0a, 0xec, 0x61, 0x96, 0x27, 0x80, 0x85);
-DEFINE_GUID(MSNdis_PortArray_GUID, 0x0fee8708, 0xdf65, 0x456e, 0xb4, 0xca,
-	    0xfa, 0x62, 0x32, 0x66, 0xa1, 0x2a);
-DEFINE_GUID(MSNdis_PortAuthParameters_GUID, 0x5c3bda24, 0x8b64, 0x4829,
-	    0xa5, 0x87, 0x8c, 0xe7, 0x19, 0x15, 0x2f, 0xe2);
-DEFINE_GUID(MSNdis_PortChar_GUID, 0xf5b7d202, 0xe594, 0x4aa3, 0xbe, 0x43,
-	    0x49, 0x76, 0x83, 0x3c, 0x78, 0x40);
-DEFINE_GUID(MSNdis_PortStateData_GUID, 0x8feae2c6, 0xee28, 0x469f, 0x8b,
-	    0x5d, 0x9f, 0x74, 0x3b, 0xab, 0x21, 0xaa);
-DEFINE_GUID(MSNdis_QueryInterruptModeration_GUID, 0xd9c8eea5, 0xf16e,
-	    0x467c, 0x84, 0xd5, 0x63, 0x45, 0xa2, 0x2c, 0xe2, 0x13);
-DEFINE_GUID(MSNdis_QueryNicSwitchCurrentCapabilities_GUID, 0xe76fdaf3,
-	    0x0be7, 0x4d95, 0x87, 0xe9, 0x5a, 0xea, 0xd4, 0xb5, 0x90,
-	    0xe9);
-DEFINE_GUID(MSNdis_QueryNicSwitchHardwareCapabilities_GUID, 0x37cab40c,
-	    0xd1e8, 0x4301, 0x8c, 0x1d, 0x58, 0x46, 0x5e, 0x0c, 0x4c,
-	    0x0f);
-DEFINE_GUID(MSNdis_QueryPciDeviceCustomProperty_GUID, 0xaa39f5ab, 0xe260,
-	    0x4d01, 0x82, 0xb0, 0xb7, 0x37, 0xc8, 0x80, 0xea, 0x05);
-DEFINE_GUID(MSNdis_QueryPhysicalMediumTypeEx_GUID, 0x899e7782, 0x035b,
-	    0x43f9, 0x8b, 0xb6, 0x2b, 0x58, 0x97, 0x16, 0x12, 0xe5);
-DEFINE_GUID(MSNdis_QueryPortState_GUID, 0x6fbf2a5f, 0x8b8f, 0x4920, 0x81,
-	    0x43, 0xe6, 0xc4, 0x60, 0xf5, 0x25, 0x24);
-DEFINE_GUID(MSNdis_QueryReceiveFilterCurrentCapabilities_GUID, 0x4054e80f,
-	    0x2bc1, 0x4ccc, 0xb0, 0x33, 0x4a, 0xbc, 0x0c, 0x4a, 0x1e,
-	    0x8c);
-DEFINE_GUID(MSNdis_QueryReceiveFilterGlobalParameters_GUID, 0x3f2c141a,
-	    0x83bc, 0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b,
-	    0xc3);
-DEFINE_GUID(MSNdis_QueryReceiveFilterHardwareCapabilities_GUID, 0x3f2c1419,
-	    0x83bc, 0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b,
-	    0xc3);
-DEFINE_GUID(MSNdis_QueryReceiveFilterParameters_GUID, 0x3f2c141e, 0x83bc,
-	    0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_QueryReceiveQueueParameters_GUID, 0x3f2c141c, 0x83bc,
-	    0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_QueryStatisticsInfo_GUID, 0x368c45b5, 0xc129, 0x43c1,
-	    0x93, 0x9e, 0x7e, 0xdc, 0x2d, 0x7f, 0xe6, 0x21);
-DEFINE_GUID(MSNdis_RSSEnabled_GUID, 0x9565cd55, 0x3402, 0x4e32, 0xa5, 0xb6,
-	    0x2f, 0x14, 0x3f, 0x2f, 0x2c, 0x30);
-DEFINE_GUID(MSNdis_ReceiveBlockSize_GUID, 0x5ec1035d, 0xa61a, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_ReceiveBufferSpace_GUID, 0x5ec1035b, 0xa61a, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_ReceiveError_GUID, 0x447956fd, 0xa61b, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_ReceiveFilterCapabilities_GUID, 0x146360a3, 0x88dd,
-	    0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveFilterFieldParameters_GUID, 0x146360ab, 0x88dd,
-	    0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveFilterGlobalParameters_GUID, 0x146360a4, 0x88dd,
-	    0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveFilterInfoArray_GUID, 0x146360aa, 0x88dd, 0x11dd,
-	    0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveFilterInfo_GUID, 0x146360a9, 0x88dd, 0x11dd,
-	    0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveFilterParameters_GUID, 0x146360ac, 0x88dd,
-	    0x11dd, 0x94, 0xb8, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveNoBuffer_GUID, 0x447956fe, 0xa61b, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_ReceiveQueueInfoArray_GUID, 0xf786fbd8, 0xc049, 0x11dd,
-	    0xb8, 0x85, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveQueueInfo_GUID, 0xf786fbd7, 0xc049, 0x11dd, 0xb8,
-	    0x85, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveQueueParameters_GUID, 0xf786fbd6, 0xc049, 0x11dd,
-	    0xb8, 0x85, 0x00, 0x1d, 0x09, 0x16, 0x2b, 0xc3);
-DEFINE_GUID(MSNdis_ReceiveScaleCapabilities_GUID, 0x26c28774, 0x4252,
-	    0x48fe, 0xa6, 0x10, 0xa5, 0x8a, 0x39, 0x8c, 0x0e, 0xb1);
-DEFINE_GUID(MSNdis_ReceivesOk_GUID, 0x447956fb, 0xa61b, 0x11d0, 0x8d, 0xd4,
-	    0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_SetHDSplitParameters_GUID, 0x8c048bea, 0x2913, 0x4458,
-	    0xb6, 0x8e, 0x17, 0xf6, 0xc1, 0xe5, 0xc6, 0x0e);
-DEFINE_GUID(MSNdis_SetInterruptModeration_GUID, 0xd789adfa, 0x9c56, 0x433b,
-	    0xad, 0x01, 0x75, 0x74, 0xf3, 0xce, 0xdb, 0xe9);
-DEFINE_GUID(MSNdis_SetLinkParameters_GUID, 0x8c7d3579, 0x252b, 0x4614,
-	    0x82, 0xc5, 0xa6, 0x50, 0xda, 0xa1, 0x50, 0x49);
-DEFINE_GUID(MSNdis_SetPortParameters_GUID, 0xaab6ac31, 0x86fb, 0x48fb,
-	    0x8b, 0x48, 0x63, 0xdb, 0x23, 0x5a, 0xce, 0x16);
-DEFINE_GUID(MSNdis_SetTcpOffloadParameters_GUID, 0x8ead9a22, 0x7f69,
-	    0x4bc6, 0x94, 0x9a, 0xc8, 0x18, 0x7b, 0x07, 0x4e, 0x61);
-DEFINE_GUID(MSNdis_StatisticsInfo_GUID, 0x8ecc74e1, 0xba85, 0x482e, 0xaf,
-	    0xaf, 0xb4, 0xf8, 0xb0, 0x87, 0xc0, 0x6b);
-DEFINE_GUID(MSNdis_StatusDevicePowerOffEx_GUID, 0x4159353c, 0x5cd7, 0x42ce,
-	    0x8f, 0xe4, 0xa4, 0x5a, 0x23, 0x80, 0xcc, 0x4f);
-DEFINE_GUID(MSNdis_StatusDevicePowerOff_GUID, 0x81bc8189, 0xb026, 0x46ab,
-	    0x64, 0xb9, 0xf1, 0x82, 0xe3, 0x42, 0x93, 0x4e);
-DEFINE_GUID(MSNdis_StatusDevicePowerOnEx_GUID, 0x2b440188, 0x92ac, 0x4f60,
-	    0x9b, 0x2d, 0x20, 0xa3, 0x0c, 0xbb, 0x6b, 0xbe);
-DEFINE_GUID(MSNdis_StatusDevicePowerOn_GUID, 0x5f81cfd0, 0xf046, 0x4342,
-	    0x61, 0xaf, 0x89, 0x5a, 0xce, 0xda, 0xef, 0xd9);
-DEFINE_GUID(MSNdis_StatusDot11AssociationCompletion_GUID, 0x458bbea7,
-	    0x45a4, 0x4ae2, 0xb1, 0x76, 0xe5, 0x1f, 0x96, 0xfc, 0x05,
-	    0x68);
-DEFINE_GUID(MSNdis_StatusDot11AssociationStart_GUID, 0x3927843b, 0x6980,
-	    0x4b48, 0xb1, 0x5b, 0x4d, 0xe5, 0x09, 0x77, 0xac, 0x40);
-DEFINE_GUID(MSNdis_StatusDot11ConnectionCompletion_GUID, 0x96efd9c9,
-	    0x7f1b, 0x4a89, 0xbc, 0x04, 0x3e, 0x9e, 0x27, 0x17, 0x65,
-	    0xf1);
-DEFINE_GUID(MSNdis_StatusDot11ConnectionStart_GUID, 0x7b74299d, 0x998f,
-	    0x4454, 0xad, 0x08, 0xc5, 0xaf, 0x28, 0x57, 0x6d, 0x1b);
-DEFINE_GUID(MSNdis_StatusDot11Disassociation_GUID, 0x3fbeb6fc, 0x0fe2,
-	    0x43fd, 0xb2, 0xad, 0xbd, 0x99, 0xb5, 0xf9, 0x3e, 0x13);
-DEFINE_GUID(MSNdis_StatusDot11LinkQuality_GUID, 0xa3285184, 0xea99, 0x48ed,
-	    0x82, 0x5e, 0xa4, 0x26, 0xb1, 0x1c, 0x27, 0x54);
-DEFINE_GUID(MSNdis_StatusDot11MPDUMaxLengthChange_GUID, 0x1d6560ec, 0x8e48,
-	    0x4a3e, 0x9f, 0xd5, 0xa0, 0x1b, 0x69, 0x8d, 0xb6, 0xc5);
-DEFINE_GUID(MSNdis_StatusDot11PhyStateChange_GUID, 0xdeb45316, 0x71b5,
-	    0x4736, 0xbd, 0xef, 0x0a, 0x9e, 0x9f, 0x4e, 0x62, 0xdc);
-DEFINE_GUID(MSNdis_StatusDot11PmkidCandidateList_GUID, 0x26d8b8f6, 0xdb82,
-	    0x49eb, 0x8b, 0xf3, 0x4c, 0x13, 0x0e, 0xf0, 0x69, 0x50);
-DEFINE_GUID(MSNdis_StatusDot11RoamingCompletion_GUID, 0xdd9d47d1, 0x282b,
-	    0x41e4, 0xb9, 0x24, 0x66, 0x36, 0x88, 0x17, 0xfc, 0xd3);
-DEFINE_GUID(MSNdis_StatusDot11RoamingStart_GUID, 0xb2412d0d, 0x26c8,
-	    0x4f4e, 0x93, 0xdf, 0xf7, 0xb7, 0x05, 0xa0, 0xb4, 0x33);
-DEFINE_GUID(MSNdis_StatusDot11ScanConfirm_GUID, 0x8500591e, 0xa0c7, 0x4efb,
-	    0x93, 0x42, 0xb6, 0x74, 0xb0, 0x02, 0xcb, 0xe6);
-DEFINE_GUID(MSNdis_StatusDot11TkipmicFailure_GUID, 0x442c2ae4, 0x9bc5,
-	    0x4b90, 0xa8, 0x89, 0x45, 0x5e, 0xf2, 0x20, 0xf4, 0xee);
-DEFINE_GUID(MSNdis_StatusHDSplitCurrentConfig_GUID, 0x6c744b0e, 0xee9c,
-	    0x4205, 0x90, 0xa2, 0x01, 0x5f, 0x6d, 0x65, 0xf4, 0x03);
-DEFINE_GUID(MSNdis_StatusLinkSpeedChange_GUID, 0x981f2d85, 0xb1f3, 0x11d0,
-	    0x8d, 0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_StatusLinkState_GUID, 0x64c6f797, 0x878c, 0x4311, 0x92,
-	    0x46, 0x65, 0xdb, 0xa8, 0x9c, 0x3a, 0x61);
-DEFINE_GUID(MSNdis_StatusMediaConnect_GUID, 0x981f2d7d, 0xb1f3, 0x11d0,
-	    0x8d, 0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_StatusMediaDisconnect_GUID, 0x981f2d7e, 0xb1f3, 0x11d0,
-	    0x8d, 0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_StatusMediaSpecificIndicationEx_GUID, 0xaaacfca7,
-	    0x954a, 0x4632, 0xa1, 0x6e, 0xa8, 0xa6, 0x37, 0x93, 0xa9,
-	    0xe5);
-DEFINE_GUID(MSNdis_StatusMediaSpecificIndication_GUID, 0x981f2d84, 0xb1f3,
-	    0x11d0, 0x8d, 0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_StatusNetworkChange_GUID, 0xca8a56f9, 0xce81, 0x40e6,
-	    0xa7, 0x0f, 0xa0, 0x67, 0xa4, 0x76, 0xe9, 0xe9);
-DEFINE_GUID(MSNdis_StatusOperationalStatus_GUID, 0xf917b663, 0x845e,
-	    0x4d3d, 0xb6, 0xd4, 0x15, 0xeb, 0x27, 0xaf, 0x81, 0xc5);
-DEFINE_GUID(MSNdis_StatusPacketFilterChange_GUID, 0xd47c5407, 0x2e75,
-	    0x46dd, 0x81, 0x46, 0x1d, 0x7e, 0xd2, 0xd6, 0xab, 0x1d);
-DEFINE_GUID(MSNdis_StatusPortState_GUID, 0x1dac0dfe, 0x43e5, 0x44b7, 0xb7,
-	    0x59, 0x7b, 0xf4, 0x6d, 0xe3, 0x2e, 0x81);
-DEFINE_GUID(MSNdis_StatusProtocolBind_GUID, 0x5413531c, 0xb1f3, 0x11d0,
-	    0xd7, 0x8d, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_StatusProtocolUnbind_GUID, 0x6e3ce1ec, 0xb1f3, 0x11d0,
-	    0xd7, 0x8d, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_StatusResetEnd_GUID, 0x981f2d77, 0xb1f3, 0x11d0, 0x8d,
-	    0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_StatusResetStart_GUID, 0x981f2d76, 0xb1f3, 0x11d0, 0x8d,
-	    0xd7, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_StatusTaskOffloadChange_GUID, 0x45049fc6, 0x54d8,
-	    0x40c8, 0x9c, 0x3d, 0xb0, 0x11, 0xc4, 0xe7, 0x15, 0xbc);
-DEFINE_GUID(MSNdis_TcpConnectionOffloadCurrentConfig_GUID, 0x2ee6aef1,
-	    0x0851, 0x458b, 0xbf, 0x0d, 0x79, 0x23, 0x43, 0xd1, 0xcd,
-	    0xe1);
-DEFINE_GUID(MSNdis_TcpConnectionOffloadHardwareConfig_GUID, 0x8ce71f2c,
-	    0xd63a, 0x4390, 0xa4, 0x87, 0x18, 0xfa, 0x47, 0x26, 0x2c,
-	    0xeb);
-DEFINE_GUID(MSNdis_TcpOffloadCurrentConfig_GUID, 0x68542fed, 0x5c74,
-	    0x461e, 0x89, 0x34, 0x91, 0xc6, 0xf9, 0xc6, 0x09, 0x60);
-DEFINE_GUID(MSNdis_TcpOffloadHardwareConfig_GUID, 0xcd5f1102, 0x590f,
-	    0x4ada, 0xab, 0x65, 0x5b, 0x31, 0xb1, 0xdc, 0x01, 0x72);
-DEFINE_GUID(MSNdis_TcpOffloadParameters_GUID, 0x43fe82d8, 0x3468, 0x497e,
-	    0x9d, 0xcf, 0xf8, 0xff, 0xc0, 0x13, 0x37, 0x44);
-DEFINE_GUID(MSNdis_TokenRingCurrentAddress_GUID, 0x44795708, 0xa61b,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TokenRingCurrentFunctional_GUID, 0x44795709, 0xa61b,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TokenRingCurrentGroup_GUID, 0x4479570a, 0xa61b, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TokenRingCurrentRingState_GUID, 0xacf14032, 0xa61c,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TokenRingCurrentRingStatus_GUID, 0x890a36ec, 0xa61c,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TokenRingLastOpenStatus_GUID, 0x4479570b, 0xa61b,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TokenRingLineErrors_GUID, 0xacf14033, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TokenRingLostFrames_GUID, 0xacf14034, 0xa61c, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TokenRingPermanentAddress_GUID, 0x44795707, 0xa61b,
-	    0x11d0, 0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TransmitBlockSize_GUID, 0x5ec1035c, 0xa61a, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TransmitBufferSpace_GUID, 0x5ec1035a, 0xa61a, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TransmitsError_GUID, 0x447956fc, 0xa61b, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_TransmitsOk_GUID, 0x447956fa, 0xa61b, 0x11d0, 0x8d,
-	    0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_VendorDescription_GUID, 0x5ec1035f, 0xa61a, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_VendorDriverVersion_GUID, 0x447956f9, 0xa61b, 0x11d0,
-	    0x8d, 0xd4, 0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_VendorID_GUID, 0x5ec1035e, 0xa61a, 0x11d0, 0x8d, 0xd4,
-	    0x00, 0xc0, 0x4f, 0xc3, 0x35, 0x8c);
-DEFINE_GUID(MSNdis_VlanIdentifier_GUID, 0x765dc702, 0xc5e8, 0x4b67, 0x84,
-	    0x3b, 0x3f, 0x5a, 0x4f, 0xf2, 0x64, 0x8b);
-DEFINE_GUID(MSNdis_WmiEnumAdapter_GUID, 0xe7001b59, 0xc3d6, 0x4537, 0xb4,
-	    0x0e, 0xa1, 0x63, 0xd5, 0x16, 0xe4, 0xa3);
-DEFINE_GUID(MSNdis_WmiHDSplitCurrentConfig_GUID, 0x34ff16bf, 0x30ca,
-	    0x4a2a, 0xa4, 0x6d, 0xc7, 0xee, 0x74, 0xbc, 0x35, 0x82);
-DEFINE_GUID(MSNdis_WmiIPSecOffloadV1_GUID, 0x4ec63447, 0x2238, 0x43a7,
-	    0xac, 0x33, 0x11, 0xc7, 0xcc, 0x7d, 0x86, 0x65);
-DEFINE_GUID(MSNdis_WmiIPSecOffloadV1_IPv4AH_GUID, 0x29bacfdd, 0xf063,
-	    0x48d8, 0x95, 0x2c, 0xd3, 0xdc, 0x93, 0x30, 0x0f, 0x15);
-DEFINE_GUID(MSNdis_WmiIPSecOffloadV1_IPv4ESP_GUID, 0x86522023, 0x4536,
-	    0x4b58, 0xa1, 0xf4, 0x25, 0x38, 0x94, 0x1a, 0xce, 0x43);
-DEFINE_GUID(MSNdis_WmiIPSecOffloadV1_Supported_GUID, 0xf86676b9, 0xd9fa,
-	    0x4d26, 0x95, 0xce, 0xbf, 0xbc, 0x77, 0xd8, 0x05, 0x96);
-DEFINE_GUID(MSNdis_WmiMethodHeader_GUID, 0xe3eac9dd, 0x2fd3, 0x4963, 0xbf,
-	    0xfd, 0xb4, 0x69, 0x28, 0x88, 0xc0, 0xd4);
-DEFINE_GUID(MSNdis_WmiOffload_GUID, 0x7a877086, 0x2204, 0x4a8a, 0x92, 0xa4,
-	    0xe3, 0xe8, 0xab, 0x62, 0x66, 0x29);
-DEFINE_GUID(MSNdis_WmiOutputInfo_GUID, 0x7510bb9d, 0xdf70, 0x4f7e, 0xba,
-	    0x07, 0xe2, 0x9d, 0x33, 0x0b, 0x3c, 0xc5);
-DEFINE_GUID(MSNdis_WmiReceiveScaleCapabilities_GUID, 0xf7a4960a, 0xace3,
-	    0x44dc, 0xb5, 0x1e, 0x72, 0xe0, 0x5c, 0x5e, 0xaf, 0xa8);
-DEFINE_GUID(MSNdis_WmiSetHeader_GUID, 0x3b5605d8, 0x1aaf, 0x4ff6, 0x85,
-	    0xb9, 0xbc, 0x5f, 0xb9, 0x73, 0xdc, 0x54);
-DEFINE_GUID(MSNdis_WmiTcpConnectionOffload_GUID, 0x93cfcd3f, 0x6228,
-	    0x455c, 0x90, 0x5e, 0x3a, 0xb8, 0x0a, 0x2f, 0xf0, 0x90);
-DEFINE_GUID(MSNdis_WmiTcpIpChecksumOffload_GUID, 0x189d4015, 0x1b25,
-	    0x4d8e, 0xa4, 0xa9, 0xf9, 0xeb, 0xa8, 0x21, 0x97, 0xc7);
-DEFINE_GUID(MSNdis_WmiTcpIpChecksumOffload_IPv4TransmitReceive_GUID,
-	    0xd63d537a, 0x59c1, 0x4fae, 0x8f, 0x9b, 0xcd, 0x9f, 0xbb, 0xec,
-	    0xb8, 0x5a);
-DEFINE_GUID(MSNdis_WmiTcpIpChecksumOffload_IPv6TransmitReceive_GUID,
-	    0xb9760e75, 0x6662, 0x49e4, 0xaa, 0x6c, 0xf0, 0x28, 0xbe, 0xfe,
-	    0xc8, 0xee);
-DEFINE_GUID(MSNdis_WmiTcpLargeSendOffloadV1_GUID, 0xb9e4e2f9, 0xee89,
-	    0x4756, 0xb0, 0x57, 0x38, 0xf9, 0xd9, 0xb5, 0x9a, 0x92);
-DEFINE_GUID(MSNdis_WmiTcpLargeSendOffloadV1_IPv4_GUID, 0xd7673b11, 0xe892,
-	    0x4a9d, 0x8b, 0xd8, 0x76, 0x1f, 0xf2, 0x56, 0xed, 0xd9);
-DEFINE_GUID(MSNdis_WmiTcpLargeSendOffloadV2_GUID, 0x592977c2, 0xcfbe,
-	    0x462c, 0xb5, 0xcf, 0x1a, 0x76, 0x79, 0xfe, 0x1c, 0xba);
-DEFINE_GUID(MSNdis_WmiTcpLargeSendOffloadV2_IPv4_GUID, 0x8823d030, 0xfa30,
-	    0x4b73, 0xb3, 0x39, 0xdb, 0x19, 0x20, 0x7f, 0x0d, 0x81);
-DEFINE_GUID(MSNdis_WmiTcpLargeSendOffloadV2_IPv6_GUID, 0xa7a9597c, 0x2f8e,
-	    0x410b, 0x9b, 0xb3, 0x5c, 0x3a, 0x50, 0x79, 0x2b, 0xfc);
-DEFINE_GUID(MSParallel_AllocFreeCounts_GUID, 0x4bbb69ea, 0x6853, 0x11d2,
-	    0x8e, 0xce, 0x00, 0xc0, 0x4f, 0x8e, 0xf4, 0x81);
-DEFINE_GUID(MSParallel_DeviceBytesTransferred_GUID, 0x89fef2d6, 0x654b,
-	    0x11d2, 0x9e, 0x15, 0x00, 0xc0, 0x4f, 0x8e, 0xf4, 0x81);
-DEFINE_GUID(MSPower_DeviceEnable_GUID, 0x827c0a6f, 0xfeb0, 0x11d0, 0xbd,
-	    0x26, 0x00, 0xaa, 0x00, 0xb7, 0xb3, 0x2a);
-DEFINE_GUID(MSPower_DeviceWakeEnable_GUID, 0xa9546a82, 0xfeb0, 0x11d0,
-	    0xbd, 0x26, 0x00, 0xaa, 0x00, 0xb7, 0xb3, 0x2a);
-DEFINE_GUID(MSRedbook_DriverInformationGuid, 0xb90550e7, 0xae0a, 0x11d1,
-	    0xa5, 0x71, 0x00, 0xc0, 0x4f, 0xa3, 0x47, 0x30);
-DEFINE_GUID(MSRedbook_PerformanceGuid, 0xb90550e8, 0xae0a, 0x11d1, 0xa5,
-	    0x71, 0x00, 0xc0, 0x4f, 0xa3, 0x47, 0x30);
-DEFINE_GUID(MSSerial_CommInfo_GUID, 0xedb16a62, 0xb16c, 0x11d1, 0xbd, 0x98,
-	    0x00, 0xa0, 0xc9, 0x06, 0xbe, 0x2d);
-DEFINE_GUID(MSSerial_CommProperties_GUID, 0x8209ec2a, 0x2d6b, 0x11d2, 0xba,
-	    0x49, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSSerial_HardwareConfiguration_GUID, 0x270b9b86, 0xb16d,
-	    0x11d1, 0xbd, 0x98, 0x00, 0xa0, 0xc9, 0x06, 0xbe, 0x2d);
-DEFINE_GUID(MSSerial_PerformanceInformation_GUID, 0x56415acc, 0xb16d,
-	    0x11d1, 0xbd, 0x98, 0x00, 0xa0, 0xc9, 0x06, 0xbe, 0x2d);
-DEFINE_GUID(MSSerial_PortName_GUID, 0xa0ec11a8, 0xb16c, 0x11d1, 0xbd, 0x98,
-	    0x00, 0xa0, 0xc9, 0x06, 0xbe, 0x2d);
-DEFINE_GUID(MSSmBios_RawSMBiosTables_GUID, 0x8f680850, 0xa584, 0x11d1,
-	    0xbf, 0x38, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSSmBios_SMBiosEventlog_GUID, 0x8f680851, 0xa584, 0x11d1, 0xbf,
-	    0x38, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSSmBios_Sysid1394List_GUID, 0x8f680855, 0xa584, 0x11d1, 0xbf,
-	    0x38, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSSmBios_Sysid1394_GUID, 0x8f680854, 0xa584, 0x11d1, 0xbf,
-	    0x38, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSSmBios_SysidUUIDList_GUID, 0x8f680853, 0xa584, 0x11d1, 0xbf,
-	    0x38, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSSmBios_SysidUUID_GUID, 0x8f680852, 0xa584, 0x11d1, 0xbf,
-	    0x38, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSStorageDriver_ATAPISmartData_GUID, 0x78ebc103, 0x4cf9,
-	    0x11d2, 0xba, 0x4a, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSStorageDriver_FailurePredictData_GUID, 0x78ebc103, 0x4cf9,
-	    0x11d2, 0xba, 0x4a, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSStorageDriver_FailurePredictEvent_GUID, 0x78ebc104, 0x4cf9,
-	    0x11d2, 0xba, 0x4a, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSStorageDriver_FailurePredictFunction_GUID, 0x78ebc105,
-	    0x4cf9, 0x11d2, 0xba, 0x4a, 0x00, 0xa0, 0xc9, 0x06, 0x29,
-	    0x10);
-DEFINE_GUID(MSStorageDriver_FailurePredictStatus_GUID, 0x78ebc102, 0x4cf9,
-	    0x11d2, 0xba, 0x4a, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSStorageDriver_FailurePredictThresholds_GUID, 0xdae10783,
-	    0xcc31, 0x4d2a, 0x8a, 0x0f, 0x86, 0x1c, 0x04, 0x07, 0x7a,
-	    0x95);
-DEFINE_GUID(MSStorageDriver_ScsiInfoExceptions_GUID, 0x1101d829, 0x167b,
-	    0x4ebf, 0xac, 0xae, 0x28, 0xca, 0xb7, 0xc3, 0x48, 0x02);
-DEFINE_GUID(MSTapeDriveParam_GUID, 0xb9a8cfd5, 0x8d72, 0x47a4, 0xac, 0x0e,
-	    0x28, 0x4a, 0x32, 0x00, 0xf4, 0xfb);
-DEFINE_GUID(MSTapeDriveProblemEvent_GUID, 0xbc4dd36c, 0xfa66, 0x4080, 0x87,
-	    0xa0, 0x0c, 0x59, 0x22, 0xeb, 0x78, 0x87);
-DEFINE_GUID(MSTapeMediaCapacity_GUID, 0x8c2147a4, 0xff29, 0x4336, 0xb8,
-	    0xa4, 0x22, 0x7b, 0x54, 0xcc, 0x09, 0x66);
-DEFINE_GUID(MSTapeProblemDeviceError_GUID, 0x43ec6b13, 0x10bb, 0x4bf6,
-	    0xb7, 0x16, 0x1c, 0x1e, 0x2f, 0x10, 0xbb, 0x5f);
-DEFINE_GUID(MSTapeProblemIoError_GUID, 0x58fd29f9, 0xb516, 0x40fd, 0x87,
-	    0x1a, 0x7e, 0xe7, 0x6d, 0x5b, 0xb5, 0x3e);
-DEFINE_GUID(MSTapeSymbolicName_GUID, 0x3fb828f7, 0xf119, 0x4066, 0xb1,
-	    0xe6, 0xdb, 0x40, 0x7c, 0xe9, 0xde, 0x91);
-DEFINE_GUID(MSVerifierIrpLogEntry_GUID, 0x45068237, 0x595d, 0x4c7d, 0xbd,
-	    0x80, 0xf8, 0x4a, 0xdc, 0x02, 0x57, 0xf8);
-DEFINE_GUID(MSVerifierIrpLogInformation_GUID, 0x1e2c2980, 0xf7db, 0x46aa,
-	    0x82, 0x0e, 0x87, 0x34, 0xfc, 0xc2, 0x1f, 0x4c);
-DEFINE_GUID(MSWmi_GuidRegistrationInfo_GUID, 0xb48d49a1, 0xe777, 0x11d0,
-	    0xa5, 0x0c, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSWmi_Guid_GUID, 0xf8c60aed, 0xef8d, 0x4f95, 0x9e, 0xa8, 0xf0,
-	    0x43, 0x18, 0xa0, 0x0f, 0x30);
-DEFINE_GUID(MSWmi_MofData_GUID, 0x05901221, 0xd566, 0x11d1, 0xb2, 0xf0,
-	    0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSWmi_PnPDeviceId_GUID, 0xc7bf35d2, 0xaadb, 0x11d1, 0xbf, 0x4a,
-	    0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSWmi_PnPInstanceNames_GUID, 0xc7bf35d3, 0xaadb, 0x11d1, 0xbf,
-	    0x4a, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(MSWmi_ProviderInfo_GUID, 0xc7bf35d0, 0xaadb, 0x11d1, 0xbf,
-	    0x4a, 0x00, 0xa0, 0xc9, 0x06, 0x29, 0x10);
-DEFINE_GUID(ProcessorPerformance_GUID, 0x7fd18652, 0x0cfe, 0x40d2, 0xb0,
-	    0xa1, 0x0b, 0x06, 0x6a, 0x87, 0x75, 0x9e);
-DEFINE_GUID(RegisteredGuids_GUID, 0xe3dff7bd, 0x3915, 0x11d2, 0x91, 0x03,
-	    0x00, 0xc0, 0x4f, 0xb9, 0x98, 0xa2);
-DEFINE_GUID(VideoModeDescriptor_GUID, 0x4a97ed30, 0xbfaa, 0x491a, 0x9d,
-	    0xfd, 0xb4, 0x3a, 0xde, 0xdb, 0xf8, 0xe3);
-DEFINE_GUID(WHEAErrorInjectionMethods_GUID, 0xe808ff73, 0x2093, 0x472a,
-	    0xa5, 0xcc, 0xdf, 0x24, 0xf0, 0x31, 0xb0, 0x35);
-DEFINE_GUID(WHEAErrorSourceMethods_GUID, 0x91c3c007, 0x185d, 0x4d78, 0xa7,
-	    0x51, 0xbf, 0xcb, 0x31, 0xc2, 0xc6, 0x4d);
-DEFINE_GUID(WmiMonitorAnalogVideoInputParams_GUID, 0xa56dbcf9, 0xc4f0,
-	    0x44a8, 0x9c, 0x1b, 0xbb, 0x3b, 0x3f, 0x77, 0x4b, 0x4d);
-DEFINE_GUID(WmiMonitorBasicDisplayParams_GUID, 0x9831b7e6, 0x09ac, 0x491f,
-	    0x8d, 0x07, 0x3c, 0x3d, 0x64, 0x9d, 0x82, 0x40);
-DEFINE_GUID(WmiMonitorBrightnessEvent_GUID, 0x123c80d2, 0x937f, 0x4cfe,
-	    0x80, 0xf4, 0xc4, 0x0d, 0x59, 0x6e, 0x48, 0xb7);
-DEFINE_GUID(WmiMonitorBrightnessMethods_GUID, 0x479b20b4, 0x5559, 0x46fe,
-	    0xbe, 0x97, 0x7d, 0x22, 0x21, 0x54, 0x42, 0x1f);
-DEFINE_GUID(WmiMonitorBrightness_GUID, 0xd43412ac, 0x67f9, 0x4fbb, 0xa0,
-	    0x81, 0x17, 0x52, 0xa2, 0xc3, 0x3e, 0x84);
-DEFINE_GUID(WmiMonitorColorCharacteristics_GUID, 0xea324793, 0x51bb,
-	    0x486a, 0xaa, 0x9d, 0x0f, 0x55, 0x52, 0x35, 0x34, 0x13);
-DEFINE_GUID(WmiMonitorColorXYZinCIE_GUID, 0x01faf041, 0x842c, 0x4230, 0xa3,
-	    0x1e, 0x13, 0x35, 0x42, 0x8c, 0xd8, 0xf0);
-DEFINE_GUID(WmiMonitorConnectionParams_GUID, 0x2e2d2463, 0xb537, 0x4da7,
-	    0x8e, 0xee, 0x51, 0x30, 0x6f, 0x1f, 0x48, 0x2f);
-DEFINE_GUID(WmiMonitorDescriptorMethods_GUID, 0x5341576e, 0x75c4, 0x4aeb,
-	    0xa8, 0x2b, 0x87, 0x3c, 0xd3, 0xc6, 0xb3, 0x84);
-DEFINE_GUID(WmiMonitorDigitalVideoInputParams_GUID, 0x51565945, 0x498a,
-	    0x4a77, 0xac, 0xc6, 0x15, 0x1b, 0xec, 0xc8, 0x05, 0xca);
-DEFINE_GUID(WmiMonitorID_GUID, 0x671a8285, 0x4edb, 0x4cae, 0x99, 0xfe,
-	    0x69, 0xa1, 0x5c, 0x48, 0xc0, 0xbc);
-DEFINE_GUID(WmiMonitorListedFrequencyRanges_GUID, 0xe86e9525, 0x65b6,
-	    0x4b85, 0x95, 0xc5, 0x00, 0xbe, 0xac, 0xc9, 0x75, 0xed);
-DEFINE_GUID(WmiMonitorListedSupportedSourceModes_GUID, 0x6dc76655, 0x063c,
-	    0x4524, 0xa8, 0x62, 0xb8, 0x41, 0x0c, 0x26, 0x28, 0x1b);
-DEFINE_GUID(WmiMonitorRawEEdidV1Block_GUID, 0xfaee1471, 0x5149, 0x4a68,
-	    0xac, 0x2c, 0xbf, 0x96, 0xec, 0x09, 0xf0, 0x04);
-DEFINE_GUID(WmiMonitorSupportedDisplayFeatures_GUID, 0x9fa9c28b, 0x5e5c,
-	    0x4035, 0xa5, 0xf8, 0x67, 0xd4, 0x55, 0x4f, 0x8d, 0x04);
+#ifdef INITGUID
+#ifdef __cplusplus
+#define WMIDATA_H_DEFINE_WMI_GUID(name, def)		\
+    EXTERN_C const GUID DECLSPEC_SELECTANY name = def
+#else
+#define WMIDATA_H_DEFINE_WMI_GUID(name, def)	\
+    const GUID DECLSPEC_SELECTANY name = def
+#endif
+#else
+#define WMIDATA_H_DEFINE_WMI_GUID(name, def)	\
+    EXTERN_C const GUID name
+#endif	/* defined(INITGUID) */
+
+WMIDATA_H_DEFINE_WMI_GUID(FrequencyRangeDescriptor_GUID,
+			  FrequencyRangeDescriptorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(IdleAccountingEx_GUID,
+			  IdleAccountingExGuid);
+WMIDATA_H_DEFINE_WMI_GUID(IdleAccounting_GUID,
+			  IdleAccountingGuid);
+WMIDATA_H_DEFINE_WMI_GUID(IdleStateAccountingEx_GUID,
+			  IdleStateAccountingExGuid);
+WMIDATA_H_DEFINE_WMI_GUID(IdleStateAccounting_GUID,
+			  IdleStateAccountingGuid);
+WMIDATA_H_DEFINE_WMI_GUID(IdleStateBucketEx_GUID,
+			  IdleStateBucketExGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelIdleStateChange_GUID,
+			  KernelIdleStateChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelIdleState_GUID,
+			  KernelIdleStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelIdleStates_GUID,
+			  KernelIdleStatesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelPerfStateChange_GUID,
+			  KernelPerfStateChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelPerfStateDomainChange_GUID,
+			  KernelPerfStateDomainChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelPerfState_GUID,
+			  KernelPerfStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelPerfStates_GUID,
+			  KernelPerfStatesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelThermalConstraintChange_GUID,
+			  KernelThermalConstraintChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(KernelThermalPolicyChange_GUID,
+			  KernelThermalPolicyChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSAcpiInfo_GUID,
+			  MSAcpiInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSAcpi_ThermalZoneTemperature_GUID,
+			  MSAcpi_ThermalZoneTemperatureGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSAgp_Information_GUID,
+			  AGP_WMI_STD_DATA_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSChangerParameters_GUID,
+			  WMI_CHANGER_PARAMETERS_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSChangerProblemDeviceError_GUID,
+			  WMI_CHANGER_PROBLEM_DEVICE_ERROR_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSChangerProblemEvent_GUID,
+			  WMI_CHANGER_PROBLEM_WARNING_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSDeviceUI_FirmwareRevision_GUID,
+			  DEVICE_UI_FIRMWARE_REVISION_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSDiskDriver_Geometry_GUID,
+			  MSDiskDriver_GeometryGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSDiskDriver_PerformanceData_GUID,
+			  MSDiskDriver_PerformanceDataGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSDiskDriver_Performance_GUID,
+			  MSDiskDriver_PerformanceGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSIde_PortDeviceInfo_GUID,
+			  MSIde_PortDeviceInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSKeyboard_ClassInformation_GUID,
+			  MSKeyboard_ClassInformationGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSKeyboard_ExtendedID_GUID,
+			  KEYBOARD_PORT_WMI_EXTENDED_ID);
+WMIDATA_H_DEFINE_WMI_GUID(MSKeyboard_PortInformation_GUID,
+			  KEYBOARD_PORT_WMI_STD_DATA_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_BusError_GUID,
+			  MSMCAEvent_BusErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_CPUError_GUID,
+			  MSMCAEvent_CPUErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_Header_GUID,
+			  MSMCAEvent_HeaderGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_InvalidError_GUID,
+			  MSMCAEvent_InvalidErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_MemoryError_GUID,
+			  MSMCAEvent_MemoryErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_MemoryHierarchyError_GUID,
+			  MSMCAEvent_MemoryHierarchyErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_MemoryPageRemoved_GUID,
+			  MSMCAEvent_MemoryPageRemovedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_PCIBusError_GUID,
+			  MSMCAEvent_PCIBusErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_PCIComponentError_GUID,
+			  MSMCAEvent_PCIComponentErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_PlatformSpecificError_GUID,
+			  MSMCAEvent_PlatformSpecificErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_SMBIOSError_GUID,
+			  MSMCAEvent_SMBIOSErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_SwitchToCMCPolling_GUID,
+			  MSMCAEvent_SwitchToCMCPollingGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_SwitchToCPEPolling_GUID,
+			  MSMCAEvent_SwitchToCPEPollingGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_SystemEventError_GUID,
+			  MSMCAEvent_SystemEventErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAEvent_TLBError_GUID,
+			  MSMCAEvent_TLBErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAInfo_Entry_GUID,
+			  MSMCAInfo_EntryGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAInfo_RawCMCEvent_GUID,
+			  MSMCAInfo_RawCMCEventGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAInfo_RawCorrectedPlatformEvent_GUID,
+			  MSMCAInfo_RawCorrectedPlatformEventGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAInfo_RawMCAData_GUID,
+			  MSMCAInfo_RawMCADataGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMCAInfo_RawMCAEvent_GUID,
+			  MSMCAInfo_RawMCAEventGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMouse_ClassInformation_GUID,
+			  MSMouse_ClassInformationGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSMouse_PortInformation_GUID,
+			  POINTER_PORT_WMI_STD_DATA_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_AddWEP_GUID,
+			  MSNdis_80211_AddWEPGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_AuthenticationMode_GUID,
+			  MSNdis_80211_AuthenticationModeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_BSSIList_GUID,
+			  MSNdis_80211_BSSIListGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_BaseServiceSetIdentifier_GUID,
+			  MSNdis_80211_BaseServiceSetIdentifierGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_BssIdListScan_GUID,
+			  MSNdis_80211_BssIdListScanGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_ConfigurationFH_GUID,
+			  MSNdis_80211_ConfigurationFHGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_ConfigurationInfo_GUID,
+			  MSNdis_80211_ConfigurationInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_Configuration_GUID,
+			  MSNdis_80211_ConfigurationGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_DataRates_GUID,
+			  MSNdis_80211_DataRatesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_DesiredDataRates_GUID,
+			  MSNdis_80211_DesiredDataRatesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_Disassociate_GUID,
+			  MSNdis_80211_DisassociateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_FragmentationThreshold_GUID,
+			  MSNdis_80211_FragmentationThresholdGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_InfrastructureMode_GUID,
+			  MSNdis_80211_InfrastructureModeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_NetworkInfrastructure_GUID,
+			  MSNdis_80211_NetworkInfrastructureGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_NetworkTypeInUse_GUID,
+			  MSNdis_80211_NetworkTypeInUseGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_NetworkType_GUID,
+			  MSNdis_80211_NetworkTypeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_NetworkTypesSupported_GUID,
+			  MSNdis_80211_NetworkTypesSupportedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_NumberOfAntennas_GUID,
+			  MSNdis_80211_NumberOfAntennasGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_PowerMode_GUID,
+			  MSNdis_80211_PowerModeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_PrivacyFilter_GUID,
+			  MSNdis_80211_PrivacyFilterGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_RTSThreshold_GUID,
+			  MSNdis_80211_RTSThresholdGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_ReceiveAntennaSelected_GUID,
+			  MSNdis_80211_ReceiveAntennaSelectedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_ReceivedSignalStrengthEventTrigger_GUID,
+			  MSNdis_80211_ReceivedSignalStrengthEventTriggerGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_ReceivedSignalStrength_GUID,
+			  MSNdis_80211_ReceivedSignalStrengthGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_ReloadDefaults_GUID,
+			  MSNdis_80211_ReloadDefaultsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_RemoveWEP_GUID,
+			  MSNdis_80211_RemoveWEPGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_ServiceSetIdentifier_GUID,
+			  MSNdis_80211_ServiceSetIdentifierGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_Statistics_GUID,
+			  MSNdis_80211_StatisticsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_TransmitAntennaSelected_GUID,
+			  MSNdis_80211_TransmitAntennaSelectedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_TransmitPowerLevel_GUID,
+			  MSNdis_80211_TransmitPowerLevelGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_WEPStatus_GUID,
+			  MSNdis_80211_WEPStatusGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_80211_WLanBssId_GUID,
+			  MSNdis_80211_WLanBssIdGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmHardwareCurrentAddress_GUID,
+			  MSNdis_AtmHardwareCurrentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmMaxAal0PacketSize_GUID,
+			  MSNdis_AtmMaxAal0PacketSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmMaxAal1PacketSize_GUID,
+			  MSNdis_AtmMaxAal1PacketSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmMaxAal34PacketSize_GUID,
+			  MSNdis_AtmMaxAal34PacketSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmMaxAal5PacketSize_GUID,
+			  MSNdis_AtmMaxAal5PacketSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmMaxActiveVciBits_GUID,
+			  MSNdis_AtmMaxActiveVciBitsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmMaxActiveVcs_GUID,
+			  MSNdis_AtmMaxActiveVcsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmMaxActiveVpiBits_GUID,
+			  MSNdis_AtmMaxActiveVpiBitsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmReceiveCellsDropped_GUID,
+			  MSNdis_AtmReceiveCellsDroppedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmReceiveCellsOk_GUID,
+			  MSNdis_AtmReceiveCellsOkGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmSupportedAalTypes_GUID,
+			  MSNdis_AtmSupportedAalTypesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmSupportedServiceCategory_GUID,
+			  MSNdis_AtmSupportedServiceCategoryGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmSupportedVcRates_GUID,
+			  MSNdis_AtmSupportedVcRatesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_AtmTransmitCellsOk_GUID,
+			  MSNdis_AtmTransmitCellsOkGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoDriverVersion_GUID,
+			  MSNdis_CoDriverVersionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoHardwareStatus_GUID,
+			  MSNdis_CoHardwareStatusGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoLinkSpeed_GUID,
+			  MSNdis_CoLinkSpeedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoMacOptions_GUID,
+			  MSNdis_CoMacOptionsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoMediaConnectStatus_GUID,
+			  MSNdis_CoMediaConnectStatusGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoMediaInUse_GUID,
+			  MSNdis_CoMediaInUseGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoMediaSupported_GUID,
+			  MSNdis_CoMediaSupportedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoMinimumLinkSpeed_GUID,
+			  MSNdis_CoMinimumLinkSpeedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoReceivePduErrors_GUID,
+			  MSNdis_CoReceivePduErrorsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoReceivePdusNoBuffer_GUID,
+			  MSNdis_CoReceivePdusNoBufferGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoReceivePdusOk_GUID,
+			  MSNdis_CoReceivePdusOkGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoTransmitPduErrors_GUID,
+			  MSNdis_CoTransmitPduErrorsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoTransmitPdusOk_GUID,
+			  MSNdis_CoTransmitPdusOkGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoVendorDescription_GUID,
+			  MSNdis_CoVendorDescriptionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoVendorDriverVersion_GUID,
+			  MSNdis_CoVendorDriverVersionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CoVendorId_GUID,
+			  MSNdis_CoVendorIdGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CountedString_GUID,
+			  MSNdis_CountedStringGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CurrentLookahead_GUID,
+			  MSNdis_CurrentLookaheadGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_CurrentPacketFilter_GUID,
+			  MSNdis_CurrentPacketFilterGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_DeviceWakeOnMagicPacketOnly_GUID,
+			  MSNdis_DeviceWakeOnMagicPacketOnlyGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_DriverVersion_GUID,
+			  MSNdis_DriverVersionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EnumerateAdapterEx_GUID,
+			  MSNdis_EnumerateAdapterExGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EnumerateAdapter_GUID,
+			  MSNdis_EnumerateAdapterGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EnumeratePorts_GUID,
+			  MSNdis_EnumeratePortsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EnumerateReceiveFilters_GUID,
+			  MSNdis_EnumerateReceiveFiltersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EnumerateReceiveQueues_GUID,
+			  MSNdis_EnumerateReceiveQueuesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EthernetCurrentAddress_GUID,
+			  MSNdis_EthernetCurrentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EthernetMacOptions_GUID,
+			  MSNdis_EthernetMacOptionsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EthernetMaximumMulticastListSize_GUID,
+			  MSNdis_EthernetMaximumMulticastListSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EthernetMoreTransmitCollisions_GUID,
+			  MSNdis_EthernetMoreTransmitCollisionsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EthernetMulticastList_GUID,
+			  MSNdis_EthernetMulticastListGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EthernetOneTransmitCollision_GUID,
+			  MSNdis_EthernetOneTransmitCollisionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EthernetPermanentAddress_GUID,
+			  MSNdis_EthernetPermanentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_EthernetReceiveErrorAlignment_GUID,
+			  MSNdis_EthernetReceiveErrorAlignmentGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiAttachmentType_GUID,
+			  MSNdis_FddiAttachmentTypeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiDownstreamNodeLong_GUID,
+			  MSNdis_FddiDownstreamNodeLongGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiFrameErrors_GUID,
+			  MSNdis_FddiFrameErrorsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiFramesLost_GUID,
+			  MSNdis_FddiFramesLostGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiLConnectionState_GUID,
+			  MSNdis_FddiLConnectionStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiLctFailures_GUID,
+			  MSNdis_FddiLctFailuresGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiLemRejects_GUID,
+			  MSNdis_FddiLemRejectsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiLongCurrentAddress_GUID,
+			  MSNdis_FddiLongCurrentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiLongMaximumListSize_GUID,
+			  MSNdis_FddiLongMaximumListSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiLongMulticastList_GUID,
+			  MSNdis_FddiLongMulticastListGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiLongPermanentAddress_GUID,
+			  MSNdis_FddiLongPermanentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiRingManagmentState_GUID,
+			  MSNdis_FddiRingManagmentStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiShortCurrentAddress_GUID,
+			  MSNdis_FddiShortCurrentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiShortMaximumListSize_GUID,
+			  MSNdis_FddiShortMaximumListSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiShortMulticastList_GUID,
+			  MSNdis_FddiShortMulticastListGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiShortPermanentAddress_GUID,
+			  MSNdis_FddiShortPermanentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_FddiUpstreamNodeLong_GUID,
+			  MSNdis_FddiUpstreamNodeLongGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_GroupAffinity_GUID,
+			  MSNdis_GroupAffinityGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_HDSplitCurrentConfig_GUID,
+			  MSNdis_HDSplitCurrentConfigGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_HDSplitParameters_GUID,
+			  MSNdis_HDSplitParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_HardwareStatus_GUID,
+			  MSNdis_HardwareStatusGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_InterruptModerationParameters_GUID,
+			  MSNdis_InterruptModerationParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_LinkParameters_GUID,
+			  MSNdis_LinkParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_LinkSpeed_GUID,
+			  MSNdis_LinkSpeedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_LinkStateData_GUID,
+			  MSNdis_LinkStateDataGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_LinkState_GUID,
+			  MSNdis_LinkStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_MacOptions_GUID,
+			  MSNdis_MacOptionsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_MaximumFrameSize_GUID,
+			  MSNdis_MaximumFrameSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_MaximumLookahead_GUID,
+			  MSNdis_MaximumLookaheadGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_MaximumSendPackets_GUID,
+			  MSNdis_MaximumSendPacketsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_MaximumTotalSize_GUID,
+			  MSNdis_MaximumTotalSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_MediaConnectStatus_GUID,
+			  MSNdis_MediaConnectStatusGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_MediaInUse_GUID,
+			  MSNdis_MediaInUseGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_MediaSupported_GUID,
+			  MSNdis_MediaSupportedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NdisEnumerateVc_GUID,
+			  MSNdis_NdisEnumerateVcGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NetworkAddress_GUID,
+			  MSNdis_NetworkAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NetworkLinkSpeed_GUID,
+			  MSNdis_NetworkLinkSpeedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NetworkShortAddress_GUID,
+			  MSNdis_NetworkShortAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NicSwitchCapabilities_GUID,
+			  MSNdis_NicSwitchCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NotifyAdapterArrival_GUID,
+			  MSNdis_NotifyAdapterArrivalGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NotifyAdapterRemoval_GUID,
+			  MSNdis_NotifyAdapterRemovalGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NotifyFilterArrival_GUID,
+			  MSNdis_NotifyFilterArrivalGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NotifyFilterRemoval_GUID,
+			  MSNdis_NotifyFilterRemovalGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NotifyVcArrival_GUID,
+			  MSNdis_NotifyVcArrivalGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_NotifyVcRemoval_GUID,
+			  MSNdis_NotifyVcRemovalGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ObjectHeader_GUID,
+			  MSNdis_ObjectHeaderGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PMAdminConfigParam_GUID,
+			  MSNdis_PMAdminConfigParamGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PMAdminConfigState_GUID,
+			  MSNdis_PMAdminConfigStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PMAdminConfig_GUID,
+			  MSNdis_PMAdminConfigGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PMCapabilitiesParam_GUID,
+			  MSNdis_PMCapabilitiesParamGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PMCapabilities_GUID,
+			  MSNdis_PMCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PMCapabilityState_GUID,
+			  MSNdis_PMCapabilityStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PciDeviceProperty_GUID,
+			  MSNdis_PciDevicePropertyGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PhysicalMediumType_GUID,
+			  MSNdis_PhysicalMediumTypeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PortArray_GUID,
+			  MSNdis_PortArrayGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PortAuthParameters_GUID,
+			  MSNdis_PortAuthParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PortChar_GUID,
+			  MSNdis_PortCharGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_PortStateData_GUID,
+			  MSNdis_PortStateDataGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryInterruptModeration_GUID,
+			  MSNdis_QueryInterruptModerationGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryNicSwitchCurrentCapabilities_GUID,
+			  MSNdis_QueryNicSwitchCurrentCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryNicSwitchHardwareCapabilities_GUID,
+			  MSNdis_QueryNicSwitchHardwareCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryPciDeviceCustomProperty_GUID,
+			  MSNdis_QueryPciDeviceCustomPropertyGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryPhysicalMediumTypeEx_GUID,
+			  MSNdis_QueryPhysicalMediumTypeExGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryPortState_GUID,
+			  MSNdis_QueryPortStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryReceiveFilterCurrentCapabilities_GUID,
+			  MSNdis_QueryReceiveFilterCurrentCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryReceiveFilterGlobalParameters_GUID,
+			  MSNdis_QueryReceiveFilterGlobalParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryReceiveFilterHardwareCapabilities_GUID,
+			  MSNdis_QueryReceiveFilterHardwareCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryReceiveFilterParameters_GUID,
+			  MSNdis_QueryReceiveFilterParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryReceiveQueueParameters_GUID,
+			  MSNdis_QueryReceiveQueueParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_QueryStatisticsInfo_GUID,
+			  MSNdis_QueryStatisticsInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_RSSEnabled_GUID,
+			  MSNdis_RSSEnabledGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveBlockSize_GUID,
+			  MSNdis_ReceiveBlockSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveBufferSpace_GUID,
+			  MSNdis_ReceiveBufferSpaceGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveError_GUID,
+			  MSNdis_ReceiveErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveFilterCapabilities_GUID,
+			  MSNdis_ReceiveFilterCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveFilterFieldParameters_GUID,
+			  MSNdis_ReceiveFilterFieldParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveFilterGlobalParameters_GUID,
+			  MSNdis_ReceiveFilterGlobalParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveFilterInfoArray_GUID,
+			  MSNdis_ReceiveFilterInfoArrayGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveFilterInfo_GUID,
+			  MSNdis_ReceiveFilterInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveFilterParameters_GUID,
+			  MSNdis_ReceiveFilterParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveNoBuffer_GUID,
+			  MSNdis_ReceiveNoBufferGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveQueueInfoArray_GUID,
+			  MSNdis_ReceiveQueueInfoArrayGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveQueueInfo_GUID,
+			  MSNdis_ReceiveQueueInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveQueueParameters_GUID,
+			  MSNdis_ReceiveQueueParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceiveScaleCapabilities_GUID,
+			  MSNdis_ReceiveScaleCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_ReceivesOk_GUID,
+			  MSNdis_ReceivesOkGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_SetHDSplitParameters_GUID,
+			  MSNdis_SetHDSplitParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_SetInterruptModeration_GUID,
+			  MSNdis_SetInterruptModerationGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_SetLinkParameters_GUID,
+			  MSNdis_SetLinkParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_SetPortParameters_GUID,
+			  MSNdis_SetPortParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_SetTcpOffloadParameters_GUID,
+			  MSNdis_SetTcpOffloadParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatisticsInfo_GUID,
+			  MSNdis_StatisticsInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDevicePowerOffEx_GUID,
+			  MSNdis_StatusDevicePowerOffExGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDevicePowerOff_GUID,
+			  MSNdis_StatusDevicePowerOffGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDevicePowerOnEx_GUID,
+			  MSNdis_StatusDevicePowerOnExGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDevicePowerOn_GUID,
+			  MSNdis_StatusDevicePowerOnGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11AssociationCompletion_GUID,
+			  MSNdis_StatusDot11AssociationCompletionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11AssociationStart_GUID,
+			  MSNdis_StatusDot11AssociationStartGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11ConnectionCompletion_GUID,
+			  MSNdis_StatusDot11ConnectionCompletionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11ConnectionStart_GUID,
+			  MSNdis_StatusDot11ConnectionStartGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11Disassociation_GUID,
+			  MSNdis_StatusDot11DisassociationGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11LinkQuality_GUID,
+			  MSNdis_StatusDot11LinkQualityGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11MPDUMaxLengthChange_GUID,
+			  MSNdis_StatusDot11MPDUMaxLengthChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11PhyStateChange_GUID,
+			  MSNdis_StatusDot11PhyStateChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11PmkidCandidateList_GUID,
+			  MSNdis_StatusDot11PmkidCandidateListGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11RoamingCompletion_GUID,
+			  MSNdis_StatusDot11RoamingCompletionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11RoamingStart_GUID,
+			  MSNdis_StatusDot11RoamingStartGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11ScanConfirm_GUID,
+			  MSNdis_StatusDot11ScanConfirmGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusDot11TkipmicFailure_GUID,
+			  MSNdis_StatusDot11TkipmicFailureGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusHDSplitCurrentConfig_GUID,
+			  MSNdis_StatusHDSplitCurrentConfigGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusLinkSpeedChange_GUID,
+			  MSNdis_StatusLinkSpeedChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusLinkState_GUID,
+			  MSNdis_StatusLinkStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusMediaConnect_GUID,
+			  MSNdis_StatusMediaConnectGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusMediaDisconnect_GUID,
+			  MSNdis_StatusMediaDisconnectGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusMediaSpecificIndicationEx_GUID,
+			  MSNdis_StatusMediaSpecificIndicationExGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusMediaSpecificIndication_GUID,
+			  MSNdis_StatusMediaSpecificIndicationGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusNetworkChange_GUID,
+			  MSNdis_StatusNetworkChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusOperationalStatus_GUID,
+			  MSNdis_StatusOperationalStatusGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusPacketFilterChange_GUID,
+			  MSNdis_StatusPacketFilterChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusPortState_GUID,
+			  MSNdis_StatusPortStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusProtocolBind_GUID,
+			  MSNdis_StatusProtocolBindGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusProtocolUnbind_GUID,
+			  MSNdis_StatusProtocolUnbindGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusResetEnd_GUID,
+			  MSNdis_StatusResetEndGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusResetStart_GUID,
+			  MSNdis_StatusResetStartGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_StatusTaskOffloadChange_GUID,
+			  MSNdis_StatusTaskOffloadChangeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TcpConnectionOffloadCurrentConfig_GUID,
+			  MSNdis_TcpConnectionOffloadCurrentConfigGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TcpConnectionOffloadHardwareConfig_GUID,
+			  MSNdis_TcpConnectionOffloadHardwareConfigGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TcpOffloadCurrentConfig_GUID,
+			  MSNdis_TcpOffloadCurrentConfigGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TcpOffloadHardwareConfig_GUID,
+			  MSNdis_TcpOffloadHardwareConfigGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TcpOffloadParameters_GUID,
+			  MSNdis_TcpOffloadParametersGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingCurrentAddress_GUID,
+			  MSNdis_TokenRingCurrentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingCurrentFunctional_GUID,
+			  MSNdis_TokenRingCurrentFunctionalGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingCurrentGroup_GUID,
+			  MSNdis_TokenRingCurrentGroupGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingCurrentRingState_GUID,
+			  MSNdis_TokenRingCurrentRingStateGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingCurrentRingStatus_GUID,
+			  MSNdis_TokenRingCurrentRingStatusGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingLastOpenStatus_GUID,
+			  MSNdis_TokenRingLastOpenStatusGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingLineErrors_GUID,
+			  MSNdis_TokenRingLineErrorsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingLostFrames_GUID,
+			  MSNdis_TokenRingLostFramesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TokenRingPermanentAddress_GUID,
+			  MSNdis_TokenRingPermanentAddressGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TransmitBlockSize_GUID,
+			  MSNdis_TransmitBlockSizeGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TransmitBufferSpace_GUID,
+			  MSNdis_TransmitBufferSpaceGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TransmitsError_GUID,
+			  MSNdis_TransmitsErrorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_TransmitsOk_GUID,
+			  MSNdis_TransmitsOkGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_VendorDescription_GUID,
+			  MSNdis_VendorDescriptionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_VendorDriverVersion_GUID,
+			  MSNdis_VendorDriverVersionGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_VendorID_GUID,
+			  MSNdis_VendorIDGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_VlanIdentifier_GUID,
+			  MSNdis_VlanIdentifierGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiEnumAdapter_GUID,
+			  MSNdis_WmiEnumAdapterGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiHDSplitCurrentConfig_GUID,
+			  MSNdis_WmiHDSplitCurrentConfigGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiIPSecOffloadV1_GUID,
+			  MSNdis_WmiIPSecOffloadV1Guid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiIPSecOffloadV1_IPv4AH_GUID,
+			  MSNdis_WmiIPSecOffloadV1_IPv4AHGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiIPSecOffloadV1_IPv4ESP_GUID,
+			  MSNdis_WmiIPSecOffloadV1_IPv4ESPGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiIPSecOffloadV1_Supported_GUID,
+			  MSNdis_WmiIPSecOffloadV1_SupportedGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiMethodHeader_GUID,
+			  MSNdis_WmiMethodHeaderGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiOffload_GUID,
+			  MSNdis_WmiOffloadGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiOutputInfo_GUID,
+			  MSNdis_WmiOutputInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiReceiveScaleCapabilities_GUID,
+			  MSNdis_WmiReceiveScaleCapabilitiesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiSetHeader_GUID,
+			  MSNdis_WmiSetHeaderGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpConnectionOffload_GUID,
+			  MSNdis_WmiTcpConnectionOffloadGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpIpChecksumOffload_GUID,
+			  MSNdis_WmiTcpIpChecksumOffloadGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpIpChecksumOffload_IPv4TransmitReceive_GUID,
+			  MSNdis_WmiTcpIpChecksumOffload_IPv4TransmitReceiveGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpIpChecksumOffload_IPv6TransmitReceive_GUID,
+			  MSNdis_WmiTcpIpChecksumOffload_IPv6TransmitReceiveGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpLargeSendOffloadV1_GUID,
+			  MSNdis_WmiTcpLargeSendOffloadV1Guid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpLargeSendOffloadV1_IPv4_GUID,
+			  MSNdis_WmiTcpLargeSendOffloadV1_IPv4Guid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpLargeSendOffloadV2_GUID,
+			  MSNdis_WmiTcpLargeSendOffloadV2Guid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpLargeSendOffloadV2_IPv4_GUID,
+			  MSNdis_WmiTcpLargeSendOffloadV2_IPv4Guid);
+WMIDATA_H_DEFINE_WMI_GUID(MSNdis_WmiTcpLargeSendOffloadV2_IPv6_GUID,
+			  MSNdis_WmiTcpLargeSendOffloadV2_IPv6Guid);
+WMIDATA_H_DEFINE_WMI_GUID(MSParallel_AllocFreeCounts_GUID,
+			  PARPORT_WMI_ALLOCATE_FREE_COUNTS_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSParallel_DeviceBytesTransferred_GUID,
+			  PARALLEL_WMI_BYTES_TRANSFERRED_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSPower_DeviceEnable_GUID,
+			  MSPower_DeviceEnableGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSPower_DeviceWakeEnable_GUID,
+			  MSPower_DeviceWakeEnableGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSRedbook_DriverInformationGuid,
+			  GUID_REDBOOK_WMI_STD_DATA);
+WMIDATA_H_DEFINE_WMI_GUID(MSRedbook_PerformanceGuid,
+			  GUID_REDBOOK_WMI_PERF_DATA);
+WMIDATA_H_DEFINE_WMI_GUID(MSSerial_CommInfo_GUID,
+			  SERIAL_PORT_WMI_COMM_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSSerial_CommProperties_GUID,
+			  SERIAL_PORT_WMI_PROPERTIES_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSSerial_HardwareConfiguration_GUID,
+			  SERIAL_PORT_WMI_HW_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSSerial_PerformanceInformation_GUID,
+			  SERIAL_PORT_WMI_PERF_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSSerial_PortName_GUID,
+			  SERIAL_PORT_WMI_NAME_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSSmBios_RawSMBiosTables_GUID,
+			  MSSmBios_RawSMBiosTablesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSSmBios_SMBiosEventlog_GUID,
+			  MSSmBios_SMBiosEventlogGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSSmBios_Sysid1394List_GUID,
+			  SYSID_1394_DATA_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSSmBios_Sysid1394_GUID,
+			  MSSmBios_Sysid1394Guid);
+WMIDATA_H_DEFINE_WMI_GUID(MSSmBios_SysidUUIDList_GUID,
+			  SYSID_UUID_DATA_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSSmBios_SysidUUID_GUID,
+			  MSSmBios_SysidUUIDGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSStorageDriver_ATAPISmartData_GUID,
+			  WMI_STORAGE_FAILURE_PREDICT_DATA_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSStorageDriver_FailurePredictData_GUID,
+			  WMI_STORAGE_FAILURE_PREDICT_DATA_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSStorageDriver_FailurePredictEvent_GUID,
+			  WMI_STORAGE_PREDICT_FAILURE_EVENT_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSStorageDriver_FailurePredictFunction_GUID,
+			  WMI_STORAGE_FAILURE_PREDICT_FUNCTION_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSStorageDriver_FailurePredictStatus_GUID,
+			  WMI_STORAGE_FAILURE_PREDICT_STATUS_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSStorageDriver_FailurePredictThresholds_GUID,
+			  WMI_STORAGE_FAILURE_PREDICT_THRESHOLDS_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSStorageDriver_ScsiInfoExceptions_GUID,
+			  WMI_STORAGE_SCSI_INFO_EXCEPTIONS_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSTapeDriveParam_GUID,
+			  WMI_TAPE_DRIVE_PARAMETERS_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSTapeDriveProblemEvent_GUID,
+			  WMI_TAPE_PROBLEM_WARNING_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSTapeMediaCapacity_GUID,
+			  WMI_TAPE_MEDIA_PARAMETERS_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSTapeProblemDeviceError_GUID,
+			  WMI_TAPE_PROBLEM_DEVICE_ERROR_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSTapeProblemIoError_GUID,
+			  WMI_TAPE_PROBLEM_IO_ERROR_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSTapeSymbolicName_GUID,
+			  WMI_TAPE_SYMBOLIC_NAME_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSVerifierIrpLogEntry_GUID,
+			  MSVerifierIrpLogEntryGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSVerifierIrpLogInformation_GUID,
+			  MSVerifierIrpLogInformationGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSWmi_GuidRegistrationInfo_GUID,
+			  MSWmi_GuidRegistrationInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSWmi_Guid_GUID,
+			  MSWmi_GuidGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSWmi_MofData_GUID,
+			  MSWmi_MofDataGuid);
+WMIDATA_H_DEFINE_WMI_GUID(MSWmi_PnPDeviceId_GUID,
+			  DATA_PROVIDER_PNPID_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSWmi_PnPInstanceNames_GUID,
+			  DATA_PROVIDER_PNPID_INSTANCE_NAMES_GUID);
+WMIDATA_H_DEFINE_WMI_GUID(MSWmi_ProviderInfo_GUID,
+			  MSWmi_ProviderInfoGuid);
+WMIDATA_H_DEFINE_WMI_GUID(ProcessorPerformance_GUID,
+			  ProcessorPerformanceGuid);
+WMIDATA_H_DEFINE_WMI_GUID(RegisteredGuids_GUID,
+			  RegisteredGuidsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(VideoModeDescriptor_GUID,
+			  VideoModeDescriptorGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WHEAErrorInjectionMethods_GUID,
+			  WHEAErrorInjectionMethodsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WHEAErrorSourceMethods_GUID,
+			  WHEAErrorSourceMethodsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorAnalogVideoInputParams_GUID,
+			  WmiMonitorAnalogVideoInputParamsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorBasicDisplayParams_GUID,
+			  WmiMonitorBasicDisplayParamsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorBrightnessEvent_GUID,
+			  WmiMonitorBrightnessEventGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorBrightnessMethods_GUID,
+			  WmiMonitorBrightnessMethodsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorBrightness_GUID,
+			  WmiMonitorBrightnessGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorColorCharacteristics_GUID,
+			  WmiMonitorColorCharacteristicsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorColorXYZinCIE_GUID,
+			  WmiMonitorColorXYZinCIEGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorConnectionParams_GUID,
+			  WmiMonitorConnectionParamsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorDescriptorMethods_GUID,
+			  WmiMonitorDescriptorMethodsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorDigitalVideoInputParams_GUID,
+			  WmiMonitorDigitalVideoInputParamsGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorID_GUID,
+			  WmiMonitorIDGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorListedFrequencyRanges_GUID,
+			  WmiMonitorListedFrequencyRangesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorListedSupportedSourceModes_GUID,
+			  WmiMonitorListedSupportedSourceModesGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorRawEEdidV1Block_GUID,
+			  WmiMonitorRawEEdidV1BlockGuid);
+WMIDATA_H_DEFINE_WMI_GUID(WmiMonitorSupportedDisplayFeatures_GUID,
+			  WmiMonitorSupportedDisplayFeaturesGuid);
+
+#undef WMIDATA_H_DEFINE_WMI_GUID
 
 #endif				/* !(defined(MIDL_PASS)) */
 

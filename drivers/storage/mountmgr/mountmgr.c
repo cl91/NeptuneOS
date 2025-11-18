@@ -27,10 +27,6 @@
 #include "mntmgr.h"
 #include "ntddstor.h"
 
-/* FIXME */
-GUID MountedDevicesGuid = { 0x53F5630D, 0xB6BF, 0x11D0,
-			    { 0x94, 0xF2, 0x00, 0xA0, 0xC9, 0x1E, 0xFB, 0x8B } };
-
 static PDEVICE_OBJECT MountMgrDeviceObject;
 KEVENT UnloadEvent;
 LONG Unloading;
@@ -1521,11 +1517,11 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     GlobalCreateSymbolicLink(&DosDevicesMount, &DeviceMount);
 
     /* Register for device arrival & removal. Ask to be notified for already
-     * present devices
-     */
+     * present devices */
     Status = IoRegisterPlugPlayNotification(
 	EventCategoryDeviceInterfaceChange,
-	PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES, &MountedDevicesGuid,
+	PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES,
+	(PVOID)&GUID_DEVINTERFACE_VOLUME,
 	DriverObject, MountMgrMountedDeviceNotification, DeviceExtension,
 	&DeviceExtension->NotificationEntry);
 
