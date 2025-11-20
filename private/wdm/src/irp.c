@@ -997,8 +997,8 @@ static VOID IopDeleteIrp(PIRP Irp)
     default:
 	break;
     }
-    if (Irp->Private.CreatedFileObject) {
-	ObDereferenceObject(Irp->Private.CreatedFileObject);
+    if (Irp->Private.LastIoStackFileObject) {
+	ObDereferenceObject(Irp->Private.LastIoStackFileObject);
     }
     IoFreeIrp(Irp);
 }
@@ -1056,20 +1056,21 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     ULONG Size = sizeof(IO_PACKET);
     PIO_STACK_LOCATION IoSp = IoGetNextIrpStackLocation(Irp);
     assert(!IoSp->FileObject);
-    PFILE_OBJECT CreatedFileObject = Irp->Private.CreatedFileObject;
+    PFILE_OBJECT LastIoStackFileObject = Irp->Private.LastIoStackFileObject;
     ULONG64 FileSize = 0;
     ULONG64 AllocationSize = 0;
     ULONG64 ValidDataLength = 0;
-    PFSRTL_COMMON_FCB_HEADER Fcb = CreatedFileObject ? CreatedFileObject->FsContext : NULL;
+    PFSRTL_COMMON_FCB_HEADER Fcb = LastIoStackFileObject ?
+	LastIoStackFileObject->FsContext : NULL;
     if (Fcb) {
 	FileSize = Fcb->FileSizes.FileSize.QuadPart;
 	AllocationSize = Fcb->FileSizes.AllocationSize.QuadPart;
 	ValidDataLength = Fcb->FileSizes.ValidDataLength.QuadPart;
     }
-    if (CreatedFileObject) {
-	ObDereferenceObject(CreatedFileObject);
+    if (LastIoStackFileObject) {
+	ObDereferenceObject(LastIoStackFileObject);
     }
-    Irp->Private.CreatedFileObject = NULL;
+    Irp->Private.LastIoStackFileObject = NULL;
 
     switch (IoSp->MajorFunction) {
     case IRP_MJ_CREATE:
@@ -1853,11 +1854,11 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
 	     Irp->UserIosb, Irp->UserEvent);
     DbgPrint("    MasterIrp %p\n", Irp->MasterIrp);
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p "
-	     "OutputBuffer %p NotifyCompletion %s CreatedFileObject %p\n",
+	     "OutputBuffer %p NotifyCompletion %s LastIoStackFileObject %p\n",
 	     (PVOID)Irp->Private.OriginalRequestor,
 	     Irp->Private.Identifier, Irp->Private.OutputBuffer,
 	     Irp->Private.NotifyCompletion ? "TRUE" : "FALSE",
-	     Irp->Private.CreatedFileObject);
+	     Irp->Private.LastIoStackFileObject);
     DbgPrint("    PRIV AssociatedIrpCount %d MasterPendingList FL %p BL %p "
 	     "AssociatedIrpLink FL %p BL %p MasterCompleted %d MasterIrpSent %d\n",
 	     Irp->Private.AssociatedIrpCount, Irp->Private.MasterPendingList.Flink,
@@ -1957,7 +1958,7 @@ static VOID IopCompleteIrp(IN PIRP Irp)
 	    ObDereferenceObject(DeviceObject);
 	}
 	if (LastStack) {
-	    Irp->Private.CreatedFileObject = FileObject;
+	    Irp->Private.LastIoStackFileObject = FileObject;
 	} else if (FileObject) {
 	    ObDereferenceObject(FileObject);
 	}
