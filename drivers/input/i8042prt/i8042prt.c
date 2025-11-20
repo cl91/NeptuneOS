@@ -100,8 +100,8 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     TRACE_(I8042PRT, "i8042SendHookWorkItem(%p %p)\n", DeviceObject,
 	   Context);
 
-    PI8042_HOOK_WORKITEM WorkItemData = (PI8042_HOOK_WORKITEM)Context;
-    PFDO_DEVICE_EXTENSION FdoDeviceExtension = (PFDO_DEVICE_EXTENSION)DeviceObject->DeviceExtension;
+    PI8042_HOOK_WORKITEM WorkItemData = Context;
+    PFDO_DEVICE_EXTENSION FdoDeviceExtension = DeviceObject->DeviceExtension;
     PPORT_DEVICE_EXTENSION PortDeviceExtension = FdoDeviceExtension->PortDeviceExtension;
 
     PDEVICE_OBJECT TopOfStack = NULL;
@@ -111,7 +111,7 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     switch (FdoDeviceExtension->Type) {
     case Keyboard:
     {
-	PI8042_KEYBOARD_EXTENSION DeviceExtension = (PI8042_KEYBOARD_EXTENSION)FdoDeviceExtension;
+	PI8042_KEYBOARD_EXTENSION DeviceExtension = (PVOID)FdoDeviceExtension;
 	IoControlCode = IOCTL_INTERNAL_I8042_HOOK_KEYBOARD;
 	InputBuffer = &DeviceExtension->KeyboardHook;
 	InputBufferLength = sizeof(INTERNAL_I8042_HOOK_KEYBOARD);
@@ -119,7 +119,7 @@ NTAPI VOID i8042SendHookWorkItem(IN PDEVICE_OBJECT DeviceObject,
     }
     case Mouse:
     {
-	PI8042_MOUSE_EXTENSION DeviceExtension = (PI8042_MOUSE_EXTENSION)FdoDeviceExtension;
+	PI8042_MOUSE_EXTENSION DeviceExtension = (PVOID)FdoDeviceExtension;
 	IoControlCode = IOCTL_INTERNAL_I8042_HOOK_MOUSE;
 	InputBuffer = &DeviceExtension->MouseHook;
 	InputBufferLength = sizeof(INTERNAL_I8042_HOOK_MOUSE);
