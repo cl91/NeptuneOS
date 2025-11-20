@@ -152,8 +152,20 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 NTAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject)
 {
     PAGED_CODE();
+    /* You must call IoDeleteDevice when there is no outstanding reference (within
+     * the driver that created the device) to the device object. */
+    assert(DeviceObject->Header.RefCount == 1);
+    /* You can only call IoDeleteDevice on device objects created by the driver. */
+    assert(DeviceObject->DriverObject);
 
-    UNIMPLEMENTED;
+    WdmDeleteDevice(DeviceObject->Header.GlobalHandle);
+    DeviceObject->Header.GlobalHandle = 0;
+    ObDereferenceObject(DeviceObject);
+}
+
+VOID IopDeleteDeviceObject(IN PDEVICE_OBJECT DeviceObject)
+{
+    assert(!DeviceObject->Header.RefCount);
     assert(ListHasEntry(&IopDeviceList, &DeviceObject->Private.Link));
     RemoveEntryList(&DeviceObject->Private.Link);
 #if DBG

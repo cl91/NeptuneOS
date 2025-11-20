@@ -43,6 +43,7 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
 VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject)
 {
     assert(FileObject != NULL);
+    assert(!FileObject->Header.RefCount);
     assert(FileObject->Private.Link.Flink != NULL);
     assert(FileObject->Private.Link.Blink != NULL);
     assert(ListHasEntry(&IopFileObjectList, &FileObject->Private.Link));

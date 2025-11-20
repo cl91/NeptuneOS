@@ -2633,8 +2633,8 @@ NTAPI VOID IoCompleteRequest(IN PIRP Irp,
 }
 
 /*
- * Cancel the IRP. A driver can only cancel the IRP that is has initiated.
- * If a driver does own the IRP, a status is raised.
+ * Cancel the IRP. A driver can only cancel the IRP that it has initiated.
+ * If a driver does not own the IRP, a status is raised.
  *
  * This routine must be called at PASSIVE_LEVEL.
  */

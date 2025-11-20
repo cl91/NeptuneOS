@@ -565,7 +565,8 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject,
 				      IN PIO_DRIVER_OBJECT DriverObject,
 				      OUT GLOBAL_HANDLE *DeviceHandle);
-VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj);
+VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
+		     IN BOOLEAN Force);
 VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DeviceObject,
 			    IN ULONG Indentation);
 

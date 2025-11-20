@@ -195,6 +195,7 @@ GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device);
 PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 					  IN IO_DEVICE_INFO DevInfo,
 					  IN CHAR StackSize);
+VOID IopDeleteDeviceObject(IN PDEVICE_OBJECT DeviceObject);
 
 /* dma.c */
 VOID HalpInitDma(VOID);

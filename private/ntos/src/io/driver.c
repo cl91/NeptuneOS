@@ -357,7 +357,7 @@ NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 
     /* Forcibly remove all device objects that this driver has created. */
     LoopOverList(DevObj, &DriverObject->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
-	IopForceRemoveDevice(DevObj);
+	IopRemoveDevice(DevObj, TRUE);
     }
 
     /* At this point the driver object may still have more than one references

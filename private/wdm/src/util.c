@@ -18,7 +18,7 @@ NTAPI VOID ObDereferenceObject(IN PVOID Obj)
 	if (Header->Type == CLIENT_OBJECT_FILE) {
 	    IopDeleteFileObject(Obj);
 	} else if (Header->Type == CLIENT_OBJECT_DEVICE) {
-	    IoDeleteDevice(Obj);
+	    IopDeleteDeviceObject(Obj);
 	} else {
 	    IopFreePool(Obj);
 	}

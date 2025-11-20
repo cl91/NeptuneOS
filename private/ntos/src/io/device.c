@@ -452,15 +452,21 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 }
 
 /*
- * Perform a force removal of the device object. This is called for instance
+ * Remove the device object. If Force is TRUE, this routine will perform a
+ * forced removal of the device object. This case is called for instance
  * when the driver process that owns the device has crashed.
  */
-VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj)
+VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
+		     IN BOOLEAN Force)
 {
-    DbgTrace("Force removing device object %p (%s)\n", DevObj,
-	     KEDBG_PROCESS_TO_FILENAME(DevObj->DriverObject->DriverProcess));
-    /* Set the status of the device node of the PDO to DeviceNodeRemoved */
+    DbgTrace("%s device object %p (%s)\n", Force ? "Force removing" : "Removing",
+	     DevObj, KEDBG_PROCESS_TO_FILENAME(DevObj->DriverObject->DriverProcess));
+    /* Set the status of the device node of the PDO to DeviceNodeRemoved in case of
+     * force removal. If not force removal, the device node should have been deleted. */
     PDEVICE_NODE DevNode = IopGetDeviceNode(DevObj);
+    if (!Force) {
+	assert(!DevNode);
+    }
     if (DevNode) {
 	IopDeviceNodeSetCurrentState(DevNode, DeviceNodeRemoved);
     }
@@ -492,10 +498,13 @@ VOID IopForceRemoveDevice(IN PIO_DEVICE_OBJECT DevObj)
 	ObDereferenceObject(DevObj);
     }
     /* Since we increased the refcount of the device object when granting the
-     * device handle to the driver processes, we need to decrease it here. */
+     * device handle to foreign driver processes, we need to decrease it here. */
     LoopOverList(Msg, &DevObj->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
 	assert(Msg->DriverObject != DevObj->DriverObject);
 	ObDereferenceObject(DevObj);
+    }
+    if (!Force) {
+	assert(!DevObj->Vcb);
     }
     if (DevObj->Vcb) {
 	IopDismountVolume(DevObj->Vcb, TRUE);
@@ -624,6 +633,34 @@ NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
     PrevTop->AttachedDevice = SrcDev;
     *PrevTopDevInfo = PrevTop->DeviceInfo;
     *PrevTopStackSize = IopGetDeviceStackSize(PrevTop);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmGetDeviceObject(IN ASYNC_STATE AsyncState,
+                            IN PTHREAD Thread,
+                            IN HANDLE OpenFileHandle,
+                            OUT GLOBAL_HANDLE *GlobalFileHandle,
+                            OUT GLOBAL_HANDLE *TopDeviceHandle)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
+                         IN PTHREAD Thread,
+                         IN GLOBAL_HANDLE GlobalHandle)
+{
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    PIO_DEVICE_OBJECT DevObj = IopGetDeviceObject(GlobalHandle, DriverObject);
+    if (!DevObj) {
+	assert(FALSE);
+	return STATUS_INVALID_HANDLE;
+    }
+    IopRemoveDevice(DevObj, FALSE);
+    assert(ObGetObjectRefCount(DevObj) == 1);
+    ObDereferenceObject(DevObj);
     return STATUS_SUCCESS;
 }
 

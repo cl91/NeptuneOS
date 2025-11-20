@@ -33,6 +33,16 @@
     <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
   </svc>
 
+  <svc name="WdmGetDeviceObject">
+    <parameter annotation="in" type="HANDLE" name="OpenFileHandle" />
+    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="GlobalFileHandle" />
+    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="TopDeviceHandle" />
+  </svc>
+
+  <svc name="WdmDeleteDevice">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="GlobalHandle" />
+  </svc>
+
   <svc name="WdmRequestIoPackets">
     <parameter annotation="in" type="ULONG" name="NumDriverResponsePackets" />
     <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />
