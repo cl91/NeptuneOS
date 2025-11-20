@@ -332,6 +332,7 @@ VOID MountMgrNotifyNameChange(IN PDEVICE_EXTENSION DeviceExtension,
     Stack->MinorFunction = IRP_MN_QUERY_DEVICE_RELATIONS;
     Stack->Parameters.QueryDeviceRelations.Type = TargetDeviceRelation;
     Stack->FileObject = FileObject;
+    ObReferenceObject(FileObject);
 
     /* And call driver */
     Status = IoCallDriver(DeviceObject, Irp);
