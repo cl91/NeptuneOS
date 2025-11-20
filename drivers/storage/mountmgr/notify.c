@@ -71,7 +71,7 @@ VOID NTAPI SendOnlineNotificationWorker(IN PDEVICE_OBJECT DeviceObject,
     DeviceExtension = WorkItem->DeviceExtension;
 
     /* First, send the notification */
-    SendOnlineNotification(&(WorkItem->SymbolicName));
+    SendOnlineNotification(&WorkItem->SymbolicName);
 
     /* If there are no notifications running any longer, reset event */
     if (--DeviceExtension->OnlineNotificationCount == 0) {
@@ -79,9 +79,9 @@ VOID NTAPI SendOnlineNotificationWorker(IN PDEVICE_OBJECT DeviceObject,
     }
 
     /* If there are still notifications in queue */
-    if (!IsListEmpty(&(DeviceExtension->OnlineNotificationListHead))) {
+    if (!IsListEmpty(&DeviceExtension->OnlineNotificationListHead)) {
 	/* Queue a new one for execution */
-	Head = RemoveHeadList(&(DeviceExtension->OnlineNotificationListHead));
+	Head = RemoveHeadList(&DeviceExtension->OnlineNotificationListHead);
 	NewWorkItem = CONTAINING_RECORD(Head, ONLINE_NOTIFICATION_WORK_ITEM,
 					Link);
 	NewWorkItem->Link.Blink = NULL;
@@ -180,11 +180,11 @@ MountMgrTargetDeviceNotification(IN PVOID NotificationStructure, IN PVOID Contex
     /* It it's to signal that a volume has been mounted
      * Verify if a database sync is required and execute it
      */
-    if (IsEqualGUID(&(Notification->Event), &GUID_IO_VOLUME_MOUNT)) {
+    if (IsEqualGUID(&Notification->Event, &GUID_IO_VOLUME_MOUNT)) {
 	/* If we were already mounted, then mark us unmounted */
-	if (InterlockedCompareExchange(&(DeviceInformation->MountState), FALSE, FALSE) ==
+	if (InterlockedCompareExchange(&DeviceInformation->MountState, FALSE, FALSE) ==
 	    TRUE) {
-	    InterlockedDecrement(&(DeviceInformation->MountState));
+	    InterlockedDecrement(&DeviceInformation->MountState);
 	}
 	/* Otherwise, start mounting the device and first, reconcile its DB if required */
 	else {
@@ -209,7 +209,7 @@ VOID RegisterForTargetDeviceNotification(IN PDEVICE_EXTENSION DeviceExtension,
     PDEVICE_OBJECT DeviceObject;
 
     /* Get device object */
-    Status = IoGetDeviceObjectPointer(&(DeviceInformation->DeviceName),
+    Status = IoGetDeviceObjectPointer(&DeviceInformation->DeviceName,
 				      FILE_READ_ATTRIBUTES, &FileObject, &DeviceObject);
     if (!NT_SUCCESS(Status)) {
 	return;
@@ -219,7 +219,7 @@ VOID RegisterForTargetDeviceNotification(IN PDEVICE_EXTENSION DeviceExtension,
     Status = IoRegisterPlugPlayNotification(
 	EventCategoryTargetDeviceChange, 0, FileObject, DeviceExtension->DriverObject,
 	MountMgrTargetDeviceNotification, DeviceInformation,
-	&(DeviceInformation->TargetDeviceNotificationEntry));
+	&DeviceInformation->TargetDeviceNotificationEntry);
     if (!NT_SUCCESS(Status)) {
 	DeviceInformation->TargetDeviceNotificationEntry = NULL;
     }
@@ -244,8 +244,8 @@ VOID MountMgrNotify(IN PDEVICE_EXTENSION DeviceExtension)
     InitializeListHead(&CopyList);
 
     /* Copy all the pending IRPs for notification */
-    while (!IsListEmpty(&(DeviceExtension->IrpListHead))) {
-	NextEntry = RemoveHeadList(&(DeviceExtension->IrpListHead));
+    while (!IsListEmpty(&DeviceExtension->IrpListHead)) {
+	NextEntry = RemoveHeadList(&DeviceExtension->IrpListHead);
 	Irp = CONTAINING_RECORD(NextEntry, IRP, Tail.ListEntry);
 	IoSetCancelRoutine(Irp, NULL);
 	InsertTailList(&CopyList, &(Irp->Tail.ListEntry));
@@ -289,14 +289,14 @@ VOID MountMgrNotifyNameChange(IN PDEVICE_EXTENSION DeviceExtension,
 	     NextEntry = NextEntry->Flink) {
 	    DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 						  DeviceListEntry);
-	    if (RtlCompareUnicodeString(DeviceName, &(DeviceInformation->DeviceName),
+	    if (RtlCompareUnicodeString(DeviceName, &DeviceInformation->DeviceName,
 					TRUE) == 0) {
 		break;
 	    }
 	}
 
 	/* No need to notify for a PnP device or if we didn't find the device */
-	if (NextEntry == &(DeviceExtension->DeviceListHead) ||
+	if (NextEntry == &DeviceExtension->DeviceListHead ||
 	    !DeviceInformation->ManuallyRegistered) {
 	    return;
 	}
@@ -368,8 +368,6 @@ VOID MountMgrNotifyNameChange(IN PDEVICE_EXTENSION DeviceExtension,
     IoReportTargetDeviceChangeAsynchronous(DeviceObject, &DeviceNotification, NULL, NULL);
 
     ObDereferenceObject(DeviceObject);
-
-    return;
 }
 
 /*
