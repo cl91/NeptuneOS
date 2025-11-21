@@ -49,8 +49,7 @@ NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 
 	    /* We're performing a clean shutdown */
 	    if (BooleanFlagOn(DeviceExt->VolumeFcb->Flags, VCB_CLEAR_DIRTY)
-		&& BooleanFlagOn(DeviceExt->VolumeFcb->Flags,
-				 VCB_IS_DIRTY)) {
+		&& BooleanFlagOn(DeviceExt->VolumeFcb->Flags, VCB_IS_DIRTY)) {
 		/* Drop the dirty bit */
 		if (NT_SUCCESS(SetDirtyStatus(DeviceExt, FALSE)))
 		    DeviceExt->VolumeFcb->Flags &= ~VCB_IS_DIRTY;

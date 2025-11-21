@@ -228,7 +228,7 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	    /* Set the case-insensitivity flag of the file object according. */
 	    Locals.FileObject->Flags |= FO_OPENED_CASE_SENSITIVE;
 	}
-	Status = ObInsertObject(Device, Locals.FileObject,
+	Status = ObInsertObject(Locals.TargetDevice, Locals.FileObject,
 				ObjectName ? ObjectName : SubPath, OBJ_NO_PARSE);
 	if (!NT_SUCCESS(Status)) {
 	    goto out;
@@ -407,22 +407,7 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
     DbgTrace("Deleting device object %p\n", DevObj);
     IopDbgDumpDeviceObject(DevObj, 0);
     assert(IsListEmpty(&DevObj->OpenFileList));
-    LoopOverList(CloseMsg, &DevObj->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
-	assert(CloseMsg->DriverObject);
-	assert(CloseMsg->DeviceObject == DevObj);
-	PIO_PACKET Msg = CloseMsg->Msg;
-	assert(Msg);
-	Msg->Type = IoPacketTypeServerMessage;
-	Msg->Size = sizeof(IO_PACKET);
-	Msg->ServerMsg.Type = IoSrvMsgCloseDevice;
-	Msg->ServerMsg.CloseDevice.DeviceObject = OBJECT_TO_GLOBAL_HANDLE(DevObj);
-	/* The IO packet will be deleted later after it is sent to the driver. */
-	InsertTailList(&CloseMsg->DriverObject->IoPacketQueue, &Msg->IoPacketLink);
-	KeSetEvent(&CloseMsg->DriverObject->IoPacketQueuedEvent);
-	RemoveEntryList(&CloseMsg->DeviceLink);
-	RemoveEntryList(&CloseMsg->DriverLink);
-	IopFreePool(CloseMsg);
-    }
+    assert(IsListEmpty(&DevObj->CloseMsgList));
     KeUninitializeEvent(&DevObj->MountCompleted);
     RemoveEntryList(&DevObj->DeviceLink);
     ObDereferenceObject(DevObj->DriverObject);
@@ -453,20 +438,18 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 
 /*
  * Remove the device object. If Force is TRUE, this routine will perform a
- * forced removal of the device object. This case is called for instance
- * when the driver process that owns the device has crashed.
+ * forced removal of the device object. This case is called when the driver
+ * process that owns (ie. created) the device has crashed. Otherwise, this
+ * routine performs a normal device removal as a result of the client driver
+ * calling WdmDeleteDevice on a device object it owns.
  */
 VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
 		     IN BOOLEAN Force)
 {
     DbgTrace("%s device object %p (%s)\n", Force ? "Force removing" : "Removing",
 	     DevObj, KEDBG_PROCESS_TO_FILENAME(DevObj->DriverObject->DriverProcess));
-    /* Set the status of the device node of the PDO to DeviceNodeRemoved in case of
-     * force removal. If not force removal, the device node should have been deleted. */
+    /* Set the status of the device node of the PDO to DeviceNodeRemoved. */
     PDEVICE_NODE DevNode = IopGetDeviceNode(DevObj);
-    if (!Force) {
-	assert(!DevNode);
-    }
     if (DevNode) {
 	IopDeviceNodeSetCurrentState(DevNode, DeviceNodeRemoved);
     }
@@ -497,21 +480,53 @@ VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
 	 * at the time the file object was created. */
 	ObDereferenceObject(DevObj);
     }
-    /* Since we increased the refcount of the device object when granting the
-     * device handle to foreign driver processes, we need to decrease it here. */
-    LoopOverList(Msg, &DevObj->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
-	assert(Msg->DriverObject != DevObj->DriverObject);
-	ObDereferenceObject(DevObj);
+    /* For all drivers that did not create the device object but have requested its
+     * global handle be granted (for instance, the file system driver needs to know
+     * the global handle of the storage device on which it will mount the volume),
+     * send a CloseDevice server message to the client driver, so it will properly
+     * cleanup the client-side device object and notify the server to deref the
+     * device object (via WdmDeleteDevice). */
+    LoopOverList(CloseMsg, &DevObj->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
+	assert(CloseMsg->DriverObject);
+	assert(CloseMsg->DriverObject != DevObj->DriverObject);
+	assert(CloseMsg->DeviceObject == DevObj);
+	PIO_PACKET Msg = CloseMsg->Msg;
+	assert(Msg);
+	Msg->Type = IoPacketTypeServerMessage;
+	Msg->Size = sizeof(IO_PACKET);
+	Msg->ServerMsg.Type = IoSrvMsgCloseDevice;
+	Msg->ServerMsg.CloseDevice.DeviceObject = OBJECT_TO_GLOBAL_HANDLE(DevObj);
+	/* The IO packet will be deleted later after it is sent to the driver. */
+	InsertTailList(&CloseMsg->DriverObject->IoPacketQueue, &Msg->IoPacketLink);
+	KeSetEvent(&CloseMsg->DriverObject->IoPacketQueuedEvent);
+	RemoveEntryList(&CloseMsg->DeviceLink);
+	RemoveEntryList(&CloseMsg->DriverLink);
+	IopFreePool(CloseMsg);
+	/* Note despite the fact that we have increased the refcount of the device
+	 * object when granting the device handle to foreign driver processes, we
+	 * do NOT decrease the refcount here. Instead the client driver will call
+	 * WdmDeleteDevice after it has properly cleaned up the client-side device
+	 * object. This way we maintain that clients and server always see a
+	 * consistent set of global handles for device objects. */
     }
-    if (!Force) {
-	assert(!DevObj->Vcb);
-    }
+    /* Dismount the volume if we are removing a storage device or mounted volume
+     * device. This can happen both in the forced removal case and in the normal
+     * removal case. In the normal removal case, if the volume device has already
+     * been dismounted as a result of an NT client calling FSCTL_DISMOUNT_VOLUME,
+     * this call is a no-op. Note the case of "forced" vs "normal" dismount here
+     * are distinguished by whether we are dealing with a crashed driver or not.
+     * Dismount as a result of media change is not considered forced dismount from
+     * the Executive server's point of view, since drivers are running just fine
+     * in this case. On the other hand, a storage driver removing its storage device
+     * (regardless of whether it's a normal removal or not) before the file system
+     * is able to properly dismount the volume is treated as a forced dismount,
+     * since the storage device went away unexpectedly, as if its storage driver
+     * has just crashed. */
     if (DevObj->Vcb) {
-	IopDismountVolume(DevObj->Vcb, TRUE);
+	IopDismountVolume(DevObj->Vcb, Force);
     }
-    /* At this point the device object may still have more than one references
-     * if it is being opened. ObOpenObjectByNameEx will dereference the object
-     * when the open routine returns, at which point the object will be deleted. */
+    /* At this point the device object may still have more than one references.
+     * Mark the device as removed so no more IRPs will be sent to it. */
     DevObj->Removed = TRUE;
 }
 
@@ -519,8 +534,7 @@ VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
  * This routine must be called before a GLOBAL_HANDLE for a device object
  * is given out to a driver object that did not create said device object.
  * It queues a CLOSE_DEVICE_MESSAGE so we can send the driver a notification
- * to clean up the device handle on the client side, and to unlink the device
- * object if the driver process crashes.
+ * to clean up the device handle on the client side.
  */
 NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject,
 				      IN PIO_DRIVER_OBJECT DriverObject,
@@ -645,6 +659,18 @@ NTSTATUS WdmGetDeviceObject(IN ASYNC_STATE AsyncState,
     UNIMPLEMENTED;
 }
 
+/*
+ * A client driver process calls this routine so the server can be notified that
+ * the client has cleaned up its local bookkeeping of the device object, and is
+ * no longer expecting the global handle of the device object to be valid. If
+ * the device object is created by the calling driver, the server will notify all
+ * other drivers to which the device object's global handle has been granted, so
+ * these drivers can clean-up their local bookkeeping as well. Only when all
+ * drivers (including the owner and the foreign drivers that have access to the
+ * global handle of the device) have called WdmDeleteDevice will the device object's
+ * server-side refcount reach zero, at which point the delete routine of the device
+ * object will be called.
+ */
 NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
                          IN PTHREAD Thread,
                          IN GLOBAL_HANDLE GlobalHandle)
@@ -658,8 +684,22 @@ NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
 	assert(FALSE);
 	return STATUS_INVALID_HANDLE;
     }
-    IopRemoveDevice(DevObj, FALSE);
-    assert(ObGetObjectRefCount(DevObj) == 1);
+    /* If the driver owns the device object (ie. the driver called IoCreateDevice
+     * to create this device object), we will perform a (normal, unless it's a
+     * storage device of a mounted volume) removal of the device object which will
+     * notify all foreign drivers so they can delete their local references to the
+     * device object. This will also dismount the volume if the device is a storage
+     * or mounted volume device. Note if the device being removed is the storage
+     * device of a mounted volume, we do a forced removal so the file system driver
+     * can perform a forced dismount. This case should not happen normally and we
+     * assert on debug build. Storage driver should not be unloaded when there is
+     * a mounted volume on it. */
+    if (DevObj->DriverObject == DriverObject) {
+	BOOLEAN Force = DevObj->Vcb && !DevObj->Vcb->Dismounted &&
+	    DevObj == DevObj->Vcb->StorageDevice;
+	assert(!Force);
+	IopRemoveDevice(DevObj, Force);
+    }
     ObDereferenceObject(DevObj);
     return STATUS_SUCCESS;
 }

@@ -42,7 +42,10 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
 
 VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject)
 {
+    DbgTrace("Deleting client-side file object %p (device object %p)\n",
+	     FileObject, FileObject->DeviceObject);
     assert(FileObject != NULL);
+    assert(!FileObject->Header.GlobalHandle);
     assert(!FileObject->Header.RefCount);
     assert(FileObject->Private.Link.Flink != NULL);
     assert(FileObject->Private.Link.Blink != NULL);

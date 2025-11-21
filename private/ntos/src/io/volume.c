@@ -36,6 +36,8 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 	    PPENDING_IRP PendingIrp;
 	});
 
+    /* Note if the device object is a mounted volume, IopIsStorageDevice returns
+     * FALSE, and we return success in this case. */
     if (!IopIsStorageDevice(DevObj)) {
 	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
@@ -107,8 +109,8 @@ next:
 	.Device.Object = Locals.CurrentFs->FsctlDevObj,
 	.MountVolume.StorageDeviceInfo = DevObj->DeviceInfo
     };
-    /* Queue a CLOSE_DEVICE_MESSAGE to the storage device so when it gets
-     * deleted, the file system driver will know. */
+    /* Grant the storage device handle to the file system driver in case the storage
+     * driver stack runs in a separate process from the file system driver. */
     IF_ERR_GOTO(out, Status,
 		IopGrantDeviceHandleToDriver(DevObj,
 					     Locals.CurrentFs->FsctlDevObj->DriverObject,
@@ -189,6 +191,11 @@ out:
     ASYNC_END(State, Status);
 }
 
+/*
+ * Register the device object as the file system control device object of a
+ * file system driver. Note the client does NOT need to unregister when unloading.
+ * Unregistering is done automatically when the fsctl device gets deleted.
+ */
 NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
 			       IN PTHREAD Thread,
 			       IN GLOBAL_HANDLE DeviceHandle)
@@ -196,18 +203,23 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
     assert(DriverObject != NULL);
-    PIO_DEVICE_OBJECT DevObj = IopGetDeviceObject(DeviceHandle, DriverObject);
-    if (!DevObj) {
+    PIO_DEVICE_OBJECT FsctlDevObj = IopGetDeviceObject(DeviceHandle, DriverObject);
+    if (!FsctlDevObj) {
 	/* This shouldn't happen since we checked the validity of device handle on client side. */
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* You can only call WdmRegisterFileSystem once. */
+    if (FsctlDevObj->FsObj) {
+	return STATUS_ALREADY_REGISTERED;
     }
 
     IopAllocatePool(FsObj, IO_FILE_SYSTEM);
 
     /* Check what kind of FS this is. */
     PLIST_ENTRY FsList = NULL;
-    DEVICE_TYPE DevType = DevObj->DeviceInfo.DeviceType;
+    DEVICE_TYPE DevType = FsctlDevObj->DeviceInfo.DeviceType;
     if (DevType == FILE_DEVICE_DISK_FILE_SYSTEM) {
         FsList = &IopDiskFileSystemList;
     } else if (DevType == FILE_DEVICE_NETWORK_FILE_SYSTEM) {
@@ -235,9 +247,11 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
      * system driver loaded in a system, so this way it will be the last
      * file system driver that the system tries when mounting a volume. */
     InsertHeadList(FsList, &FsObj->ListEntry);
-    FsObj->FsctlDevObj = DevObj;
-    DevObj->FsObj = FsObj;
-    DbgTrace("Registered file system control device object %p\n", DevObj);
+    /* Since this is a circular reference and there is exactly one FsObj for
+     * a FsctlDevObj, we won't bother increasing the refcount of FsctlDevObj. */
+    FsObj->FsctlDevObj = FsctlDevObj;
+    FsctlDevObj->FsObj = FsObj;
+    DbgTrace("Registered file system control device object %p\n", FsctlDevObj);
     return STATUS_SUCCESS;
 }
 
@@ -270,6 +284,14 @@ static VOID IopVcbDetachSubobject(IN POBJECT Object,
     }
 }
 
+/*
+ * Dismount the volume device. This routine is called in two cases, during a normal
+ * dismount, as well as during a forced dismount when a file system driver or storage
+ * driver has crashed. Note media change is not considered a forced dismount from the
+ * server's point of view, as the driver processes themselves are running just fine.
+ * Instead, the client file system driver will perform necessary cleanups locally and
+ * call WdmDeleteDevice on the volume device to dismount the volume.
+ */
 VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 		       IN BOOLEAN Force)
 {
@@ -277,18 +299,21 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
     if (!Vcb) {
 	return;
     }
-    DbgTrace("Dismounting volume with Vcb %p\n", Vcb);
+    if (Vcb->Dismounted) {
+	return;
+    }
+    DbgTrace("%s volume with Vcb %p\n", Force ? "Force dismounting" : "Dismounting", Vcb);
     IopDbgDumpVcb(Vcb);
     Vcb->Dismounted = TRUE;
-    /* Decrease the refcount of the volume file that we increased in IopOpenDevice,
+    /* Decrease the volume file refcount which we increased in IopDeviceObjectInsertProc,
      * when the volume file was first opened. */
     if (Vcb->VolumeFile) {
 	ObDereferenceObject(Vcb->VolumeFile);
     }
-    /* If we are forcing the dismount due to for instance media change or a driver
-     * crashing, queue the ForceDismount message to the file system driver. Note if
-     * the file system driver has already crashed at this point, the queued IO packet
-     * will be deleted soon, by the delete routine of the driver object. */
+    /* If we are forcing the dismount due to a driver crashing, queue the ForceDismount
+     * message to the file system driver. Note if the file system driver has already
+     * crashed at this point, the queued IO packet will be deleted soon, by the delete
+     * routine of the driver object. */
     if (Force) {
 	if (Vcb->VolumeDevice) {
 	    assert(Vcb->ForceDismountMsg);
@@ -304,7 +329,8 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 	if (Vcb->Subobjects) {
 	    /* Detach the file objects of this volume from the volume control block.
 	     * This is only needed if we are forcing the dismount. For normal dismount
-	     * the subobject directory should be empty. */
+	     * the subobject directory will be emptied when the NT client handles get
+	     * closed. */
 	    ObDirectoryObjectVisitObject(Vcb->Subobjects, IopVcbDetachSubobject, NULL);
 	    assert(ObGetObjectRefCount(Vcb->Subobjects) == 1);
 	    ObDereferenceObject(Vcb->Subobjects);
@@ -328,11 +354,10 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 	}
 	IopFreePool(Vcb);
     } else {
-	/* Else, just dereference the volume device object that the file system driver
-	 * created when mounting the volume. Note the refcount of the volume device should
-	 * be greater than one at this point, so the deref will not delete the object. */
+	/* Else, we don't need to do anything. The file system driver will dereference
+	 * the volume device object that it has created when mounting the volume. Note
+	 * the refcount of the volume device should be greater than one at this point. */
 	assert(ObGetObjectRefCount(Vcb->VolumeDevice) > 1);
-	ObDereferenceObject(Vcb->VolumeDevice);
     }
 }
 

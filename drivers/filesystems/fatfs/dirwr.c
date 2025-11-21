@@ -34,7 +34,7 @@ NTSTATUS FatFcbInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
 
     FileObject->FsContext = Fcb;
     FileObject->FsContext2 = NewCcb;
-    FileObject->Vpb = Vcb->IoVPB;
+    FileObject->Vpb = Vcb->VolumeDevice->Vpb;
     Fcb->FileObject = FileObject;
 
     Status = CcInitializeCacheMap(FileObject);

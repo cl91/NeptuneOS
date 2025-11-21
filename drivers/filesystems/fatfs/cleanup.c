@@ -14,9 +14,8 @@
 
 /*
  * FUNCTION: Cleans up after a file has been closed.
- * Returns whether the device was deleted
  */
-static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
+static VOID FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 {
     PDEVICE_EXTENSION DeviceExt = IrpContext->DeviceExt;
     PFILE_OBJECT FileObject = IrpContext->FileObject;
@@ -27,7 +26,7 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
     /* FIXME: handle file/directory deletion here */
     PFATFCB Fcb = (PFATFCB)FileObject->FsContext;
     if (!Fcb)
-	return FALSE;
+	return;
 
     BOOLEAN IsVolume = BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME);
     if (IsVolume) {
@@ -90,11 +89,6 @@ static BOOLEAN FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 	FileObject->Flags |= FO_CLEANUP_COMPLETE;
 	Fcb->Flags |= FCB_CLEANED_UP;
     }
-
-    if (IsVolume && BooleanFlagOn(DeviceExt->Flags, VCB_DISMOUNT_PENDING)) {
-	return FatCheckForDismount(DeviceExt, TRUE);
-    }
-    return FALSE;
 }
 
 /*
@@ -105,6 +99,7 @@ NTSTATUS FatCleanup(PFAT_IRP_CONTEXT IrpContext)
     DPRINT("FatCleanup(DeviceObject %p, Irp %p)\n",
 	   IrpContext->DeviceObject, IrpContext->Irp);
 
+    /* Do nothing if we are cleaning up the FSCTL file object */
     if (IrpContext->DeviceObject == FatGlobalData->DeviceObject) {
 	IrpContext->Irp->IoStatus.Information = 0;
 	return STATUS_SUCCESS;

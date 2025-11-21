@@ -573,17 +573,8 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 
     DPRINT("FsDeviceObject %p\n", DeviceObject);
 
-    /* Record the VPB in the device object, and create a spare VPB.
-     * Both are used by the dismount logic. */
-    DeviceExt->IoVPB = DeviceObject->Vpb;
-    DeviceExt->SpareVPB = ExAllocatePoolWithTag(NonPagedPool, sizeof(VPB), TAG_VPB);
     PFATFCB FatFcb = NULL, VolumeFcb = NULL;
     PFILE_OBJECT VolumeFileObject = NULL;
-    if (DeviceExt->SpareVPB == NULL) {
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	goto ByeBye;
-    }
-
     ULONG StatisticsSize = sizeof(STATISTICS) * FatGlobalData->NumberProcessors;
     DeviceExt->Statistics = ExAllocatePoolWithTag(NonPagedPool,
 						  StatisticsSize, TAG_STATS);
@@ -746,8 +737,6 @@ ByeBye:
 	FatDestroyFcb(VolumeFcb);
 	DeviceExt->VolumeFcb = NULL;
     }
-    if (DeviceExt->SpareVPB)
-	ExFreePoolWithTag(DeviceExt->SpareVPB, TAG_VPB);
     if (DeviceExt->Statistics)
 	ExFreePoolWithTag(DeviceExt->Statistics, TAG_STATS);
     IoDeleteDevice(DeviceObject);
@@ -1147,12 +1136,9 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
 	NextEntry = RemoveTailList(&DeviceExt->FcbListHead);
 	Fcb = CONTAINING_RECORD(NextEntry, FATFCB, FcbListEntry);
 
-	if (Fcb == DeviceExt->RootFcb)
-	    DeviceExt->RootFcb = NULL;
-	else if (Fcb == DeviceExt->VolumeFcb)
-	    DeviceExt->VolumeFcb = NULL;
-
-	FatDestroyFcb(Fcb);
+	if (Fcb != DeviceExt->RootFcb && Fcb != DeviceExt->VolumeFcb) {
+	    FatDestroyFcb(Fcb);
+	}
     }
 
     /* We are uninitializing, the VCB cannot be used anymore */

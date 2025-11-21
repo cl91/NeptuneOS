@@ -464,7 +464,7 @@ PFATFCB FatGrabFcbFromTable(PDEVICE_EXTENSION Vcb,
     return NULL;
 }
 
-PFATFCB FatMakeRootFcb(PDEVICE_EXTENSION Vcb)
+static PFATFCB FatMakeRootFcb(PDEVICE_EXTENSION Vcb)
 {
     ULONG Size = 0;
     NTSTATUS Status = STATUS_SUCCESS;
@@ -565,7 +565,7 @@ NTSTATUS FatAttachFcbToFileObject(PDEVICE_EXTENSION Vcb,
 
     FileObject->FsContext = Fcb;
     FileObject->FsContext2 = NewCcb;
-    FileObject->Vpb = Vcb->IoVPB;
+    FileObject->Vpb = Vcb->VolumeDevice->Vpb;
     DPRINT("File open: Fcb:%p PathName:%wZ\n", Fcb, &Fcb->PathNameU);
 
     Fcb->Flags &= ~FCB_CLEANED_UP;

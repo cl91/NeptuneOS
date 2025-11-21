@@ -60,12 +60,16 @@ static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
 }
 
 /*
- * Get the device handle if device has already been created. Otherwise,
- * create the device and return the device object. Return NULL if out of memory.
+ * Returns the device object if the device with the given global handle has already
+ * been created. In this case, if Reference is TRUE, the refcount of the returned
+ * device object will be increased by one. Otherwise, create the device and return
+ * the device object (NULL is returned if we are out of memory). In this case, the
+ * newly created device object will have a refcount of one.
  */
 PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 					  IN IO_DEVICE_INFO DevInfo,
-					  IN CHAR StackSize)
+					  IN CHAR StackSize,
+					  IN BOOLEAN Reference)
 {
     PDEVICE_OBJECT DeviceObject = IopGetDeviceObject(DeviceHandle);
     if (DeviceObject == NULL) {
@@ -76,9 +80,11 @@ PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 	}
 	IopInitializeDeviceObject(DeviceObject, 0, DevInfo, DeviceHandle, StackSize, NULL);
     } else {
-	ObReferenceObject(DeviceObject);
 	assert(StackSize >= DeviceObject->StackSize);
 	DeviceObject->StackSize = StackSize;
+	if (Reference) {
+	    ObReferenceObject(DeviceObject);
+	}
     }
     assert(DeviceObject != NULL);
     return DeviceObject;
@@ -152,20 +158,35 @@ NTAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 NTAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject)
 {
     PAGED_CODE();
-    /* You must call IoDeleteDevice when there is no outstanding reference (within
-     * the driver that created the device) to the device object. */
-    assert(DeviceObject->Header.RefCount == 1);
-    /* You can only call IoDeleteDevice on device objects created by the driver. */
-    assert(DeviceObject->DriverObject);
-
-    WdmDeleteDevice(DeviceObject->Header.GlobalHandle);
-    DeviceObject->Header.GlobalHandle = 0;
+    /* We simply dereference the device object. The actual deletion will happen when
+     * there are no outstanding reference to it. */
     ObDereferenceObject(DeviceObject);
 }
 
 VOID IopDeleteDeviceObject(IN PDEVICE_OBJECT DeviceObject)
 {
+    DbgTrace("Deleting client-side device object %p (global handle %p driver object %p\n",
+	     DeviceObject, (PVOID)DeviceObject->Header.GlobalHandle,
+	     DeviceObject->DriverObject);
     assert(!DeviceObject->Header.RefCount);
+
+    /* Call the server to notify it that we have cleaned up our local references to the
+     * global handle, and it can delete the server-side object and reuse the global handle
+     * if needed. */
+    assert(DeviceObject->Header.GlobalHandle);
+    WdmDeleteDevice(DeviceObject->Header.GlobalHandle);
+
+    if (DeviceObject->Vpb) {
+	PVPB Vpb = DeviceObject->Vpb;
+	if (Vpb->DeviceObject) {
+	    Vpb->DeviceObject->Vpb = NULL;
+	}
+	if (Vpb->RealDevice) {
+	    Vpb->RealDevice->Vpb = NULL;
+	}
+	IopFreePool(Vpb);
+    }
+
     assert(ListHasEntry(&IopDeviceList, &DeviceObject->Private.Link));
     RemoveEntryList(&DeviceObject->Private.Link);
 #if DBG
@@ -257,7 +278,7 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject
 	return NULL;
     }
     assert(TopHandle != 0);
-    return IopGetDeviceObjectOrCreate(TopHandle, DevInfo, StackSize);
+    return IopGetDeviceObjectOrCreate(TopHandle, DevInfo, StackSize, TRUE);
 }
 
 /*

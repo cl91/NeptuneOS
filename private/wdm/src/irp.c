@@ -462,7 +462,7 @@ static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
 	GLOBAL_HANDLE PhyDevHandle = Src->Request.Device.Handle;
 	IO_DEVICE_INFO PhyDevInfo = Src->Request.AddDevice.PhysicalDeviceInfo;
 	/* The physical device object will have a device stack size of one. */
-	DeviceObject = IopGetDeviceObjectOrCreate(PhyDevHandle, PhyDevInfo, 1);
+	DeviceObject = IopGetDeviceObjectOrCreate(PhyDevHandle, PhyDevInfo, 1, FALSE);
 	if (!DeviceObject) {
 	    return STATUS_NO_MEMORY;
 	}
@@ -707,7 +707,8 @@ static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
 	    /* The storage device object will have a device stack size of one. */
 	    IoStack->Parameters.MountVolume.DeviceObject =
 		IopGetDeviceObjectOrCreate(Src->Request.MountVolume.StorageDevice,
-					   Src->Request.MountVolume.StorageDeviceInfo, 1);
+					   Src->Request.MountVolume.StorageDeviceInfo,
+					   1, FALSE);
 	    if (!IoStack->Parameters.MountVolume.DeviceObject) {
 		IopFreePool(IoStack->Parameters.MountVolume.Vpb);
 		IoStack->Parameters.MountVolume.Vpb = NULL;
@@ -2087,12 +2088,9 @@ static VOID IopHandleCloseDeviceServerMessage(PIO_PACKET SrvMsg)
 {
     PDEVICE_OBJECT DevObj = IopGetDeviceObject(SrvMsg->ServerMsg.CloseDevice.DeviceObject);
     if (!DevObj) {
-	/* It is ok if the client has deleted the device object at this point.
+	/* It is ok that the client has deleted the device object at this point.
 	 * In this case we simply do nothing. */
 	return;
-    }
-    if (DevObj->Header.GlobalHandle) {
-	DevObj->Header.GlobalHandle = 0;
     }
     ObDereferenceObject(DevObj);
 }

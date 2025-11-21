@@ -305,10 +305,6 @@ typedef struct _DEVICE_EXTENSION {
     /* Incremented on IRP_MJ_CREATE, decremented on IRP_MJ_CLOSE */
     ULONG OpenHandleCount;
 
-    /* VPBs for dismount */
-    PVPB IoVPB;
-    PVPB SpareVPB;
-
     /* Pointers to functions for manipulating directory entries. */
     FAT_DISPATCH Dispatch;
 } DEVICE_EXTENSION, VCB, *PVCB;
@@ -527,7 +523,7 @@ NTSTATUS FatCleanup(PFAT_IRP_CONTEXT IrpContext);
 
 /* close.c */
 BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
-			    IN BOOLEAN Create);
+			    IN BOOLEAN Force);
 NTSTATUS FatClose(PFAT_IRP_CONTEXT IrpContext);
 NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt,
 		      PFILE_OBJECT FileObject);
@@ -667,7 +663,6 @@ VOID FatGrabFcb(PDEVICE_EXTENSION Vcb, PFATFCB Fcb);
 VOID FatReleaseFcb(PDEVICE_EXTENSION Vcb, PFATFCB Fcb);
 PFATFCB FatGrabFcbFromTable(PDEVICE_EXTENSION DeviceExt,
 			    PUNICODE_STRING FileNameU);
-PFATFCB FatMakeRootFcb(PDEVICE_EXTENSION Vcb);
 PFATFCB FatOpenRootFcb(PDEVICE_EXTENSION Vcb);
 BOOLEAN FatFcbIsDirectory(PFATFCB Fcb);
 BOOLEAN FatFcbIsRoot(PFATFCB Fcb);
