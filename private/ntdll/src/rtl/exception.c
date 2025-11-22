@@ -285,6 +285,7 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
     }
 }
 
+#if DBG
 VOID RtlpDumpContext(IN PCONTEXT Ctx)
 {
     RtlpDumpContextEx(Ctx, DbgPrint);
@@ -295,6 +296,7 @@ VOID RtlpPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
 {
     RtlpPrintStackTraceEx(ExceptionInfo, Unhandled, DbgPrint);
 }
+#endif
 
 VOID RtlpVgaPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
 			    IN BOOLEAN Unhandled)

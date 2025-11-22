@@ -50,7 +50,11 @@ static inline WCHAR *strchrW(const WCHAR *str, WCHAR ch)
 ULONG RtlpVgaPrint(IN PCSTR Format, ...);
 
 /* exception.c */
+#if DBG
 VOID RtlpDumpContext(IN PCONTEXT pc);
+#else
+#define RtlpDumpContext(...)
+#endif
 
 /*
  * Exception handling helper routines

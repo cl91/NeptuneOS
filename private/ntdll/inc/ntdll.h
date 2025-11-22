@@ -36,7 +36,11 @@
 #define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
 
 /* rtl/exception.c */
+#if DBG
 VOID RtlpPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
 			 IN BOOLEAN Unhandled);
+#else
+#define RtlpPrintStackTrace(...)
+#endif
 VOID RtlpVgaPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
 			    IN BOOLEAN Unhandled);
