@@ -82,6 +82,7 @@ NTAPI ULONG vDbgPrintEx(IN ULONG ComponentId,
     return 0;
 }
 
+#undef DbgPrint
 ULONG DbgPrint(PCSTR Format, ...)
 {
     /* Do nothing */

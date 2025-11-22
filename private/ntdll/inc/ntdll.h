@@ -18,8 +18,17 @@
 
 #undef DPRINT
 #undef DPRINT1
+#if DBG
 #define DPRINT DbgTrace
 #define DPRINT1 DbgTrace
+#else  /* !DBG */
+#define DPRINT(...)
+#define DPRINT1(...)
+#ifdef DbgPrint
+#undef DbgPrint
+#endif
+#define DbgPrint(...)
+#endif	/* DBG */
 
 #define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
 #define ROUND_UP(x, align)	ALIGN_UP_BY(x, align)
