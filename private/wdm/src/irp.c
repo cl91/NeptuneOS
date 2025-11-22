@@ -2547,6 +2547,19 @@ reply:
 		     * location pointer as if we had implicitly completed the IRP, so
 		     * IopDeleteIrp can free the full IRP correctly. */
 		    if (!Irp->Completed) {
+			/* LastIoStackFileObject is only set if the IRP has been completed. */
+			assert(!Irp->Private.LastIoStackFileObject);
+			PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
+			PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
+			if (DeviceObject) {
+			    ObDereferenceObject(DeviceObject);
+			}
+			IoStack->DeviceObject = NULL;
+			PFILE_OBJECT FileObject = IoStack->FileObject;
+			if (FileObject) {
+			    ObDereferenceObject(FileObject);
+			}
+			IoStack->FileObject = NULL;
 			IoSkipCurrentIrpStackLocation(Irp);
 		    }
 		    InsertTailList(&IopCleanupIrpList, &Irp->Private.Link);
