@@ -300,7 +300,14 @@ extern PCSTR RtlpDbgTraceModuleName;
 extern DECLSPEC_IMPORT PCSTR RtlpDbgTraceModuleName;
 #endif
 
+/* Note: in release build you can re-enable DbgTrace to help finding error locations.
+ * Use llvm-objdump -xsD imgfile.dll, nagivate to the fault IP, and find calls to DbgPrint.
+ * Use parameters to DbgPrint to locate the function name and approximate source code line. */
+#ifdef CONFIG_DEBUG_BUILD
 #define DbgTrace(...) { DbgPrint("%s %s(%d):  ", RtlpDbgTraceModuleName, __func__, __LINE__); DbgPrint(__VA_ARGS__); }
+#else
+#define DbgTrace(...)
+#endif
 
 FORCEINLINE VOID RtlDbgPrintIndentation(IN LONG Indentation)
 {
