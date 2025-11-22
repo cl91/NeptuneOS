@@ -309,12 +309,23 @@ extern DECLSPEC_IMPORT PCSTR RtlpDbgTraceModuleName;
 #define DbgTrace(...)
 #endif
 
+#ifdef CONFIG_DEBUG_BUILD
 FORCEINLINE VOID RtlDbgPrintIndentation(IN LONG Indentation)
 {
     for (LONG i = 0; i < Indentation; i++) {
 	DbgPrint(" ");
     }
 }
+#else
+#define RtlDbgPrintIndentation(...)
+#endif
+
+#ifndef CONFIG_DEBUG_BUILD
+#ifdef DbgPrint
+#undef DbgPrint
+#endif
+#define DbgPrint(...)
+#endif
 
 /*
  * This will generate a compile-time error if the function is marked
