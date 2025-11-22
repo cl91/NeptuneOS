@@ -981,25 +981,21 @@ static NTSTATUS LdrpHandleBoundTable(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 static NTSTATUS LdrpHandleImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 					   IN PIMAGE_IMPORT_DESCRIPTOR *ImportEntry)
 {
-    PCSTR ImportName;
     BOOLEAN AlreadyLoaded = FALSE;
-    PLDR_DATA_TABLE_ENTRY DllLdrEntry;
-    PIMAGE_THUNK_DATA FirstThunk;
-    PPEB Peb = NtCurrentPeb();
-
-    /* Get the import name's VA */
-    ImportName = (PCSTR)((ULONG_PTR)LdrEntry->DllBase + (*ImportEntry)->Name);
 
     /* Get the first thunk */
-    FirstThunk = (PIMAGE_THUNK_DATA)((ULONG_PTR)LdrEntry->DllBase + (*ImportEntry)->FirstThunk);
+    PIMAGE_THUNK_DATA FirstThunk = (PVOID)((PCHAR)LdrEntry->DllBase + (*ImportEntry)->FirstThunk);
 
     /* Make sure it's valid */
     if (!FirstThunk->Function)
 	goto SkipEntry;
 
+    /* Get the import name's VA */
+    PCSTR ImportName = (PCSTR)((ULONG_PTR)LdrEntry->DllBase + (*ImportEntry)->Name);
     DPRINT1("LDR: %s used by %wZ\n", ImportName, &LdrEntry->BaseDllName);
 
     /* Load the module associated to it */
+    PLDR_DATA_TABLE_ENTRY DllLdrEntry;
     NTSTATUS Status = LdrpLoadImportModule(ImportName, &DllLdrEntry, &AlreadyLoaded);
     if (!NT_SUCCESS(Status)) {
 	DbgPrint("LDR: LdrpWalkImportTable - LdrpLoadImportModule failed "
@@ -1013,7 +1009,7 @@ static NTSTATUS LdrpHandleImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     /* Check if it wasn't already loaded */
     if (!AlreadyLoaded) {
 	/* Add the DLL to our list */
-	InsertTailList(&Peb->LdrData->InInitializationOrderModuleList,
+	InsertTailList(&NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
 		       &DllLdrEntry->InInitializationOrderLinks);
     }
 
