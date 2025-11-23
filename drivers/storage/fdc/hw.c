@@ -657,7 +657,9 @@ NTSTATUS HwSeek(PDRIVE_INFO DriveInfo, UCHAR Cylinder)
     Delay.QuadPart *= DriveInfo->FloppyDeviceData.HeadSettleTime;
     Delay.QuadPart *= -1LL;
 
-    KeDelayExecutionThread(FALSE, &Delay);
+    if (Delay.QuadPart) {
+	KeDelayExecutionThread(FALSE, &Delay);
+    }
 
     return STATUS_SUCCESS;
 }
