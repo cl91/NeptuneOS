@@ -34,8 +34,8 @@ FORCEINLINE ULONG Fat12ClusterToFatOffset(IN ULONG Cluster)
     return Cluster * 3 / 2;
 }
 
-FORCEINLINE ULONG Fat12GetEntryFromBlock(IN USHORT Block,
-				IN ULONG Cluster)
+FORCEINLINE ULONG Fat12GetEntryFromBlock(IN ULONG Cluster,
+					 IN USHORT Block)
 {
     ULONG Entry;
     if ((Cluster % 2) == 0) {
