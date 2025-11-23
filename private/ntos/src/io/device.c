@@ -407,10 +407,21 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
     DbgTrace("Deleting device object %p\n", DevObj);
     IopDbgDumpDeviceObject(DevObj, 0);
     assert(IsListEmpty(&DevObj->OpenFileList));
-    assert(IsListEmpty(&DevObj->CloseMsgList));
     KeUninitializeEvent(&DevObj->MountCompleted);
     RemoveEntryList(&DevObj->DeviceLink);
     ObDereferenceObject(DevObj->DriverObject);
+    LoopOverList(CloseMsg, &DevObj->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
+	assert(CloseMsg->DriverObject);
+	assert(CloseMsg->DriverObject != DevObj->DriverObject);
+	assert(CloseMsg->DeviceObject == DevObj);
+	assert(!CloseMsg->Msg);
+	if (CloseMsg->Msg) {
+	    IopFreePool(CloseMsg->Msg);
+	}
+	RemoveEntryList(&CloseMsg->DeviceLink);
+	RemoveEntryList(&CloseMsg->DriverLink);
+	IopFreePool(CloseMsg);
+    }
     if (DevObj->AttachedDevice) {
 	DevObj->AttachedDevice->AttachedTo = DevObj->AttachedTo;
     }
@@ -499,15 +510,16 @@ VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
 	/* The IO packet will be deleted later after it is sent to the driver. */
 	InsertTailList(&CloseMsg->DriverObject->IoPacketQueue, &Msg->IoPacketLink);
 	KeSetEvent(&CloseMsg->DriverObject->IoPacketQueuedEvent);
-	RemoveEntryList(&CloseMsg->DeviceLink);
-	RemoveEntryList(&CloseMsg->DriverLink);
-	IopFreePool(CloseMsg);
 	/* Note despite the fact that we have increased the refcount of the device
 	 * object when granting the device handle to foreign driver processes, we
 	 * do NOT decrease the refcount here. Instead the client driver will call
 	 * WdmDeleteDevice after it has properly cleaned up the client-side device
 	 * object. This way we maintain that clients and server always see a
-	 * consistent set of global handles for device objects. */
+	 * consistent set of global handles for device objects. We also do not
+	 * free the CLOSE_DEVICE_MESSAGE yet, as it is needed for WdmDeleteDevice
+	 * to know whether the device object global handle the driver tries to
+	 * delete is in fact granted to it. The CLOSE_DEVICE_MESSAGE is freed in
+	 * IopDeviceObjectDeleteProc. */
     }
     /* Dismount the volume if we are removing a storage device or mounted volume
      * device. This can happen both in the forced removal case and in the normal
