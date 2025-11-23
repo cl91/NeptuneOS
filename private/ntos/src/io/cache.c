@@ -810,6 +810,11 @@ static VOID CiFileRegionMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 	Length -= LengthToCopy;
     }
 
+    /* If there is no more length to process, exit. */
+    if (!Length) {
+	goto done;
+    }
+
     /* For the whole pages in the file block, we either map the volume page caches
      * if possible, or create new pages and copy the data from the volume file. */
     assert(IS_PAGE_ALIGNED(FileOffset));
@@ -927,6 +932,7 @@ static VOID CiFileRegionMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 	}
     }
 
+done:
     if (Extend) {
 	Parent->Length += Length;
     } else {
