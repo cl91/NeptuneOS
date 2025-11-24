@@ -2847,7 +2847,9 @@ NTAPI NTSTATUS ClassAsynchronousCompletion(PDEVICE_OBJECT Unused,
     PSTORAGE_REQUEST_BLOCK srb = &context->Srb.SrbEx;
 
     ULONG srbFunction = srb->SrbFunction;
+#if DBG
     ULONG srbFlags = srb->SrbFlags;
+#endif
 
     //
     // If this is an execute srb, then check the return status and make sure.
@@ -3263,9 +3265,9 @@ NTAPI NTSTATUS ClassIoComplete(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp, IN P
     NT_ASSERT(fdoExtension->CommonExtension.IsFdo);
 
     ULONG srbFlags = srb->SrbFlags;
-    ULONG srbFunction = srb->SrbFunction;
 
 #if DBG
+    ULONG srbFunction = srb->SrbFunction;
     if (srbFunction == SRB_FUNCTION_FLUSH) {
 	DBGLOGFLUSHINFO(fdoData, FALSE, FALSE, TRUE);
     }
@@ -13687,7 +13689,6 @@ Return Value:
 VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
     PDEVICE_OBJECT fdo = OffloadWriteContext->Fdo;
-    PIRP irp = OffloadWriteContext->OffloadWriteDsmIrp;
     PIRP pseudoIrp = &OffloadWriteContext->PseudoIrp;
     PVOID buffer = OffloadWriteContext + 1;
     ULONG bufferLength = OffloadWriteContext->BufferLength;
@@ -13697,10 +13698,13 @@ VOID ClasspReceiveWriteUsingTokenInformation(IN POFFLOAD_WRITE_CONTEXT OffloadWr
     PSTORAGE_REQUEST_BLOCK srb = &OffloadWriteContext->SrbEx;
     NTSTATUS status = STATUS_SUCCESS;
 
+#if DBG
+    PIRP irp = OffloadWriteContext->OffloadWriteDsmIrp;
     TracePrint((TRACE_LEVEL_VERBOSE, TRACE_FLAG_IOCTL,
 		"ClasspReceiveWriteUsingTokenInformation (%p): Entering function. Irp "
 		"%p\n",
 		fdo, irp));
+#endif
 
     //
     // The WRITE USING TOKEN wasn't immediately fully successful, so that means
@@ -13799,11 +13803,13 @@ Return Value:
 VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE_CONTEXT OffloadWriteContext)
 {
     PDEVICE_OBJECT fdo = OffloadWriteContext->Fdo;
+#if DBG
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = fdo->DeviceExtension;
     ULONG listIdentifier = OffloadWriteContext->ListIdentifier;
+    PIRP irp = OffloadWriteContext->OffloadWriteDsmIrp;
+#endif
     PULONGLONG totalSectorsProcessed = &OffloadWriteContext->TotalSectorsProcessed;
     ULONGLONG totalSectorsToProcess = OffloadWriteContext->TotalSectorsToProcess;
-    PIRP irp = OffloadWriteContext->OffloadWriteDsmIrp;
     PIRP pseudoIrp = &OffloadWriteContext->PseudoIrp;
     PBOOLEAN tokenInvalidated = &OffloadWriteContext->TokenInvalidated;
     PSTORAGE_REQUEST_BLOCK srb = &OffloadWriteContext->SrbEx;
@@ -13865,7 +13871,9 @@ VOID ClasspReceiveWriteUsingTokenInformationTransferPacketDone(IN POFFLOAD_WRITE
 
     UCHAR completionStatus = tokenInformationResults->CompletionStatus;
 
+#if DBG
     ULONG senseDataFieldLength = tokenInformationResults->SenseDataFieldLength;
+#endif
     UCHAR senseDataLength = tokenInformationResults->SenseDataLength;
     NT_ASSERT(senseDataFieldLength >= senseDataLength);
 

@@ -173,9 +173,11 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
 
     /* If we are matched against the PDO of logical units, simply return success. */
     if (PhysicalDeviceObject->DeviceExtension) {
+#if DBG
 	PPDO_DEVICE_EXTENSION PdoExt = PhysicalDeviceObject->DeviceExtension;
 	assert(PdoExt->ExtensionType == PdoExtension);
 	assert(PdoExt->Device == PhysicalDeviceObject);
+#endif
 	return STATUS_SUCCESS;
     }
 
@@ -1552,10 +1554,12 @@ NTAPI ULONG StorPortFreeDmaMemory(IN PVOID HwDeviceExtension,
 
     if (Mapping) {
 	assert(Mapping->BusNumber == ULONG_MAX);
+#if DBG
 	if (PhysicalAddress.QuadPart) {
 	    ULONG_PTR Offset = (ULONG_PTR)(BaseAddress - Mapping->MappedAddress);
 	    assert(PhysicalAddress.QuadPart == Mapping->IoAddress.QuadPart + Offset);
 	}
+#endif
 	if (Prev) {
 	    Prev->NextMappedAddress = Mapping->NextMappedAddress;
 	} else {

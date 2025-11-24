@@ -1941,8 +1941,10 @@ BOOLEAN NVMeInitCallback(PVOID pNVMeDevExt, PVOID pSrbExtension)
 	    pAE->DriverState.NextDriverState = NVMeWaitOnLearnMapping;
 	} else {
 	    PRES_MAPPING_TBL pRMT = &pAE->ResMapTbl;
+#if DBG
 	    PCORE_TBL pCT = NULL;
 	    ULONG CoreIndex;
+#endif
 
 	    pAE->LearningCores = pAE->ResMapTbl.NumActiveCores;
 

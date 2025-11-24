@@ -185,11 +185,13 @@ NTAPI NTSTATUS ClasspPowerUpCompletion(IN PDEVICE_OBJECT DeviceObject,
 
     PSTORAGE_REQUEST_BLOCK srb = &fdoExtension->PrivateFdoData->PowerSrb.SrbEx;
 
+#if DBG
     ULONG srbFlags = SrbGetSrbFlags(srb);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
     NT_ASSERT(PowerContext->Options.PowerDown == FALSE);
     NT_ASSERT(PowerContext->Options.HandleSpinUp);
+#endif
 
     if ((Irp == OriginalIrp) && (Irp->PendingReturned)) {
 	// only for original power irp
@@ -691,11 +693,13 @@ NTAPI NTSTATUS ClasspPowerDownCompletion(IN PDEVICE_OBJECT DeviceObject,
 
     PSTORAGE_REQUEST_BLOCK srb = &fdoExtension->PrivateFdoData->PowerSrb.SrbEx;
 
+#if DBG
     ULONG srbFlags = SrbGetSrbFlags(srb);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
     NT_ASSERT(PowerContext->Options.PowerDown);
     NT_ASSERT(PowerContext->Options.HandleSpinDown);
+#endif
 
     if ((Irp == OriginalIrp) && (Irp->PendingReturned)) {
 	// only for original power irp
@@ -1577,9 +1581,11 @@ static NTSTATUS ClasspPowerHandler(IN PDEVICE_OBJECT DeviceObject,
     // we are not dealing with port-allocated sense in these routines.
     //
 
+#if DBG
     ULONG srbFlags = SrbGetSrbFlags(srb);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
+#endif
 
     //
     // Mark the original power irp pending.
@@ -1827,10 +1833,12 @@ static VOID RetryPowerRequest(PDEVICE_OBJECT DeviceObject, PIRP Irp,
     PSTORAGE_REQUEST_BLOCK srb = &fdoExtension->PrivateFdoData->PowerSrb.SrbEx;
     ULONG srbFunction = srb->SrbFunction;
 
+#if DBG
     NT_ASSERT(Context->DeviceObject == DeviceObject);
     ULONG srbFlags = SrbGetSrbFlags(srb);
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_FREE_SENSE_BUFFER));
     NT_ASSERT(!TEST_FLAG(srbFlags, SRB_FLAGS_PORT_DRIVER_ALLOCSENSE));
+#endif
 
     if (Context->RetryInterval == 0) {
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_POWER,

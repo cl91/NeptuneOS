@@ -180,7 +180,9 @@ static NTAPI VOID PortStartMiniportIo(IN PDEVICE_OBJECT DeviceObject,
     PFDO_DEVICE_EXTENSION FdoExt = DeviceObject->DeviceExtension;
     assert(FdoExt->ExtensionType == FdoExtension);
     PMINIPORT Miniport = &FdoExt->Miniport;
+#if DBG
     PHW_INITIALIZATION_DATA InitData = Miniport->InitData;
+#endif
     assert(InitData);
     assert(InitData->HwBuildIo);
     assert(InitData->HwStartIo);
@@ -300,9 +302,11 @@ NTSTATUS PortPdoScsi(IN PDEVICE_OBJECT DeviceObject,
     PPDO_DEVICE_EXTENSION PdoExt = DeviceObject->DeviceExtension;
     ASSERT(PdoExt);
     ASSERT(PdoExt->ExtensionType == PdoExtension);
+#if DBG
     PFDO_DEVICE_EXTENSION FdoExt = PdoExt->FdoExtension;
     ASSERT(FdoExt);
     ASSERT(FdoExt->ExtensionType == FdoExtension);
+#endif
 
     NTSTATUS Status = STATUS_SUCCESS;
     if (!Srb) {
@@ -532,10 +536,12 @@ NTSTATUS PortPdoDeviceControl(IN PDEVICE_OBJECT DeviceObject,
     PFDO_DEVICE_EXTENSION FdoExt = PdoExt->FdoExtension;
     ASSERT(FdoExt);
     ASSERT(FdoExt->ExtensionType == FdoExtension);
+#if DBG
     PMINIPORT Miniport = &FdoExt->Miniport;
     assert(Miniport);
     assert(Miniport->InitData);
     assert(Miniport->MiniportExtension);
+#endif
 
     /* All of the IOCTLs we handle are METHOD_BUFFERED IOCTLs */
     PVOID Buffer = Irp->SystemBuffer;

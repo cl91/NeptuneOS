@@ -107,7 +107,9 @@ NTSTATUS ClasspCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     PCOMMON_DEVICE_EXTENSION commonExtension = DeviceObject->DeviceExtension;
     PIO_STACK_LOCATION irpStack = IoGetCurrentIrpStackLocation(Irp);
 
+#if DBG
     PFILE_OBJECT fileObject = irpStack->FileObject;
+#endif
 
     NTSTATUS status = STATUS_SUCCESS;
 
@@ -120,6 +122,7 @@ NTSTATUS ClasspCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
     //
 
     if (irpStack->MajorFunction == IRP_MJ_CREATE) {
+#if DBG
 	PIO_SECURITY_CONTEXT securityContext = irpStack->Parameters.Create.SecurityContext;
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
 		    "ClasspCREATEClose: create received for device %p\n", DeviceObject));
@@ -128,6 +131,7 @@ NTSTATUS ClasspCreateClose(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		    securityContext->DesiredAccess));
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_INIT,
 		    "ClasspCREATEClose: file object %p\n", irpStack->FileObject));
+#endif
 
 	NT_ASSERT(BreakOnClose == FALSE);
 

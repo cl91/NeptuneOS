@@ -1768,8 +1768,10 @@ static NTSTATUS ClasspInitializeGesn(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
 	    goto ExitWithError;
 	}
 
+#if DBG
 	ULONG srbFlags = Info->MediaChangeSrb.SrbEx.SrbFlags;
 	NT_ASSERT(TEST_FLAG(srbFlags, SRB_FLAGS_NO_QUEUE_FREEZE));
+#endif
 
 	//
 	// replace the completion routine with a different one this time...

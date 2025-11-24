@@ -302,7 +302,10 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 {
     PAGED_CODE();
     USHORT BridgeControl, PciCommand;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, Resource, LastResource;
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR Partial, Resource;
+#if DBG
+    PCM_PARTIAL_RESOURCE_DESCRIPTOR LastResource;
+#endif
     PCM_RESOURCE_LIST ResourceList;
 
     /* Assume failure */
@@ -367,7 +370,9 @@ NTSTATUS PciQueryResources(IN PPCI_PDO_EXTENSION PdoExtension,
 
     /* This is where the descriptors will be copied into */
     Resource = ResourceList->List[0].PartialResourceList.PartialDescriptors;
+#if DBG
     LastResource = Resource + Count + 1;
+#endif
 
     /* Loop maximum possible descriptors */
     for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
@@ -1949,7 +1954,7 @@ NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
     PPCI_FDO_EXTENSION FdoExtension;
     UCHAR NewCacheLineSize, NewLatencyTimer;
     PCI_COMMON_HEADER PciData;
-    BOOLEAN Native;
+    UNUSED BOOLEAN Native;
     PPCI_CONFIGURATOR Configurator;
 
     /* Get the FDO and read the configuration data */

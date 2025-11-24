@@ -422,8 +422,10 @@ VOID DestroyAllTransferPackets(PDEVICE_OBJECT Fdo)
  */
 VOID DestroyTransferPacket(IN PTRANSFER_PACKET Pkt)
 {
+#if DBG
     PFUNCTIONAL_DEVICE_EXTENSION fdoExt = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExt->PrivateFdoData;
+#endif
 
     NT_ASSERT(!Pkt->SlistEntry.Next);
     //    NT_ASSERT(!Pkt->OriginalIrp);
