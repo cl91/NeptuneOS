@@ -26,7 +26,10 @@ NTAPI NTSTATUS RtlFindMessage(IN PVOID BaseAddress, IN ULONG Type,
     PIMAGE_RESOURCE_DATA_ENTRY ResourceDataEntry;
     PMESSAGE_RESOURCE_DATA MessageTable;
     NTSTATUS Status;
-    ULONG EntryOffset = 0, IdOffset = 0;
+#if DBG
+    ULONG EntryOffset = 0;
+#endif
+    ULONG IdOffset = 0;
     PMESSAGE_RESOURCE_ENTRY MessageEntry;
     ULONG i;
 
@@ -65,7 +68,9 @@ NTAPI NTSTATUS RtlFindMessage(IN PVOID BaseAddress, IN ULONG Type,
     for (i = 0; i < MessageTable->NumberOfBlocks; i++) {
 	if ((MessageId >= MessageTable->Blocks[i].LowId) &&
 	    (MessageId <= MessageTable->Blocks[i].HighId)) {
+#if DBG
 	    EntryOffset = MessageTable->Blocks[i].OffsetToEntries;
+#endif
 	    IdOffset = MessageId - MessageTable->Blocks[i].LowId;
 	    break;
 	}

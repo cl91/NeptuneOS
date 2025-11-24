@@ -569,6 +569,7 @@ typedef struct _TRUNK {
     char *Str;
 } TRUNK, *PTRUNK;
 
+#if DBG
 // Helper function to print branches of the binary tree
 static void AvlpTreeShowTrunks(PTRUNK p)
 {
@@ -625,16 +626,21 @@ static void AvlpTreePrintTree(PAVL_NODE Root,
 
     AvlpTreePrintTree(Root->RightChild, &Trunk, FALSE);
 }
+#endif
 
 VOID AvlDumpTree(PAVL_TREE tree)
 {
+#if DBG
     AvlpTreePrintTree(tree->BalancedRoot, NULL, TRUE);
+#endif
 }
 
+#if DBG
 static VOID AvlpVisitTree(IN PAVL_NODE Node)
 {
     DbgPrint("%p ", (PVOID) Node->Key);
 }
+#endif
 
 VOID AvlVisitTreeLinear(PAVL_TREE Tree,
 			PAVL_TREE_VISITOR Visitor)
@@ -650,5 +656,7 @@ VOID AvlVisitTreeLinear(PAVL_TREE Tree,
 
 VOID AvlDumpTreeLinear(PAVL_TREE Tree)
 {
+#if DBG
     AvlVisitTreeLinear(Tree, AvlpVisitTree);
+#endif
 }

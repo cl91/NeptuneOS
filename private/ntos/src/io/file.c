@@ -1485,6 +1485,7 @@ NTSTATUS NtSetInformationFile(IN ASYNC_STATE State,
 	    goto open_target;
 	target_opened:
 	    if (!NT_SUCCESS(Status)) {
+#ifdef CONFIG_DEBUG_BUILD
 		UNICODE_STRING Path = {
 		    .Buffer = Locals.RenameInfo->FileName,
 		    .Length = Locals.RenameInfo->FileNameLength,
@@ -1494,6 +1495,7 @@ NTSTATUS NtSetInformationFile(IN ASYNC_STATE State,
 #pragma GCC diagnostic ignored "-Wformat-invalid-specifier"
 		DbgTrace("Opening target directory failed. Path = %wZ\n", &Path);
 #pragma GCC diagnostic pop
+#endif
 	    }
 	} else {
 	    /* File objects from non-file system drivers cannot be renamed. */

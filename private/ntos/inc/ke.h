@@ -298,6 +298,7 @@ typedef struct _ASYNC_STATE {
 /**
  * Dump the async state of the function
  */
+#ifdef CONFIG_DEBUG_BUILD
 #define ASYNC_DUMP(state)						\
     {									\
 	PTHREAD Thread = CONTAINING_RECORD(state.AsyncStack,		\
@@ -315,6 +316,9 @@ typedef struct _ASYNC_STATE {
 	StackPtr += Frame->Size;					\
     }									\
     DbgPrint("\n")
+#else
+#define ASYNC_DUMP(state)
+#endif
 
 /*
  * The following macros that start with an underscore shall never be

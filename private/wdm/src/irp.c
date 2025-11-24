@@ -1478,6 +1478,7 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
 
 VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 {
+#if DBG
     DbgPrint("    Major function %d.  Minor function %d.  Flags 0x%x.  Control 0x%x\n",
 	     Stack->MajorFunction, Stack->MinorFunction, Stack->Flags, Stack->Control);
     DbgPrint("    DeviceObject %p(%p, ext %p, drv %p, refcount %d stacksize %d) "
@@ -1839,6 +1840,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
     default:
 	DbgPrint("    UNKNOWN-MAJOR-FUNCTION\n");
     }
+#endif
 }
 
 VOID IoDbgDumpIrp(IN PIRP Irp)

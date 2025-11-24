@@ -1353,7 +1353,6 @@ BOOLEAN RtlpDphIsNormalFreeHeapBlock(PVOID Block,
 NTSTATUS RtlpDphProcessStartupInitialization(VOID)
 {
     NTSTATUS Status;
-    PTEB Teb = NtCurrentTeb();
 
     /* Initialize the DPH heap list and its critical section */
     InitializeListHead(&RtlpDphPageHeapList);
@@ -1376,7 +1375,7 @@ NTSTATUS RtlpDphProcessStartupInitialization(VOID)
     RtlpDphPageHeapListInitialized = TRUE;
 
     DPRINT1("Page heap: pid %p: page heap enabled with flags 0x%X.\n",
-	    Teb->NtTib.ClientId.UniqueProcess, RtlpDphGlobalFlags);
+	    NtCurrentTeb()->NtTib.ClientId.UniqueProcess, RtlpDphGlobalFlags);
 
     return Status;
 }

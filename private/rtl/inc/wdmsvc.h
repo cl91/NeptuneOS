@@ -564,6 +564,7 @@ static inline PCSTR IopDbgQueryIdTypeStr(IN BUS_QUERY_ID_TYPE IdType)
 static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 				     IN BOOLEAN ClientSide)
 {
+#if DBG
     DbgTrace("Dumping IO Packet %p size 0x%x\n", IoPacket, IoPacket->Size);
     DbgPrint("    TYPE: ");
     switch (IoPacket->Type) {
@@ -859,4 +860,5 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	    assert(FALSE);
 	}
     }
+#endif
 }

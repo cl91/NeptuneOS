@@ -171,6 +171,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD Flags,
 				  OUT OPTIONAL PMMVAD *pVad)
 {
+#ifdef CONFIG_DEBUG_BUILD
     assert(VSpace != NULL);
     assert(WindowSize != 0);
     /* At least one flag must be set. */
@@ -188,6 +189,7 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     assert(IsPow2OrZero(Flags & (MEM_RESERVE_NO_ACCESS | MEM_RESERVE_READ_ONLY)));
     /* COMMIT_ON_DEMAND can only be set for OWNED_MEMORY */
     assert(!(Flags & MEM_COMMIT_ON_DEMAND) || (Flags & MEM_RESERVE_OWNED_MEMORY));
+#endif
 
     MWORD VirtAddr;
     PMMVAD Parent;
