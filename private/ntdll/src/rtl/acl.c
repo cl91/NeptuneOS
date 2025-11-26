@@ -750,7 +750,7 @@ NTAPI BOOLEAN RtlValidAcl(IN PACL Acl)
 
 		/* The ACE size should at least have enough for the header */
 		if (Ace->AceSize < sizeof(ACE_HEADER)) {
-		    DPRINT1("Invalid ACE size: 0x%x 0x%x\n", Ace->AceSize,
+		    DPRINT1("Invalid ACE size: 0x%x 0x%zx\n", Ace->AceSize,
 			    sizeof(ACE_HEADER));
 		    return FALSE;
 		}
