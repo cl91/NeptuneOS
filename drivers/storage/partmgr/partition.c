@@ -180,7 +180,6 @@ static NTSTATUS VolumeDeleteMountPoints(IN PPARTITION_EXTENSION PartExt)
     ULONG Retry;
     PUNICODE_STRING DeviceName;
     PDEVICE_OBJECT DeviceObject;
-    PFILE_OBJECT FileObject = NULL;
     PMOUNTMGR_MOUNT_POINT InputBuffer = NULL;
     PMOUNTMGR_MOUNT_POINTS OutputBuffer = NULL;
 
@@ -188,7 +187,7 @@ static NTSTATUS VolumeDeleteMountPoints(IN PPARTITION_EXTENSION PartExt)
 
     /* Get the device pointer to the MountMgr */
     RtlInitUnicodeString(&MountMgr, MOUNTMGR_DEVICE_NAME);
-    Status = IoGetDeviceObjectPointer(&MountMgr, FILE_READ_ATTRIBUTES, &FileObject,
+    Status = IoGetDeviceObjectPointer(&MountMgr, FILE_READ_ATTRIBUTES,
 				      &DeviceObject);
     if (!NT_SUCCESS(Status))
 	return Status;
@@ -245,8 +244,8 @@ Quit:
 	ExFreePoolWithTag(OutputBuffer, TAG_PARTMGR);
     if (InputBuffer)
 	ExFreePoolWithTag(InputBuffer, TAG_PARTMGR);
-    if (FileObject)
-	ObDereferenceObject(FileObject);
+    if (DeviceObject)
+	ObDereferenceObject(DeviceObject);
     return Status;
 }
 

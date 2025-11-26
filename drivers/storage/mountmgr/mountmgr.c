@@ -248,33 +248,26 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
     BOOLEAN IsRemovable;
     PMOUNTDEV_NAME Name;
     PMOUNTDEV_UNIQUE_ID Id;
-    PFILE_OBJECT FileObject;
-    PDEVICE_OBJECT DeviceObject;
+    PDEVICE_OBJECT DeviceObject, AttachedDevice;
     PARTITION_INFORMATION_EX PartitionInfo;
     STORAGE_DEVICE_NUMBER StorageDeviceNumber;
     VOLUME_GET_GPT_ATTRIBUTES_INFORMATION GptAttributes;
 
     /* Get device associated with the symbolic name */
-    Status = IoGetDeviceObjectPointer(SymbolicName, FILE_READ_ATTRIBUTES, &FileObject,
+    Status = IoGetDeviceObjectPointer(SymbolicName, FILE_READ_ATTRIBUTES,
 				      &DeviceObject);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
 
-    /* The associate FO can't have a file name */
-    if (FileObject->FileName.Length) {
-	ObDereferenceObject(FileObject);
-	return STATUS_OBJECT_NAME_NOT_FOUND;
-    }
-
     /* Check if it's removable & return to the user (if asked to) */
-    IsRemovable = (FileObject->DeviceObject->Flags & FILE_REMOVABLE_MEDIA);
+    IsRemovable = DeviceObject->Flags & FILE_REMOVABLE_MEDIA;
     if (Removable) {
 	*Removable = IsRemovable;
     }
 
     /* Get the attached device */
-    DeviceObject = IoGetAttachedDeviceReference(FileObject->DeviceObject);
+    AttachedDevice = IoGetAttachedDeviceReference(DeviceObject);
 
     /* If we've been asked for a GPT drive letter */
     if (GptDriveLetter) {
@@ -284,7 +277,7 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	if (!IsRemovable) {
 	    /* Query the GPT attributes */
 	    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_VOLUME_GET_GPT_ATTRIBUTES,
-						 DeviceObject, NULL, 0, &GptAttributes,
+						 AttachedDevice, NULL, 0, &GptAttributes,
 						 sizeof(GptAttributes), NULL);
 	    /* Failure isn't major */
 	    if (!NT_SUCCESS(Status)) {
@@ -307,7 +300,7 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	if (!IsRemovable) {
 	    /* Query partition information */
 	    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_DISK_GET_PARTITION_INFO_EX,
-						 DeviceObject, NULL, 0, &PartitionInfo,
+						 AttachedDevice, NULL, 0, &PartitionInfo,
 						 sizeof(PartitionInfo), NULL);
 	    /* Failure isn't major */
 	    if (!NT_SUCCESS(Status)) {
@@ -324,7 +317,7 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	     * not a basic volume). */
 	    if (*IsFT) {
 		Status = MountMgrSendSyncDeviceIoCtl(IOCTL_STORAGE_GET_DEVICE_NUMBER,
-						     DeviceObject, NULL, 0,
+						     AttachedDevice, NULL, 0,
 						     &StorageDeviceNumber,
 						     sizeof(StorageDeviceNumber), NULL);
 		if (!NT_SUCCESS(Status))
@@ -340,15 +333,15 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	/* Allocate a buffer just to request length */
 	Name = AllocatePool(sizeof(MOUNTDEV_NAME));
 	if (!Name) {
+	    ObDereferenceObject(AttachedDevice);
 	    ObDereferenceObject(DeviceObject);
-	    ObDereferenceObject(FileObject);
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	/* Query device name */
 	Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_QUERY_DEVICE_NAME,
-					     DeviceObject, NULL, 0, Name,
-					     sizeof(MOUNTDEV_NAME), FileObject);
+					     AttachedDevice, NULL, 0, Name,
+					     sizeof(MOUNTDEV_NAME), NULL);
 	/* Retry with appropriate length */
 	if (Status == STATUS_BUFFER_OVERFLOW) {
 	    Size = Name->NameLength + sizeof(MOUNTDEV_NAME);
@@ -358,15 +351,15 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	    /* Allocate proper size */
 	    Name = AllocatePool(Size);
 	    if (!Name) {
+		ObDereferenceObject(AttachedDevice);
 		ObDereferenceObject(DeviceObject);
-		ObDereferenceObject(FileObject);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	    }
 
 	    /* And query name (for real that time) */
 	    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_QUERY_DEVICE_NAME,
-						 DeviceObject, NULL, 0, Name, Size,
-						 FileObject);
+						 AttachedDevice, NULL, 0, Name, Size,
+						 NULL);
 	}
 
 	if (NT_SUCCESS(Status)) {
@@ -386,8 +379,8 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
     }
 
     if (!NT_SUCCESS(Status)) {
+	ObDereferenceObject(AttachedDevice);
 	ObDereferenceObject(DeviceObject);
-	ObDereferenceObject(FileObject);
 	return Status;
     }
 
@@ -396,15 +389,14 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	/* Prepare buffer to probe length */
 	Id = AllocatePool(sizeof(MOUNTDEV_UNIQUE_ID));
 	if (!Id) {
+	    ObDereferenceObject(AttachedDevice);
 	    ObDereferenceObject(DeviceObject);
-	    ObDereferenceObject(FileObject);
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	/* Query unique ID length */
-	Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_QUERY_UNIQUE_ID, DeviceObject,
-					     NULL, 0, Id, sizeof(MOUNTDEV_UNIQUE_ID),
-					     FileObject);
+	Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_QUERY_UNIQUE_ID, AttachedDevice,
+					     NULL, 0, Id, sizeof(MOUNTDEV_UNIQUE_ID), NULL);
 	/* Retry with appropriate length */
 	if (Status == STATUS_BUFFER_OVERFLOW) {
 	    Size = Id->UniqueIdLength + sizeof(MOUNTDEV_UNIQUE_ID);
@@ -414,15 +406,15 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	    /* Allocate the correct buffer */
 	    Id = AllocatePool(Size);
 	    if (!Id) {
+		ObDereferenceObject(AttachedDevice);
 		ObDereferenceObject(DeviceObject);
-		ObDereferenceObject(FileObject);
 		return STATUS_INSUFFICIENT_RESOURCES;
 	    }
 
 	    /* Query unique ID */
 	    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_QUERY_UNIQUE_ID,
-						 DeviceObject, NULL, 0, Id, Size,
-						 FileObject);
+						 AttachedDevice, NULL, 0, Id, Size,
+						 NULL);
 	}
 
 	/* Hands back unique ID */
@@ -434,8 +426,8 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	    if (DeviceName->Length)
 		FreePool(DeviceName->Buffer);
 
+	    ObDereferenceObject(AttachedDevice);
 	    ObDereferenceObject(DeviceObject);
-	    ObDereferenceObject(FileObject);
 	    return Status;
 	}
     }
@@ -445,13 +437,13 @@ NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
 	/* Query device stable GUID */
 	NTSTATUS IntStatus;
 	IntStatus = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_QUERY_STABLE_GUID,
-						DeviceObject, NULL, 0, StableGuid,
-						sizeof(GUID), FileObject);
+						AttachedDevice, NULL, 0, StableGuid,
+						sizeof(GUID), NULL);
 	*HasGuid = NT_SUCCESS(IntStatus);
     }
 
+    ObDereferenceObject(AttachedDevice);
     ObDereferenceObject(DeviceObject);
-    ObDereferenceObject(FileObject);
     return Status;
 }
 

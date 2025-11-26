@@ -1062,12 +1062,14 @@ NTAPI NTSYSAPI NTSTATUS IoCreateDevice(IN PDRIVER_OBJECT DriverObject,
 NTAPI NTSYSAPI VOID IoDeleteDevice(IN PDEVICE_OBJECT DeviceObject);
 
 /*
- * Queries the device name from server and returns the cached local FILE
- * and DEVICE object.
+ * Queries the device name from server and returns corresponding DEVICE object.
+ *
+ * This routine increases the refcount of the device object if it is already exists
+ * locally. You must call ObDereferenceObject on the device object if this routine
+ * returns SUCCESS.
  */
 NTAPI NTSYSAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
 						 IN ACCESS_MASK DesiredAccess,
-						 OUT PFILE_OBJECT *FileObject,
 						 OUT PDEVICE_OBJECT *DeviceObject);
 
 /*

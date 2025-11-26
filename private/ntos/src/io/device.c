@@ -410,6 +410,9 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
     KeUninitializeEvent(&DevObj->MountCompleted);
     RemoveEntryList(&DevObj->DeviceLink);
     ObDereferenceObject(DevObj->DriverObject);
+    /* At this point the CLOSE_DEVICE_MESSAGE list should be empty. */
+    assert(IsListEmpty(&DevObj->CloseMsgList));
+    /* In release build we will nonetheless try to clear the CloseMsgList. */
     LoopOverList(CloseMsg, &DevObj->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
 	assert(CloseMsg->DriverObject);
 	assert(CloseMsg->DriverObject != DevObj->DriverObject);
@@ -665,10 +668,33 @@ NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
 NTSTATUS WdmGetDeviceObject(IN ASYNC_STATE AsyncState,
                             IN PTHREAD Thread,
                             IN HANDLE OpenFileHandle,
-                            OUT GLOBAL_HANDLE *GlobalFileHandle,
-                            OUT GLOBAL_HANDLE *TopDeviceHandle)
+                            OUT GLOBAL_HANDLE *TopDeviceHandle,
+			    OUT IO_DEVICE_INFO *TopDeviceInfo,
+			    OUT ULONG *TopDeviceStackSize)
 {
-    UNIMPLEMENTED;
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    PIO_FILE_OBJECT FileObject = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, OpenFileHandle, OBJECT_TYPE_FILE,
+				      (POBJECT *)&FileObject));
+    assert(FileObject);
+    NTSTATUS Status;
+    if (FileObject->Zombie) {
+	Status = STATUS_FILE_FORCED_CLOSED;
+	goto out;
+    }
+    assert(FileObject->DeviceObject);
+    assert(FileObject->DeviceObject->DriverObject);
+    PIO_DEVICE_OBJECT TopDevice = IopGetTopDevice(FileObject->DeviceObject);
+    IF_ERR_GOTO(out, Status,
+		IopGrantDeviceHandleToDriver(TopDevice, DriverObject, TopDeviceHandle));
+    *TopDeviceInfo = TopDevice->DeviceInfo;
+    *TopDeviceStackSize = IopGetDeviceStackSize(TopDevice);
+out:
+    ObDereferenceObject(FileObject);
+    return STATUS_SUCCESS;
 }
 
 /*
@@ -711,6 +737,23 @@ NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
 	    DevObj == DevObj->Vcb->StorageDevice;
 	assert(!Force);
 	IopRemoveDevice(DevObj, Force);
+    } else {
+	/* Otherwise, we will remove the CLOSE_DEVICE_MESSAGE as the client has
+	 * notified us that it no longer holds any reference to the global handle. */
+	LoopOverList(CloseMsg, &DevObj->CloseMsgList, CLOSE_DEVICE_MESSAGE, DeviceLink) {
+	    assert(CloseMsg->DriverObject);
+	    assert(CloseMsg->DriverObject != DevObj->DriverObject);
+	    assert(CloseMsg->DeviceObject == DevObj);
+	    if (CloseMsg->DriverObject != DriverObject) {
+		continue;
+	    }
+	    if (CloseMsg->Msg) {
+		IopFreePool(CloseMsg->Msg);
+	    }
+	    RemoveEntryList(&CloseMsg->DeviceLink);
+	    RemoveEntryList(&CloseMsg->DriverLink);
+	    IopFreePool(CloseMsg);
+	}
     }
     ObDereferenceObject(DevObj);
     return STATUS_SUCCESS;

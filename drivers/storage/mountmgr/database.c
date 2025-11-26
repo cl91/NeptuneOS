@@ -475,7 +475,6 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 {
     ULONG Offset;
     NTSTATUS Status;
-    PFILE_OBJECT FileObject;
     PDEVICE_OBJECT DeviceObject;
     PMOUNTDEV_UNIQUE_ID UniqueId;
     PDATABASE_ENTRY DatabaseEntry;
@@ -527,8 +526,9 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
     }
 
     /* Get our device object */
-    Status = IoGetDeviceObjectPointer(&ListDeviceInfo->DeviceName, FILE_READ_ATTRIBUTES,
-				      &FileObject, &DeviceObject);
+    Status = IoGetDeviceObjectPointer(&ListDeviceInfo->DeviceName,
+				      FILE_READ_ATTRIBUTES,
+				      &DeviceObject);
     if (!NT_SUCCESS(Status)) {
 	KeSetEvent(&DeviceExtension->DeviceLock);
 	goto ReleaseRDS;
@@ -538,8 +538,7 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
     if (!(DeviceObject->Flags & DO_UNLOAD_PENDING)) {
 	InterlockedExchangeAdd(&ListDeviceInfo->MountState, 1);
     }
-
-    ObDereferenceObject(FileObject);
+    ObDereferenceObject(DeviceObject);
 
     /* Force default: no DB, and need for reconcile */
     DeviceInformation->NeedsReconcile = TRUE;

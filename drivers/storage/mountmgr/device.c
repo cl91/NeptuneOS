@@ -291,39 +291,37 @@ MountMgrCheckUnprocessedVolumes(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Ir
 /*
  * @implemented
  */
-BOOLEAN
-IsFtVolume(IN PUNICODE_STRING SymbolicName)
+BOOLEAN IsFtVolume(IN PUNICODE_STRING SymbolicName)
 {
     NTSTATUS Status;
-    PFILE_OBJECT FileObject;
     PARTITION_INFORMATION PartitionInfo;
-    PDEVICE_OBJECT DeviceObject, FileDeviceObject;
+    PDEVICE_OBJECT AttachedDevice, DeviceObject;
 
     /* Get device object */
-    Status = IoGetDeviceObjectPointer(SymbolicName, FILE_READ_ATTRIBUTES, &FileObject,
-				      &DeviceObject);
+    Status = IoGetDeviceObjectPointer(SymbolicName, FILE_READ_ATTRIBUTES,
+				      &AttachedDevice);
     if (!NT_SUCCESS(Status))
 	return FALSE;
 
     /* Get attached device */
-    FileDeviceObject = FileObject->DeviceObject;
-    DeviceObject = IoGetAttachedDeviceReference(FileDeviceObject);
+    DeviceObject = AttachedDevice;
+    AttachedDevice = IoGetAttachedDeviceReference(DeviceObject);
 
     /* FT volume can't be removable */
-    if (FileDeviceObject->Flags & FILE_REMOVABLE_MEDIA) {
+    if (DeviceObject->Flags & FILE_REMOVABLE_MEDIA) {
 	ObDereferenceObject(DeviceObject);
-	ObDereferenceObject(FileObject);
+	ObDereferenceObject(AttachedDevice);
 	return FALSE;
     }
 
-    ObDereferenceObject(FileObject);
+    ObDereferenceObject(DeviceObject);
 
     /* Get partition information */
-    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_DISK_GET_PARTITION_INFO, DeviceObject,
+    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_DISK_GET_PARTITION_INFO, AttachedDevice,
 					 NULL, 0, &PartitionInfo, sizeof(PartitionInfo),
 					 NULL);
 
-    ObDereferenceObject(DeviceObject);
+    ObDereferenceObject(AttachedDevice);
     if (!NT_SUCCESS(Status))
 	return FALSE;
 

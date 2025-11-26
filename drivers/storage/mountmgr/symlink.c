@@ -155,18 +155,17 @@ VOID SendLinkCreated(IN PUNICODE_STRING SymbolicName)
 {
     NTSTATUS Status;
     ULONG NameSize;
-    PFILE_OBJECT FileObject;
     PMOUNTDEV_NAME Name = NULL;
-    PDEVICE_OBJECT DeviceObject;
+    PDEVICE_OBJECT DeviceObject, AttachedDevice;
 
     /* Get the device associated with the name */
-    Status = IoGetDeviceObjectPointer(SymbolicName, FILE_READ_ATTRIBUTES, &FileObject,
+    Status = IoGetDeviceObjectPointer(SymbolicName, FILE_READ_ATTRIBUTES,
 				      &DeviceObject);
     if (!NT_SUCCESS(Status))
 	return;
 
     /* Get attached device (will notify it) */
-    DeviceObject = IoGetAttachedDeviceReference(FileObject->DeviceObject);
+    AttachedDevice = IoGetAttachedDeviceReference(DeviceObject);
 
     /* NameSize is the size of the whole MOUNTDEV_NAME structure */
     NameSize = sizeof(USHORT) + SymbolicName->Length;
@@ -182,15 +181,14 @@ VOID SendLinkCreated(IN PUNICODE_STRING SymbolicName)
      * (with limited access) first. If this fails, the called driver may be
      * for an older NT version, and so, we send again the notification using
      * the old (Windows 2000) IOCTL definition (with any access). */
-    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_LINK_CREATED, DeviceObject, Name,
-					 NameSize, NULL, 0, FileObject);
+    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_LINK_CREATED, AttachedDevice, Name,
+					 NameSize, NULL, 0, NULL);
     /* This one can fail, no one matters */
     UNREFERENCED_PARAMETER(Status);
 #if (NTDDI_VERSION >= NTDDI_WS03)
     /* Then, second one */
     Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_LINK_CREATED_UNSECURE_DEPRECATED,
-					 DeviceObject, Name, NameSize, NULL, 0,
-					 FileObject);
+					 AttachedDevice, Name, NameSize, NULL, 0, NULL);
     UNREFERENCED_PARAMETER(Status);
 #endif // (NTDDI_VERSION >= NTDDI_WS03)
 
@@ -198,8 +196,8 @@ Cleanup:
     if (Name)
 	FreePool(Name);
 
+    ObDereferenceObject(AttachedDevice);
     ObDereferenceObject(DeviceObject);
-    ObDereferenceObject(FileObject);
 
     return;
 }
@@ -211,18 +209,17 @@ VOID SendLinkDeleted(IN PUNICODE_STRING DeviceName, IN PUNICODE_STRING SymbolicN
 {
     NTSTATUS Status;
     ULONG NameSize;
-    PFILE_OBJECT FileObject;
     PMOUNTDEV_NAME Name = NULL;
-    PDEVICE_OBJECT DeviceObject;
+    PDEVICE_OBJECT DeviceObject, AttachedDevice;
 
     /* Get the device associated with the name */
-    Status = IoGetDeviceObjectPointer(DeviceName, FILE_READ_ATTRIBUTES, &FileObject,
+    Status = IoGetDeviceObjectPointer(DeviceName, FILE_READ_ATTRIBUTES,
 				      &DeviceObject);
     if (!NT_SUCCESS(Status))
 	return;
 
     /* Get attached device (will notify it) */
-    DeviceObject = IoGetAttachedDeviceReference(FileObject->DeviceObject);
+    AttachedDevice = IoGetAttachedDeviceReference(DeviceObject);
 
     /* NameSize is the size of the whole MOUNTDEV_NAME structure */
     NameSize = sizeof(USHORT) + SymbolicName->Length;
@@ -238,15 +235,14 @@ VOID SendLinkDeleted(IN PUNICODE_STRING DeviceName, IN PUNICODE_STRING SymbolicN
      * (with limited access) first. If this fails, the called driver may be
      * for an older NT version, and so, we send again the notification using
      * the old (Windows 2000) IOCTL definition (with any access). */
-    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_LINK_DELETED, DeviceObject, Name,
-					 NameSize, NULL, 0, FileObject);
+    Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_LINK_DELETED, AttachedDevice, Name,
+					 NameSize, NULL, 0, NULL);
     /* This one can fail, no one matters */
     UNREFERENCED_PARAMETER(Status);
 #if (NTDDI_VERSION >= NTDDI_WS03)
     /* Then, second one */
     Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_LINK_DELETED_UNSECURE_DEPRECATED,
-					 DeviceObject, Name, NameSize, NULL, 0,
-					 FileObject);
+					 AttachedDevice, Name, NameSize, NULL, 0, NULL);
     UNREFERENCED_PARAMETER(Status);
 #endif // (NTDDI_VERSION >= NTDDI_WS03)
 
@@ -254,8 +250,8 @@ Cleanup:
     if (Name)
 	FreePool(Name);
 
+    ObDereferenceObject(AttachedDevice);
     ObDereferenceObject(DeviceObject);
-    ObDereferenceObject(FileObject);
 
     return;
 }
@@ -532,19 +528,18 @@ NTSTATUS QuerySuggestedLinkName(IN PUNICODE_STRING SymbolicName,
 {
     NTSTATUS Status;
     USHORT NameLength;
-    PFILE_OBJECT FileObject;
-    PDEVICE_OBJECT DeviceObject;
+    PDEVICE_OBJECT DeviceObject, AttachedDevice;
     PMOUNTDEV_SUGGESTED_LINK_NAME IoCtlSuggested;
 
     /* First, get device */
-    Status = IoGetDeviceObjectPointer(SymbolicName, FILE_READ_ATTRIBUTES, &FileObject,
+    Status = IoGetDeviceObjectPointer(SymbolicName, FILE_READ_ATTRIBUTES,
 				      &DeviceObject);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
 
     /* Then, get attached device */
-    DeviceObject = IoGetAttachedDeviceReference(FileObject->DeviceObject);
+    AttachedDevice = IoGetAttachedDeviceReference(DeviceObject);
 
     /* Then, prepare buffer to query suggested name */
     IoCtlSuggested = AllocatePool(sizeof(MOUNTDEV_SUGGESTED_LINK_NAME));
@@ -555,9 +550,8 @@ NTSTATUS QuerySuggestedLinkName(IN PUNICODE_STRING SymbolicName,
 
     /* Prepare request */
     Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME,
-					 DeviceObject, NULL, 0, IoCtlSuggested,
-					 sizeof(MOUNTDEV_SUGGESTED_LINK_NAME),
-					 FileObject);
+					 AttachedDevice, NULL, 0, IoCtlSuggested,
+					 sizeof(MOUNTDEV_SUGGESTED_LINK_NAME), NULL);
     /* Retry with appropriate length */
     if (Status == STATUS_BUFFER_OVERFLOW) {
 	/* Reallocate big enough buffer */
@@ -572,8 +566,8 @@ NTSTATUS QuerySuggestedLinkName(IN PUNICODE_STRING SymbolicName,
 
 	/* And re-ask */
 	Status = MountMgrSendSyncDeviceIoCtl(IOCTL_MOUNTDEV_QUERY_SUGGESTED_LINK_NAME,
-					     DeviceObject, NULL, 0, IoCtlSuggested,
-					     NameLength, FileObject);
+					     AttachedDevice, NULL, 0, IoCtlSuggested,
+					     NameLength, NULL);
     }
     if (!NT_SUCCESS(Status))
 	goto Release;
@@ -599,8 +593,8 @@ Release:
     FreePool(IoCtlSuggested);
 
 Dereference:
+    ObDereferenceObject(AttachedDevice);
     ObDereferenceObject(DeviceObject);
-    ObDereferenceObject(FileObject);
 
     return Status;
 }

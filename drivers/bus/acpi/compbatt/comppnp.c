@@ -111,14 +111,9 @@ static NTSTATUS CompBattAddNewBattery(IN PUNICODE_STRING BatteryName,
 	    RtlCopyUnicodeString(&BatteryData->BatteryName, BatteryName);
 
 	    /* Get the device object */
-	    PFILE_OBJECT FileObject;
 	    Status = IoGetDeviceObjectPointer(BatteryName, FILE_ALL_ACCESS,
-					      &FileObject,
 					      &BatteryData->DeviceObject);
 	    if (NT_SUCCESS(Status)) {
-		/* Drop the FO since IoGetDeviceObjectPointer referenced it. */
-		ObDereferenceObject(FileObject);
-
 		/* Allocate the battery IRP */
 		Irp = IoAllocateIrp(BatteryData->DeviceObject->StackSize + 1);
 		if (Irp) {

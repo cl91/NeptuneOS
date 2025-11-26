@@ -60,11 +60,11 @@ static inline VOID IopInitializeDeviceObject(IN PDEVICE_OBJECT DeviceObject,
 }
 
 /*
- * Returns the device object if the device with the given global handle has already
- * been created. In this case, if Reference is TRUE, the refcount of the returned
- * device object will be increased by one. Otherwise, create the device and return
- * the device object (NULL is returned if we are out of memory). In this case, the
- * newly created device object will have a refcount of one.
+ * Returns the client-side device object if there is already one with the given
+ * global handle. In this case, if Reference is TRUE, the refcount of the returned
+ * device object will be increased by one. Otherwise, create the client-side device
+ * object and return it (NULL is returned if we are out of memory). In this case,
+ * the newly created device object will have a refcount of one.
  */
 PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 					  IN IO_DEVICE_INFO DevInfo,
@@ -197,12 +197,47 @@ VOID IopDeleteDeviceObject(IN PDEVICE_OBJECT DeviceObject)
 
 NTAPI NTSTATUS IoGetDeviceObjectPointer(IN PUNICODE_STRING ObjectName,
 					IN ACCESS_MASK DesiredAccess,
-					OUT PFILE_OBJECT *FileObject,
 					OUT PDEVICE_OBJECT *DeviceObject)
 {
     PAGED_CODE();
+    *DeviceObject = NULL;
 
-    return STATUS_NOT_IMPLEMENTED;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    IO_STATUS_BLOCK StatusBlock;
+    HANDLE FileHandle;
+
+    /* Open the Device */
+    InitializeObjectAttributes(&ObjectAttributes,
+                               ObjectName,
+                               OBJ_KERNEL_HANDLE,
+                               NULL,
+                               NULL);
+    NTSTATUS Status = NtOpenFile(&FileHandle,
+				 DesiredAccess,
+				 &ObjectAttributes,
+				 &StatusBlock,
+				 0,
+				 FILE_NON_DIRECTORY_FILE);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+
+    GLOBAL_HANDLE TopDeviceHandle;
+    IO_DEVICE_INFO TopDeviceInfo;
+    ULONG TopDeviceStackSize;
+    Status = WdmGetDeviceObject(FileHandle, &TopDeviceHandle,
+				&TopDeviceInfo, &TopDeviceStackSize);
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
+
+    *DeviceObject = IopGetDeviceObjectOrCreate(TopDeviceHandle, TopDeviceInfo,
+					       TopDeviceStackSize, TRUE);
+    Status = *DeviceObject ? STATUS_SUCCESS : STATUS_INSUFFICIENT_RESOURCES;
+
+out:
+    NtClose(FileHandle);
+    return Status;
 }
 
 /*

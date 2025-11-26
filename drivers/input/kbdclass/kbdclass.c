@@ -791,14 +791,13 @@ static NTAPI VOID SearchForLegacyDrivers(IN PDRIVER_OBJECT DriverObject,
 					  KeyValueInformation, Size, &ResultLength))) {
 	UNICODE_STRING PortName;
 	PDEVICE_OBJECT PortDeviceObject = NULL;
-	PFILE_OBJECT FileObject = NULL;
 
 	PortName.Length = PortName.MaximumLength = (USHORT)KeyValueInformation->NameLength;
 	PortName.Buffer = KeyValueInformation->Name;
 
 	/* Open the device object pointer */
 	Status = IoGetDeviceObjectPointer(&PortName, FILE_READ_ATTRIBUTES,
-					  &FileObject, &PortDeviceObject);
+					  &PortDeviceObject);
 	if (!NT_SUCCESS(Status)) {
 	    WARN_(CLASS_NAME,
 		  "IoGetDeviceObjectPointer(%wZ) failed with status 0x%08x\n",
