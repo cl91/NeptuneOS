@@ -10,7 +10,8 @@
 
 #include <nt.h>
 
-/* Comment this to enable debug logging */
+/* Comment the following three lines to enable debug logging */
+#undef DBG
 #undef DPRINT
 #define DPRINT(...)
 
