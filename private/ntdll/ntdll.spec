@@ -162,6 +162,7 @@
 @ stdcall RtlGenerate8dot3Name(ptr ptr long ptr)
 @ stdcall RtlIsNameLegalDOS8Dot3(ptr ptr ptr)
 @ stdcall RtlStringFromGUID(ptr ptr)
+@ stdcall RtlGUIDFromString(ptr ptr)
 @ stdcall RtlAdjustPrivilege(long long long ptr)
 @ stdcall RtlCreateProcessParameters(ptr ptr ptr ptr ptr ptr ptr ptr ptr ptr)
 @ stdcall RtlCreateUserProcess(ptr long ptr ptr ptr ptr long ptr ptr ptr)

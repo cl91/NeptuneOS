@@ -1,12 +1,21 @@
+#include <initguid.h>
 #include <wdmp.h>
+#include <wdmguid.h>
 #define TEXT(x) L##x
 #include <regstr.h>
+
+#define GUID_STRING_CHARS 38
+#define GUID_STRING_BYTES (GUID_STRING_CHARS * sizeof(WCHAR))
+C_ASSERT(sizeof(L"{01234567-89ab-cdef-0123-456789abcdef}") ==
+	 GUID_STRING_BYTES + sizeof(UNICODE_NULL));
 
 #define PROFILE_KEY_NAME L"Hardware Profiles\\Current\\System\\CurrentControlSet\\"
 #define CLASS_KEY_NAME L"Control\\Class\\"
 #define ENUM_KEY_NAME L"Enum\\"
 #define DEVICE_PARAMETERS_KEY_NAME L"Device Parameters"
 #define BOOT_CONFIG_KEY_NAME L"LogConf"
+#define DEVICE_CLASSES_KEY_NAME						\
+    L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\DeviceClasses\\"
 
 /* Caches all device objects that have been queried, including
  * the device objects created by this driver. */
@@ -328,12 +337,19 @@ NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
     UNIMPLEMENTED;
 }
 
+static NTSTATUS IopQueueDeviceChangeEvent(LPCGUID EventGuid,
+					  PGUID DeviceGuid,
+					  PUNICODE_STRING SymbolicName)
+{
+    UNIMPLEMENTED;
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 NTAPI VOID IoInvalidateDeviceRelations(IN PDEVICE_OBJECT DeviceObject,
 				       IN DEVICE_RELATION_TYPE Type)
 {
     /* TODO: Queue device relation invalidation message */
 }
-
 
 NTAPI NTSTATUS
 IoReportTargetDeviceChangeAsynchronous(IN PDEVICE_OBJECT Pdo,
@@ -342,72 +358,6 @@ IoReportTargetDeviceChangeAsynchronous(IN PDEVICE_OBJECT Pdo,
 				       IN OPTIONAL PVOID Context)
 {
     UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-/*++
- * @name IoRegisterDeviceInterface
- * @implemented
- *
- * Registers a device interface class, if it has not been previously registered,
- * and creates a new instance of the interface class, which a driver can
- * subsequently enable for use by applications or other system components.
- * Documented in WDK.
- *
- * @param PhysicalDeviceObject
- *        Points to an optional PDO that narrows the search to only the
- *        device interfaces of the device represented by the PDO
- *
- * @param InterfaceClassGuid
- *        Points to a class GUID specifying the device interface class
- *
- * @param ReferenceString
- *        Optional parameter, pointing to a unicode string. For a full
- *        description of this rather rarely used param (usually drivers
- *        pass NULL here) see WDK
- *
- * @param SymbolicLinkName
- *        Pointer to the resulting unicode string
- *
- * @return Returns STATUS_SUCCESS if the interface registration is successful.
- *         Returns STATUS_INVALID_DEVICE_REQUEST if registration failed.
- *
- * @remarks This routine can only be called at PASSIVE_LEVEL.
- *
- *--*/
-NTAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
-					 IN CONST GUID *InterfaceClassGuid,
-					 IN OPTIONAL PUNICODE_STRING ReferenceString,
-					 OUT PUNICODE_STRING SymbolicLinkName)
-{
-    PAGED_CODE();
-
-    return STATUS_NOT_IMPLEMENTED;
-}
-
-/*++
- * @name IoSetDeviceInterfaceState
- * @implemented
- *
- * Enables or disables an instance of a previously registered device
- * interface class.
- * Documented in WDK.
- *
- * @param SymbolicLinkName
- *        Pointer to the string identifying instance to enable or disable
- *
- * @param Enable
- *        TRUE = enable, FALSE = disable
- *
- * @return Usual NTSTATUS
- *
- * @remarks This routine can only be called at PASSIVE_LEVEL.
- *--*/
-NTAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
-					 IN BOOLEAN Enable)
-{
-    PAGED_CODE();
-
     return STATUS_NOT_IMPLEMENTED;
 }
 
@@ -547,6 +497,914 @@ static inline NTSTATUS IopReadRegValue(IN HANDLE KeyHandle,
 out:
     ExFreePool(PartialInfo);
     return Status;
+}
+
+/**
+ * @brief
+ * Parses the specified symbolic link onto the 4 parts: prefix, device string,
+ * class GUID and reference string.
+ *
+ * @param[in] SymbolicLinkName
+ * Pointer to a symbolic link string to parse.
+ *
+ * @param[out] PrefixString
+ * Receives prefix of symbolic link. Can be '\??\' for Kernel mode or '\\?\' for User
+ * mode.
+ *
+ * @param[out] MungedString
+ * Receives device string. For example, ##?#ACPI#PNP0501#1#.
+ *
+ * @param[out] GuidString
+ * Receives device interface class GUID string represented by device interface.
+ * For example, {01234567-89ab-cdef-0123-456789abcdef}.
+ *
+ * @param[out] ReferenceString
+ * Receives reference string, if any. Usually contains a human-readable
+ * subdevice name or class GUID.
+ *
+ * @param[out] ReferenceStringPresent
+ * Pointer to variable that indicates whether the reference string exists in symbolic
+ * link. TRUE if it does, FALSE otherwise.
+ *
+ * @param[out] InterfaceClassGuid
+ * Receives the interface class GUID to which specified symbolic link belongs to.
+ *
+ * @return
+ * STATUS_SUCCESS in case of success, or an NTSTATUS error code otherwise.
+ **/
+static NTSTATUS IopSeparateSymbolicLink(IN PCUNICODE_STRING SymbolicLinkName,
+					OUT OPTIONAL PUNICODE_STRING PrefixString,
+					OUT OPTIONAL PUNICODE_STRING MungedString,
+					OUT OPTIONAL PUNICODE_STRING GuidString,
+					OUT OPTIONAL PUNICODE_STRING ReferenceString,
+					OUT OPTIONAL PBOOLEAN ReferenceStringPresent,
+					OUT OPTIONAL LPGUID InterfaceClassGuid)
+{
+    static const UNICODE_STRING KernelModePrefix = RTL_CONSTANT_STRING(L"\\??\\");
+    static const UNICODE_STRING UserModePrefix = RTL_CONSTANT_STRING(L"\\\\?\\");
+    UNICODE_STRING MungedStringReal, GuidStringReal, ReferenceStringReal;
+    UNICODE_STRING LinkNameNoPrefix;
+    USHORT i, ReferenceStringOffset;
+    NTSTATUS Status = STATUS_SUCCESS;
+
+    DPRINT("Symbolic link is %wZ\n", SymbolicLinkName);
+
+    /* The symbolic link name looks like \??\ACPI#PNP0501#1#{GUID}\ReferenceString
+     * Make sure it starts with the expected prefix. */
+    if (!RtlPrefixUnicodeString(&KernelModePrefix, SymbolicLinkName, FALSE) &&
+	!RtlPrefixUnicodeString(&UserModePrefix, SymbolicLinkName, FALSE)) {
+	DPRINT1("Invalid link name %wZ\n", SymbolicLinkName);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Sanity checks */
+    ASSERT(KernelModePrefix.Length == UserModePrefix.Length);
+    ASSERT(SymbolicLinkName->Length >= KernelModePrefix.Length);
+
+    /* Make a version without the prefix for further processing */
+    LinkNameNoPrefix.Buffer = SymbolicLinkName->Buffer +
+			      KernelModePrefix.Length / sizeof(WCHAR);
+    LinkNameNoPrefix.Length = SymbolicLinkName->Length - KernelModePrefix.Length;
+    LinkNameNoPrefix.MaximumLength = LinkNameNoPrefix.Length;
+
+    DPRINT("Symbolic link without prefix is %wZ\n", &LinkNameNoPrefix);
+
+    /* Find the reference string, if any */
+    for (i = 0; i < LinkNameNoPrefix.Length / sizeof(WCHAR); i++) {
+	if (LinkNameNoPrefix.Buffer[i] == L'\\')
+	    break;
+    }
+    ReferenceStringOffset = i * sizeof(WCHAR);
+
+    /* The GUID is before the reference string or at the end */
+    ASSERT(LinkNameNoPrefix.Length >= ReferenceStringOffset);
+    if (ReferenceStringOffset < GUID_STRING_BYTES + sizeof(WCHAR)) {
+	DPRINT1("Invalid link name %wZ\n", SymbolicLinkName);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Get reference string (starts with \ after {GUID}) from link without prefix */
+    ReferenceStringReal.Buffer = LinkNameNoPrefix.Buffer +
+				 ReferenceStringOffset / sizeof(WCHAR);
+    ReferenceStringReal.Length = LinkNameNoPrefix.Length - ReferenceStringOffset;
+    ReferenceStringReal.MaximumLength = ReferenceStringReal.Length;
+
+    DPRINT("Reference string is %wZ\n", &ReferenceStringReal);
+
+    /* Get GUID string (device class GUID in {} brackets) */
+    GuidStringReal.Buffer = LinkNameNoPrefix.Buffer +
+			    (ReferenceStringOffset - GUID_STRING_BYTES) / sizeof(WCHAR);
+    GuidStringReal.Length = GUID_STRING_BYTES;
+    GuidStringReal.MaximumLength = GuidStringReal.Length;
+
+    DPRINT("GUID string is %wZ\n", &GuidStringReal);
+
+    /* Validate GUID string for:
+     * 1) {} brackets at the start and the end;
+     * 2) - separators in the appropriate places. */
+    ASSERT(GuidStringReal.Buffer[0] == L'{');
+    ASSERT(GuidStringReal.Buffer[GUID_STRING_CHARS - 1] == L'}');
+    ASSERT(GuidStringReal.Buffer[9] == L'-');
+    ASSERT(GuidStringReal.Buffer[14] == L'-');
+    ASSERT(GuidStringReal.Buffer[19] == L'-');
+    ASSERT(GuidStringReal.Buffer[24] == L'-');
+
+    if (MungedString) {
+	/* Create a munged path string (looks like ACPI#PNP0501#1#) */
+	MungedStringReal.Buffer = LinkNameNoPrefix.Buffer;
+	MungedStringReal.Length = LinkNameNoPrefix.Length - ReferenceStringReal.Length -
+				  GUID_STRING_BYTES - sizeof(WCHAR);
+	MungedStringReal.MaximumLength = MungedStringReal.Length;
+
+	DPRINT("Munged string is %wZ\n", &MungedStringReal);
+    }
+
+    /* Store received parts if the parameters are not null */
+    if (PrefixString) {
+	PrefixString->Buffer = SymbolicLinkName->Buffer;
+	PrefixString->Length = KernelModePrefix.Length; // Same as UserModePrefix.Length
+	PrefixString->MaximumLength = PrefixString->Length;
+
+	DPRINT("Prefix string is %wZ\n", PrefixString);
+    }
+
+    if (MungedString)
+	*MungedString = MungedStringReal;
+
+    if (GuidString)
+	*GuidString = GuidStringReal;
+
+    if (ReferenceString) {
+	if (ReferenceStringReal.Length > sizeof(WCHAR))
+	    *ReferenceString = ReferenceStringReal;
+	else
+	    RtlInitEmptyUnicodeString(ReferenceString, NULL, 0);
+    }
+
+    if (ReferenceStringPresent)
+	*ReferenceStringPresent = ReferenceStringReal.Length > sizeof(WCHAR);
+
+    if (InterfaceClassGuid) {
+	/* Convert GUID string into a GUID and store it also */
+	Status = RtlGUIDFromString(&GuidStringReal, InterfaceClassGuid);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT1("RtlGUIDFromString() failed, Status 0x%08x\n", Status);
+	}
+    }
+
+    /* We're done */
+    return Status;
+}
+
+/*
+ * Create registry key. If parent keys do not exist, this routine creates them recursively.
+ */
+static NTSTATUS IopCreateKeyEx(OUT PHANDLE Handle,
+			       IN HANDLE RootHandle OPTIONAL,
+			       IN PUNICODE_STRING KeyName,
+			       IN ACCESS_MASK DesiredAccess,
+			       IN ULONG CreateOptions,
+			       OUT PULONG Disposition OPTIONAL)
+{
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    ULONG KeyDisposition, RootHandleIndex = 0, i = 1, NestedCloseLevel = 0;
+    USHORT Length;
+    HANDLE HandleArray[2];
+    BOOLEAN Recursing = TRUE;
+    PWCHAR pp, p, p1;
+    UNICODE_STRING KeyString;
+    NTSTATUS Status = STATUS_SUCCESS;
+    PAGED_CODE();
+
+    /* P1 is start, pp is end */
+    p1 = KeyName->Buffer;
+    pp = (PVOID)((ULONG_PTR)p1 + KeyName->Length);
+
+    /* Create the target key */
+    InitializeObjectAttributes(&ObjectAttributes, KeyName,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, RootHandle,
+			       NULL);
+    Status = NtCreateKey(&HandleArray[i], DesiredAccess, &ObjectAttributes, 0, NULL,
+			 CreateOptions, &KeyDisposition);
+
+    /* Now we check if this failed */
+    if ((Status == STATUS_OBJECT_NAME_NOT_FOUND) && (RootHandle)) {
+	/* Target key failed, so we'll need to create its parent. Setup array */
+	HandleArray[0] = NULL;
+	HandleArray[1] = RootHandle;
+
+	/* Keep recursing for each missing parent */
+	while (Recursing) {
+	    /* And if we're deep enough, close the last handle */
+	    if (NestedCloseLevel > 1)
+		NtClose(HandleArray[RootHandleIndex]);
+
+	    /* We're setup to ping-pong between the two handle array entries */
+	    RootHandleIndex = i;
+	    i = (i + 1) & 1;
+
+	    /* Clear the one we're attempting to open now */
+	    HandleArray[i] = NULL;
+
+	    /* Process the parent key name */
+	    for (p = p1; ((p < pp) && (*p != OBJ_NAME_PATH_SEPARATOR)); p++)
+		;
+	    Length = (USHORT)(p - p1) * sizeof(WCHAR);
+
+	    /* Is there a parent name? */
+	    if (Length) {
+		/* Build the unicode string for it */
+		KeyString.Buffer = p1;
+		KeyString.Length = KeyString.MaximumLength = Length;
+
+		/* Now try opening the parent */
+		InitializeObjectAttributes(&ObjectAttributes, &KeyString,
+					   OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+					   HandleArray[RootHandleIndex], NULL);
+		Status = NtCreateKey(&HandleArray[i], DesiredAccess, &ObjectAttributes, 0,
+				     NULL, CreateOptions, &KeyDisposition);
+		if (NT_SUCCESS(Status)) {
+		    /* It worked, we have one more handle */
+		    NestedCloseLevel++;
+		} else {
+		    /* Parent key creation failed, abandon loop */
+		    Recursing = FALSE;
+		    continue;
+		}
+	    } else {
+		/* We don't have a parent name, probably corrupted key name */
+		Status = STATUS_INVALID_PARAMETER;
+		Recursing = FALSE;
+		continue;
+	    }
+
+	    /* Now see if there's more parents to create */
+	    p1 = p + 1;
+	    if ((p == pp) || (p1 == pp)) {
+		/* We're done, hopefully successfully, so stop */
+		Recursing = FALSE;
+	    }
+	}
+
+	/* Outer loop check for handle nesting that requires closing the top handle */
+	if (NestedCloseLevel > 1)
+	    NtClose(HandleArray[RootHandleIndex]);
+    }
+
+    /* Check if we broke out of the loop due to success */
+    if (NT_SUCCESS(Status)) {
+	/* Return the target handle (we closed all the parent ones) and disposition */
+	*Handle = HandleArray[i];
+	if (Disposition)
+	    *Disposition = KeyDisposition;
+    }
+
+    /* Return the success state */
+    return Status;
+}
+
+/**
+ * @brief
+ * Retrieves a handles to the device and instance registry keys
+ * for the previously opened registry key handle of the specified symbolic link.
+ **/
+static NTSTATUS IopOpenOrCreateSymbolicLinkSubKeys(OUT OPTIONAL PHANDLE DeviceHandle,
+						   OUT OPTIONAL PULONG DeviceDisposition,
+						   OUT OPTIONAL PHANDLE InstanceHandle,
+						   OUT OPTIONAL PULONG InstanceDisposition,
+						   IN HANDLE ClassHandle,
+						   IN PCUNICODE_STRING SymbolicLinkName,
+						   IN ACCESS_MASK DesiredAccess,
+						   IN BOOLEAN Create)
+{
+    UNICODE_STRING ReferenceString = {};
+    UNICODE_STRING SymbolicLink = {};
+    HANDLE DeviceKeyHandle = NULL, InstanceKeyHandle = NULL;
+    ULONG DeviceKeyDisposition, InstanceKeyDisposition;
+    BOOLEAN ReferenceStringPresent = FALSE; /* Assuming no ref string by default */
+    NTSTATUS Status;
+    USHORT i;
+
+    /* Duplicate the symbolic link (we'll modify it later) */
+    Status = RtlDuplicateUnicodeString(0, SymbolicLinkName, &SymbolicLink);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("RtlDuplicateUnicodeString() failed, Status 0x%08x\n", Status);
+	goto Quit;
+    }
+
+    /* Separate it into its constituents */
+    Status = IopSeparateSymbolicLink(&SymbolicLink, NULL, NULL, NULL, &ReferenceString,
+				     &ReferenceStringPresent, NULL);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to separate symbolic link %wZ, Status 0x%08x\n", &SymbolicLink,
+		Status);
+	goto Quit;
+    }
+
+    /* Did we got a ref string? */
+    if (ReferenceStringPresent) {
+	/* Remove it from our symbolic link */
+	SymbolicLink.MaximumLength = SymbolicLink.Length -= ReferenceString.Length;
+
+	/* Replace the 1st backslash `\` character by '#' pound */
+	ReferenceString.Buffer[0] = L'#';
+    } else {
+	/* No ref string, initialize it with a single pound character '#' */
+	RtlInitUnicodeString(&ReferenceString, L"#");
+    }
+
+    /* Replace all '\' by '#' in symbolic link */
+    for (i = 0; i < SymbolicLink.Length / sizeof(WCHAR); i++) {
+	if (SymbolicLink.Buffer[i] == L'\\')
+	    SymbolicLink.Buffer[i] = L'#';
+    }
+
+    /* Fix prefix: '#??#' -> '##?#' */
+    SymbolicLink.Buffer[1] = L'#';
+
+    DPRINT("Munged symbolic link is %wZ\n", &SymbolicLink);
+
+    /* Try to open or create device interface keys */
+    if (Create) {
+	Status = IopCreateKeyEx(&DeviceKeyHandle, ClassHandle, &SymbolicLink,
+					DesiredAccess | KEY_ENUMERATE_SUB_KEYS,
+					REG_OPTION_NON_VOLATILE, &DeviceKeyDisposition);
+    } else {
+	Status = IopOpenKeyEx(&DeviceKeyHandle, ClassHandle, &SymbolicLink,
+			      DesiredAccess | KEY_ENUMERATE_SUB_KEYS);
+    }
+
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to create or open %wZ, Status 0x%08x\n", &SymbolicLink, Status);
+	goto Quit;
+    }
+
+    DPRINT("Munged reference string is %wZ\n", &ReferenceString);
+
+    /* Try to open or create instance subkeys */
+    if (Create) {
+	Status = IopCreateKeyEx(&InstanceKeyHandle, DeviceKeyHandle,
+					&ReferenceString, DesiredAccess,
+					REG_OPTION_NON_VOLATILE, &InstanceKeyDisposition);
+    } else {
+	Status = IopOpenKeyEx(&InstanceKeyHandle, DeviceKeyHandle,
+			      &ReferenceString, DesiredAccess);
+    }
+
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to create or open %wZ, Status 0x%08x\n", &ReferenceString,
+		Status);
+	goto Quit;
+    }
+
+    Status = STATUS_SUCCESS;
+
+Quit:
+    if (NT_SUCCESS(Status)) {
+	if (DeviceHandle)
+	    *DeviceHandle = DeviceKeyHandle;
+	else
+	    NtClose(DeviceKeyHandle);
+
+	if (DeviceDisposition)
+	    *DeviceDisposition = DeviceKeyDisposition;
+
+	if (InstanceHandle)
+	    *InstanceHandle = InstanceKeyHandle;
+	else
+	    NtClose(InstanceKeyHandle);
+
+	if (InstanceDisposition)
+	    *InstanceDisposition = InstanceKeyDisposition;
+    } else {
+	if (InstanceKeyHandle)
+	    NtClose(InstanceKeyHandle);
+
+	if (Create)
+	    NtDeleteKey(DeviceKeyHandle);
+
+	if (DeviceKeyHandle)
+	    NtClose(DeviceKeyHandle);
+    }
+
+    if (SymbolicLink.Buffer)
+	RtlFreeUnicodeString(&SymbolicLink);
+
+    return Status;
+}
+
+/**
+ * @brief
+ * Retrieves a handles to the GUID, device and instance registry keys
+ * for the specified symbolic link.
+ **/
+static NTSTATUS OpenRegistryHandlesFromSymbolicLink(IN PCUNICODE_STRING SymbolicLinkName,
+						    IN ACCESS_MASK DesiredAccess,
+						    OUT OPTIONAL PHANDLE GuidKey,
+						    OUT OPTIONAL PHANDLE DeviceKey,
+						    OUT OPTIONAL PHANDLE InstanceKey)
+{
+    UNICODE_STRING BaseKeyU = {};
+    UNICODE_STRING GuidString = {};
+    HANDLE ClassesKey = NULL;
+    HANDLE GuidKeyReal = NULL;
+    HANDLE DeviceKeyReal = NULL;
+    HANDLE InstanceKeyReal = NULL;
+
+    RtlInitUnicodeString(&BaseKeyU, DEVICE_CLASSES_KEY_NAME);
+
+    /* Separate symbolic link onto the parts */
+    NTSTATUS Status = IopSeparateSymbolicLink(SymbolicLinkName, NULL, NULL,
+					      &GuidString, NULL, NULL, NULL);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to parse symbolic link %wZ, Status 0x%08x\n",
+		SymbolicLinkName, Status);
+	goto Quit;
+    }
+
+    /* Open the DeviceClasses key */
+    Status = IopOpenKeyEx(&ClassesKey, NULL, &BaseKeyU,
+			  DesiredAccess | KEY_ENUMERATE_SUB_KEYS);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to open %wZ, Status 0x%08x\n", &BaseKeyU, Status);
+	goto Quit;
+    }
+
+    /* Open the GUID subkey */
+    Status = IopOpenKeyEx(&GuidKeyReal, ClassesKey, &GuidString,
+			  DesiredAccess | KEY_ENUMERATE_SUB_KEYS);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to open %wZ%wZ, Status 0x%08x\n", &BaseKeyU, &GuidString,
+		Status);
+	goto Quit;
+    }
+
+    /* Open the device and instance subkeys */
+    Status = IopOpenOrCreateSymbolicLinkSubKeys(&DeviceKeyReal, NULL, &InstanceKeyReal,
+						NULL, GuidKeyReal, SymbolicLinkName,
+						DesiredAccess, FALSE);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to open %wZ%wZ, Status 0x%08x\n", &BaseKeyU, &GuidString,
+		Status);
+	goto Quit;
+    }
+
+    Status = STATUS_SUCCESS;
+
+Quit:
+    if (NT_SUCCESS(Status)) {
+	if (GuidKey)
+	    *GuidKey = GuidKeyReal;
+	else
+	    NtClose(GuidKeyReal);
+
+	if (DeviceKey)
+	    *DeviceKey = DeviceKeyReal;
+	else
+	    NtClose(DeviceKeyReal);
+
+	if (InstanceKey)
+	    *InstanceKey = InstanceKeyReal;
+	else
+	    NtClose(InstanceKeyReal);
+    } else {
+	if (GuidKeyReal)
+	    NtClose(GuidKeyReal);
+
+	if (DeviceKeyReal)
+	    NtClose(DeviceKeyReal);
+
+	if (InstanceKeyReal)
+	    NtClose(InstanceKeyReal);
+    }
+
+    if (ClassesKey)
+	NtClose(ClassesKey);
+
+    return Status;
+}
+
+/*++
+ * @name IoRegisterDeviceInterface
+ * @implemented
+ *
+ * Registers a device interface class, if it has not been previously registered,
+ * and creates a new instance of the interface class, which a driver can
+ * subsequently enable for use by applications or other system components.
+ * Documented in WDK.
+ *
+ * @param PhysicalDeviceObject
+ *        Points to an optional PDO that narrows the search to only the
+ *        device interfaces of the device represented by the PDO
+ *
+ * @param InterfaceClassGuid
+ *        Points to a class GUID specifying the device interface class
+ *
+ * @param ReferenceString
+ *        Optional parameter, pointing to a unicode string. For a full
+ *        description of this rather rarely used param (usually drivers
+ *        pass NULL here) see WDK
+ *
+ * @param SymbolicLinkName
+ *        Pointer to the resulting unicode string
+ *
+ * @return Returns STATUS_SUCCESS if the interface registration is successful.
+ *         Returns STATUS_INVALID_DEVICE_REQUEST if registration failed.
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
+ *
+ *--*/
+NTAPI NTSTATUS IoRegisterDeviceInterface(IN PDEVICE_OBJECT PhysicalDeviceObject,
+					 IN CONST GUID *InterfaceClassGuid,
+					 IN OPTIONAL PUNICODE_STRING ReferenceString,
+					 OUT PUNICODE_STRING SymbolicLinkName)
+{
+    PAGED_CODE();
+
+    UCHAR PdoNameInfoBuffer[sizeof(OBJECT_NAME_INFORMATION) + (256 * sizeof(WCHAR))];
+    POBJECT_NAME_INFORMATION PdoNameInfo = (POBJECT_NAME_INFORMATION)PdoNameInfoBuffer;
+    UNICODE_STRING DeviceInstance = RTL_CONSTANT_STRING(L"DeviceInstance");
+    UNICODE_STRING SymbolicLink = RTL_CONSTANT_STRING(L"SymbolicLink");
+    UNICODE_STRING InstancePath = {};
+    UNICODE_STRING GuidString = {};
+    UNICODE_STRING BaseKeyName = {};
+    UNICODE_STRING SubKeyName = {};
+    UNICODE_STRING InterfaceKeyName = {};
+    HANDLE ClassKey = NULL;
+    HANDLE InterfaceKey = NULL;
+    HANDLE SubKey = NULL;
+
+    DPRINT("IoRegisterDeviceInterface(): PDO %p, RefString: %wZ\n", PhysicalDeviceObject,
+	   ReferenceString);
+
+    if (ReferenceString != NULL) {
+	/* Reference string must not contain path-separator symbols */
+	for (ULONG i = 0; i < ReferenceString->Length / sizeof(WCHAR); i++) {
+	    if ((ReferenceString->Buffer[i] == '\\') ||
+		(ReferenceString->Buffer[i] == '/'))
+		return STATUS_INVALID_DEVICE_REQUEST;
+	}
+    }
+
+    NTSTATUS Status = RtlStringFromGUID(InterfaceClassGuid, &GuidString);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("RtlStringFromGUID() failed with status 0x%08x\n", Status);
+	return Status;
+    }
+
+    /* Get Pdo name: \Device\xxxxxxxx */
+    ULONG ResultLength;
+    Status = IoGetDeviceProperty(PhysicalDeviceObject,
+				 DevicePropertyPhysicalDeviceObjectName,
+				 sizeof(PdoNameInfoBuffer),
+				 PdoNameInfo,
+				 &ResultLength);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("IoGetDeviceProperty() failed with status 0x%08x\n", Status);
+	goto out;
+    }
+    ASSERT(PdoNameInfo->Name.Length);
+
+    /* Create base key name for this interface:
+     * HKLM\SYSTEM\CurrentControlSet\Control\DeviceClasses\{GUID} */
+    Status = IopGetDeviceInstancePath(PhysicalDeviceObject, &InstancePath);
+        if (!NT_SUCCESS(Status)) {
+	DPRINT("IopGetDeviceInstancePath() failed with status 0x%08x\n", Status);
+	goto out;
+    }
+
+    BaseKeyName.Length = sizeof(DEVICE_CLASSES_KEY_NAME) - sizeof(WCHAR);
+    BaseKeyName.MaximumLength = BaseKeyName.Length + GuidString.Length;
+    BaseKeyName.Buffer = ExAllocatePool(PagedPool, BaseKeyName.MaximumLength);
+    if (!BaseKeyName.Buffer) {
+	DPRINT("ExAllocatePool() failed\n");
+	goto out;
+    }
+    RtlCopyMemory(BaseKeyName.Buffer, DEVICE_CLASSES_KEY_NAME,
+		  BaseKeyName.Length);
+    RtlAppendUnicodeStringToString(&BaseKeyName, &GuidString);
+
+    /* Create BaseKeyName key in registry */
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    InitializeObjectAttributes(&ObjectAttributes, &BaseKeyName,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE | OBJ_OPENIF,
+			       NULL, /* RootDirectory */
+			       NULL); /* SecurityDescriptor */
+
+    Status = NtCreateKey(&ClassKey, KEY_WRITE, &ObjectAttributes, 0, /* TileIndex */
+			 NULL, /* Class */
+			 REG_OPTION_NON_VOLATILE, NULL); /* Disposition */
+
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("NtCreateKey() failed with status 0x%08x\n", Status);
+	goto out;
+    }
+
+    /* Create key name for this interface: ##?#ACPI#PNP0501#1#{GUID} */
+    InterfaceKeyName.Length = 0;
+    InterfaceKeyName.MaximumLength = 4 * sizeof(WCHAR) /* add space for ##?# */
+	+ InstancePath.Length + sizeof(WCHAR) /* add space for # */
+	+ GuidString.Length;
+    InterfaceKeyName.Buffer = ExAllocatePool(NonPagedPool,
+					     InterfaceKeyName.MaximumLength);
+    if (!InterfaceKeyName.Buffer) {
+	DPRINT("ExAllocatePool() failed\n");
+	goto out;
+    }
+
+    RtlAppendUnicodeToString(&InterfaceKeyName, L"##?#");
+    ULONG StartIndex = InterfaceKeyName.Length / sizeof(WCHAR);
+    RtlAppendUnicodeStringToString(&InterfaceKeyName, &InstancePath);
+    for (ULONG i = 0; i < InstancePath.Length / sizeof(WCHAR); i++) {
+	if (InterfaceKeyName.Buffer[StartIndex + i] == '\\')
+	    InterfaceKeyName.Buffer[StartIndex + i] = '#';
+    }
+    RtlAppendUnicodeToString(&InterfaceKeyName, L"#");
+    RtlAppendUnicodeStringToString(&InterfaceKeyName, &GuidString);
+
+    /* Create the interface key in registry */
+    InitializeObjectAttributes(&ObjectAttributes, &InterfaceKeyName,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE | OBJ_OPENIF,
+			       ClassKey, NULL); /* SecurityDescriptor */
+
+    Status = NtCreateKey(&InterfaceKey, KEY_WRITE, &ObjectAttributes, 0, /* TileIndex */
+			 NULL, /* Class */
+			 REG_OPTION_NON_VOLATILE, NULL); /* Disposition */
+
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("NtCreateKey() failed with status 0x%08x\n", Status);
+	goto out;
+    }
+
+    /* Write DeviceInstance entry. Value is InstancePath */
+    Status = NtSetValueKey(InterfaceKey, &DeviceInstance, 0, /* TileIndex */
+			   REG_SZ, InstancePath.Buffer, InstancePath.Length);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("NtSetValueKey() failed with status 0x%08x\n", Status);
+	goto out;
+    }
+
+    /* Create subkey. Name is #ReferenceString */
+    SubKeyName.Length = 0;
+    SubKeyName.MaximumLength = sizeof(WCHAR);
+    if (ReferenceString && ReferenceString->Length)
+	SubKeyName.MaximumLength += ReferenceString->Length;
+    SubKeyName.Buffer = ExAllocatePool(PagedPool, SubKeyName.MaximumLength);
+    if (!SubKeyName.Buffer) {
+	DPRINT("ExAllocatePool() failed\n");
+	goto out;
+    }
+    RtlAppendUnicodeToString(&SubKeyName, L"#");
+    if (ReferenceString && ReferenceString->Length)
+	RtlAppendUnicodeStringToString(&SubKeyName, ReferenceString);
+
+    /* Create SubKeyName key in registry */
+    InitializeObjectAttributes(&ObjectAttributes, &SubKeyName,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE,
+			       InterfaceKey, /* RootDirectory */
+			       NULL); /* SecurityDescriptor */
+
+    Status = NtCreateKey(&SubKey, KEY_WRITE, &ObjectAttributes, 0, /* TileIndex */
+			 NULL, /* Class */
+			 REG_OPTION_NON_VOLATILE, NULL); /* Disposition */
+
+    if (!NT_SUCCESS(Status)) {
+	DPRINT("NtCreateKey() failed with status 0x%08x\n", Status);
+	goto out;
+    }
+
+    /* Create symbolic link name: \??\ACPI#PNP0501#1#{GUID}\ReferenceString */
+    SymbolicLinkName->Length = 0;
+    SymbolicLinkName->MaximumLength = SymbolicLinkName->Length +
+	4 * sizeof(WCHAR) /* add space for \??\ */
+	+ InstancePath.Length + sizeof(WCHAR) /* add space for # */
+	+ GuidString.Length + sizeof(WCHAR); /* add space for trailing NUL */
+    if (ReferenceString && ReferenceString->Length)
+	SymbolicLinkName->MaximumLength += sizeof(WCHAR) + ReferenceString->Length;
+    SymbolicLinkName->Buffer = ExAllocatePool(PagedPool, SymbolicLinkName->MaximumLength);
+    if (!SymbolicLinkName->Buffer) {
+	DPRINT("ExAllocatePool() failed\n");
+	goto out;
+    }
+    RtlAppendUnicodeToString(SymbolicLinkName, L"\\??\\");
+    StartIndex = SymbolicLinkName->Length / sizeof(WCHAR);
+    RtlAppendUnicodeStringToString(SymbolicLinkName, &InstancePath);
+    for (ULONG i = 0; i < InstancePath.Length / sizeof(WCHAR); i++) {
+	if (SymbolicLinkName->Buffer[StartIndex + i] == '\\')
+	    SymbolicLinkName->Buffer[StartIndex + i] = '#';
+    }
+    RtlAppendUnicodeToString(SymbolicLinkName, L"#");
+    RtlAppendUnicodeStringToString(SymbolicLinkName, &GuidString);
+    SymbolicLinkName->Buffer[SymbolicLinkName->Length / sizeof(WCHAR)] = L'\0';
+
+    /* Create symbolic link */
+    DPRINT("IoRegisterDeviceInterface(): creating symbolic link %wZ -> %wZ\n",
+	   SymbolicLinkName, &PdoNameInfo->Name);
+    NTSTATUS SymLinkStatus = IoCreateSymbolicLink(SymbolicLinkName, &PdoNameInfo->Name);
+
+    /* If the symbolic link already exists, return an informational success status */
+    if (SymLinkStatus == STATUS_OBJECT_NAME_COLLISION) {
+	/* HACK: Delete the existing symbolic link and update it to the new PDO name */
+	IoDeleteSymbolicLink(SymbolicLinkName);
+	IoCreateSymbolicLink(SymbolicLinkName, &PdoNameInfo->Name);
+	SymLinkStatus = STATUS_OBJECT_NAME_EXISTS;
+    }
+
+    if (!NT_SUCCESS(SymLinkStatus)) {
+	DPRINT1("IoCreateSymbolicLink() failed with status 0x%08x\n", SymLinkStatus);
+	goto out;
+    }
+
+    if (ReferenceString && ReferenceString->Length) {
+	RtlAppendUnicodeToString(SymbolicLinkName, L"\\");
+	RtlAppendUnicodeStringToString(SymbolicLinkName, ReferenceString);
+    }
+    SymbolicLinkName->Buffer[SymbolicLinkName->Length / sizeof(WCHAR)] = L'\0';
+
+    /* Write symbolic link name in registry */
+    SymbolicLinkName->Buffer[1] = '\\';
+    Status = NtSetValueKey(SubKey, &SymbolicLink, 0, /* TileIndex */
+			   REG_SZ, SymbolicLinkName->Buffer, SymbolicLinkName->Length);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("NtSetValueKey() failed with status 0x%08x\n", Status);
+	ExFreePool(SymbolicLinkName->Buffer);
+    } else {
+	SymbolicLinkName->Buffer[1] = '?';
+    }
+
+out:
+    if (SubKey) {
+	NtClose(SubKey);
+    }
+    if (InterfaceKey) {
+	NtClose(InterfaceKey);
+    }
+    if (ClassKey) {
+	NtClose(ClassKey);
+    }
+    if (InstancePath.Buffer) {
+	ExFreePool(InstancePath.Buffer);
+    }
+    if (SubKeyName.Buffer) {
+	ExFreePool(SubKeyName.Buffer);
+    }
+    if (InterfaceKeyName.Buffer) {
+	ExFreePool(InterfaceKeyName.Buffer);
+    }
+    if (BaseKeyName.Buffer) {
+	ExFreePool(BaseKeyName.Buffer);
+    }
+
+    return NT_SUCCESS(Status) ? SymLinkStatus : Status;
+}
+
+/*++
+ * @name IoSetDeviceInterfaceState
+ * @implemented
+ *
+ * Enables or disables an instance of a previously registered device
+ * interface class.
+ * Documented in WDK.
+ *
+ * @param SymbolicLinkName
+ *        Pointer to the string identifying instance to enable or disable
+ *
+ * @param Enable
+ *        TRUE = enable, FALSE = disable
+ *
+ * @return Usual NTSTATUS
+ *
+ * @remarks This routine can only be called at PASSIVE_LEVEL.
+ *--*/
+NTAPI NTSTATUS IoSetDeviceInterfaceState(IN PUNICODE_STRING SymbolicLinkName,
+					 IN BOOLEAN Enable)
+{
+    PAGED_CODE();
+
+    UNICODE_STRING GuidString;
+    NTSTATUS Status;
+    LPCGUID EventGuid;
+    HANDLE InstanceHandle, ControlHandle;
+    UNICODE_STRING KeyName, DeviceInstance;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    ULONG LinkedValue, Index;
+    GUID DeviceGuid;
+    UNICODE_STRING DosDevicesPrefix1 = RTL_CONSTANT_STRING(L"\\??\\");
+    UNICODE_STRING DosDevicesPrefix2 = RTL_CONSTANT_STRING(L"\\\\?\\");
+    UNICODE_STRING LinkNameNoPrefix;
+    USHORT ReferenceStringOffset;
+
+    if (SymbolicLinkName == NULL) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    DPRINT("IoSetDeviceInterfaceState('%wZ', %u)\n", SymbolicLinkName, Enable);
+
+    /* Symbolic link name is \??\ACPI#PNP0501#1#{GUID}\ReferenceString */
+    /* Make sure it starts with the expected prefix */
+    if (!RtlPrefixUnicodeString(&DosDevicesPrefix1, SymbolicLinkName, FALSE) &&
+	!RtlPrefixUnicodeString(&DosDevicesPrefix2, SymbolicLinkName, FALSE)) {
+	DPRINT1("IoSetDeviceInterfaceState() invalid link name '%wZ'\n",
+		SymbolicLinkName);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Make a version without the prefix for further processing */
+    ASSERT(DosDevicesPrefix1.Length == DosDevicesPrefix2.Length);
+    ASSERT(SymbolicLinkName->Length >= DosDevicesPrefix1.Length);
+    LinkNameNoPrefix.Buffer = SymbolicLinkName->Buffer +
+			      DosDevicesPrefix1.Length / sizeof(WCHAR);
+    LinkNameNoPrefix.Length = SymbolicLinkName->Length - DosDevicesPrefix1.Length;
+    LinkNameNoPrefix.MaximumLength = LinkNameNoPrefix.Length;
+
+    /* Find the reference string, if any */
+    ULONG i;
+    for (i = 0; i < LinkNameNoPrefix.Length / sizeof(WCHAR); i++) {
+	if (LinkNameNoPrefix.Buffer[i] == L'\\') {
+	    break;
+	}
+    }
+    ReferenceStringOffset = i * sizeof(WCHAR);
+
+    /* The GUID is before the reference string or at the end */
+    ASSERT(LinkNameNoPrefix.Length >= ReferenceStringOffset);
+    if (ReferenceStringOffset < GUID_STRING_BYTES + sizeof(WCHAR)) {
+	DPRINT1("IoSetDeviceInterfaceState() invalid link name '%wZ'\n",
+		SymbolicLinkName);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    GuidString.Buffer = LinkNameNoPrefix.Buffer +
+			(ReferenceStringOffset - GUID_STRING_BYTES) / sizeof(WCHAR);
+    GuidString.Length = GUID_STRING_BYTES;
+    GuidString.MaximumLength = GuidString.Length;
+    Status = RtlGUIDFromString(&GuidString, &DeviceGuid);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("RtlGUIDFromString() invalid GUID '%wZ' in link name '%wZ'\n",
+		&GuidString, SymbolicLinkName);
+	return Status;
+    }
+
+    /* Open registry keys */
+    Status = OpenRegistryHandlesFromSymbolicLink(SymbolicLinkName, KEY_CREATE_SUB_KEY,
+						 NULL, NULL, &InstanceHandle);
+    if (!NT_SUCCESS(Status))
+	return Status;
+
+    RtlInitUnicodeString(&KeyName, L"Control");
+    InitializeObjectAttributes(&ObjectAttributes, &KeyName,
+			       OBJ_CASE_INSENSITIVE | OBJ_KERNEL_HANDLE, InstanceHandle,
+			       NULL);
+    Status = NtCreateKey(&ControlHandle, KEY_SET_VALUE, &ObjectAttributes, 0, NULL,
+			 REG_OPTION_VOLATILE, NULL);
+    NtClose(InstanceHandle);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to create the Control subkey\n");
+	return Status;
+    }
+
+    LinkedValue = (Enable ? 1 : 0);
+
+    RtlInitUnicodeString(&KeyName, L"Linked");
+    Status = NtSetValueKey(ControlHandle, &KeyName, 0, REG_DWORD, &LinkedValue,
+			   sizeof(ULONG));
+    NtClose(ControlHandle);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failed to write the Linked value\n");
+	return Status;
+    }
+
+    ASSERT(GuidString.Buffer >= LinkNameNoPrefix.Buffer + 1);
+    DeviceInstance.Length = (USHORT)((GuidString.Buffer - LinkNameNoPrefix.Buffer - 1) *
+				     sizeof(WCHAR));
+    if (DeviceInstance.Length == 0) {
+	DPRINT1("No device instance in link name '%wZ'\n", SymbolicLinkName);
+	return STATUS_OBJECT_NAME_NOT_FOUND;
+    }
+    DeviceInstance.MaximumLength = DeviceInstance.Length;
+    DeviceInstance.Buffer = ExAllocatePoolWithTag(PagedPool, DeviceInstance.MaximumLength,
+						  TAG_IO);
+    if (DeviceInstance.Buffer == NULL) {
+	/* no memory */
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    RtlCopyMemory(DeviceInstance.Buffer, LinkNameNoPrefix.Buffer, DeviceInstance.Length);
+
+    for (Index = 0; Index < DeviceInstance.Length / sizeof(WCHAR); Index++) {
+	if (DeviceInstance.Buffer[Index] == L'#') {
+	    DeviceInstance.Buffer[Index] = L'\\';
+	}
+    }
+
+    ExFreePoolWithTag(DeviceInstance.Buffer, TAG_IO);
+
+    EventGuid = Enable ? &GUID_DEVICE_INTERFACE_ARRIVAL : &GUID_DEVICE_INTERFACE_REMOVAL;
+
+    Status = IopQueueDeviceChangeEvent(EventGuid, &DeviceGuid, SymbolicLinkName);
+
+    DPRINT("Status %x\n", Status);
+    return STATUS_SUCCESS;
 }
 
 /*++

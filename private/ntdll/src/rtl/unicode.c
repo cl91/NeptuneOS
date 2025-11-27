@@ -1229,7 +1229,7 @@ NTAPI BOOLEAN RtlEqualDomainName(IN PUNICODE_STRING DomainName1,
  * SEE ALSO
  *  See RtlStringFromGUID.
  */
-NTSTATUS NTAPI RtlGUIDFromString(IN UNICODE_STRING * str, OUT GUID * guid)
+NTSTATUS NTAPI RtlGUIDFromString(IN UNICODE_STRING *str, OUT GUID *guid)
 {
     int i = 0;
     const WCHAR *lpszCLSID = str->Buffer;

@@ -16,6 +16,7 @@
 #define TAG_SYS_BUF		'BSYS'
 #define TAG_FSTUB               'BtsF'
 #define TAG_FILE_SYSTEM         'SYSF'
+#define TAG_IO			'USOI'
 
 #define CONTROL_KEY_NAME L"\\Registry\\Machine\\System\\CurrentControlSet\\"
 
