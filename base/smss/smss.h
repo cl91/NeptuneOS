@@ -72,3 +72,4 @@ NTSTATUS SmInitRegistry();
 
 /* hw.c */
 NTSTATUS SmInitHardwareDatabase();
+NTSTATUS SmLoadDriver(IN PCSTR DriverToLoad);

@@ -64,7 +64,8 @@ static struct {
     { "stornvme", L"PCI\\CC_010802\0SCSI\\NVME\0",
       ARRAYSIZE(StorNvmeParameters), StorNvmeParameters },
     { "disk" },
-    { "partmgr" }
+    { "partmgr" },
+    { "mountmgr" }
 };
 
 static struct {
@@ -137,7 +138,7 @@ static NTSTATUS SmInitBootDriverConfigs()
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS SmLoadDriver(IN PCSTR DriverToLoad)
+NTSTATUS SmLoadDriver(IN PCSTR DriverToLoad)
 {
     CHAR ServiceFullPath[512];
     snprintf(ServiceFullPath, sizeof(ServiceFullPath),

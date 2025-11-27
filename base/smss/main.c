@@ -1,4 +1,5 @@
 #include "smss.h"
+#include <mountmgr.h>
 
 PCSTR SMSS_BANNER = "\nNeptune OS Session Manager [Version " VER_PRODUCTVERSION_STRING "]\n";
 
@@ -118,28 +119,59 @@ static VOID SmGetKeyboardInput(IN HANDLE Keyboard,
 
 static VOID SmMountDrives()
 {
-    SmPrint("Mounting drive A... ");
-    UNICODE_STRING FloppyDevice = RTL_CONSTANT_STRING(L"\\Device\\Floppy0");
-    UNICODE_STRING FloppyDosDevice = RTL_CONSTANT_STRING(L"\\??\\A:");
+    NTSTATUS Status = SmLoadDriver("mountmgr");
+    if (!NT_SUCCESS(Status)) {
+	return;
+    }
+    SmPrint("Mounting drives...\n");
+    UNICODE_STRING MountmgrDevice = RTL_CONSTANT_STRING(MOUNTMGR_DEVICE_NAME);
     OBJECT_ATTRIBUTES ObjAttr;
-    InitializeObjectAttributes(&ObjAttr, &FloppyDosDevice, 0, NULL, NULL);
-    HANDLE Symlink = NULL;
-    NTSTATUS Status = NtCreateSymbolicLinkObject(&Symlink, SYMBOLIC_LINK_ALL_ACCESS,
-						 &ObjAttr, &FloppyDevice);
-    if (!NT_SUCCESS(Status)) {
-	SmPrint("Failed to create symbolic link for drive A (error 0x%08x).\n", Status);
-	return;
-    }
-    NtClose(Symlink);
-    HANDLE VolumeHandle = NULL;
+    InitializeObjectAttributes(&ObjAttr, &MountmgrDevice,
+			       OBJ_CASE_INSENSITIVE, NULL, NULL);
+    HANDLE MountmgrHandle = NULL;
     IO_STATUS_BLOCK IoStatus;
-    Status = NtOpenFile(&VolumeHandle, 0, &ObjAttr, &IoStatus, 0, 0);
+    Status = NtOpenFile(&MountmgrHandle, FILE_GENERIC_READ, &ObjAttr,
+			&IoStatus, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			FILE_SYNCHRONOUS_IO_NONALERT);
     if (!NT_SUCCESS(Status)) {
-	SmPrint("Failed to mount drive A (error 0x%08x).\n", Status);
+	SmPrint("Failed to open mount manager device. Error = 0x%x\n", Status);
 	return;
     }
-    NtClose(VolumeHandle);
-    SmPrint("OK\n");
+
+    BYTE Buffer[64 * 1024];    // 64 KB enough for typical systems
+    RtlZeroMemory(Buffer, sizeof(Buffer));
+
+    Status = NtDeviceIoControlFile(MountmgrHandle,
+				   NULL, NULL, NULL,
+				   &IoStatus,
+				   IOCTL_MOUNTMGR_QUERY_POINTS,
+				   NULL, 0,
+				   Buffer, sizeof(Buffer));
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to query mount points. Error = 0x%x\n", Status);
+	return;
+    }
+
+    PMOUNTMGR_MOUNT_POINTS Mountpoints = (PMOUNTMGR_MOUNT_POINTS)Buffer;
+    if (!Mountpoints->NumberOfMountPoints) {
+	SmPrint("No drives mounted.\n");
+	return;
+    }
+
+    for (ULONG i = 0; i < Mountpoints->NumberOfMountPoints; i++) {
+	PMOUNTMGR_MOUNT_POINT Mountpoint = &Mountpoints->MountPoints[i];
+	UNICODE_STRING SymbolicLink = {
+	    .Buffer = (PUSHORT)&Buffer[Mountpoint->SymbolicLinkNameOffset],
+	    .Length = Mountpoint->SymbolicLinkNameLength,
+	    .MaximumLength = Mountpoint->SymbolicLinkNameLength
+	};
+	UNICODE_STRING DeviceName = {
+	    .Buffer = (PUSHORT)&Buffer[Mountpoint->DeviceNameOffset],
+	    .Length = Mountpoint->DeviceNameLength,
+	    .MaximumLength = Mountpoint->DeviceNameLength
+	};
+	SmPrint("Mounted %wZ on %wZ\n", &SymbolicLink, &DeviceName);
+    }
 }
 
 NTSTATUS SmStartCommandPrompt()
@@ -176,29 +208,31 @@ NTSTATUS SmStartCommandPrompt()
     return STATUS_SUCCESS;
 }
 
-static VOID SmCreateDosDevicesSymlink()
+static VOID SmCreateDosDevicesSymlink(IN PWSTR SymbolicLinkName)
 {
-    UNICODE_STRING SymbolicLinkName = RTL_CONSTANT_STRING(L"\\DosDevices");
+    UNICODE_STRING SymbolicLinkNameU;
+    RtlInitUnicodeString(&SymbolicLinkNameU, SymbolicLinkName);
     UNICODE_STRING PathName = RTL_CONSTANT_STRING(L"\\??");
     OBJECT_ATTRIBUTES ObjectAttributes;
-    InitializeObjectAttributes(&ObjectAttributes, &SymbolicLinkName,
-                               OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
-                               NULL, NULL);
+    InitializeObjectAttributes(&ObjectAttributes, &SymbolicLinkNameU,
+			       OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
+			       NULL, NULL);
     HANDLE Handle;
     NTSTATUS Status = NtCreateSymbolicLinkObject(&Handle, SYMBOLIC_LINK_ALL_ACCESS,
 						 &ObjectAttributes, &PathName);
     if (NT_SUCCESS(Status)) {
 	NtClose(Handle);
     } else {
-	SmPrint("Failed to create symbolic link \\DosDevices. Error = 0x%x\n",
-		Status);
+	SmPrint("Failed to create symbolic link %wZ. Error = 0x%x\n",
+		&SymbolicLinkNameU, Status);
     }
 }
 
 NTAPI VOID NtProcessStartup(PPEB Peb)
 {
     SmPrint("%s\n", SMSS_BANNER);
-    SmCreateDosDevicesSymlink();
+    SmCreateDosDevicesSymlink(L"\\DosDevices");
+    SmCreateDosDevicesSymlink(L"\\GLOBAL??");
     SmInitRegistry();
     SmInitHardwareDatabase();
     SmMountDrives();

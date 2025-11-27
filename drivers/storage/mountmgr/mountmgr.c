@@ -67,13 +67,13 @@ LONG Unloading;
  * @note
  * Must be called at PASSIVE_LEVEL with all APCs enabled.
  **/
-NTSTATUS MountMgrSendSyncDeviceIoCtl(_In_ ULONG IoControlCode,
-				     _In_ PDEVICE_OBJECT DeviceObject,
+NTSTATUS MountMgrSendSyncDeviceIoCtl(IN ULONG IoControlCode,
+				     IN PDEVICE_OBJECT DeviceObject,
 				     IN OPTIONAL PVOID InputBuffer,
-				     _In_ ULONG InputBufferLength,
+				     IN ULONG InputBufferLength,
 				     OUT OPTIONAL PVOID OutputBuffer,
-				     _In_ ULONG OutputBufferLength,
-				     _In_opt_ PFILE_OBJECT FileObject)
+				     IN ULONG OutputBufferLength,
+				     IN OPTIONAL PFILE_OBJECT FileObject)
 {
     NTSTATUS Status;
     KEVENT Event;
@@ -82,7 +82,7 @@ NTSTATUS MountMgrSendSyncDeviceIoCtl(_In_ ULONG IoControlCode,
 
     PAGED_CODE();
 
-    /* Initialize the on-stack notification event and build the threaded IRP */
+    /* Initialize the on-stack notification event and build the IRP */
     KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
     Irp = IoBuildDeviceIoControlRequest(IoControlCode, DeviceObject, InputBuffer,
 					InputBufferLength, OutputBuffer,
@@ -234,14 +234,14 @@ NTSTATUS CreateNewDriveLetterName(OUT PUNICODE_STRING DriveLetter,
 /*
  * @implemented
  */
-NTSTATUS QueryDeviceInformation(_In_ PUNICODE_STRING SymbolicName,
-				_Out_opt_ PUNICODE_STRING DeviceName,
-				_Out_opt_ PMOUNTDEV_UNIQUE_ID *UniqueId,
-				_Out_opt_ PBOOLEAN Removable,
-				_Out_opt_ PBOOLEAN GptDriveLetter,
-				_Out_opt_ PBOOLEAN HasGuid,
-				_Inout_opt_ LPGUID StableGuid,
-				_Out_opt_ PBOOLEAN IsFT)
+NTSTATUS QueryDeviceInformation(IN PUNICODE_STRING SymbolicName,
+				OUT OPTIONAL PUNICODE_STRING DeviceName,
+				OUT OPTIONAL PMOUNTDEV_UNIQUE_ID *UniqueId,
+				OUT OPTIONAL PBOOLEAN Removable,
+				OUT OPTIONAL PBOOLEAN GptDriveLetter,
+				OUT OPTIONAL PBOOLEAN HasGuid,
+				IN OUT OPTIONAL LPGUID StableGuid,
+				OUT OPTIONAL PBOOLEAN IsFT)
 {
     NTSTATUS Status;
     USHORT Size;
@@ -681,7 +681,7 @@ VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
  * @brief   Retrieves the "NoAutoMount" setting.
  * @return  TRUE if AutoMount is disabled; FALSE if AutoMount is enabled.
  **/
-BOOLEAN MountmgrReadNoAutoMount(_In_ PUNICODE_STRING RegistryPath)
+BOOLEAN MountmgrReadNoAutoMount(IN PUNICODE_STRING RegistryPath)
 {
     NTSTATUS Status;
     ULONG Result, Default = 0;
