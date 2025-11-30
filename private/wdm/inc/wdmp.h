@@ -17,6 +17,7 @@
 #define TAG_FSTUB               'BtsF'
 #define TAG_FILE_SYSTEM         'SYSF'
 #define TAG_IO			'USOI'
+#define TAG_PNP_NOTIFY          'NPnP'
 
 #define CONTROL_KEY_NAME L"\\Registry\\Machine\\System\\CurrentControlSet\\"
 
@@ -268,6 +269,7 @@ SIZE_T MiGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
 extern LIST_ENTRY IopWorkItemQueue;
 extern LIST_ENTRY IopSuspendedWorkItemList;
 extern KMUTEX IopWorkItemMutex;
+VOID IopRemoveWorkItem(IN PIO_WORKITEM WorkItem);
 VOID IopProcessWorkItemQueue();
 BOOLEAN IopWorkItemIsInSuspendedList(IN PIO_WORKITEM Item);
 VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem);

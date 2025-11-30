@@ -1,6 +1,25 @@
 #include "umtests.h"
 #include <ntddbeep.h>
 
+#define SYSTEM_KEY_PATH				"\\Registry\\Machine\\System"
+#define CURRENT_CONTROL_SET_KEY_PATH		SYSTEM_KEY_PATH "\\CurrentControlSet"
+#define SERVICE_KEY_PATH			CURRENT_CONTROL_SET_KEY_PATH "\\Services"
+
+static NTSTATUS LoadDriver(IN PCSTR DriverToLoad)
+{
+    CHAR ServiceFullPath[512];
+    snprintf(ServiceFullPath, sizeof(ServiceFullPath),
+	     SERVICE_KEY_PATH "\\%s", DriverToLoad);
+    VgaPrint("Loading driver %s... ", ServiceFullPath);
+    NTSTATUS Status = NtLoadDriverA(ServiceFullPath);
+    if (!NT_SUCCESS(Status)) {
+	VgaPrint("FAIL (0x%x)\n", Status);
+    } else {
+	VgaPrint("OK\n");
+    }
+    return Status;
+}
+
 /*
  * Call the beep.sys driver to make a beep of given frequency (in Hz)
  * and duration (in ms)
@@ -61,6 +80,7 @@ NTSTATUS TestNullDriver()
     IO_STATUS_BLOCK IoStatusBlock;
 
     /* Open the device */
+    LoadDriver("null");
     RtlInitUnicodeString(&NullDevice, L"\\Device\\Null");
     InitializeObjectAttributes(&ObjectAttributes, &NullDevice, 0, NULL, NULL);
     NTSTATUS Status = NtCreateFile(&hNull, FILE_READ_DATA | FILE_WRITE_DATA,
@@ -78,6 +98,7 @@ NTSTATUS TestNullDriver()
 VOID TestBeepDriver(IN ULONG Freq,
 		    IN ULONG Duration)
 {
+    LoadDriver("beep");
     VgaPrint("Testing beep driver with frequency %d Hz duration %d ms...\n",
 	     Freq, Duration);
     BOOLEAN BeepSuccess = Beep(Freq, Duration);

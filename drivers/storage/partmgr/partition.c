@@ -453,6 +453,7 @@ NTSTATUS PartitionHandlePnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	status = PartitionHandleDeviceRelations(partExt, Irp);
 	break;
     }
+    case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
     case IRP_MN_QUERY_STOP_DEVICE:
     case IRP_MN_QUERY_REMOVE_DEVICE:
     case IRP_MN_CANCEL_STOP_DEVICE:

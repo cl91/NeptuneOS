@@ -296,6 +296,29 @@ static VOID ObpDirectoryObjectRemoveProc(IN POBJECT Subobject)
     ObDirectoryObjectRemoveObject(Subobject);
 }
 
+static NTSTATUS ObpDirectoryObjectQueryNameProc(IN POBJECT Self,
+						IN POBJECT Object,
+						OUT PCHAR Path,
+						IN OUT ULONG *BufferLength)
+{
+    assert(Self);
+    assert(Object);
+    assert(Path);
+    assert(BufferLength);
+    POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
+    assert(ObjectHeader->ParentObject == Self);
+    POBJECT_DIRECTORY_ENTRY Entry = ObjectHeader->ParentLink;
+    assert(Entry->Parent == Self);
+    ULONG RequiredLength = strlen(Entry->ObjectName) + 1;
+    if (*BufferLength < RequiredLength) {
+	*BufferLength = RequiredLength;
+	return STATUS_BUFFER_TOO_SMALL;
+    }
+    *BufferLength = RequiredLength;
+    RtlCopyMemory(Path, Entry->ObjectName, RequiredLength);
+    return STATUS_SUCCESS;
+}
+
 /*
  * Called when the object manager attempts to delete the object
  * directory
@@ -339,6 +362,7 @@ NTSTATUS ObpInitDirectoryObjectType()
 	.CloseProc = ObpDirectoryObjectCloseProc,
 	.InsertProc = ObpDirectoryObjectInsertProc,
 	.RemoveProc = ObpDirectoryObjectRemoveProc,
+	.QueryNameProc = ObpDirectoryObjectQueryNameProc,
 	.DeleteProc = ObpDirectoryObjectDeleteProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_DIRECTORY,

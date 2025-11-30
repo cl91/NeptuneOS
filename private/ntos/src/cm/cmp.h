@@ -155,6 +155,10 @@ NTSTATUS CmpKeyObjectInsertProc(IN POBJECT Parent,
 				IN POBJECT Subobject,
 				IN PCSTR Subpath);
 VOID CmpKeyObjectRemoveProc(IN POBJECT Subobject);
+NTSTATUS CmpKeyObjectQueryNameProc(IN POBJECT Parent,
+				   IN POBJECT Subobject,
+				   OUT PCHAR Subpath,
+				   IN OUT ULONG *BufferLength);
 NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 			       IN PCSTR Path,
 			       IN BOOLEAN CaseInsensitive,

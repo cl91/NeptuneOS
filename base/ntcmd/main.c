@@ -425,9 +425,13 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     }
 
     //
-    // Switch current directory to the root of A: drive
+    // Switch current directory to the root of C: drive. If that fails,
+    // try the A: drive.
     //
-    RtlCliSetCurrentDirectory("A:\\");
+    Status = RtlCliSetCurrentDirectory("C:\\");
+    if (!NT_SUCCESS(Status)) {
+	RtlCliSetCurrentDirectory("A:\\");
+    }
 
     //
     // Show initial prompt

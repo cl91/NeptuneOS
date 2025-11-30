@@ -97,6 +97,7 @@ NTSTATUS ObpInitSymlinkObjectType()
 	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
 	.DeleteProc = ObpSymlinkObjectDeleteProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_SYMBOLIC_LINK,

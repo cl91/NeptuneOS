@@ -35,6 +35,7 @@ static NTSTATUS EiCreateEventType()
 	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
 	.DeleteProc = EiEventObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_EVENT,

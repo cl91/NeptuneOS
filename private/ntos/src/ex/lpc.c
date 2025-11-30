@@ -47,6 +47,7 @@ static NTSTATUS EiCreatePortType()
 	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
 	.DeleteProc = EiPortObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_LPC_PORT,

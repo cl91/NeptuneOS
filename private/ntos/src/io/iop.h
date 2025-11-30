@@ -540,6 +540,10 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 				   IN POBJECT Object,
 				   IN PCSTR Path);
 VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject);
+NTSTATUS IopDeviceObjectQueryNameProc(IN POBJECT Self,
+				      IN POBJECT Object,
+				      OUT PCHAR Path,
+				      IN OUT ULONG *BufferLength);
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
 				 IN POBJECT Object,

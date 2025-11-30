@@ -2292,16 +2292,6 @@ NTSTATUS NtPlugPlayControl(IN ASYNC_STATE State,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS WdmOpenDeviceRegistryKey(IN ASYNC_STATE AsyncState,
-                                  IN PTHREAD Thread,
-                                  IN GLOBAL_HANDLE DeviceHandle,
-                                  IN ULONG DevInstKeyType,
-                                  IN ACCESS_MASK DesiredAccess,
-                                  OUT HANDLE *DevInstRegKey)
-{
-    UNIMPLEMENTED;
-}
-
 NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
                               IN PTHREAD Thread,
                               IN GLOBAL_HANDLE DeviceHandle,
@@ -2348,7 +2338,11 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 	break;
 
     case DevicePropertyPhysicalDeviceObjectName:
-	UNIMPLEMENTED;
+	assert(DeviceNode->PhyDevObj);
+	RET_ERR(ObQueryNameString(DeviceNode->PhyDevObj, Buffer, sizeof(Buffer), NULL));
+	UnicodeOutput = TRUE;
+	Data = Buffer;
+	ResultLength = strlen(Buffer) + 1;
 	break;
 
     case DevicePropertyInstancePath:
@@ -2372,12 +2366,27 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
     if (UnicodeOutput) {
 	return RtlUTF8ToUnicodeN(PropertyBuffer, BufferLength, pResultLength,
 				 Data, ResultLength);
+    } else {
+	*pResultLength = ResultLength;
+	if (ResultLength > BufferLength) {
+	    return STATUS_BUFFER_TOO_SMALL;
+	}
+	RtlCopyMemory(PropertyBuffer, Data, ResultLength);
+	return STATUS_SUCCESS;
     }
+}
 
-    *pResultLength = ResultLength;
-    if (ResultLength > BufferLength) {
-	return STATUS_BUFFER_TOO_SMALL;
-    }
-    RtlCopyMemory(PropertyBuffer, Data, ResultLength);
-    return STATUS_SUCCESS;
+NTSTATUS WdmRegisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
+                                         IN PTHREAD Thread,
+                                         IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
+                                         IN ULONG EventCategoryFlags)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS WdmUnregisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
+					   IN PTHREAD Thread,
+					   IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory)
+{
+    UNIMPLEMENTED;
 }

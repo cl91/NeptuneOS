@@ -91,14 +91,11 @@ typedef seL4_Word MWORD;
 
 /*
  * Maximum amount of data we can pass in the IRP itself. If user buffer
- * exceeds this size, we will directly map user buffer into server or
- * driver address space. This cannot exceed the service message buffer
- * size, and should be reasonably small (but not too small), such that
- * the overhead of mapping and unmapping exceeds the overhead of copy.
- * Additionally, since the data in the service message buffer are
- * transient, to simply the IRP handling logic for device objects with
- * DIRECT_IO as the IO transfer type, this value cannot be larger than
- * the typical sector size (512 bytes).
+ * is equal to or greater than this size, we will directly map user buffer
+ * into server or driver address space. This cannot exceed the service
+ * message buffer size, and should be reasonably small (but not too small),
+ * such that the overhead of mapping and unmapping exceeds the overhead of
+ * copy.
  */
 #define IRP_DATA_BUFFER_SIZE	(512)
 

@@ -1944,8 +1944,7 @@ NTAPI NTSTATUS RtlAppendUnicodeToString(IN OUT PUNICODE_STRING Destination,
 	    return STATUS_BUFFER_TOO_SMALL;
 	}
 
-	DestBuffer =
-	    &Destination->Buffer[Destination->Length / sizeof(WCHAR)];
+	DestBuffer = &Destination->Buffer[Destination->Length / sizeof(WCHAR)];
 	RtlMoveMemory(DestBuffer, Source, Length);
 	Destination->Length += Length;
 

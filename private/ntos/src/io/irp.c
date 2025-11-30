@@ -338,15 +338,19 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* For DIRECT_IO, the buffer pointers cannot be an offset. */
+    /* If the data are embedded in the IRP, for DIRECT_IO we need to allocate a
+     * server-side page, copy the input data there, and pass this page to the
+     * driver. However since this is a rare case (DIRECT_IO typically requires
+     * full pages or at least full sectors), at this point we do not bother to
+     * implement this and simply return error in this case. */
     if ((InputIoType & DirectIo) && (InputBuffer && InputBuffer < PAGE_SIZE)) {
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* For DIRECT_IO, the input buffer length must be large enough. This check
-     * is needed for malicious clients that circumvent the normal system service
-     * interfaces in ntdll. */
+    /* For DIRECT_IO, the input buffer length must be large enough (see above).
+     * We already check this in NTDLL but this check is needed here for (malicious)
+     * clients that circumvent the normal system service interfaces in NTDLL. */
     if ((InputIoType & DirectIo) &&
 	(InputBufferLength && InputBufferLength < IRP_DATA_BUFFER_SIZE)) {
 	assert(FALSE);

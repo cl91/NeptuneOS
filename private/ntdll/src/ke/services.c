@@ -374,6 +374,100 @@ static inline NTSTATUS CmpMarshalKeyValueInfoBuffer(IN OPTIONAL PVOID ClientBuff
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS IopMarshalObjectInformation(IN PVOID Buffer,
+					    IN ULONG BufferLength,
+					    IN OBJECT_INFORMATION_CLASS InfoClass,
+					    OUT SERVICE_ARGUMENT *DataArg,
+					    OUT SERVICE_ARGUMENT *DataSizeArg,
+					    OUT SERVICE_ARGUMENT *DataTypeArg,
+					    IN BOOLEAN InParam,
+					    OUT ULONG *MsgBufOffset)
+{
+    assert(MsgBufOffset != NULL);
+    assert(*MsgBufOffset < SVC_MSGBUF_SIZE);
+    if (*MsgBufOffset >= SVC_MSGBUF_SIZE) {
+	return STATUS_INTERNAL_ERROR;
+    }
+    if (!Buffer) {
+	return STATUS_INVALID_PARAMETER_2;
+    }
+    if (KiPtrInSvcMsgBuf(Buffer)) {
+	return STATUS_INVALID_USER_BUFFER;
+    }
+    PVOID DestBuffer = NULL;
+
+    switch (InfoClass) {
+    case ObjectNameInformation:
+	DestBuffer = KiAllocateHeap(BufferLength);
+	if (DestBuffer == NULL) {
+	    return STATUS_NO_MEMORY;
+	}
+	break;
+
+    default:
+	/* Unimplemented object information class */
+	assert(FALSE);
+	return STATUS_NOT_IMPLEMENTED;
+    }
+
+    DataArg->Word = (MWORD)DestBuffer;
+    DataSizeArg->Word = BufferLength;
+    DataTypeArg->Word = InfoClass;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS IopUnmarshalObjectInformation(IN PVOID ClientBuffer,
+					      IN SERVICE_ARGUMENT BufferArg,
+					      IN NTSTATUS Status,
+					      IN MWORD ClientBufferLength,
+					      IN OUT MWORD *BufferSize,
+					      IN OBJECT_INFORMATION_CLASS InfoClass)
+{
+    if (Status == STATUS_BUFFER_TOO_SMALL || Status == STATUS_BUFFER_OVERFLOW) {
+	return Status;
+    }
+    assert(*BufferSize <= ClientBufferLength);
+    switch (InfoClass) {
+    case ObjectNameInformation:
+    {
+	PCSTR ObjectName = (PVOID)BufferArg.Word;
+	ULONG BytesWritten = 0;
+	RtlUTF8ToUnicodeN(NULL, ULONG_MAX, &BytesWritten,
+			  ObjectName, strlen(ObjectName));
+	if (*BufferSize < sizeof(OBJECT_NAME_INFORMATION) + BytesWritten) {
+	    *BufferSize = sizeof(OBJECT_NAME_INFORMATION) + BytesWritten;
+	    return STATUS_BUFFER_TOO_SMALL;
+	}
+	RtlZeroMemory(ClientBuffer, *BufferSize);
+	POBJECT_NAME_INFORMATION Data = ClientBuffer;
+	Status = RtlUTF8ToUnicodeN((PWCHAR)(Data + 1),
+				   *BufferSize - sizeof(OBJECT_NAME_INFORMATION),
+				   &BytesWritten, ObjectName, strlen(ObjectName));
+	Data->Name.Buffer = (PWCHAR)(Data + 1);
+	Data->Name.Length = BytesWritten;
+	Data->Name.MaximumLength = *BufferSize - sizeof(OBJECT_NAME_INFORMATION);
+	break;
+    }
+
+    default:
+	/* Unimplemented object information class */
+	assert(FALSE);
+	UNIMPLEMENTED;
+	break;
+    }
+    assert(NT_SUCCESS(Status));
+    return Status;
+}
+
+static VOID IopFreeMarshaledObjectInformation(IN PVOID Data,
+					      IN SERVICE_ARGUMENT DataArg,
+					      IN SERVICE_ARGUMENT DataSizeArg,
+					      IN SERVICE_ARGUMENT DataTypeArg)
+{
+    assert(!KiPtrInSvcMsgBuf((PVOID)DataArg.Word));
+    KiFreeHeap((PVOID)DataArg.Word);
+}
+
 #define IOP_MARSHAL_PNP_CONTROL_DATA_EX(ClientType, ServerType,		\
 					Field, DeviceInstanceBuffer,	\
 					DeviceInstanceLength,		\
@@ -680,10 +774,14 @@ static NTSTATUS IopMarshalPnpControlData(IN PVOID Buffer,
 
 static NTSTATUS IopUnmarshalPnpControlData(IN PVOID ClientBuffer,
 					   IN SERVICE_ARGUMENT BufferArg,
-					   IN MWORD BufferSize,
+					   IN NTSTATUS Status,
+					   IN MWORD ClientBufferLength,
+					   IN MWORD *BufferSize,
 					   IN PLUGPLAY_CONTROL_CLASS ControlClass)
 {
-    NTSTATUS Status = STATUS_SUCCESS;
+    if (Status == STATUS_BUFFER_TOO_SMALL || Status == STATUS_BUFFER_OVERFLOW) {
+	return Status;
+    }
     switch (ControlClass) {
     case PlugPlayControlEnumerateDevice:
     case PlugPlayControlRegisterNewDevice:
@@ -816,17 +914,23 @@ static NTSTATUS IopMarshalPnpEventData(IN PPLUGPLAY_EVENT_BLOCK Buffer,
 
 static NTSTATUS IopUnmarshalPnpEventData(IN PPLUGPLAY_EVENT_BLOCK DestBuffer,
 					 IN SERVICE_ARGUMENT BufferArg,
-					 IN MWORD BufferSize)
+					 IN NTSTATUS Status,
+					 IN MWORD ClientBufferLength,
+					 IN MWORD *pBufferSize)
 {
+    if (Status == STATUS_BUFFER_TOO_SMALL || Status == STATUS_BUFFER_OVERFLOW) {
+	return Status;
+    }
     PIO_PNP_EVENT_BLOCK SrcBuffer = (PVOID)BufferArg.Word;
     DestBuffer->EventGuid = SrcBuffer->EventGuid;
     DestBuffer->EventCategory = SrcBuffer->EventCategory;
     DestBuffer->TotalSize = FIELD_OFFSET(PLUGPLAY_EVENT_BLOCK, DeviceClass);
     assert(SrcBuffer->TotalSize > FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass));
     ULONG PayloadSize = SrcBuffer->TotalSize - FIELD_OFFSET(IO_PNP_EVENT_BLOCK, DeviceClass);
+    MWORD BufferSize = *pBufferSize;
+    assert(BufferSize <= ClientBufferLength);
     assert(BufferSize >= FIELD_OFFSET(PLUGPLAY_EVENT_BLOCK, DeviceClass));
     BufferSize -= FIELD_OFFSET(PLUGPLAY_EVENT_BLOCK, DeviceClass);
-    NTSTATUS Status = STATUS_SUCCESS;
     switch (SrcBuffer->EventCategory) {
     case TargetDeviceChangeEvent:
     case DeviceInstallEvent:

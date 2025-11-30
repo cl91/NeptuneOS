@@ -5,6 +5,7 @@
 #pragma once
 
 #include <services.h>
+#include <util.h>
 
 #define OFFSET_TO_ARG(Offset, Type)				\
     SVC_MSGBUF_OFFSET_TO_ARG(seL4_GetIPCBuffer(), Offset, Type)
@@ -187,32 +188,38 @@ static inline NTSTATUS KiServiceMarshalBuffer(IN OPTIONAL PVOID ClientBuffer,
     return STATUS_SUCCESS;
 }
 
-static inline VOID KiServiceUnmarshalBuffer3(IN PVOID ClientBuffer,
+static inline VOID KiServiceUnmarshalBuffer5(IN PVOID ClientBuffer,
 					     IN SERVICE_ARGUMENT BufferArg,
-					     IN MWORD BufferSize)
+					     IN NTSTATUS Status,
+					     IN MWORD BufferLength,
+					     IN MWORD *ResultLength)
 {
     assert(ClientBuffer != NULL);
+    MWORD SizeToCopy = (Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL) ?
+	*ResultLength : BufferLength;
     if (KiPtrInSvcMsgBuf((PVOID)BufferArg.Word)) {
 	assert(BufferArg.Word >= (MWORD)&OFFSET_TO_ARG(0, CHAR));
 	assert(BufferArg.Word < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, CHAR));
-	assert(BufferArg.Word + BufferSize < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, CHAR));
-	memcpy(ClientBuffer, (PVOID)BufferArg.Word, BufferSize);
+	assert(BufferArg.Word + SizeToCopy < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, CHAR));
+	memcpy(ClientBuffer, (PVOID)BufferArg.Word, SizeToCopy);
     }
 }
 
-static inline VOID KiServiceUnmarshalBuffer4(IN PVOID ClientBuffer,
+static inline VOID KiServiceUnmarshalBuffer6(IN PVOID ClientBuffer,
 					     IN SERVICE_ARGUMENT BufferArg,
-					     IN MWORD BufferSize,
+					     IN NTSTATUS Status,
+					     IN MWORD BufferLength,
+					     IN MWORD *ResultLength,
 					     IN UNUSED MWORD BufferType)
 {
-    KiServiceUnmarshalBuffer3(ClientBuffer, BufferArg, BufferSize);
+    KiServiceUnmarshalBuffer5(ClientBuffer, BufferArg, Status, BufferLength, ResultLength);
 }
 
-#define KI_GET_5TH_ARG(_1,_2,_3,_4,_5,...)	_5
+#define KI_GET_7TH_ARG(_1,_2,_3,_4,_5,_6,_7,...)	_7
 #define KiServiceUnmarshalBuffer(...)				\
     ({								\
-	KI_GET_5TH_ARG(__VA_ARGS__, KiServiceUnmarshalBuffer4,	\
-		       KiServiceUnmarshalBuffer3)(__VA_ARGS__);	\
+	KI_GET_7TH_ARG(__VA_ARGS__, KiServiceUnmarshalBuffer6,	\
+		       KiServiceUnmarshalBuffer5)(__VA_ARGS__);	\
 	STATUS_SUCCESS;						\
     })
 

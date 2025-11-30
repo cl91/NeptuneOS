@@ -88,6 +88,7 @@ static NTSTATUS EiCreateTimerType()
 	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
 	.DeleteProc = EiTimerObjectDeleteProc
     };
     return ObCreateObjectType(OBJECT_TYPE_TIMER,

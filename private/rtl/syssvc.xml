@@ -284,8 +284,8 @@
 
   <svc name="NtQueryObject">
     <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
-    <parameter annotation="in" type="OBJECT_INFORMATION_CLASS" name="ObjectInformationClass" />
-    <parameter annotation="out" type="buf::Void" name="ObjectInformationBuffer" />
+    <parameter annotation="in" type="buftype::OBJECT_INFORMATION_CLASS" name="ObjectInformationClass" />
+    <parameter annotation="out" type="buf::ObjectInformation" name="ObjectInformationBuffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="ObjectInformationLength" />
     <parameter annotation="out opt" type="bufsize::ULONG" name="ReturnLength" />
   </svc>

@@ -64,7 +64,7 @@ static struct {
     { "stornvme", L"PCI\\CC_010802\0SCSI\\NVME\0",
       ARRAYSIZE(StorNvmeParameters), StorNvmeParameters },
     { "disk" },
-    { "partmgr" },
+    { "partmgr", L"STORAGE\\Volume\0" },
     { "mountmgr" }
 };
 
@@ -450,8 +450,6 @@ NTSTATUS SmInitHardwareDatabase()
 
     RET_ERR(SmInitBootDriverConfigs());
     RET_ERR(SmInitPnp());
-    RET_ERR(SmLoadDriver("null"));
-    RET_ERR(SmLoadDriver("beep"));
     RET_ERR(SmLoadDriver("fatfs"));
     return STATUS_SUCCESS;
 }

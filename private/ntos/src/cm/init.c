@@ -9,6 +9,7 @@ static NTSTATUS CmpCreateKeyType()
 	.CloseProc = CmpKeyObjectCloseProc,
 	.InsertProc = CmpKeyObjectInsertProc,
 	.RemoveProc = CmpKeyObjectRemoveProc,
+	.QueryNameProc = CmpKeyObjectQueryNameProc,
 	.DeleteProc = CmpKeyObjectDeleteProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_KEY,

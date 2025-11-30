@@ -1,8 +1,25 @@
 #include <wdmp.h>
+#include <wdmguid.h>
+
+typedef struct _PNP_NOTIFY_ENTRY {
+    LIST_ENTRY PnpNotifyList;
+    PVOID Context;
+    PDRIVER_OBJECT DriverObject;
+    PDRIVER_NOTIFICATION_CALLBACK_ROUTINE PnpNotificationProc;
+    IO_WORKITEM WorkItem;
+    union {
+	GUID Guid; // for EventCategoryDeviceInterfaceChange
+	PDEVICE_OBJECT DeviceObject; // for EventCategoryTargetDeviceChange
+    };
+    IO_NOTIFICATION_EVENT_CATEGORY EventCategory;
+} PNP_NOTIFY_ENTRY, *PPNP_NOTIFY_ENTRY;
 
 #define SERVICE_KEY_NAME	(CONTROL_KEY_NAME L"Services\\")
 
 static LIST_ENTRY IopDriverList;
+static LIST_ENTRY PiNotifyDeviceInterfaceList;
+static LIST_ENTRY PiNotifyHwProfileList;
+static LIST_ENTRY PiNotifyTargetDeviceList;
 
 static NTSTATUS IopCallDriverEntry(IN PDRIVER_OBJECT DriverObject)
 {
@@ -65,6 +82,9 @@ static NTSTATUS IopCreateDriverObject(IN PUNICODE_STRING RegistryPath,
 NTSTATUS IopInitDriverObject(IN PUNICODE_STRING RegistryPath)
 {
     InitializeListHead(&IopDriverList);
+    InitializeListHead(&PiNotifyDeviceInterfaceList);
+    InitializeListHead(&PiNotifyHwProfileList);
+    InitializeListHead(&PiNotifyTargetDeviceList);
 
     PDRIVER_OBJECT DriverObject = NULL;
     NTSTATUS Status = IopCreateDriverObject(RegistryPath,
@@ -285,16 +305,137 @@ IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
 			       OUT PVOID *NotificationEntry)
 {
     PAGED_CODE();
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
-}
 
+    DPRINT("%s(EventCategory 0x%x, EventCategoryFlags 0x%x, DriverObject %p "
+	   "EventCategoryData %p) called.\n",
+	   __FUNCTION__, EventCategory, EventCategoryFlags, DriverObject,
+	   EventCategoryData);
+
+    if (EventCategory == EventCategoryTargetDeviceChange) {
+	if (!EventCategoryData) {
+	    assert(FALSE);
+	    return STATUS_INVALID_PARAMETER;
+	}
+	PDEVICE_OBJECT DeviceObject = EventCategoryData;
+	if (DeviceObject->Header.Type != CLIENT_OBJECT_DEVICE) {
+	    assert(FALSE);
+	    return STATUS_OBJECT_TYPE_MISMATCH;
+	}
+    }
+
+    /* Try to allocate entry for notification before sending any notification */
+    PPNP_NOTIFY_ENTRY Entry = ExAllocatePoolWithTag(NonPagedPool,
+						    sizeof(PNP_NOTIFY_ENTRY),
+						    TAG_PNP_NOTIFY);
+    if (!Entry) {
+	DPRINT("ExAllocatePool() failed\n");
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    Entry->PnpNotificationProc = CallbackRoutine;
+    Entry->Context = Context;
+    Entry->DriverObject = DriverObject;
+    Entry->EventCategory = EventCategory;
+    IoInitializeWorkItem(NULL, &Entry->WorkItem);
+
+    switch (EventCategory) {
+    case EventCategoryDeviceInterfaceChange:
+	Entry->Guid = *(LPGUID)EventCategoryData;
+	// first register the notification
+	InsertTailList(&PiNotifyDeviceInterfaceList, &Entry->PnpNotifyList);
+	break;
+
+    case EventCategoryHardwareProfileChange:
+	InsertTailList(&PiNotifyHwProfileList, &Entry->PnpNotifyList);
+	break;
+
+    case EventCategoryTargetDeviceChange:
+	// save it so we can dereference it later
+	Entry->DeviceObject = (PDEVICE_OBJECT)EventCategoryData;
+	ObReferenceObject(Entry->DeviceObject);
+	InsertTailList(&PiNotifyTargetDeviceList, &Entry->PnpNotifyList);
+	break;
+
+    default:
+	DPRINT1("%s: unknown EventCategory 0x%x UNIMPLEMENTED\n", __FUNCTION__,
+		EventCategory);
+
+	ExFreePoolWithTag(Entry, TAG_PNP_NOTIFY);
+	return STATUS_NOT_SUPPORTED;
+    }
+
+    NTSTATUS Status = WdmRegisterPlugPlayNotification(EventCategory,
+						      EventCategoryFlags);
+    if (!NT_SUCCESS(Status)) {
+	RemoveEntryList(&Entry->PnpNotifyList);
+	ExFreePoolWithTag(Entry, TAG_PNP_NOTIFY);
+	return Status;
+    }
+
+    *NotificationEntry = Entry;
+
+    if (EventCategory == EventCategoryDeviceInterfaceChange &&
+	(EventCategoryFlags & PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES)) {
+	PWSTR SymbolicLinkList;
+	Status = IoGetDeviceInterfaces(&Entry->Guid,
+				       NULL, /* PhysicalDeviceObject OPTIONAL */
+				       0, /* Flags */
+				       &SymbolicLinkList);
+	if (!NT_SUCCESS(Status)) {
+	    return STATUS_SUCCESS;
+	}
+
+	/* Enumerate SymbolicLinkList */
+	DEVICE_INTERFACE_CHANGE_NOTIFICATION NotificationInfos;
+	UNICODE_STRING SymbolicLinkU;
+	NotificationInfos.Version = 1;
+	NotificationInfos.Size = sizeof(DEVICE_INTERFACE_CHANGE_NOTIFICATION);
+	NotificationInfos.Event = GUID_DEVICE_INTERFACE_ARRIVAL;
+	NotificationInfos.InterfaceClassGuid = Entry->Guid;
+	NotificationInfos.SymbolicLinkName = &SymbolicLinkU;
+
+	for (PWSTR SymbolicLink = SymbolicLinkList; *SymbolicLink;
+	     SymbolicLink += (SymbolicLinkU.Length / sizeof(WCHAR)) + 1) {
+	    RtlInitUnicodeString(&SymbolicLinkU, SymbolicLink);
+	    DPRINT("Calling callback routine for %wZ\n", &SymbolicLinkU);
+	    Entry->PnpNotificationProc(&NotificationInfos, Entry->Context);
+	}
+
+	ExFreePool(SymbolicLinkList);
+    }
+
+    return STATUS_SUCCESS;
+}
 
 NTAPI NTSTATUS IoUnregisterPlugPlayNotification(IN PVOID NotificationEntry)
 {
     PAGED_CODE();
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    PPNP_NOTIFY_ENTRY Entry = NotificationEntry;
+
+    DPRINT("%s(NotificationEntry %p) called\n", __FUNCTION__, Entry);
+
+    PLIST_ENTRY List;
+    switch (Entry->EventCategory) {
+    case EventCategoryDeviceInterfaceChange:
+	List = &PiNotifyDeviceInterfaceList;
+	break;
+    case EventCategoryHardwareProfileChange:
+	List = &PiNotifyHwProfileList;
+	break;
+    case EventCategoryTargetDeviceChange:
+	List = &PiNotifyTargetDeviceList;
+	break;
+    default:
+	assert(FALSE);
+	return STATUS_NOT_SUPPORTED;
+    }
+
+    assert(ListHasEntry(List, &Entry->PnpNotifyList));
+    WdmUnregisterPlugPlayNotification(Entry->EventCategory);
+    RemoveEntryList(&Entry->PnpNotifyList);
+    IopRemoveWorkItem(&Entry->WorkItem);
+    ExFreePoolWithTag(Entry, TAG_PNP_NOTIFY);
+    return STATUS_SUCCESS;
 }
 
 NTAPI NTSTATUS IoRegisterShutdownNotification(IN PDEVICE_OBJECT DeviceObject)

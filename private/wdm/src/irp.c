@@ -846,6 +846,43 @@ static VOID IopPopulateLocalIrpFromServerIoResponse(OUT PIRP Irp,
 	    }
 	    PrevMdl = Mdl;
 	}
+    } else if (Sp->MajorFunction == IRP_MJ_PNP &&
+	       Sp->MinorFunction == IRP_MN_QUERY_DEVICE_RELATIONS) {
+	if (!NT_SUCCESS(Irp->IoStatus.Status)) {
+	    Irp->IoStatus.Information = 0;
+	    return;
+	}
+	PGLOBAL_HANDLE Response = (PVOID)&Msg->ResponseData[0];
+	ULONG Count = Irp->IoStatus.Information;
+	ULONG Size = sizeof(DEVICE_RELATIONS) + Count * sizeof(PDEVICE_OBJECT);
+	PDEVICE_RELATIONS Relations = ExAllocatePool(NonPagedPool, Size);
+	if (!Relations) {
+	    Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+	    Irp->IoStatus.Information = 0;
+	    return;
+	}
+	for (ULONG i = 0; i < Count; i++) {
+	    IO_DEVICE_INFO DeviceInfo = {};
+	    ULONG StackSize = 0;
+	    NTSTATUS Status = WdmGetDevice(Response[i], &DeviceInfo, &StackSize);
+	    if (!NT_SUCCESS(Status)) {
+		goto err;
+	    }
+	    Relations->Objects[i] = IopGetDeviceObjectOrCreate(Response[i], DeviceInfo,
+							       StackSize, TRUE);
+	    if (!Relations->Objects[i]) {
+	    err:
+		for (ULONG j = 0; j < i; j++) {
+		    ObDereferenceObject(Relations->Objects[j]);
+		}
+		ExFreePool(Relations);
+		Irp->IoStatus.Status = STATUS_INSUFFICIENT_RESOURCES;
+		Irp->IoStatus.Information = 0;
+		return;
+	    }
+	}
+	Relations->Count = Count;
+	Irp->IoStatus.Information = (ULONG_PTR)Relations;
     }
 }
 
@@ -1454,6 +1491,10 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
 		Dest->Request.InputBuffer = (MWORD)IoStack->Parameters.ReadWriteConfig.Buffer;
 		Dest->Request.InputBufferLength = IoStack->Parameters.ReadWriteConfig.Length;
 	    }
+	    break;
+	case IRP_MN_QUERY_DEVICE_RELATIONS:
+	    Dest->Request.QueryDeviceRelations.Type =
+		IoStack->Parameters.QueryDeviceRelations.Type;
 	    break;
 	default:
 	    assert(FALSE);

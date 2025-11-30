@@ -691,6 +691,7 @@ NTSTATUS MmSectionInitialization()
 	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
 	.DeleteProc = MiSectionObjectDeleteProc
     };
     RET_ERR(ObCreateObjectType(OBJECT_TYPE_SECTION,

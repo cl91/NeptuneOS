@@ -251,9 +251,8 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
 				 UniqueId->UniqueIdLength) != UniqueId->UniqueIdLength) {
 		continue;
 	    }
-	}
-	/* Or, if we had a symlink, it has to match */
-	else if (SymbolicName) {
+	} else if (SymbolicName) {
+	    /* Or, if we had a symlink, it has to match */
 	    if (!RtlEqualUnicodeString(&DeviceName, &DeviceInformation->DeviceName,
 				       TRUE)) {
 		continue;
@@ -300,7 +299,7 @@ NTSTATUS QueryPointsFromMemory(IN PDEVICE_EXTENSION DeviceExtension,
     RtlZeroMemory(MountPoints, Stack->Parameters.DeviceIoControl.OutputBufferLength);
 
     /* Ensure we set output to let user reallocate! */
-    MountPoints->Size = sizeof(MOUNTMGR_MOUNT_POINTS) +
+    MountPoints->Size = FIELD_OFFSET(MOUNTMGR_MOUNT_POINTS, MountPoints) +
 			TotalSymLinks * sizeof(MOUNTMGR_MOUNT_POINT) + TotalSize;
     MountPoints->NumberOfMountPoints = TotalSymLinks;
     Irp->IoStatus.Information = MountPoints->Size;

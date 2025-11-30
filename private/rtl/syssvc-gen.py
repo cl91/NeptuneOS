@@ -358,7 +358,7 @@ SIMPLE_TYPES = ["BOOLEAN", "CHAR", "UCHAR", "SHORT", "USHORT", "LONG", "ULONG", 
                 "EVENT_TYPE", "TIMER_TYPE", "SHUTDOWN_ACTION", "MEMORY_CACHING_TYPE",
                 "HARDERROR_RESPONSE_OPTION", "HARDERROR_RESPONSE",
                 "DEVICE_REGISTRY_PROPERTY", "SECURITY_INFORMATION",
-                "OBJECT_INFORMATION_CLASS",
+                "IO_NOTIFICATION_EVENT_CATEGORY", "OBJECT_INFORMATION_CLASS",
                 "SYSTEM_INFORMATION_CLASS", "TOKEN_INFORMATION_CLASS",
                 "MEMORY_INFORMATION_CLASS", "SECTION_INFORMATION_CLASS",
                 "PROCESS_INFORMATION_CLASS", "THREAD_INFORMATION_CLASS",
@@ -750,7 +750,7 @@ if (!NT_SUCCESS(Status)) {
         p.client_post_marshaling = self.format(pp, """{%- if client_post_marshal_func %}
 {{client_post_marshal_func}}({{p.name}}, {{p.name}}Arg, {{sp.name}}Arg{% if tp %}, {{tp.name}}Arg{% endif %});
 {%- endif %}""")
-        p.client_unmarshaling = self.format(pp, "{%- if client_unmarshal_func %}Status = {{client_unmarshal_func}}({{p.name}}, {{p.name}}Arg, {% if lp %}OFFSET_TO_ARG({{lp.name}}Arg.BufferStart, {{get_base_type(lp)}}){% else %}{{sp.name}}Arg.Word{% endif %}{% if tp %}, {{tp.name}}{% endif %});{%- endif %}")
+        p.client_unmarshaling = self.format(pp, "{%- if client_unmarshal_func %}Status = {{client_unmarshal_func}}({{p.name}}, {{p.name}}Arg, Status, {{sp.name}}, {% if lp %}&OFFSET_TO_ARG({{lp.name}}Arg.BufferStart, {{get_base_type(lp)}}){% else %}&{{sp.name}}Arg.Word{% endif %}{% if tp %}, {{tp.name}}{% endif %});{%- endif %}")
         p.marshaler_state_decl = self.format(pp, "BOOLEAN {{p.name}}Mapped")
         p.server_pre_marshaling = self.format(pp, """SERVICE_ARGUMENT {{p.name}}Arg = { .Word = seL4_GetMR({{p.idx}}) };
 {{server_type}} {{p.name}} = NULL;""")
@@ -953,6 +953,13 @@ class Service:
                              client_marshal_func = "CmpMarshalRegDataA",
                              client_post_marshal_func = "",
                              client_unmarshal_func = "",
+                             server_marshal_func = "KiServiceMapBuffer",
+                             server_post_marshal_func = "KiServiceUnmapBuffer"),
+            BufferMarshaller(server_name, buffer_type = "ObjectInformation",
+                             server_type = "PVOID", client_type = "PVOID",
+                             client_marshal_func = "IopMarshalObjectInformation",
+                             client_post_marshal_func = "IopFreeMarshaledObjectInformation",
+                             client_unmarshal_func = "IopUnmarshalObjectInformation",
                              server_marshal_func = "KiServiceMapBuffer",
                              server_post_marshal_func = "KiServiceUnmapBuffer"),
             BufferMarshaller(server_name, buffer_type = "PnpControl",

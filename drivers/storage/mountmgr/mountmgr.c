@@ -942,9 +942,8 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
 	/* Check if our device is a volume */
 	if (MOUNTMGR_IS_VOLUME_NAME(&(SymLinks[i]))) {
 	    IsVolumeName = TRUE;
-	}
-	/* If it has a drive letter */
-	else if (IsDriveLetter(&(SymLinks[i]))) {
+	} else if (IsDriveLetter(&(SymLinks[i]))) {
+	    /* If it has a drive letter */
 	    if (IsDrvLetter) {
 		DeleteFromLocalDatabase(&(SymLinks[i]), UniqueId);
 		continue;
@@ -1340,6 +1339,21 @@ static NTAPI NTSTATUS MountMgrCreateClose(IN PDEVICE_OBJECT DeviceObject,
 {
     PIO_STACK_LOCATION Stack;
     NTSTATUS Status = STATUS_SUCCESS;
+    static BOOLEAN FirstCall = TRUE;
+
+    if (FirstCall) {
+	FirstCall = FALSE;
+	/* Register for device arrival & removal. Ask to be notified for already
+	 * present devices */
+	PDEVICE_EXTENSION DeviceExtension = DeviceObject->DeviceExtension;
+	IoRegisterPlugPlayNotification(
+	    EventCategoryDeviceInterfaceChange,
+	    PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES,
+	    (PVOID)&GUID_DEVINTERFACE_VOLUME,
+	    DeviceObject->DriverObject,
+	    MountMgrMountedDeviceNotification, DeviceExtension,
+	    &DeviceExtension->NotificationEntry);
+    }
 
     UNREFERENCED_PARAMETER(DeviceObject);
 
@@ -1507,20 +1521,6 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     DeviceExtension->NoAutoMount = MountmgrReadNoAutoMount(&DeviceExtension->RegistryPath);
 
     GlobalCreateSymbolicLink(&DosDevicesMount, &DeviceMount);
-
-    /* Register for device arrival & removal. Ask to be notified for already
-     * present devices */
-    Status = IoRegisterPlugPlayNotification(
-	EventCategoryDeviceInterfaceChange,
-	PNPNOTIFY_DEVICE_INTERFACE_INCLUDE_EXISTING_INTERFACES,
-	(PVOID)&GUID_DEVINTERFACE_VOLUME,
-	DriverObject, MountMgrMountedDeviceNotification, DeviceExtension,
-	&DeviceExtension->NotificationEntry);
-
-    if (!NT_SUCCESS(Status)) {
-	IoDeleteDevice(DeviceObject);
-	return Status;
-    }
 
     DriverObject->MajorFunction[IRP_MJ_CREATE] = MountMgrCreateClose;
     DriverObject->MajorFunction[IRP_MJ_CLOSE] = MountMgrCreateClose;

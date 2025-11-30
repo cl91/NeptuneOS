@@ -30,8 +30,8 @@
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrChangeNotify(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrChangeNotify(IN PDEVICE_EXTENSION DeviceExtension,
+			      IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -74,8 +74,7 @@ MountMgrChangeNotify(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-MountmgrWriteNoAutoMount(IN PDEVICE_EXTENSION DeviceExtension)
+NTSTATUS MountmgrWriteNoAutoMount(IN PDEVICE_EXTENSION DeviceExtension)
 {
     ULONG Value = DeviceExtension->NoAutoMount;
 
@@ -87,8 +86,8 @@ MountmgrWriteNoAutoMount(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrSetAutoMount(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrSetAutoMount(IN PDEVICE_EXTENSION DeviceExtension,
+			      IN PIRP Irp)
 {
     PIO_STACK_LOCATION Stack;
     PMOUNTMGR_SET_AUTO_MOUNT SetState;
@@ -118,8 +117,8 @@ MountMgrSetAutoMount(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrQueryAutoMount(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrQueryAutoMount(IN PDEVICE_EXTENSION DeviceExtension,
+				IN PIRP Irp)
 {
     PIO_STACK_LOCATION Stack;
     PMOUNTMGR_QUERY_AUTO_MOUNT QueryState;
@@ -142,10 +141,12 @@ MountMgrQueryAutoMount(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-ScrubRegistryRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData,
-		     IN ULONG ValueLength, IN PVOID Context, IN PVOID EntryContext)
+NTAPI NTSTATUS ScrubRegistryRoutine(IN PWSTR ValueName,
+				    IN ULONG ValueType,
+				    IN PVOID ValueData,
+				    IN ULONG ValueLength,
+				    IN PVOID Context,
+				    IN PVOID EntryContext)
 {
     NTSTATUS Status;
     PLIST_ENTRY NextEntry;
@@ -191,8 +192,7 @@ ScrubRegistryRoutine(IN PWSTR ValueName, IN ULONG ValueType, IN PVOID ValueData,
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrScrubRegistry(IN PDEVICE_EXTENSION DeviceExtension)
+NTSTATUS MountMgrScrubRegistry(IN PDEVICE_EXTENSION DeviceExtension)
 {
     NTSTATUS Status;
     BOOLEAN Continue;
@@ -214,8 +214,8 @@ MountMgrScrubRegistry(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrCreatePoint(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrCreatePoint(IN PDEVICE_EXTENSION DeviceExtension,
+			     IN PIRP Irp)
 {
     ULONG MaxLength;
     PIO_STACK_LOCATION Stack;
@@ -251,8 +251,8 @@ MountMgrCreatePoint(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrCheckUnprocessedVolumes(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrCheckUnprocessedVolumes(IN PDEVICE_EXTENSION DeviceExtension,
+					 IN PIRP Irp)
 {
     PLIST_ENTRY NextEntry;
     PDEVICE_INFORMATION DeviceInformation;
@@ -380,10 +380,9 @@ VOID ProcessSuggestedDriveLetters(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
-			      IN PUNICODE_STRING DeviceName,
-			      OUT PMOUNTMGR_DRIVE_LETTER_INFORMATION DriveLetterInfo)
+NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
+				       IN PUNICODE_STRING DeviceName,
+				       OUT PMOUNTMGR_DRIVE_LETTER_INFORMATION DriveLetterInfo)
 {
     NTSTATUS Status;
     UCHAR DriveLetter;
@@ -549,8 +548,8 @@ Release:
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrNextDriveLetter(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrNextDriveLetter(IN PDEVICE_EXTENSION DeviceExtension,
+				 IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -592,11 +591,12 @@ MountMgrNextDriveLetter(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-MountMgrQuerySystemVolumeNameQueryRoutine(IN PWSTR ValueName, IN ULONG ValueType,
-					  IN PVOID ValueData, IN ULONG ValueLength,
-					  IN PVOID Context, IN PVOID EntryContext)
+NTAPI NTSTATUS MountMgrQuerySystemVolumeNameQueryRoutine(IN PWSTR ValueName,
+							 IN ULONG ValueType,
+							 IN PVOID ValueData,
+							 IN ULONG ValueLength,
+							 IN PVOID Context,
+							 IN PVOID EntryContext)
 {
     UNICODE_STRING ValueString;
     PUNICODE_STRING SystemVolumeName;
@@ -627,8 +627,7 @@ MountMgrQuerySystemVolumeNameQueryRoutine(IN PWSTR ValueName, IN ULONG ValueType
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrQuerySystemVolumeName(OUT PUNICODE_STRING SystemVolumeName)
+NTSTATUS MountMgrQuerySystemVolumeName(OUT PUNICODE_STRING SystemVolumeName)
 {
     RTL_QUERY_REGISTRY_TABLE QueryTable[2];
 
@@ -723,8 +722,8 @@ VOID MountMgrAssignDriveLetters(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrQueryDosVolumePath(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrQueryDosVolumePath(IN PDEVICE_EXTENSION DeviceExtension,
+				    IN PIRP Irp)
 {
     NTSTATUS Status;
     ULONG DevicesFound;
@@ -934,10 +933,9 @@ TryWithVolumeName:
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrValidateBackPointer(IN PASSOCIATED_DEVICE_ENTRY AssociatedDeviceEntry,
-			    IN PDEVICE_INFORMATION DeviceInformation,
-			    OUT PBOOLEAN Invalid)
+NTSTATUS MountMgrValidateBackPointer(IN PASSOCIATED_DEVICE_ENTRY AssociatedDeviceEntry,
+				     IN PDEVICE_INFORMATION DeviceInformation,
+				     OUT PBOOLEAN Invalid)
 {
     HANDLE Handle;
     NTSTATUS Status;
@@ -1032,12 +1030,11 @@ MountMgrValidateBackPointer(IN PASSOCIATED_DEVICE_ENTRY AssociatedDeviceEntry,
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrQueryVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
-			 IN PDEVICE_INFORMATION DeviceInformation,
-			 IN PLIST_ENTRY DeviceInfoList,
-			 OUT PMOUNTMGR_VOLUME_PATHS *VolumePaths,
-			 OUT PDEVICE_INFORMATION *FailedDevice)
+NTSTATUS MountMgrQueryVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
+				  IN PDEVICE_INFORMATION DeviceInformation,
+				  IN PLIST_ENTRY DeviceInfoList,
+				  OUT PMOUNTMGR_VOLUME_PATHS *VolumePaths,
+				  OUT PDEVICE_INFORMATION *FailedDevice)
 {
     ULONG Written;
     NTSTATUS Status;
@@ -1294,8 +1291,8 @@ MountMgrQueryVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrQueryDosVolumePaths(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrQueryDosVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
+				     IN PIRP Irp)
 {
     NTSTATUS Status;
     PLIST_ENTRY Entry;
@@ -1432,8 +1429,8 @@ MountMgrQueryDosVolumePaths(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrKeepLinksWhenOffline(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrKeepLinksWhenOffline(IN PDEVICE_EXTENSION DeviceExtension,
+				      IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -1473,8 +1470,8 @@ MountMgrKeepLinksWhenOffline(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrVolumeArrivalNotification(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrVolumeArrivalNotification(IN PDEVICE_EXTENSION DeviceExtension,
+					   IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -1507,8 +1504,8 @@ MountMgrVolumeArrivalNotification(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP 
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension,
+			     IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -1584,9 +1581,8 @@ MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 	/* Query links using it */
 	Status = QueryPointsFromSymbolicLinkName(DeviceExtension, &SymbolicName, Irp);
 	FreePool(SymbolicName.Buffer);
-    }
-    /* If user provided an unique ID */
-    else if (MountPoint->UniqueIdLength != 0) {
+    } else if (MountPoint->UniqueIdLength != 0) {
+	/* If user provided an unique ID */
 	UniqueId = AllocatePool(MountPoint->UniqueIdLength + sizeof(MOUNTDEV_UNIQUE_ID));
 	if (!UniqueId) {
 	    return STATUS_INSUFFICIENT_RESOURCES;
@@ -1600,9 +1596,8 @@ MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 	/* Query links using it */
 	Status = QueryPointsFromMemory(DeviceExtension, Irp, UniqueId, NULL);
 	FreePool(UniqueId);
-    }
-    /* If caller provided a device name */
-    else if (MountPoint->DeviceNameLength != 0) {
+    } else if (MountPoint->DeviceNameLength != 0) {
+	/* If caller provided a device name */
 	if (MountPoint->DeviceNameLength > MAXSHORT) {
 	    return STATUS_INVALID_PARAMETER;
 	}
@@ -1633,8 +1628,8 @@ MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrDeletePoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrDeletePoints(IN PDEVICE_EXTENSION DeviceExtension,
+			      IN PIRP Irp)
 {
     ULONG Link;
     NTSTATUS Status;
@@ -1734,8 +1729,8 @@ MountMgrDeletePoints(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrDeletePointsDbOnly(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp)
+NTSTATUS MountMgrDeletePointsDbOnly(IN PDEVICE_EXTENSION DeviceExtension,
+				    IN PIRP Irp)
 {
     ULONG Link;
     NTSTATUS Status;
@@ -1991,9 +1986,9 @@ Cleanup:
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrVolumeMountPointCreated(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp,
-				IN NTSTATUS LockStatus)
+NTSTATUS MountMgrVolumeMountPointCreated(IN PDEVICE_EXTENSION DeviceExtension,
+					 IN PIRP Irp,
+					 IN NTSTATUS LockStatus)
 {
     LONG Offset;
     BOOLEAN Found;
@@ -2221,9 +2216,9 @@ MountMgrVolumeMountPointCreated(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Ir
 /*
  * @implemented
  */
-NTSTATUS
-MountMgrVolumeMountPointDeleted(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Irp,
-				IN NTSTATUS LockStatus)
+NTSTATUS MountMgrVolumeMountPointDeleted(IN PDEVICE_EXTENSION DeviceExtension,
+					 IN PIRP Irp,
+					 IN NTSTATUS LockStatus)
 {
     LONG Offset;
     NTSTATUS Status;
@@ -2418,9 +2413,8 @@ MountMgrVolumeMountPointDeleted(IN PDEVICE_EXTENSION DeviceExtension, IN PIRP Ir
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-MountMgrDeviceControl(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
+NTAPI NTSTATUS MountMgrDeviceControl(IN PDEVICE_OBJECT DeviceObject,
+				     IN PIRP Irp)
 {
     PIO_STACK_LOCATION Stack;
     NTSTATUS Status, LockStatus;

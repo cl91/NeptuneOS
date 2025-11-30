@@ -1,4 +1,4 @@
-# Neptune OS: a WinNT personality of the seL4 microkernel
+# Neptune OS: a Windows NT personality for the seL4 microkernel
 
 Neptune OS is a Windows NT personality for the seL4 microkernel. It implements what
 Microsoft calls the "NT Executive", the upper layer of the Windows kernel `NTOSKRNL.EXE`,
@@ -24,14 +24,19 @@ more information.
 ## Project Status
 
 The current status of the project is that we have implemented enough NT Executive
-components to support a reasonably complete file system stack with read-ahead and
-write-back caching support, that includes the FAT12/16/32 file system driver `fatfs.sys`
-and a floppy controller driver `fdc.sys`. We also have a basic keyboard driver stack,
-that includes the keyboard class driver `kbdclass.sys` and the PS/2 port driver
-`i8042prt.sys`. These allow us to run a basic command prompt `ntcmd.exe`, taken
-from the ReactOS project, that supports most of the common shell commands, such as
-`pwd`, `cd`, `copy`, `move`, `del`, `mount`, and `umount`. We also include a
-`beep.sys` driver which makes an annoying sound on the PC speaker.
+components to support a reasonably complete storage driver and file system driver stack
+with read-ahead and write-back caching support. This includes the storage class driver pair
+(`classpnp.sys` and `disk.sys`), the `storport.sys` port driver, two storage miniport drivers
+for AHCI (`storahci.sys`, from [Microsoft](https://github.com/microsoft/Windows-driver-samples/tree/main/storage/miniports/storahci)) and NVME (`stornvme.sys`, from [Open Fabrics Alliance](https://nvmexpress.org/open-fabrics-alliance-nvm-express-window-driver-1-4-released-december-8-2014/)) drives, as well as the partition manager
+(`partmgr.sys`) and mount manager (`mountmgr.sys`). We also have a floppy controller
+driver `fdc.sys` for the standard floppy controller on the PC. So far only one file system
+driver, the FAT12/16/32 file system driver `fatfs.sys`, has been ported, but more is planned
+in the future (in particular, `ext2fsd` so we can support ext2/3/4). Together with a
+basic keyboard driver stack (keyboard class driver `kbdclass.sys` and the PS/2 port driver
+`i8042prt.sys`), these allow us to run a basic command prompt `ntcmd.exe`, taken from the
+ReactOS project, that supports most of the common shell commands, such as `pwd`, `cd`, `copy`,
+`move`, `del`, `mount`, and `umount`. We also include a `beep.sys` driver which makes an
+annoying sound on the PC speaker.
 
 The entire system fits in a floppy and can be downloaded from
 [Release v0.2.0002](https://github.com/cl91/NeptuneOS/releases/tag/v0.2.0002).
@@ -39,10 +44,12 @@ You can watch a short demo on [YouTube](https://www.youtube.com/watch?v=o3FLRnkh
 You can also build it yourself. See the section on [Building](#building-and-running).
 
 ### Planned Features
-For the next release we are planning to port the ATA/AHCI driver stack from ReactOS
-so we can support most PATA/SATA hard disks. We also plan to write/port a disk
-benchmark suite so we can demonstrate that a microkernel design does not lead to
-unacceptable performance penalties.
+Due to the lack of high quality open-source Windows device drivers, the main goal of the
+next release is to design a subsystem which allows reusing of the Linux kernel device
+drivers. The basic idea is linking the Linux kernel as a library using the work done in
+the LKL project, and write a shim that facilitates communication between the NT Executive
+process and the Linux device drivers using the standard IRP driver interface. For more
+details, see issue [#19](https://github.com/cl91/NeptuneOS/issues/19).
 
 ## Minimal System Requirements
 
@@ -54,16 +61,20 @@ For i386 systems (should probably be called i686):
    This is only supported in Pentium Pro (i686) and later. There is no way to disable
    this at compile time (see assembly routine `enable_paging` in `sel4/src/arch/x86/32/head.S`).
 2. RAM: 32MB should be safe, can probably go lower.
-3. VGA-compatible graphics controller.
-4. PS2 keyboard. Most BIOSes offer PS2 emulation for USB keyboards so connecting a USB
-   keyboard should also work.
-5. PC BIOS or compatible, with a conformant ACPI implementation. This is more of a seL4
+3. BIOS or UEFI-based firmware, with a conformant ACPI implementation. This is more of a seL4
    requirement as it needs at least ACPI 3.0 for detecting the number of CPU cores. Note
    that most early 32-bit era PCs don't necessarily have a conformant ACPI (let alone
    ACPI 3.0) implementation, so this pretty much restricts you to Core 2 Duo era machines.
    Thinkpad X60 is a 32-bit laptop that has been tested to work.
+4. VGA-compatible graphics controller. If you are booting under UEFI, the GOP linear
+   framebuffer is used to render the text console. Similarly, if you use coreboot as
+   your boot firmware and have enabled its builtin graphics initialization routines,
+   its linear framebuffer will also be used to render our text console. Otherwise, the
+   VGA text console will be used.
+5. PS2 keyboard. Many BIOSes offer PS2 emulation for USB keyboards so connecting a USB
+   keyboard might also work.
 
-For amd64 systems:
+For amd64 systems the CPU and RAM requirements are slightly different:
 
 1. CPU: At least Intel Ivy Bridge or equivalent: the default seL4 kernel is built with
    the `fsgsbase` instruction enabled. This is only supported on Ivy Bridge and later.
@@ -72,10 +83,9 @@ For amd64 systems:
    Nehalem, and quite possibly earlier (earlier Core 2 processors might need a microcode
    update).
 2. RAM: 128MB should be safe, can probably go lower.
-3. VGA-compatible graphics controller.
-4. Legacy BIOS or UEFI-based BIOS that supports at least ACPI 3.0.
 
-For `amd64` machines, Thinkpad X230 has been tested to work.
+For `amd64` machines, Thinkpad X230, T420, X2100 (from 51NB), and the GPD Micropc (1st gen)
+have all been tested to work.
 
 ## Building and running
 
@@ -134,6 +144,16 @@ release build with PC speaker enabled in QEMU you can pass the following (this
 assumes you are using a recent QEMU version and have pulseaudio)
 ```
 ./run.sh release -machine pcspk-audiodev=snd0 -audiodev pa,id=snd0
+```
+To simulate an AHCI drive under QEMU, add the following extra QEMU arguments:
+```
+-drive file=disk.img,if=none,id=disk0 -device ich9-ahci,id=ahci0 -device ide-hd,drive=disk0,bus=ahci0.0
+```
+Replace `disk.img` with the path to your disk image. You may need to add `-boot a` so QEMU
+will boot from the floppy disk. To simulate an NVME drive under QEMU, add the following
+extra QEMU arguments:
+```
+-drive file=disk.img,format=raw,if=none,id=drv0 -device nvme,serial=deadbeef,drive=drv0,id=nvme0
 ```
 The debug build might run slowly especially if you turn on serial port logging.
 You can turn off logging by modifying the master header of the NT Executive project

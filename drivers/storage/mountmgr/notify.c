@@ -57,7 +57,7 @@ VOID SendOnlineNotification(IN PUNICODE_STRING SymbolicName)
 /*
  * @implemented
  */
-VOID NTAPI SendOnlineNotificationWorker(IN PDEVICE_OBJECT DeviceObject,
+NTAPI VOID SendOnlineNotificationWorker(IN PDEVICE_OBJECT DeviceObject,
 					IN PVOID Parameter)
 {
     PLIST_ENTRY Head;
@@ -159,9 +159,8 @@ VOID WaitForOnlinesToComplete(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-MountMgrTargetDeviceNotification(IN PVOID NotificationStructure, IN PVOID Context)
+NTAPI NTSTATUS MountMgrTargetDeviceNotification(IN PVOID NotificationStructure,
+						IN PVOID Context)
 {
     PDEVICE_EXTENSION DeviceExtension;
     PDEVICE_INFORMATION DeviceInformation;
@@ -392,7 +391,7 @@ VOID RemoveWorkItem(IN PUNIQUE_ID_WORK_ITEM WorkItem)
 /*
  * @implemented
  */
-VOID NTAPI UniqueIdChangeNotifyWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
+NTAPI VOID UniqueIdChangeNotifyWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 {
     PUNIQUE_ID_WORK_ITEM WorkItem = Context;
     PMOUNTDEV_UNIQUE_ID OldUniqueId, NewUniqueId;
@@ -440,17 +439,14 @@ VOID NTAPI UniqueIdChangeNotifyWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID C
 
     FreePool(NewUniqueId);
     FreePool(OldUniqueId);
-
-    return;
 }
 
 /*
  * @implemented
  */
-NTSTATUS
-NTAPI
-UniqueIdChangeNotifyCompletion(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp,
-			       IN PVOID Context)
+NTAPI NTSTATUS UniqueIdChangeNotifyCompletion(IN PDEVICE_OBJECT DeviceObject,
+					      IN PIRP Irp,
+					      IN PVOID Context)
 {
     PUNIQUE_ID_WORK_ITEM WorkItem = Context;
 
@@ -497,7 +493,7 @@ VOID IssueUniqueIdChangeNotifyWorker(IN PUNIQUE_ID_WORK_ITEM WorkItem,
 	return;
     }
 
-    Irp->SystemBuffer = WorkItem->IrpBuffer;
+    Irp->SystemBuffer = Irp->UserBuffer = WorkItem->IrpBuffer;
     RtlCopyMemory(Irp->SystemBuffer, UniqueId,
 		  UniqueId->UniqueIdLength + sizeof(USHORT));
 
@@ -506,7 +502,7 @@ VOID IssueUniqueIdChangeNotifyWorker(IN PUNIQUE_ID_WORK_ITEM WorkItem,
     Stack->Parameters.DeviceIoControl.InputBufferLength = UniqueId->UniqueIdLength +
 							  sizeof(USHORT);
     Stack->Parameters.DeviceIoControl.OutputBufferLength = WorkItem->IrpBufferLength;
-    Stack->Parameters.DeviceIoControl.Type3InputBuffer = 0;
+    Stack->Parameters.DeviceIoControl.Type3InputBuffer = WorkItem->IrpBuffer;
     Stack->Parameters.DeviceIoControl.IoControlCode =
 	IOCTL_MOUNTDEV_UNIQUE_ID_CHANGE_NOTIFY;
     Stack->MajorFunction = IRP_MJ_DEVICE_CONTROL;

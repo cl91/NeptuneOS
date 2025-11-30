@@ -332,6 +332,26 @@ typedef NTSTATUS (*OBJECT_INSERT_METHOD)(IN POBJECT Parent,
 typedef VOID (*OBJECT_REMOVE_METHOD)(IN POBJECT Subobject);
 
 /*
+ * The query-name procedure returns the subpath with which the subobject
+ * is inserted under the parent object. It is called by ObQueryNameString
+ * to obtain the full path of an object. The query-name procedure should
+ * NOT prepend or append the object path separator ('\\') to the name
+ * string. In other words, suppose a FILE object "WINDOWS\\system32\\"
+ * is inserded under a DEVICE object "\\Device\\HarddriveVolume0", the
+ * query-name method of the DEVICE object should only return the string
+ * "WINDOWS\\system32\\". It should not prepend '\\' to the string. If
+ * the buffer length provided is too small, the query-name routine should
+ * return STATUS_BUFFER_TOO_SMALL and set the BufferLength parameter to
+ * point to the required buffer length. On success, the query-name routine
+ * should set the BufferLength to the size of the subpath string, including
+ * the trailing NUL.
+ */
+typedef NTSTATUS (*OBJECT_QUERY_NAME_METHOD)(IN POBJECT Parent,
+					     IN POBJECT Subobject,
+					     OUT PCHAR Subpath,
+					     IN OUT ULONG *BufferLength);
+
+/*
  * The close procedure of an object is called when the object manager
  * closes a client handle (Windows NT would call these handles "userspace
  * handles", but since we are a microkernel OS and the Neptune OS
@@ -372,6 +392,7 @@ typedef struct _OBJECT_TYPE_INITIALIZER {
     OBJECT_OPEN_METHOD OpenProc;
     OBJECT_INSERT_METHOD InsertProc;
     OBJECT_REMOVE_METHOD RemoveProc;
+    OBJECT_QUERY_NAME_METHOD QueryNameProc;
     OBJECT_CLOSE_METHOD CloseProc;
     OBJECT_DELETE_METHOD DeleteProc;
 } OBJECT_TYPE_INITIALIZER, *POBJECT_TYPE_INITIALIZER;
@@ -624,6 +645,12 @@ FORCEINLINE NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
     return ObOpenObjectByNameEx(State, Thread, ObjectAttributes, Type,
 				DesiredAccess, OpenContext, TRUE, pHandle);
 }
+
+/* query.c */
+NTSTATUS ObQueryNameString(IN POBJECT Object,
+			   OUT PCHAR Name,
+			   IN ULONG BufferLength,
+			   OUT OPTIONAL ULONG *ResultLength);
 
 /* symlink.c */
 NTSTATUS ObCreateSymbolicLink(IN PCSTR LinkTarget,

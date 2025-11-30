@@ -293,6 +293,7 @@ NTSTATUS HalpInitDma()
 	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
 	.DeleteProc = NULL
     };
     RET_ERR(ObCreateObjectType(OBJECT_TYPE_SYSTEM_ADAPTER, "Adapter",

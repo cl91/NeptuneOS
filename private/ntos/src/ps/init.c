@@ -17,6 +17,7 @@ static NTSTATUS PspCreateThreadType()
 	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
 	.DeleteProc = PspThreadObjectDeleteProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_THREAD,
@@ -34,6 +35,7 @@ static NTSTATUS PspCreateProcessType()
 	.CloseProc = NULL,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
 	.DeleteProc = PspProcessObjectDeleteProc,
     };
     return ObCreateObjectType(OBJECT_TYPE_PROCESS,

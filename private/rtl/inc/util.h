@@ -275,7 +275,7 @@ FORCEINLINE PLIST_ENTRY GetNthEntryList(IN PLIST_ENTRY ListHead,
 	}
 	Entry = Entry->Flink;
     }
-    return Entry;
+    return Entry == ListHead ? NULL : Entry;
 }
 
 /* This uses a GCC extension (statement expressions). */

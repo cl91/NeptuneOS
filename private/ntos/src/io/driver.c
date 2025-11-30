@@ -154,7 +154,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     assert(Locals.DriverObjectDirectory);
 
     /* Find the driver service basename, ie. "null" in
-     * "\\Registry\\Machine\\CurrentControlSet\\Services\\null" */
+     * "\\Registry\\Machine\\System\\CurrentControlSet\\Services\\null" */
     SIZE_T PathLen = strlen(DriverServicePath);
     /* Starting from the last non-nul byte, look for the path separator '\\' */
     SIZE_T SepIndex = 0;

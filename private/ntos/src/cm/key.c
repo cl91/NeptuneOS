@@ -114,6 +114,14 @@ VOID CmpKeyObjectRemoveProc(IN POBJECT Subobject)
     /* TODO! */
 }
 
+NTSTATUS CmpKeyObjectQueryNameProc(IN POBJECT Parent,
+				   IN POBJECT Subobject,
+				   OUT PCHAR Subpath,
+				   IN OUT ULONG *BufferLength)
+{
+    UNIMPLEMENTED;
+}
+
 /*
  * Parse routine for the KEY object. This is invoked when the
  * object manager looks for a KEY object that is already loaded
@@ -322,7 +330,8 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	    /* Truncate the name we'll return, and tell the caller */
 	    CmDbg("Need buffer size 0x%x got sizeleft 0x%x\n", Size, SizeLeft);
 	    Size = SizeLeft;
-	    Status = STATUS_BUFFER_OVERFLOW;
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	    break;
 	}
 
 	/* Copy the key name */
@@ -344,7 +353,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	/* And the minimum size we can support */
 	ULONG MinimumSize = FIELD_OFFSET(KEY_NODE_INFORMATION, Name);
 
-	/* Return the size to the caller and assume succes */
+	/* Return the size to the caller and assume success */
 	*ResultLength = Size;
 
 	/* Check if the caller's buffer is too small */
@@ -371,7 +380,8 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	    /* It can't, we'll have to truncate. Tell the caller */
 	    CmDbg("Need buffer size 0x%x got sizeleft 0x%x\n", Size, SizeLeft);
 	    Size = SizeLeft;
-	    Status = STATUS_BUFFER_OVERFLOW;
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	    break;
 	}
 
 	/* Copy the key object name */
@@ -399,7 +409,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 
 	    /* Check if the buffer was large enough */
 	    if (Length < Offset + Node->ClassLength) {
-		Status = STATUS_BUFFER_OVERFLOW;
+		Status = STATUS_BUFFER_TOO_SMALL;
 	    }
 	} else {
 	    /* It doesn't, so set offset to -1, not 0! */
@@ -460,7 +470,7 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 
 	    /* Check if the buffer was large enough */
 	    if (Length < Offset + Node->ClassLength) {
-		Status = STATUS_BUFFER_OVERFLOW;
+		Status = STATUS_BUFFER_TOO_SMALL;
 	    }
 	} else {
 	    /* We don't have a class, so set offset to -1, not 0! */
@@ -499,7 +509,8 @@ static NTSTATUS CmpQueryKeyData(IN PCM_KEY_OBJECT Node,
 	    /* Truncate the name we'll return, and tell the caller */
 	    CmDbg("Need buffer size 0x%x got sizeleft 0x%x\n", Size, SizeLeft);
 	    Size = SizeLeft;
-	    Status = STATUS_BUFFER_OVERFLOW;
+	    Status = STATUS_BUFFER_TOO_SMALL;
+	    break;
 	}
 
 	/* Copy the key name */

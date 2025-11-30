@@ -18,6 +18,19 @@
     <parameter annotation="out" type="ptr::ULONG" name="PreviousTopStackSize" />
   </svc>
 
+  <svc name="WdmGetDevice">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="GlobalHandle" />
+    <parameter annotation="out" type="ptr::IO_DEVICE_INFO" name="DeviceInfo" />
+    <parameter annotation="out" type="ptr::ULONG" name="DeviceStackSize" />
+  </svc>
+
+  <svc name="WdmGetTopDeviceObject">
+    <parameter annotation="in" type="HANDLE" name="OpenFileHandle" />
+    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="TopDeviceHandle" />
+    <parameter annotation="out" type="ptr::IO_DEVICE_INFO" name="TopDeviceInfo" />
+    <parameter annotation="out" type="ptr::ULONG" name="TopDeviceStackSize" />
+  </svc>
+
   <svc name="WdmGetAttachedDevice">
     <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
     <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="TopDeviceHandle" />
@@ -31,13 +44,6 @@
     <parameter annotation="in" type="bufsize::ULONG" name="BufferLength" />
     <parameter annotation="out" type="buf::Void" name="PropertyBuffer" />
     <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
-  </svc>
-
-  <svc name="WdmGetDeviceObject">
-    <parameter annotation="in" type="HANDLE" name="OpenFileHandle" />
-    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="TopDeviceHandle" />
-    <parameter annotation="out" type="ptr::IO_DEVICE_INFO" name="TopDeviceInfo" />
-    <parameter annotation="out" type="ptr::ULONG" name="TopDeviceStackSize" />
   </svc>
 
   <svc name="WdmDeleteDevice">
@@ -93,6 +99,15 @@
 
   <svc name="WdmRegisterFileSystem">
     <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
+  </svc>
+
+  <svc name="WdmRegisterPlugPlayNotification">
+    <parameter annotation="in" type="IO_NOTIFICATION_EVENT_CATEGORY" name="EventCategory" />
+    <parameter annotation="in" type="ULONG" name="EventCategoryFlags" />
+  </svc>
+
+  <svc name="WdmUnregisterPlugPlayNotification">
+    <parameter annotation="in" type="IO_NOTIFICATION_EVENT_CATEGORY" name="EventCategory" />
   </svc>
 
   <svc name="WdmReserveIoMemoryWindow">

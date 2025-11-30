@@ -934,10 +934,12 @@ static NTSTATUS FdoHandleDeviceRelations(_In_ PFDO_EXTENSION FdoExtension, _In_ 
 
 	Irp->IoStatus.Information = (ULONG_PTR)deviceRelations;
 	Irp->IoStatus.Status = STATUS_SUCCESS;
+	IoCompleteRequest(Irp, IO_NO_INCREMENT);
+	return STATUS_SUCCESS;
+    } else {
+	IoSkipCurrentIrpStackLocation(Irp);
+	return IoCallDriver(FdoExtension->LowerDevice, Irp);
     }
-
-    IoSkipCurrentIrpStackLocation(Irp);
-    return IoCallDriver(FdoExtension->LowerDevice, Irp);
 }
 
 static NTSTATUS FdoHandleRemoveDevice(_In_ PFDO_EXTENSION FdoExtension, _In_ PIRP Irp)

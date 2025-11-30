@@ -8,7 +8,7 @@ KMUTEX IopWorkItemMutex;
 /*
  * @implemented
  */
-NTAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
+NTAPI PIO_WORKITEM IoAllocateWorkItem(IN OPTIONAL PDEVICE_OBJECT DeviceObject)
 {
     PIO_WORKITEM IoWorkItem = ExAllocatePool(NonPagedPool, sizeof(IO_WORKITEM));
     if (IoWorkItem == NULL) {
@@ -22,7 +22,7 @@ NTAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject)
  * @remarks
  *  This routine does not exist on Windows/ReactOS and is an Neptune OS addition.
  */
-NTAPI VOID IoInitializeWorkItem(IN PDEVICE_OBJECT DeviceObject,
+NTAPI VOID IoInitializeWorkItem(IN OPTIONAL PDEVICE_OBJECT DeviceObject,
 				OUT PIO_WORKITEM WorkItem)
 {
     IopInitializeDpcThread();
@@ -34,6 +34,7 @@ NTAPI VOID IoInitializeWorkItem(IN PDEVICE_OBJECT DeviceObject,
  */
 NTAPI VOID IoFreeWorkItem(IN PIO_WORKITEM IoWorkItem)
 {
+    IopRemoveWorkItem(IoWorkItem);
     ExFreePool(IoWorkItem);
 }
 
@@ -72,6 +73,19 @@ static VOID IopQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
     InsertHeadList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
     KeReleaseMutex(&IopWorkItemMutex);
     NtCurrentTeb()->Wdm.IoWorkItemQueued = TRUE;
+}
+
+/*
+ * Remove the work item from the queue if it is queued. Otherwise, do nothing.
+ */
+VOID IopRemoveWorkItem(IN PIO_WORKITEM WorkItem)
+{
+    if (WorkItem->Queued) {
+	KeAcquireMutex(&IopWorkItemMutex);
+	assert(ListHasEntry(&IopWorkItemQueue, &WorkItem->QueueEntry));
+	RemoveEntryList(&WorkItem->QueueEntry);
+	KeReleaseMutex(&IopWorkItemMutex);
+    }
 }
 
 NTAPI VOID IoQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,

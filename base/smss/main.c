@@ -138,6 +138,15 @@ static VOID SmMountDrives()
 	return;
     }
 
+    Status = NtDeviceIoControlFile(MountmgrHandle,
+				   NULL, NULL, NULL, &IoStatus,
+				   IOCTL_MOUNTMGR_AUTO_DL_ASSIGNMENTS,
+				   NULL, 0, NULL, 0);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to assign drive letters. Error = 0x%x\n", Status);
+	return;
+    }
+
     BYTE Buffer[64 * 1024];    // 64 KB enough for typical systems
     RtlZeroMemory(Buffer, sizeof(Buffer));
 
@@ -145,7 +154,7 @@ static VOID SmMountDrives()
 				   NULL, NULL, NULL,
 				   &IoStatus,
 				   IOCTL_MOUNTMGR_QUERY_POINTS,
-				   NULL, 0,
+				   Buffer, sizeof(Buffer),
 				   Buffer, sizeof(Buffer));
     if (!NT_SUCCESS(Status)) {
 	SmPrint("Failed to query mount points. Error = 0x%x\n", Status);
@@ -170,7 +179,7 @@ static VOID SmMountDrives()
 	    .Length = Mountpoint->DeviceNameLength,
 	    .MaximumLength = Mountpoint->DeviceNameLength
 	};
-	SmPrint("Mounted %wZ on %wZ\n", &SymbolicLink, &DeviceName);
+	SmPrint("Mounted %wZ on %wZ\n", &DeviceName, &SymbolicLink);
     }
 }
 

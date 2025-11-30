@@ -1375,14 +1375,14 @@ typedef enum _WORK_QUEUE_TYPE {
  * Work item allocation. This routine allocates and initializes the work item, so
  * you do not need to call IoInitializeWorkItem for the object you just allocated.
  */
-NTAPI NTSYSAPI PIO_WORKITEM IoAllocateWorkItem(IN PDEVICE_OBJECT DeviceObject);
+NTAPI NTSYSAPI PIO_WORKITEM IoAllocateWorkItem(IN OPTIONAL PDEVICE_OBJECT DeviceObject);
 
 /*
  * Work item initialization. You should only call this routine if you allocate the
  * space for the IO_WORKITEM yourself.
  */
-NTAPI VOID IoInitializeWorkItem(IN PDEVICE_OBJECT DeviceObject,
-				OUT PIO_WORKITEM WorkItem);
+NTAPI NTSYSAPI VOID IoInitializeWorkItem(IN OPTIONAL PDEVICE_OBJECT DeviceObject,
+					 OUT PIO_WORKITEM WorkItem);
 
 /*
  * Work item deallocation
