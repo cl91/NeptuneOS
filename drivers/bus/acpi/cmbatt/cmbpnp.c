@@ -361,7 +361,8 @@ NTAPI NTSTATUS CmBattCreateFdo(IN PDRIVER_OBJECT DriverObject,
 
     /* Create the FDO */
     Status = IoCreateDevice(DriverObject, DeviceExtensionSize, 0, FILE_DEVICE_BATTERY,
-			    FILE_DEVICE_SECURE_OPEN, 0, &FdoDeviceObject);
+			    FILE_DEVICE_SECURE_OPEN | DO_POWER_PAGABLE | DO_BUFFERED_IO,
+			    0, &FdoDeviceObject);
     if (!NT_SUCCESS(Status)) {
 	/* Fail */
 	if (CmBattDebug & 0xC)
@@ -370,7 +371,6 @@ NTAPI NTSTATUS CmBattCreateFdo(IN PDRIVER_OBJECT DriverObject,
     }
 
     /* Set FDO flags */
-    FdoDeviceObject->Flags |= (DO_POWER_PAGABLE | DO_BUFFERED_IO);
     FdoDeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
     /* Initialize the extension */

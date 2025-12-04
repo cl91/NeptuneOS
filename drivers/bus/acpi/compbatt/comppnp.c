@@ -270,7 +270,8 @@ NTAPI NTSTATUS CompBattAddDevice(IN PDRIVER_OBJECT DriverObject,
     /* Create the device */
     RtlInitUnicodeString(&DeviceName, L"\\Device\\CompositeBattery");
     Status = IoCreateDevice(DriverObject, sizeof(COMPBATT_DEVICE_EXTENSION), &DeviceName,
-			    FILE_DEVICE_BATTERY, FILE_DEVICE_SECURE_OPEN, FALSE,
+			    FILE_DEVICE_BATTERY, FILE_DEVICE_SECURE_OPEN |
+			    DO_POWER_PAGABLE | DO_BUFFERED_IO, FALSE,
 			    &DeviceObject);
     if (!NT_SUCCESS(Status))
 	return Status;
@@ -296,7 +297,6 @@ NTAPI NTSTATUS CompBattAddDevice(IN PDRIVER_OBJECT DriverObject,
     }
 
     /* Set device object flags */
-    DeviceObject->Flags |= (DO_POWER_PAGABLE | DO_BUFFERED_IO);
     DeviceObject->Flags &= ~DO_DEVICE_INITIALIZING;
 
     /* Setup the device extension */
