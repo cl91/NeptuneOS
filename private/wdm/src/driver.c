@@ -365,8 +365,7 @@ IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
 	return STATUS_NOT_SUPPORTED;
     }
 
-    NTSTATUS Status = WdmRegisterPlugPlayNotification(EventCategory,
-						      EventCategoryFlags);
+    NTSTATUS Status = WdmRegisterPlugPlayNotification(EventCategory);
     if (!NT_SUCCESS(Status)) {
 	RemoveEntryList(&Entry->PnpNotifyList);
 	ExFreePoolWithTag(Entry, TAG_PNP_NOTIFY);
@@ -444,14 +443,15 @@ NTAPI NTSTATUS IoUnregisterPlugPlayNotification(IN PVOID NotificationEntry)
 NTAPI NTSTATUS IoRegisterShutdownNotification(IN PDEVICE_OBJECT DeviceObject)
 {
     PAGED_CODE();
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    assert(DeviceObject->Header.GlobalHandle);
+    return WdmRegisterShutdownNotification(DeviceObject->Header.GlobalHandle);
 }
 
 NTAPI VOID IoUnregisterShutdownNotification(PDEVICE_OBJECT DeviceObject)
 {
     PAGED_CODE();
-    UNIMPLEMENTED;
+    assert(DeviceObject->Header.GlobalHandle);
+    WdmUnregisterShutdownNotification(DeviceObject->Header.GlobalHandle);
 }
 
 struct _IO_MAPPING_TABLE;

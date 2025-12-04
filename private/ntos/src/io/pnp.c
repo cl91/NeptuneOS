@@ -64,6 +64,9 @@ typedef struct _PNP_EVENT_ENTRY {
 } PNP_EVENT_ENTRY, *PPNP_EVENT_ENTRY;
 
 static PDEVICE_NODE IopRootDeviceNode;
+static LIST_ENTRY IopHardwareProfileChangeList;
+static LIST_ENTRY IopDeviceInterfaceChangeList;
+static LIST_ENTRY IopTargetDeviceChangeList;
 static LIST_ENTRY IopPnpEventQueueHead;
 static KEVENT IopPnpNotifyEvent;
 
@@ -2043,8 +2046,11 @@ NTSTATUS IopInitPnpManager()
     /* Ask HAL to mask the unusable IRQLs so we won't assign it to devices later. */
     RET_ERR(HalMaskUnusableInterrupts());
 
-    /* Initialize the PnP event notification and the event queue. */
+    /* Initialize the PnP event notification system and the event queue. */
     InitializeListHead(&IopPnpEventQueueHead);
+    InitializeListHead(&IopHardwareProfileChangeList);
+    InitializeListHead(&IopDeviceInterfaceChangeList);
+    InitializeListHead(&IopTargetDeviceChangeList);
     KeInitializeEvent(&IopPnpNotifyEvent, SynchronizationEvent);
 
     /* Create the root device node. This is the device node for the root PnP enumerator. */
@@ -2378,15 +2384,99 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 
 NTSTATUS WdmRegisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
                                          IN PTHREAD Thread,
-                                         IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
-                                         IN ULONG EventCategoryFlags)
+                                         IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory)
 {
-    UNIMPLEMENTED;
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    switch (EventCategory) {
+    case EventCategoryHardwareProfileChange:
+	if (ListHasEntry(&IopHardwareProfileChangeList,
+			 &DriverObject->HardwareProfileChangeLink)) {
+	    assert(FALSE);
+	    return STATUS_ALREADY_REGISTERED;
+	}
+	InsertTailList(&IopHardwareProfileChangeList,
+		       &DriverObject->HardwareProfileChangeLink);
+	break;
+    case EventCategoryDeviceInterfaceChange:
+	if (ListHasEntry(&IopDeviceInterfaceChangeList,
+			 &DriverObject->DeviceInterfaceChangeLink)) {
+	    assert(FALSE);
+	    return STATUS_ALREADY_REGISTERED;
+	}
+	InsertTailList(&IopDeviceInterfaceChangeList,
+		       &DriverObject->DeviceInterfaceChangeLink);
+	break;
+    case EventCategoryTargetDeviceChange:
+	if (ListHasEntry(&IopTargetDeviceChangeList,
+			 &DriverObject->TargetDeviceChangeLink)) {
+	    assert(FALSE);
+	    return STATUS_ALREADY_REGISTERED;
+	}
+	InsertTailList(&IopTargetDeviceChangeList,
+		       &DriverObject->TargetDeviceChangeLink);
+	break;
+    default:
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    return STATUS_SUCCESS;
+}
+
+VOID IopUnregisterAllPnpNotifications(IN PIO_DRIVER_OBJECT DriverObject)
+{
+    if (ListHasEntry(&IopHardwareProfileChangeList,
+		     &DriverObject->HardwareProfileChangeLink)) {
+	RemoveEntryList(&DriverObject->HardwareProfileChangeLink);
+    }
+    if (ListHasEntry(&IopDeviceInterfaceChangeList,
+		     &DriverObject->DeviceInterfaceChangeLink)) {
+	RemoveEntryList(&DriverObject->DeviceInterfaceChangeLink);
+    }
+    if (ListHasEntry(&IopTargetDeviceChangeList,
+		     &DriverObject->TargetDeviceChangeLink)) {
+	RemoveEntryList(&DriverObject->TargetDeviceChangeLink);
+    }
 }
 
 NTSTATUS WdmUnregisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
 					   IN PTHREAD Thread,
 					   IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory)
 {
-    UNIMPLEMENTED;
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    switch (EventCategory) {
+    case EventCategoryHardwareProfileChange:
+	if (!ListHasEntry(&IopHardwareProfileChangeList,
+			  &DriverObject->HardwareProfileChangeLink)) {
+	    assert(FALSE);
+	    return STATUS_INVALID_PARAMETER;
+	}
+	RemoveEntryList(&DriverObject->HardwareProfileChangeLink);
+	break;
+    case EventCategoryDeviceInterfaceChange:
+	if (!ListHasEntry(&IopDeviceInterfaceChangeList,
+			  &DriverObject->DeviceInterfaceChangeLink)) {
+	    assert(FALSE);
+	    return STATUS_INVALID_PARAMETER;
+	}
+	RemoveEntryList(&DriverObject->DeviceInterfaceChangeLink);
+	break;
+    case EventCategoryTargetDeviceChange:
+	if (!ListHasEntry(&IopTargetDeviceChangeList,
+			  &DriverObject->TargetDeviceChangeLink)) {
+	    assert(FALSE);
+	    return STATUS_ALREADY_REGISTERED;
+	}
+	RemoveEntryList(&DriverObject->TargetDeviceChangeLink);
+	break;
+    default:
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    return STATUS_SUCCESS;
 }

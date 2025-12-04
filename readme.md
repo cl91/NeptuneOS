@@ -46,10 +46,10 @@ You can also build it yourself. See the section on [Building](#building-and-runn
 ### Planned Features
 Due to the lack of high quality open-source Windows device drivers, the main goal of the
 next release is to design a subsystem which allows reusing of the Linux kernel device
-drivers. The basic idea is linking the Linux kernel as a library using the work done in
-the LKL project, and write a shim that facilitates communication between the NT Executive
-process and the Linux device drivers using the standard IRP driver interface. For more
-details, see issue [#19](https://github.com/cl91/NeptuneOS/issues/19).
+drivers. The basic idea is building the Linux kernel as a library using the work done in
+the LKL project, and writing a shim that facilitates communication between the NT Executive
+process and the Linux device driver library using the standard IRP driver interface. For
+more details, see issue [#19](https://github.com/cl91/NeptuneOS/issues/19).
 
 ## Minimal System Requirements
 
@@ -155,6 +155,11 @@ extra QEMU arguments:
 ```
 -drive file=disk.img,format=raw,if=none,id=drv0 -device nvme,serial=deadbeef,drive=drv0,id=nvme0
 ```
+
+### Debugging
+
+Add information about debugging using PCI(E) serial port.
+
 The debug build might run slowly especially if you turn on serial port logging.
 You can turn off logging by modifying the master header of the NT Executive project
 (see `private/ntos/inc/ntos.h`).

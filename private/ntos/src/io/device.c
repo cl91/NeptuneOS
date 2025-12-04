@@ -433,6 +433,9 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 	RemoveEntryList(&CloseMsg->DriverLink);
 	IopFreePool(CloseMsg);
     }
+    if (ListHasEntry(&IopShutdownNotificationList, &DevObj->ShutdownNotificationLink)) {
+	RemoveEntryList(&DevObj->ShutdownNotificationLink);
+    }
     if (DevObj->AttachedDevice) {
 	DevObj->AttachedDevice->AttachedTo = DevObj->AttachedTo;
     }
@@ -824,6 +827,62 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
     RET_ERR(IopGrantDeviceHandleToDriver(Device, DriverObject, TopDeviceHandle));
     *TopDeviceInfo = Device->DeviceInfo;
     *StackSize = IopGetDeviceStackSize(Device);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmRegisterShutdownNotification(IN ASYNC_STATE AsyncState,
+                                         IN PTHREAD Thread,
+                                         IN GLOBAL_HANDLE DeviceHandle)
+{
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    if (!DeviceHandle) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
+    if (!Device) {
+	return STATUS_INVALID_HANDLE;
+    }
+    /* You can only register shutdown notification for the device object you own. */
+    if (Device->DriverObject != DriverObject) {
+	assert(FALSE);
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+    if (ListHasEntry(&IopShutdownNotificationList, &Device->ShutdownNotificationLink)) {
+	assert(FALSE);
+	return STATUS_ALREADY_REGISTERED;
+    }
+    InsertTailList(&IopShutdownNotificationList, &Device->ShutdownNotificationLink);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmUnregisterShutdownNotification(IN ASYNC_STATE AsyncState,
+					   IN PTHREAD Thread,
+					   IN GLOBAL_HANDLE DeviceHandle)
+{
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    if (!DeviceHandle) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
+    if (!Device) {
+	return STATUS_INVALID_HANDLE;
+    }
+    /* You can only unregister shutdown notification for the device object you own. */
+    if (Device->DriverObject != DriverObject) {
+	assert(FALSE);
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+    if (!ListHasEntry(&IopShutdownNotificationList, &Device->ShutdownNotificationLink)) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    RemoveEntryList(&Device->ShutdownNotificationLink);
     return STATUS_SUCCESS;
 }
 

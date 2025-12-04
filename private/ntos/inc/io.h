@@ -49,6 +49,9 @@ typedef struct _IO_DRIVER_OBJECT {
 				  * The list entry for this list is PENDING_IRP.Link */
     LIST_ENTRY CloseDeviceMsgList;   /* List of CLOSE_DEVICE_MESSAGE */
     LIST_ENTRY InterruptServiceList; /* List of INTERRUPT_SERVICE */
+    LIST_ENTRY HardwareProfileChangeLink; /* List link for IopHardwareProfileChangeList */
+    LIST_ENTRY DeviceInterfaceChangeLink; /* List link for IopDeviceInterfaceChangeList */
+    LIST_ENTRY TargetDeviceChangeLink;	  /* List link for IopTargetDeviceChangeList */
     KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting
 				     * IO packet */
     KEVENT IoPacketQueuedEvent;	    /* Signaled when an IO packet is queued on the driver
@@ -108,6 +111,7 @@ typedef struct _IO_DEVICE_OBJECT {
     struct _IO_FILE_SYSTEM *FsObj; /* Only file system control device object has this. */
     LIST_ENTRY OpenFileList; /* List of opened instances of this device object. */
     LIST_ENTRY CloseMsgList; /* List of CLOSE_DEVICE_MESSAGE. */
+    LIST_ENTRY ShutdownNotificationLink; /* List link for IopShutdownNotificationList */
     IO_DEVICE_INFO DeviceInfo;
     KEVENT MountCompleted; /* Used by the volume mount logic to signal mount completion. */
     BOOLEAN Removed; /* TRUE if the driver has crashed and the device is being removed. */

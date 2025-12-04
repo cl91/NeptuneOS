@@ -93,6 +93,9 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 	IopFreePool(IoTimer);
     }
 
+    /* Unregister the PnP notifications if driver has registered them */
+    IopUnregisterAllPnpNotifications(Driver);
+
     if (Driver->MainEventLoopThread) {
 	ObDereferenceObject(Driver->MainEventLoopThread);
     }
