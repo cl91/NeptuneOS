@@ -34,19 +34,17 @@ NTSTATUS CmpInsertNamedNode(IN PCM_KEY_OBJECT Parent,
     if (!Node->Name) {
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
-    RET_ERR_EX(RtlUTF8ToUnicodeN(NULL, 0, &Node->Utf16NameLength,
+    Node->NameLength = strlen(NodeName);
+    RET_ERR_EX(RtlUTF8ToUnicodeN(NULL, ULONG_MAX, &Node->Utf16NameLength,
 				 NodeName, Node->NameLength),
 	       {
 		   CmpFreePool(Node->Name);
 		   Node->Name = NULL;
+		   Node->NameLength = 0;
 	       });
-    Node->NameLength = strlen(NodeName);
     Node->Parent = Parent;
     ULONG HashIndex = CmpKeyHashIndex(NodeName);
     InsertTailList(&Parent->HashBuckets[HashIndex], &Node->HashLink);
-    if (Node->Utf16NameLength < Node->NameLength * sizeof(WCHAR)) {
-	Node->Utf16NameLength = Node->NameLength * sizeof(WCHAR);
-    }
     if (Node->NameLength > Parent->MaxNameLength) {
 	Parent->MaxNameLength = Node->NameLength;
     }
