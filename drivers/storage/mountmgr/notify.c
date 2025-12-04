@@ -347,6 +347,7 @@ VOID MountMgrNotifyNameChange(IN PDEVICE_EXTENSION DeviceExtension,
 	return;
     }
 
+    ObDereferenceObject(AttachedDevice);
     AttachedDevice = DeviceRelations->Objects[0];
     ExFreePool(DeviceRelations);
 

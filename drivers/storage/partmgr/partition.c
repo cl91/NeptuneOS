@@ -179,7 +179,7 @@ static NTSTATUS VolumeDeleteMountPoints(IN PPARTITION_EXTENSION PartExt)
     ULONG InputSize, OutputSize;
     ULONG Retry;
     PUNICODE_STRING DeviceName;
-    PDEVICE_OBJECT DeviceObject;
+    PDEVICE_OBJECT DeviceObject = NULL;
     PMOUNTMGR_MOUNT_POINT InputBuffer = NULL;
     PMOUNTMGR_MOUNT_POINTS OutputBuffer = NULL;
 

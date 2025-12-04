@@ -305,10 +305,9 @@ NTSTATUS QueryDeviceInformation(IN PUNICODE_STRING SymbolicName,
 	    /* Failure isn't major */
 	    if (!NT_SUCCESS(Status)) {
 		Status = STATUS_SUCCESS;
-	    }
-	    /* Check if this is a FT volume */
-	    else if ((PartitionInfo.PartitionStyle == PARTITION_STYLE_MBR) &&
+	    } else if ((PartitionInfo.PartitionStyle == PARTITION_STYLE_MBR) &&
 		     IsFTPartition(PartitionInfo.Mbr.PartitionType)) {
+		/* Check if this is a FT volume */
 		*IsFT = TRUE;
 	    }
 
@@ -851,8 +850,7 @@ NTSTATUS MountMgrMountedDeviceArrival(IN PDEVICE_EXTENSION DeviceExtension,
     /* Check if there are symlinks associated with our device in registry */
     Status = QuerySymbolicLinkNamesFromStorage(DeviceExtension, DeviceInformation,
 					       (SuggestedLinkName.Buffer) ?
-						   &SuggestedLinkName :
-						   NULL,
+					       &SuggestedLinkName : NULL,
 					       UseOnlyIfThereAreNoOtherLinks, &SymLinks,
 					       &SymLinkCount, HasGuid, &StableGuid);
 

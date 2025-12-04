@@ -198,8 +198,6 @@ Cleanup:
 
     ObDereferenceObject(AttachedDevice);
     ObDereferenceObject(DeviceObject);
-
-    return;
 }
 
 /*
@@ -252,8 +250,6 @@ Cleanup:
 
     ObDereferenceObject(AttachedDevice);
     ObDereferenceObject(DeviceObject);
-
-    return;
 }
 
 /*
