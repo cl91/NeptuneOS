@@ -29,6 +29,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Driver->ForwardedIrpList);
     InitializeListHead(&Driver->CloseDeviceMsgList);
     InitializeListHead(&Driver->InterruptServiceList);
+    InitializeListHead(&Driver->PlugPlayNotificationList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     KeInitializeEvent(&Driver->IoPacketQueuedEvent, SynchronizationEvent);
 
@@ -92,6 +93,13 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 	RemoveEntryList(&IoTimer->DriverLink);
 	IopFreePool(IoTimer);
     }
+
+    /* Unregister the PnP notifications if driver has registered them */
+    LoopOverList(Entry, &Driver->PlugPlayNotificationList,
+		 PLUG_PLAY_NOTIFICATION, DriverLink) {
+	IopUnregisterPlugPlayNotification(Entry);
+    }
+    assert(IsListEmpty(&Driver->PlugPlayNotificationList));
 
     if (Driver->MainEventLoopThread) {
 	ObDereferenceObject(Driver->MainEventLoopThread);

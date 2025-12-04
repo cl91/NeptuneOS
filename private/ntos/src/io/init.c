@@ -1,6 +1,7 @@
 #include "iop.h"
 
 LIST_ENTRY IopDriverList;
+LIST_ENTRY IopShutdownNotificationList;
 
 static NTSTATUS IopCreateFileType()
 {
@@ -59,6 +60,7 @@ static NTSTATUS IopCreateDriverType()
 NTSTATUS IoInitSystemPhase0()
 {
     InitializeListHead(&IopDriverList);
+    InitializeListHead(&IopShutdownNotificationList);
     InitializeListHead(&IopNtosPendingIrpList);
     RET_ERR(IopCreateFileType());
     RET_ERR(IopCreateDeviceType());

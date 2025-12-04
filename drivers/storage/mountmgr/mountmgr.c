@@ -617,7 +617,7 @@ VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
 	InterlockedDecrement(&DeviceExtension->WorkerReferences);
     }
 
-    /* Don't get any notification any longer² */
+    /* Don't get any notification any longer */
     IoUnregisterPlugPlayNotification(DeviceExtension->NotificationEntry);
 
     /* Acquire the driver exclusively */
@@ -630,6 +630,14 @@ VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
 	DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 	MountMgrFreeDeadDeviceInfo(DeviceInformation);
+    }
+
+    /* Clear offline devices list */
+    while (!IsListEmpty(&DeviceExtension->DeviceListHead)) {
+	NextEntry = RemoveHeadList(&DeviceExtension->DeviceListHead);
+	DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
+					      DeviceListEntry);
+	MountMgrFreeMountedDeviceInfo(DeviceInformation);
     }
 
     /* Clear saved links list */

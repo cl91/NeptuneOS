@@ -382,11 +382,24 @@ FORCEINLINE VOID IopDeviceNodeSetCurrentState(IN PDEVICE_NODE Node,
     Node->StateHistory[Node->CurrentState] = State;
 }
 
+typedef struct _PLUG_PLAY_NOTIFICATION {
+    LIST_ENTRY DriverLink; /* List link for IO_DRIVER_OBJECT::PlugPlayNotificationList */
+    PIO_DRIVER_OBJECT DriverObject;
+    IO_NOTIFICATION_EVENT_CATEGORY EventCategory;
+    LIST_ENTRY ListLink;
+    union {
+	GUID EventGuid;	  /* For EventCategoryDeviceInterfaceChange */
+	PIO_DEVICE_OBJECT DeviceObject; /* For EventCategoryTargetDeviceChange */
+    };
+} PLUG_PLAY_NOTIFICATION, *PPLUG_PLAY_NOTIFICATION;
+
 /* init.c */
 extern LIST_ENTRY IopDriverList;
+extern LIST_ENTRY IopShutdownNotificationList;
 
 /* pnp.c */
 NTSTATUS IopInitPnpManager();
+VOID IopUnregisterPlugPlayNotification(IN PPLUG_PLAY_NOTIFICATION Notification);
 
 /*
  * Returns the device object of the given device handle, optionally

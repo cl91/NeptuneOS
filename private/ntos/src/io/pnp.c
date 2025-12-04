@@ -64,6 +64,8 @@ typedef struct _PNP_EVENT_ENTRY {
 } PNP_EVENT_ENTRY, *PPNP_EVENT_ENTRY;
 
 static PDEVICE_NODE IopRootDeviceNode;
+static LIST_ENTRY IopHardwareProfileChangeList;
+static LIST_ENTRY IopDeviceInterfaceChangeList;
 static LIST_ENTRY IopPnpEventQueueHead;
 static KEVENT IopPnpNotifyEvent;
 
@@ -2043,8 +2045,10 @@ NTSTATUS IopInitPnpManager()
     /* Ask HAL to mask the unusable IRQLs so we won't assign it to devices later. */
     RET_ERR(HalMaskUnusableInterrupts());
 
-    /* Initialize the PnP event notification and the event queue. */
+    /* Initialize the PnP event notification system and the event queue. */
     InitializeListHead(&IopPnpEventQueueHead);
+    InitializeListHead(&IopHardwareProfileChangeList);
+    InitializeListHead(&IopDeviceInterfaceChangeList);
     KeInitializeEvent(&IopPnpNotifyEvent, SynchronizationEvent);
 
     /* Create the root device node. This is the device node for the root PnP enumerator. */
@@ -2379,14 +2383,123 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 NTSTATUS WdmRegisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
                                          IN PTHREAD Thread,
                                          IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
-                                         IN ULONG EventCategoryFlags)
+					 IN PGUID EventGuid,
+					 IN GLOBAL_HANDLE EventDeviceHandle)
 {
-    UNIMPLEMENTED;
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    IopAllocatePool(Entry, PLUG_PLAY_NOTIFICATION);
+    Entry->EventCategory = EventCategory;
+    switch (EventCategory) {
+    case EventCategoryHardwareProfileChange:
+	LoopOverList(ExistingEntry, &DriverObject->PlugPlayNotificationList,
+		     PLUG_PLAY_NOTIFICATION, DriverLink) {
+	    assert(ExistingEntry->DriverObject == DriverObject);
+	    if (ExistingEntry->EventCategory == EventCategoryHardwareProfileChange) {
+		assert(FALSE);
+		IopFreePool(Entry);
+		return STATUS_ALREADY_REGISTERED;
+	    }
+	}
+	InsertTailList(&IopHardwareProfileChangeList, &Entry->ListLink);
+	break;
+    case EventCategoryDeviceInterfaceChange:
+	LoopOverList(ExistingEntry, &DriverObject->PlugPlayNotificationList,
+		     PLUG_PLAY_NOTIFICATION, DriverLink) {
+	    assert(ExistingEntry->DriverObject == DriverObject);
+	    if (ExistingEntry->EventCategory == EventCategoryDeviceInterfaceChange &&
+		IsEqualGUID(&ExistingEntry->EventGuid, EventGuid)) {
+		assert(FALSE);
+		IopFreePool(Entry);
+		return STATUS_ALREADY_REGISTERED;
+	    }
+	}
+	InsertTailList(&IopDeviceInterfaceChangeList, &Entry->ListLink);
+	break;
+    case EventCategoryTargetDeviceChange:
+	LoopOverList(ExistingEntry, &DriverObject->PlugPlayNotificationList,
+		     PLUG_PLAY_NOTIFICATION, DriverLink) {
+	    assert(ExistingEntry->DriverObject == DriverObject);
+	    if (ExistingEntry->EventCategory == EventCategoryTargetDeviceChange &&
+		OBJECT_TO_GLOBAL_HANDLE(ExistingEntry->DriverObject) == EventDeviceHandle) {
+		assert(FALSE);
+		IopFreePool(Entry);
+		return STATUS_ALREADY_REGISTERED;
+	    }
+	}
+	PIO_DEVICE_OBJECT DeviceObject = IopGetDeviceObject(EventDeviceHandle,
+							    DriverObject);
+	if (!DeviceObject) {
+	    assert(FALSE);
+	    IopFreePool(Entry);
+	    return STATUS_INVALID_HANDLE;
+	}
+	Entry->DeviceObject = DeviceObject;
+	ObpReferenceObject(DeviceObject);
+	InsertTailList(&DeviceObject->DeviceChangeNotificationList,
+		       &Entry->ListLink);
+	break;
+    default:
+	assert(FALSE);
+	IopFreePool(Entry);
+	return STATUS_INVALID_PARAMETER;
+    }
+    Entry->DriverObject = DriverObject;
+    InsertTailList(&DriverObject->PlugPlayNotificationList, &Entry->DriverLink);
+    return STATUS_SUCCESS;
+}
+
+VOID IopUnregisterPlugPlayNotification(IN PPLUG_PLAY_NOTIFICATION Entry)
+{
+    switch (Entry->EventCategory) {
+    case EventCategoryHardwareProfileChange:
+	assert(ListHasEntry(&IopHardwareProfileChangeList, &Entry->ListLink));
+	RemoveEntryList(&Entry->ListLink);
+	break;
+    case EventCategoryDeviceInterfaceChange:
+	assert(ListHasEntry(&IopDeviceInterfaceChangeList, &Entry->ListLink));
+	RemoveEntryList(&Entry->ListLink);
+	break;
+    case EventCategoryTargetDeviceChange:
+	assert(Entry->DeviceObject);
+	assert(ListHasEntry(&Entry->DeviceObject->DeviceChangeNotificationList,
+			    &Entry->ListLink));
+	RemoveEntryList(&Entry->ListLink);
+	ObDereferenceObject(Entry->DeviceObject);
+	break;
+    default:
+	assert(FALSE);
+    }
+    RemoveEntryList(&Entry->DriverLink);
+    IopFreePool(Entry);
 }
 
 NTSTATUS WdmUnregisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
 					   IN PTHREAD Thread,
-					   IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory)
+					   IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
+					   IN PGUID EventGuid,
+					   IN GLOBAL_HANDLE EventDeviceHandle)
 {
-    UNIMPLEMENTED;
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    LoopOverList(Entry, &DriverObject->PlugPlayNotificationList,
+		 PLUG_PLAY_NOTIFICATION, DriverLink) {
+	if (Entry->EventCategory != EventCategory) {
+	    continue;
+	}
+	if (EventCategory == EventCategoryTargetDeviceChange &&
+	    EventDeviceHandle != OBJECT_TO_GLOBAL_HANDLE(Entry->DeviceObject)) {
+	    continue;
+	}
+	if (EventCategory == EventCategoryDeviceInterfaceChange &&
+	    IsEqualGUID(EventGuid, &Entry->EventGuid)) {
+	    continue;
+	}
+	IopUnregisterPlugPlayNotification(Entry);
+    }
+    return STATUS_SUCCESS;
 }

@@ -19,6 +19,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     BOOLEAN Exclusive = Ctx->Exclusive;
     InitializeListHead(&Device->OpenFileList);
     InitializeListHead(&Device->CloseMsgList);
+    InitializeListHead(&Device->DeviceChangeNotificationList);
     KeInitializeEvent(&Device->MountCompleted, NotificationEvent);
 
     Device->DriverObject = DriverObject;
@@ -433,6 +434,12 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 	RemoveEntryList(&CloseMsg->DriverLink);
 	IopFreePool(CloseMsg);
     }
+    /* The device change notification list must also be empty, because we increased the
+     * refcount of the device object when registering for the change notification. */
+    assert(IsListEmpty(&DevObj->DeviceChangeNotificationList));
+    if (ListHasEntry(&IopShutdownNotificationList, &DevObj->ShutdownNotificationLink)) {
+	RemoveEntryList(&DevObj->ShutdownNotificationLink);
+    }
     if (DevObj->AttachedDevice) {
 	DevObj->AttachedDevice->AttachedTo = DevObj->AttachedTo;
     }
@@ -533,6 +540,14 @@ VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
 	 * delete is in fact granted to it. The CLOSE_DEVICE_MESSAGE is freed in
 	 * IopDeviceObjectDeleteProc. */
     }
+    /* Unregister the device change notifications that any client driver has
+     * previously registered. Normally this is done by client drivers when they
+     * are unloaded (or have crashed and were forced to be unloaded). */
+    LoopOverList(Entry, &DevObj->DeviceChangeNotificationList,
+		 PLUG_PLAY_NOTIFICATION, ListLink) {
+	IopUnregisterPlugPlayNotification(Entry);
+    }
+    assert(IsListEmpty(&DevObj->DeviceChangeNotificationList));
     /* Dismount the volume if we are removing a storage device or mounted volume
      * device. This can happen both in the forced removal case and in the normal
      * removal case. In the normal removal case, if the volume device has already
@@ -824,6 +839,62 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
     RET_ERR(IopGrantDeviceHandleToDriver(Device, DriverObject, TopDeviceHandle));
     *TopDeviceInfo = Device->DeviceInfo;
     *StackSize = IopGetDeviceStackSize(Device);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmRegisterShutdownNotification(IN ASYNC_STATE AsyncState,
+                                         IN PTHREAD Thread,
+                                         IN GLOBAL_HANDLE DeviceHandle)
+{
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    if (!DeviceHandle) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
+    if (!Device) {
+	return STATUS_INVALID_HANDLE;
+    }
+    /* You can only register shutdown notification for the device object you own. */
+    if (Device->DriverObject != DriverObject) {
+	assert(FALSE);
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+    if (ListHasEntry(&IopShutdownNotificationList, &Device->ShutdownNotificationLink)) {
+	assert(FALSE);
+	return STATUS_ALREADY_REGISTERED;
+    }
+    InsertTailList(&IopShutdownNotificationList, &Device->ShutdownNotificationLink);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmUnregisterShutdownNotification(IN ASYNC_STATE AsyncState,
+					   IN PTHREAD Thread,
+					   IN GLOBAL_HANDLE DeviceHandle)
+{
+    assert(IopThreadIsAtPassiveLevel(Thread));
+    if (!DeviceHandle) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    assert(DriverObject != NULL);
+    PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
+    if (!Device) {
+	return STATUS_INVALID_HANDLE;
+    }
+    /* You can only unregister shutdown notification for the device object you own. */
+    if (Device->DriverObject != DriverObject) {
+	assert(FALSE);
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+    if (!ListHasEntry(&IopShutdownNotificationList, &Device->ShutdownNotificationLink)) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+    RemoveEntryList(&Device->ShutdownNotificationLink);
     return STATUS_SUCCESS;
 }
 

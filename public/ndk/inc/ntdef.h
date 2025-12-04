@@ -388,7 +388,8 @@ FORCEINLINE BOOLEAN IsListEmpty(IN const LIST_ENTRY *ListHead)
     return (BOOLEAN)(ListHead->Flink == ListHead);
 }
 
-/* Returns TRUE if list is empty after removal */
+/* Returns TRUE if list is empty after removal. This routine zeros the
+ * given LIST_ENTRY after its removal from the list. */
 FORCEINLINE BOOLEAN RemoveEntryList(IN PLIST_ENTRY Entry)
 {
     PLIST_ENTRY OldFlink;

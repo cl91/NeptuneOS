@@ -338,10 +338,13 @@ IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
     Entry->DriverObject = DriverObject;
     Entry->EventCategory = EventCategory;
     IoInitializeWorkItem(NULL, &Entry->WorkItem);
+    GUID EventGuid = {};
+    GLOBAL_HANDLE EventDeviceHandle = 0;
 
     switch (EventCategory) {
     case EventCategoryDeviceInterfaceChange:
 	Entry->Guid = *(LPGUID)EventCategoryData;
+	EventGuid = Entry->Guid;
 	// first register the notification
 	InsertTailList(&PiNotifyDeviceInterfaceList, &Entry->PnpNotifyList);
 	break;
@@ -353,6 +356,7 @@ IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
     case EventCategoryTargetDeviceChange:
 	// save it so we can dereference it later
 	Entry->DeviceObject = (PDEVICE_OBJECT)EventCategoryData;
+	EventDeviceHandle = Entry->DeviceObject->Header.GlobalHandle;
 	ObReferenceObject(Entry->DeviceObject);
 	InsertTailList(&PiNotifyTargetDeviceList, &Entry->PnpNotifyList);
 	break;
@@ -366,7 +370,7 @@ IoRegisterPlugPlayNotification(IN IO_NOTIFICATION_EVENT_CATEGORY EventCategory,
     }
 
     NTSTATUS Status = WdmRegisterPlugPlayNotification(EventCategory,
-						      EventCategoryFlags);
+						      &EventGuid, EventDeviceHandle);
     if (!NT_SUCCESS(Status)) {
 	RemoveEntryList(&Entry->PnpNotifyList);
 	ExFreePoolWithTag(Entry, TAG_PNP_NOTIFY);
@@ -412,29 +416,35 @@ NTAPI NTSTATUS IoUnregisterPlugPlayNotification(IN PVOID NotificationEntry)
 {
     PAGED_CODE();
     PPNP_NOTIFY_ENTRY Entry = NotificationEntry;
+    GUID EventGuid = {};
+    GLOBAL_HANDLE DeviceHandle = 0;
 
     DPRINT("%s(NotificationEntry %p) called\n", __FUNCTION__, Entry);
 
-#if DBG
     PLIST_ENTRY List;
+    UNREFERENCED_PARAMETER(List);
     switch (Entry->EventCategory) {
     case EventCategoryDeviceInterfaceChange:
 	List = &PiNotifyDeviceInterfaceList;
+	EventGuid = Entry->Guid;
 	break;
     case EventCategoryHardwareProfileChange:
 	List = &PiNotifyHwProfileList;
 	break;
     case EventCategoryTargetDeviceChange:
 	List = &PiNotifyTargetDeviceList;
+	assert(Entry->DeviceObject);
+	DeviceHandle = Entry->DeviceObject->Header.GlobalHandle;
+	ObDereferenceObject(Entry->DeviceObject);
 	break;
     default:
 	assert(FALSE);
 	return STATUS_NOT_SUPPORTED;
     }
-#endif
 
     assert(ListHasEntry(List, &Entry->PnpNotifyList));
-    WdmUnregisterPlugPlayNotification(Entry->EventCategory);
+    WdmUnregisterPlugPlayNotification(Entry->EventCategory,
+				      &EventGuid, DeviceHandle);
     RemoveEntryList(&Entry->PnpNotifyList);
     IopRemoveWorkItem(&Entry->WorkItem);
     ExFreePoolWithTag(Entry, TAG_PNP_NOTIFY);
@@ -444,14 +454,15 @@ NTAPI NTSTATUS IoUnregisterPlugPlayNotification(IN PVOID NotificationEntry)
 NTAPI NTSTATUS IoRegisterShutdownNotification(IN PDEVICE_OBJECT DeviceObject)
 {
     PAGED_CODE();
-    UNIMPLEMENTED;
-    return STATUS_NOT_IMPLEMENTED;
+    assert(DeviceObject->Header.GlobalHandle);
+    return WdmRegisterShutdownNotification(DeviceObject->Header.GlobalHandle);
 }
 
 NTAPI VOID IoUnregisterShutdownNotification(PDEVICE_OBJECT DeviceObject)
 {
     PAGED_CODE();
-    UNIMPLEMENTED;
+    assert(DeviceObject->Header.GlobalHandle);
+    WdmUnregisterShutdownNotification(DeviceObject->Header.GlobalHandle);
 }
 
 struct _IO_MAPPING_TABLE;

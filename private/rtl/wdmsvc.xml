@@ -103,11 +103,22 @@
 
   <svc name="WdmRegisterPlugPlayNotification">
     <parameter annotation="in" type="IO_NOTIFICATION_EVENT_CATEGORY" name="EventCategory" />
-    <parameter annotation="in" type="ULONG" name="EventCategoryFlags" />
+    <parameter annotation="in" type="ptr::GUID" name="EventGuid" />
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="EventDeviceHandle" />
   </svc>
 
   <svc name="WdmUnregisterPlugPlayNotification">
     <parameter annotation="in" type="IO_NOTIFICATION_EVENT_CATEGORY" name="EventCategory" />
+    <parameter annotation="in" type="ptr::GUID" name="EventGuid" />
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="EventDeviceHandle" />
+  </svc>
+
+  <svc name="WdmRegisterShutdownNotification">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
+  </svc>
+
+  <svc name="WdmUnregisterShutdownNotification">
+    <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
   </svc>
 
   <svc name="WdmReserveIoMemoryWindow">
