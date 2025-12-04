@@ -443,7 +443,8 @@ NTSTATUS PciQueryTargetDeviceRelations(IN PPCI_PDO_EXTENSION PdoExtension,
 	ExFreePoolWithTag(*pDeviceRelations, 0);
 
     /* Allocate a new structure for the relations */
-    DeviceRelations = ExAllocatePoolWithTag(NonPagedPool, sizeof(DEVICE_RELATIONS),
+    DeviceRelations = ExAllocatePoolWithTag(NonPagedPool,
+					    sizeof(DEVICE_RELATIONS) + sizeof(PDEVICE_OBJECT),
 					    'BicP');
     if (!DeviceRelations)
 	return STATUS_INSUFFICIENT_RESOURCES;

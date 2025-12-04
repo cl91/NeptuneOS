@@ -1558,7 +1558,8 @@ static NTSTATUS Bus_PDO_QueryDeviceRelations(PPDO_DEVICE_DATA DeviceData, PIRP I
 	}
 
 	DeviceRelations = ExAllocatePoolWithTag(NonPagedPool,
-						sizeof(DEVICE_RELATIONS), ACPI_TAG);
+						sizeof(DEVICE_RELATIONS) + sizeof(PDEVICE_OBJECT),
+						ACPI_TAG);
 	if (!DeviceRelations) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    break;

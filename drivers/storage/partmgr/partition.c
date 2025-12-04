@@ -330,9 +330,9 @@ static NTSTATUS PartitionHandleDeviceRelations(IN PPARTITION_EXTENSION PartExt,
     DEVICE_RELATION_TYPE type = ioStack->Parameters.QueryDeviceRelations.Type;
 
     if (type == TargetDeviceRelation) {
-	// Device relations have one entry built into their size.
 	PDEVICE_RELATIONS deviceRelations = ExAllocatePoolWithTag(PagedPool,
-								  sizeof(DEVICE_RELATIONS),
+								  sizeof(DEVICE_RELATIONS) +
+								  sizeof(PDEVICE_OBJECT),
 								  TAG_PARTMGR);
 
 	if (deviceRelations != NULL) {

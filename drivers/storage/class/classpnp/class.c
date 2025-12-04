@@ -775,7 +775,8 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 		    status = STATUS_INSUFFICIENT_RESOURCES;
 
 		    deviceRelations = ExAllocatePoolWithTag(NonPagedPool,
-							    sizeof(DEVICE_RELATIONS),
+							    sizeof(DEVICE_RELATIONS) +
+							    sizeof(PDEVICE_OBJECT),
 							    '2CcS');
 
 		    if (deviceRelations != NULL) {

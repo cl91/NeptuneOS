@@ -593,13 +593,14 @@ static NTSTATUS PortPdoQueryTargetDeviceRelation(IN PPDO_DEVICE_EXTENSION DevExt
     DPRINT1("PortPdoQueryTargetDeviceRelation(%p %p)\n", DevExt, Information);
 
     PDEVICE_RELATIONS DeviceRelations = ExAllocatePoolWithTag(NonPagedPool,
-							      sizeof(DEVICE_RELATIONS),
+							      sizeof(DEVICE_RELATIONS) +
+							      sizeof(PDEVICE_OBJECT),
 							      TAG_DEV_RELATIONS);
     if (!DeviceRelations) {
         return STATUS_NO_MEMORY;
     }
     DeviceRelations->Objects[0] = DevExt->Device;
-    DeviceRelations->Count = 0;
+    DeviceRelations->Count = 1;
     *Information = (ULONG_PTR)DeviceRelations;
     return STATUS_SUCCESS;
 }

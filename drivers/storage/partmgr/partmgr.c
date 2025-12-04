@@ -901,7 +901,7 @@ static NTSTATUS FdoHandleDeviceRelations(_In_ PFDO_EXTENSION FdoExtension, _In_ 
 	PDEVICE_RELATIONS deviceRelations = ExAllocatePoolWithTag(
 	    PagedPool,
 	    sizeof(DEVICE_RELATIONS) +
-		sizeof(PDEVICE_OBJECT) * (FdoExtension->EnumeratedPartitionsTotal - 1),
+	    sizeof(PDEVICE_OBJECT) * FdoExtension->EnumeratedPartitionsTotal,
 	    TAG_PARTMGR);
 
 	if (!deviceRelations) {
