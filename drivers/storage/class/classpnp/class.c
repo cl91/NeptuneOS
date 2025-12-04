@@ -8776,8 +8776,6 @@ NTSTATUS ClassRetrieveDeviceRelations(IN PDEVICE_OBJECT Fdo,
     PDEVICE_RELATIONS deviceRelations = NULL;
     PDEVICE_RELATIONS oldRelations = *DeviceRelations;
 
-    NTSTATUS status;
-
     UNREFERENCED_PARAMETER(RelationType);
 
     ClassAcquireChildLock(fdoExtension);
