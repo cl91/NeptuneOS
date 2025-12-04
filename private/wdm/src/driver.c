@@ -414,6 +414,7 @@ NTAPI NTSTATUS IoUnregisterPlugPlayNotification(IN PVOID NotificationEntry)
 
     DPRINT("%s(NotificationEntry %p) called\n", __FUNCTION__, Entry);
 
+#if DBG
     PLIST_ENTRY List;
     switch (Entry->EventCategory) {
     case EventCategoryDeviceInterfaceChange:
@@ -429,6 +430,7 @@ NTAPI NTSTATUS IoUnregisterPlugPlayNotification(IN PVOID NotificationEntry)
 	assert(FALSE);
 	return STATUS_NOT_SUPPORTED;
     }
+#endif
 
     assert(ListHasEntry(List, &Entry->PnpNotifyList));
     WdmUnregisterPlugPlayNotification(Entry->EventCategory);
