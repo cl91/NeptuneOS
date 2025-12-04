@@ -420,7 +420,7 @@ static NTSTATUS IopUnmarshalObjectInformation(IN PVOID ClientBuffer,
 					      IN SERVICE_ARGUMENT BufferArg,
 					      IN NTSTATUS Status,
 					      IN MWORD ClientBufferLength,
-					      IN OUT MWORD *BufferSize,
+					      IN OUT ULONG *BufferSize,
 					      IN OBJECT_INFORMATION_CLASS InfoClass)
 {
     if (Status == STATUS_BUFFER_TOO_SMALL || Status == STATUS_BUFFER_OVERFLOW) {

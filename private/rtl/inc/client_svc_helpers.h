@@ -188,11 +188,11 @@ static inline NTSTATUS KiServiceMarshalBuffer(IN OPTIONAL PVOID ClientBuffer,
     return STATUS_SUCCESS;
 }
 
-static inline VOID KiServiceUnmarshalBuffer5(IN PVOID ClientBuffer,
-					     IN SERVICE_ARGUMENT BufferArg,
-					     IN NTSTATUS Status,
-					     IN MWORD BufferLength,
-					     IN MWORD *ResultLength)
+static inline NTSTATUS KiServiceUnmarshalBuffer64(IN PVOID ClientBuffer,
+						  IN SERVICE_ARGUMENT BufferArg,
+						  IN NTSTATUS Status,
+						  IN MWORD BufferLength,
+						  IN MWORD *ResultLength)
 {
     assert(ClientBuffer != NULL);
     MWORD SizeToCopy = (Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL) ?
@@ -203,13 +203,24 @@ static inline VOID KiServiceUnmarshalBuffer5(IN PVOID ClientBuffer,
 	assert(BufferArg.Word + SizeToCopy < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, CHAR));
 	memcpy(ClientBuffer, (PVOID)BufferArg.Word, SizeToCopy);
     }
+    return STATUS_SUCCESS;
+}
+
+static inline VOID KiServiceUnmarshalBuffer5(IN PVOID ClientBuffer,
+					     IN SERVICE_ARGUMENT BufferArg,
+					     IN NTSTATUS Status,
+					     IN MWORD BufferLength,
+					     IN ULONG *pResultLength)
+{
+    MWORD ResultLength = *pResultLength;
+    KiServiceUnmarshalBuffer64(ClientBuffer, BufferArg, Status, BufferLength, &ResultLength);
 }
 
 static inline VOID KiServiceUnmarshalBuffer6(IN PVOID ClientBuffer,
 					     IN SERVICE_ARGUMENT BufferArg,
 					     IN NTSTATUS Status,
 					     IN MWORD BufferLength,
-					     IN MWORD *ResultLength,
+					     IN ULONG *ResultLength,
 					     IN UNUSED MWORD BufferType)
 {
     KiServiceUnmarshalBuffer5(ClientBuffer, BufferArg, Status, BufferLength, ResultLength);

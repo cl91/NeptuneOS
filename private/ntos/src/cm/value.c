@@ -345,9 +345,9 @@ static VOID CmpDbgDumpPartialResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPT
 		   Desc->Port.Start.QuadPart, Desc->Port.Length);
 	break;
     case CmResourceTypeInterrupt:
-	CmDbgPrint("INTERRUPT Level 0x%x Vector 0x%x Affinity 0x%x\n",
+	CmDbgPrint("INTERRUPT Level 0x%x Vector 0x%x Affinity 0x%zx\n",
 		   Desc->Interrupt.Level, Desc->Interrupt.Vector,
-		   Desc->Interrupt.Affinity);
+		   (MWORD)Desc->Interrupt.Affinity);
 	break;
     case CmResourceTypeMemory:
 	CmDbgPrint("MEMORY Start 0x%llx Length 0x%x\n",

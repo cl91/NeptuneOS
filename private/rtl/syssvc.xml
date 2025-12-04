@@ -223,7 +223,7 @@
   <svc name="NtWriteVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
-    <parameter annotation="in" type="buf::Void" name="Buffer" />
+    <parameter annotation="in" type="buf::Void64" name="Buffer" />
     <parameter annotation="in" type="bufsize::SIZE_T" name="NumberOfBytesToWrite" />
     <parameter annotation="out opt" type="ptr::SIZE_T" name="NumberOfBytesWritten" />
   </svc>
@@ -231,7 +231,7 @@
   <svc name="NtReadVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PVOID" name="BaseAddress" />
-    <parameter annotation="out" type="buf::Void" name="Buffer" />
+    <parameter annotation="out" type="buf::Void64" name="Buffer" />
     <parameter annotation="in" type="bufsize::SIZE_T" name="NumberOfBytesToRead" />
     <parameter annotation="out opt" type="ptr::SIZE_T" name="NumberOfBytesRead" />
   </svc>
