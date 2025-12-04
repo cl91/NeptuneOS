@@ -780,13 +780,10 @@ NTAPI NTSTATUS ClassDispatchPnp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 							    '2CcS');
 
 		    if (deviceRelations != NULL) {
-			RtlZeroMemory(deviceRelations, sizeof(DEVICE_RELATIONS));
-
 			Irp->IoStatus.Information = (ULONG_PTR)deviceRelations;
 
 			deviceRelations->Count = 1;
 			deviceRelations->Objects[0] = DeviceObject;
-			ObReferenceObject(deviceRelations->Objects[0]);
 
 			status = STATUS_SUCCESS;
 		    }
@@ -8856,14 +8853,6 @@ NTSTATUS ClassRetrieveDeviceRelations(IN PDEVICE_OBJECT Fdo,
 	_Analysis_assume_(i >= 1);
 	deviceRelations->Objects[--i] = nextChild->DeviceObject;
 
-	status = ObReferenceObjectByPointer(nextChild->DeviceObject, 0, NULL, KernelMode);
-	if (!NT_SUCCESS(status)) {
-	    NT_ASSERT(!"Error referencing child device by pointer");
-	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_ENUM,
-			"ClassRetrieveDeviceRelations: Error referencing child "
-			"device %p by pointer\n",
-			nextChild->DeviceObject));
-	}
 	nextChild->IsEnumerated = TRUE;
 	nextChild = commonExtension->ChildList;
     }

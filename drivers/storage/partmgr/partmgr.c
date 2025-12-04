@@ -923,7 +923,6 @@ static NTSTATUS FdoHandleDeviceRelations(_In_ PFDO_EXTENSION FdoExtension, _In_ 
 	    // mark the PDO to know that we don't need to manually delete it
 	    partExt->IsEnumerated = TRUE;
 	    deviceRelations->Objects[deviceRelations->Count++] = partExt->DeviceObject;
-	    ObReferenceObject(partExt->DeviceObject);
 
 	    curEntry = partExt->ListEntry.Next;
 	}

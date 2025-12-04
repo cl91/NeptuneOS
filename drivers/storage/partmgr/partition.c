@@ -338,7 +338,6 @@ static NTSTATUS PartitionHandleDeviceRelations(IN PPARTITION_EXTENSION PartExt,
 	if (deviceRelations != NULL) {
 	    deviceRelations->Count = 1;
 	    deviceRelations->Objects[0] = PartExt->DeviceObject;
-	    ObReferenceObject(deviceRelations->Objects[0]);
 
 	    Irp->IoStatus.Information = (ULONG_PTR)deviceRelations;
 	    return STATUS_SUCCESS;
