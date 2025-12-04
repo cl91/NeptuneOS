@@ -12,7 +12,9 @@
 
 /* INCLUDES *******************************************************************/
 
+#include <initguid.h>
 #include "fdc.h"
+#include <ntddstor.h>
 
 /* FUNCTIONS ******************************************************************/
 
@@ -85,6 +87,8 @@ static NTSTATUS FdcPdoQueryId(IN PDEVICE_OBJECT DeviceObject,
 NTSTATUS FdcPdoPnp(IN PDEVICE_OBJECT DeviceObject,
 		   IN PIRP Irp)
 {
+    PPDO_DEVICE_EXTENSION PdoExt = DeviceObject->DeviceExtension;
+    assert(!PdoExt->Common.IsFDO);
     ULONG_PTR Information = 0;
 
     DPRINT("FdcPdoPnp()\n");
@@ -142,8 +146,16 @@ NTSTATUS FdcPdoPnp(IN PDEVICE_OBJECT DeviceObject,
 
     case IRP_MN_START_DEVICE:
 	DPRINT("IRP_MN_START_DEVICE received\n");
-	/* We don't need to do anything here since all the work has been done
-	 * in the FDO dispatch routine. */
+	/* Register us as a volume so mountmgr can assign a drive letter. */
+	Status = IoRegisterDeviceInterface(DeviceObject,
+					   (LPGUID)&MOUNTDEV_MOUNTED_DEVICE_GUID,
+					   NULL,
+					   &PdoExt->SymbolicLinkName);
+	if (NT_SUCCESS(Status)) {
+	    IoSetDeviceInterfaceState(&PdoExt->SymbolicLinkName, TRUE);
+	}
+	/* IoRegisterDeviceInterface failure is not a fatal error so we always
+	 * return success. */
 	Status = STATUS_SUCCESS;
 	break;
 

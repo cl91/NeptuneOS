@@ -214,7 +214,7 @@ typedef struct _PDO_DEVICE_EXTENSION {
 				 * IRP QueryBusRelations. */
     PDRIVE_INFO DriveInfo;
 
-    UNICODE_STRING DeviceDescription;	// REG_SZ
+    UNICODE_STRING SymbolicLinkName;	// REG_SZ
     UNICODE_STRING DeviceId;		// REG_SZ
     UNICODE_STRING InstanceId;		// REG_SZ
     UNICODE_STRING HardwareIds;		// REG_MULTI_SZ
