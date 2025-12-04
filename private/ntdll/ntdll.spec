@@ -222,6 +222,7 @@
 @ cdecl towlower(long)
 @ cdecl towupper(long)
 @ cdecl wcslen(wstr)
+@ cdecl wcsnlen(wstr long)
 @ cdecl wcsstr(wstr wstr)
 @ cdecl wcschr(wstr long)
 @ cdecl wcscpy_s(wstr long wstr)

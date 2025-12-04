@@ -417,8 +417,7 @@ static NTSTATUS IopOpenInterfaceKey(IN CONST GUID *InterfaceClassGuid,
 
     KeyName.Length = 0;
     KeyName.MaximumLength = LocalMachine.Length +
-	((USHORT)wcslen(REGSTR_PATH_DEVICE_CLASSES) + 1) *
-	sizeof(WCHAR) +
+	((USHORT)wcslen(REGSTR_PATH_DEVICE_CLASSES) + 1) * sizeof(WCHAR) +
 	GuidString.Length;
     KeyName.Buffer = ExAllocatePool(NonPagedPool, KeyName.MaximumLength);
     if (!KeyName.Buffer) {
@@ -1522,11 +1521,10 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 	    if (!NT_SUCCESS(Status)) {
 		break;
 	    }
-	    if (PartialInfo->DataLength == DeviceInstancePath.Length &&
-		RtlCompareMemory(PartialInfo->Data, DeviceInstancePath.Buffer,
-				 DeviceInstancePath.Length) == DeviceInstancePath.Length) {
-		FoundRightPDO = TRUE;
-	    }
+	    UNICODE_STRING FoundInstance = {};
+	    RtlInitUnicodeString(&FoundInstance, (PWSTR)PartialInfo->Data);
+	    FoundRightPDO = !RtlCompareUnicodeString(&FoundInstance,
+						     &DeviceInstancePath, TRUE);
 	    ExFreePool(PartialInfo);
 	    PartialInfo = NULL;
 	    if (!FoundRightPDO) {
@@ -1624,8 +1622,10 @@ NTAPI NTSTATUS IoGetDeviceInterfaces(IN CONST GUID *InterfaceClassGuid,
 		Status = STATUS_UNSUCCESSFUL;
 		goto cleanup;
 	    }
-	    KeyName.Length = KeyName.MaximumLength = (USHORT)ValueInfo->DataLength;
+	    KeyName.MaximumLength = (USHORT)ValueInfo->DataLength;
 	    KeyName.Buffer = (PWSTR)ValueInfo->Data;
+	    KeyName.Length = wcsnlen((PWSTR)ValueInfo->Data,
+				     ValueInfo->DataLength / sizeof(WCHAR)) * sizeof(WCHAR);
 
 	    /* Fixup the prefix (from "\\?\") */
 	    RtlCopyMemory(KeyName.Buffer, L"\\??\\", 4 * sizeof(WCHAR));

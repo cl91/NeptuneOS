@@ -164,7 +164,8 @@ NTSTATUS IopLoadDriver(IN PCSTR BaseName)
     PVOID BaseAddress = NULL;
     UNICODE_STRING ImagePath = {
 	.Buffer = (PWSTR)PartialInfo->Data,
-	.Length = PartialInfo->DataLength,
+	.Length = wcsnlen((PWSTR)PartialInfo->Data,
+			  PartialInfo->DataLength / sizeof(WCHAR)) * sizeof(WCHAR),
 	.MaximumLength = PartialInfo->DataLength
     };
     IF_ERR_GOTO(out, Status, LdrLoadDll(NULL, NULL, &ImagePath, &BaseAddress));
