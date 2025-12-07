@@ -244,16 +244,6 @@ static VOID HalpAcpiRegisterMadt(IN PACPI_MADT Madt)
     }
 }
 
-FORCEINLINE VOID HalpSetApicPinFree(IN ULONG ApicIndex,
-				    IN ULONG Pin)
-{
-    assert(Pin < MAX_NUM_IOAPIC_PINS);
-    assert(HalpIsApicPinAssigned(ApicIndex, Pin));
-    if (Pin < MAX_NUM_IOAPIC_PINS) {
-	ClearBit(HalpIoApicTable[ApicIndex].AssignedPins, Pin);
-    }
-}
-
 static VOID HalpAcpiRegisterHpet(IN PACPI_HPET_TABLE Hpet)
 {
     if (Hpet->BaseAddress.SpaceId != ACPI_ADDRESS_ID_SYSTEM_MEMORY) {
