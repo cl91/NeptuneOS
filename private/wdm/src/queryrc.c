@@ -855,7 +855,12 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
 	    L"TcAdapter"
 	};
 	BOOLEAN Skip = TRUE;
-	TRACE_(PNPMGR, "Got adapter name %ws\n", BasicInfo->Name);
+	UNICODE_STRING BusName = {
+	    .Buffer = BasicInfo->Name,
+	    .Length = (USHORT)BasicInfo->NameLength,
+	    .MaximumLength = (USHORT)BasicInfo->NameLength
+	};
+	TRACE_(PNPMGR, "Got adapter name %wZ\n", &BusName);
 	for (ULONG i = 0; i < ARRAYSIZE(AdapterNames); i++) {
 	    Skip &= !!wcsncmp(BasicInfo->Name, AdapterNames[i],
 			      BasicInfo->NameLength / sizeof(WCHAR));
@@ -866,11 +871,6 @@ NTAPI NTSTATUS IoQueryDeviceDescription(IN PINTERFACE_TYPE BusType,
 
 	/* Append the bus name to to the registry path so we can pass
 	 * it onto the helper function below. */
-	UNICODE_STRING BusName = {
-	    .Buffer = BasicInfo->Name,
-	    .Length = (USHORT)BasicInfo->NameLength,
-	    .MaximumLength = (USHORT)BasicInfo->NameLength
-	};
 	UNICODE_STRING SubKey = RootKey;
 	Status = RtlAppendUnicodeToString(&SubKey, L"\\");
 	if (!NT_SUCCESS(Status)) {
