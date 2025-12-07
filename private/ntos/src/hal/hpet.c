@@ -29,8 +29,8 @@ enum {
     /* Set to 1 to cause an interrupt when main timer hits comparator for
      * this timer */
     TN_INT_ENB_CNF = 2,
-    /* If this bit is 1 you can write a 1 to it for periodic interrupts,
-     * or a 0 for non-periodic interrupts */
+    /* If TN_PER_INT_CAP is 1 you can write a 1 to TN_TYPE_CNF for periodic
+     * interrupts, or a 0 for non-periodic interrupts */
     TN_TYPE_CNF = 3,
     /* If this bit is 1, hardware supports periodic mode for this timer */
     TN_PER_INT_CAP = 4,
@@ -243,6 +243,10 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 		    goto out;
 		}
 	    }
+	    /* Disable the main counter as we will be resetting it */
+	    *HalpHpetGetGeneralConfig(VirtBase) &= ~(1ULL << ENABLE_CNF);
+	    /* Reset the main counter to zero */
+	    *HalpHpetGetMainCounter(VirtBase) = 0;
 	    /* Set the timer to periodic mode and edge-triggered. */
 	    Timer->Config |= (1ULL << TN_TYPE_CNF) | (1ULL << TN_VAL_SET_CNF) |
 		(1ULL << TN_INT_ENB_CNF);
@@ -253,15 +257,15 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    HalpHpetTable[i].Period = Period;
 	    /* Read the timer tick in units of femtoseconds (1e-15s) */
 	    HalpHpetTable[i].TimerTick = *HalpHpetGetCapId(VirtBase) >> 32;
-	    /* Conver the period to units of timer ticks */
+	    DbgTrace("Setting HPET period %llde-15s. Timer tick is %de-15s\n",
+		     HalpHpetTable[i].Period, HalpHpetTable[i].TimerTick);
+	    /* Convert the period to units of timer ticks */
 	    Period /= HalpHpetTable[i].TimerTick;
+	    /* Write the period to the comparator so interrupt will be generated
+	     * whenever the main counter hits a multiple of the period. */
+	    Timer->Comparator = Period;
 	    /* Enable the main counter */
 	    *HalpHpetGetGeneralConfig(VirtBase) |= 1ULL << ENABLE_CNF;
-	    /* Set the comparator register of the timer */
-	    Timer->Comparator = *HalpHpetGetMainCounter(VirtBase) + Period;
-	    /* This second write to the comparator sets the accumulator of the timer.
-	     * This behavior is the result of setting the TN_VAL_SET_CNF bit above. */
-	    Timer->Comparator = Period;
 	    MmUnmapPhysicalMemory(VirtBase);
 	    HalpHpetTable[i].SystemTimer = TRUE;
 	    HalpHpetTable[i].ComparatorId = j;
