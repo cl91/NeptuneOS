@@ -1512,6 +1512,16 @@ static NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
     return Status;
 }
 
+FORCEINLINE VOID PciBridgeSetIsaBit(IN PPCI_PDO_EXTENSION ChildBridge)
+{
+    assert(PciClassifyDeviceType(ChildBridge) == PciTypePciBridge);
+    if (ChildBridge->Dependent.Type1.SubtractiveDecode) {
+	ChildBridge->Dependent.Type1.IsaBitRequired = TRUE;
+    } else {
+	ChildBridge->Dependent.Type1.IsaBitSet = TRUE;
+    }
+}
+
 static VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 {
     PAGED_CODE();
@@ -1522,26 +1532,38 @@ static VOID PciProcessBus(IN PPCI_FDO_EXTENSION DeviceExtension)
     PhysicalDeviceObject = DeviceExtension->PhysicalDeviceObject;
     PdoExtension = (PPCI_PDO_EXTENSION)PhysicalDeviceObject->DeviceExtension;
 
-    /* Cheeck if this is the root bus */
+    /* Cheeck if we are the root bus */
     if (!PCI_IS_ROOT_FDO(DeviceExtension)) {
-	/* Not really handling this year */
-	UNIMPLEMENTED_DBGBREAK();
-
-	/* Check for PCI bridges with the ISA bit set, or required */
+	/* If we are a (non-root) bridge with the ISA bit set, propagate this bit
+	 * to all our child bridges. */
 	if ((PdoExtension) && (PciClassifyDeviceType(PdoExtension) == PciTypePciBridge) &&
 	    ((PdoExtension->Dependent.Type1.IsaBitRequired) ||
 	     (PdoExtension->Dependent.Type1.IsaBitSet))) {
-	    /* We'll need to do some legacy support */
-	    UNIMPLEMENTED_DBGBREAK();
+	    for (PPCI_PDO_EXTENSION ChildBridge = DeviceExtension->ChildBridgePdoList;
+		 ChildBridge; ChildBridge = ChildBridge->NextBridge) {
+		if (PciClassifyDeviceType(ChildBridge) == PciTypePciBridge) {
+		    PciBridgeSetIsaBit(ChildBridge);
+		}
+	    }
 	}
     } else {
-	/* Scan all of the root bus' children bridges */
-	for (PdoExtension = DeviceExtension->ChildBridgePdoList; PdoExtension;
-	     PdoExtension = PdoExtension->NextBridge) {
-	    /* Find any that have the VGA decode bit on */
-	    if (PdoExtension->Dependent.Type1.VgaBitSet) {
-		/* Again, some more legacy support we'll have to do */
-		UNIMPLEMENTED_DBGBREAK();
+	/* Scan all of the root bus' children bridges and see if there is one with
+	 * the vga bit set. */
+	PPCI_PDO_EXTENSION VgaBridge = NULL;
+	for (PPCI_PDO_EXTENSION ChildBridge = DeviceExtension->ChildBridgePdoList;
+	     ChildBridge; ChildBridge = ChildBridge->NextBridge) {
+	    if (ChildBridge->Dependent.Type1.VgaBitSet) {
+		VgaBridge = ChildBridge;
+		break;
+	    }
+	}
+	/* If the VGA bit is set for any child bridge, we need to enable ISA decoding
+	 * for every other child bridges. */
+	for (PPCI_PDO_EXTENSION ChildBridge = DeviceExtension->ChildBridgePdoList;
+	     ChildBridge; ChildBridge = ChildBridge->NextBridge) {
+	    if (ChildBridge != VgaBridge &&
+		PciClassifyDeviceType(ChildBridge) == PciTypePciBridge) {
+		PciBridgeSetIsaBit(ChildBridge);
 	    }
 	}
     }
