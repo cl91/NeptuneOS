@@ -1,6 +1,6 @@
 #include "halp.h"
 
-#if defined(_M_IX86) || defined(_M_AMD64)
+#ifdef _M_AMD64
 
 /* Prevent the compiler from re-ordering any write which follows the fence
  * in program order with any read or write which preceeds the fence in
@@ -281,4 +281,4 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
     return STATUS_DEVICE_DOES_NOT_EXIST;
 }
 
-#endif	/* defined(_M_IX86) || defined(_M_AMD64) */
+#endif	/* defined(_M_AMD64) */
