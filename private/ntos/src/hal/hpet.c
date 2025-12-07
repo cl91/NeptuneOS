@@ -203,6 +203,8 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    IrqHandler->Config.Word = 0;
 	    IrqHandler->Message = 0;
 	    if (TryMsi) {
+		DbgTrace("Using HPET %d with MSI delivery. Irq vector is 0x%x\n",
+			 j, Vector);
 		IrqHandler->Irq = Irq;
 		IrqHandler->Config.Msi = TRUE;
 		/* Set the timer to deliver interrupts via the front side bus (using MSIs) */
@@ -218,6 +220,8 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    } else {
 		/* Add the GSI base for the zeroth IO APIC to obtain the GSI. */
 		IrqHandler->Irq = Irq + HalpIoApicTable[0].GlobalIrqBase;
+		DbgTrace("Using HPET %d with IO APIC delivery. Irq line is 0x%lx. "
+			 "Irq vector is 0x%x\n", j, IrqHandler->Irq, Vector);
 		/* Remove any legacy replacement route so our interrupts go where we want
 		 * them. NOTE: PIT will cease to function from here on. */
 		*HalpHpetGetGeneralConfig(VirtBase) &= ~(1ULL << LEG_RT_CNF);
@@ -226,6 +230,18 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 		/* Put the IO/APIC pin number. */
 		Timer->Config &= ~(((1ULL << 5) - 1) << TN_INT_ROUTE_CNF);
 		Timer->Config |= Irq << TN_INT_ROUTE_CNF;
+		/* Read the pin number back. If it does not match our assigned pin, we
+		 * assert on debug build and return error in release build. */
+		COMPILER_MEMORY_RELEASE();
+		ULONG Pin = (Timer->Config & (((1ULL << 5) - 1) << TN_INT_ROUTE_CNF))
+		    >> TN_INT_ROUTE_CNF;
+		if (Pin != Irq) {
+		    DbgTrace("Got IO APIC pin 0x%x. Expected 0x%x.\n", Pin, Irq);
+		    assert(FALSE);
+		    HalpSetApicPinFree(0, Irq);
+		    /* TODO: We need to deallocate the IRQ vector requested above. */
+		    goto out;
+		}
 	    }
 	    /* Set the timer to periodic mode and edge-triggered. */
 	    Timer->Config |= (1ULL << TN_TYPE_CNF) | (1ULL << TN_VAL_SET_CNF) |
@@ -255,6 +271,7 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    TryMsi = FALSE;
 	    goto again;
 	}
+    out:
 	MmUnmapPhysicalMemory(VirtBase);
     }
     return STATUS_DEVICE_DOES_NOT_EXIST;

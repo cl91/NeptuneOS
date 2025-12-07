@@ -164,6 +164,16 @@ FORCEINLINE VOID HalpSetApicPinAssigned(IN ULONG ApicIndex,
     }
 }
 
+FORCEINLINE VOID HalpSetApicPinFree(IN ULONG ApicIndex,
+				    IN ULONG Pin)
+{
+    assert(Pin < MAX_NUM_IOAPIC_PINS);
+    assert(HalpIsApicPinAssigned(ApicIndex, Pin));
+    if (Pin < MAX_NUM_IOAPIC_PINS) {
+	ClearBit(HalpIoApicTable[ApicIndex].AssignedPins, Pin);
+    }
+}
+
 typedef struct _HAL_HPET {
     ULONG64 BaseAddress;  /* Base physical address of the MMIO region */
     BOOLEAN SystemTimer;  /* TRUE if this HPET is assigned as the system timer */
