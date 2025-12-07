@@ -66,10 +66,15 @@ VOID __outbyte(IN USHORT PortNum,
 NTSTATUS HalEnableSystemTimer(OUT PIRQ_HANDLER IrqHandler,
 			      IN ULONG64 Period)
 {
-    /* Try HPET first. If that fails, try PIT. */
+#ifdef _M_AMD64
+    /* On amd64, we try HPET first and if that fails, try PIT.
+     * On i386 we always use PIT because we always use 64-bit timers
+     * for HPET, and 32-bit processors have memory ordering issues
+     * setting up these 64-bit timers. */
     if (NT_SUCCESS(HalpEnableHpet(IrqHandler, Period))) {
 	return STATUS_SUCCESS;
     }
+#endif
     return HalpEnablePit(IrqHandler, Period);
 }
 
