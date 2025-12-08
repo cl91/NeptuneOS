@@ -660,8 +660,7 @@ NTSTATUS WdmSetTimer(IN ASYNC_STATE State,
 	    KeRemoveIoTimerFromQueue(IoTimer);
 	    RemoveEntryList(&IoTimer->DriverLink);
 	    IopFreePool(IoTimer);
-	}
-	if (OBJECT_TO_GLOBAL_HANDLE(IoTimer) == GlobalHandle) {
+	} else if (OBJECT_TO_GLOBAL_HANDLE(IoTimer) == GlobalHandle) {
 	    KeQueueIoTimer(IoTimer, *AbsoluteDueTime, Period);
 	    return STATUS_SUCCESS;
 	}
