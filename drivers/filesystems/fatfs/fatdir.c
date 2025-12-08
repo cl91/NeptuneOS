@@ -223,7 +223,7 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
 		+ DirContext.DirEntry.Fat.ShortName[i];
 	}
 	/* Construct slots and entry */
-	for (ULONG i = NumSlots - 2; i >= 0; i--) {
+	for (LONG i = NumSlots - 2; i >= 0; i--) {
 	    DPRINT("construct slot %d\n", i);
 	    Slots[i].Attr = 0xf;
 	    if (i) {
