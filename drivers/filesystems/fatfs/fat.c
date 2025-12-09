@@ -142,7 +142,7 @@ static NTSTATUS Fat1632GetNextCluster(PDEVICE_EXTENSION DevExt,
     BOOLEAN Fat32 = IsFat32(DevExt);
     ULONG WordSize = Fat32 ? 4 : 2;
     ULONG FatOffset = CurrentCluster * WordSize;
-    PUCHAR Buffer[4] = {};
+    UCHAR Buffer[4] = {};
     NTSTATUS Status = ReadFatFile(DevExt, FatOffset, Buffer, WordSize);
     if (!NT_SUCCESS(Status)) {
 	return Status;
@@ -176,7 +176,7 @@ static NTSTATUS Fat1632GetNextCluster(PDEVICE_EXTENSION DevExt,
 NTSTATUS GetNextCluster(PDEVICE_EXTENSION DevExt,
 			ULONG CurrentCluster, PULONG NextCluster)
 {
-    DPRINT("GetNextCluster(DeviceExt %p, CurrentCluster %x)\n",
+    DPRINT("GetNextCluster(DeviceExt %p, CurrentCluster 0x%x)\n",
 	   DevExt, CurrentCluster);
 
     if (CurrentCluster == 0) {

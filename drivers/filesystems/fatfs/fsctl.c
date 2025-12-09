@@ -541,10 +541,15 @@ static NTSTATUS FatMount(PFAT_IRP_CONTEXT IrpContext)
 
     RtlCopyMemory(&DeviceExt->FatInfo, &FatInfo, sizeof(FATINFO));
 
+    DPRINT("VolumeId:           0x%x\n", DeviceExt->FatInfo.VolumeID);
+    DPRINT("VolumeLabel:        %.11s\n", DeviceExt->FatInfo.VolumeLabel);
     DPRINT("BytesPerSector:     %u\n", DeviceExt->FatInfo.BytesPerSector);
     DPRINT("SectorsPerCluster:  %u\n", DeviceExt->FatInfo.SectorsPerCluster);
+    DPRINT("NumberOfClusters:   %u\n", DeviceExt->FatInfo.NumberOfClusters);
+    DPRINT("FatStart:           %u\n", DeviceExt->FatInfo.FatStart);
     DPRINT("FATCount:           %u\n", DeviceExt->FatInfo.FATCount);
     DPRINT("FatSectors:         %u\n", DeviceExt->FatInfo.FatSectors);
+    DPRINT("RootDirSectors:     %u\n", DeviceExt->FatInfo.RootDirectorySectors);
     DPRINT("RootStart:          %u\n", DeviceExt->FatInfo.RootStart);
     DPRINT("DataStart:          %u\n", DeviceExt->FatInfo.DataStart);
     if (DeviceExt->FatInfo.FatType == FAT32) {

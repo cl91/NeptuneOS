@@ -302,9 +302,15 @@ static VOID FatInitFcbFromDirEntry(PDEVICE_EXTENSION Vcb,
 	NTSTATUS Status = STATUS_SUCCESS;
 	Size = 0;
 	FirstCluster = FatDirEntryGetFirstCluster(Vcb, &Fcb->Entry);
-	if (FirstCluster == 1) {
-	    Size = Vcb->FatInfo.RootDirectorySectors *
-		Vcb->FatInfo.BytesPerSector;
+	if (FirstCluster == 0) {
+	    DPRINT("FirstCluster == 0 (Fcb entry %wZ). You may "
+		   "need to run a disk repair utility.\n", &Fcb->DirNameU);
+	    Status = STATUS_FILE_CORRUPT_ERROR;
+	    if (FatGlobalData->Flags & FAT_BREAK_ON_CORRUPTION) {
+		assert(FALSE);
+	    }
+	} else if (FirstCluster == 1) {
+	    Size = Vcb->FatInfo.RootDirectorySectors * Vcb->FatInfo.BytesPerSector;
 	} else if (FirstCluster != 0) {
 	    CurrentCluster = FirstCluster;
 	    while (CurrentCluster != 0xffffffff && NT_SUCCESS(Status)) {
@@ -574,10 +580,10 @@ NTSTATUS FatAttachFcbToFileObject(PDEVICE_EXTENSION Vcb,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS FatDirFindFile(PDEVICE_EXTENSION DevExt,
-			PFATFCB DirFcb,
-			PUNICODE_STRING FileToFindU,
-			PFATFCB *pFoundFCB)
+static NTSTATUS FatDirFindFile(PDEVICE_EXTENSION DevExt,
+			       PFATFCB DirFcb,
+			       PUNICODE_STRING FileToFindU,
+			       PFATFCB *pFoundFCB)
 {
     NTSTATUS Status;
     PVOID Context = NULL;
