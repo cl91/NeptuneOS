@@ -562,6 +562,10 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     RET_ERR(MmCreateCNode(PROCESS_SHARED_CNODE_LOG2SIZE, &Process->SharedCNode));
     RET_ERR(MmCreateVSpace(&Process->VSpace));
+    /* Reserve the memory before THREAD_STACK_START so we can catch stack underflow. */
+    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, 0, THREAD_STACK_START,
+				     THREAD_STACK_START, 0, 0,
+				     MEM_RESERVE_NO_ACCESS, NULL));
 
     InitializeListHead(&Process->ThreadList);
     InitializeListHead(&Process->ProcessListEntry);
