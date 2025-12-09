@@ -11,8 +11,10 @@
 
 NTSTATUS FatFcbInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
 {
+    DPRINT("Initializing caching for FCB %p\n", Fcb);
     /* Don't re-initialize if already done */
     if (BooleanFlagOn(Fcb->Flags, FCB_CACHE_INITIALIZED)) {
+	DPRINT("Already initialized, skipping\n");
 	return STATUS_SUCCESS;
     }
 

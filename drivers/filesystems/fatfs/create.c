@@ -298,7 +298,7 @@ static NTSTATUS FatOpenFile(PDEVICE_EXTENSION DeviceExt,
 	return STATUS_CANNOT_DELETE;
     }
 
-    DPRINT("Attaching FCB to file object\n");
+    DPRINT("Attaching FCB %p to file object %p\n", Fcb, FileObject);
     Status = FatAttachFcbToFileObject(DeviceExt, Fcb, FileObject);
     if (!NT_SUCCESS(Status)) {
 	FatReleaseFcb(DeviceExt, Fcb);

@@ -52,8 +52,10 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 
 	/* Invalidate and close the internal meta-files */
 	if (DeviceExt->RootFcb) {
-	    CcUninitializeCacheMap(DeviceExt->RootFcb->FileObject, &Zero);
-	    ObDereferenceObject(DeviceExt->RootFcb->FileObject);
+	    if (DeviceExt->RootFcb->FileObject) {
+		CcUninitializeCacheMap(DeviceExt->RootFcb->FileObject, &Zero);
+		ObDereferenceObject(DeviceExt->RootFcb->FileObject);
+	    }
 	    FatDestroyFcb(DeviceExt->RootFcb);
 	    DeviceExt->RootFcb = NULL;
 	}
@@ -127,8 +129,28 @@ NTSTATUS FatCloseFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
     /* Nothing to do for volume file object or FAT file object. Otherwise,
      * release the FCB, which will likely cause its deletion. */
     if (!BooleanFlagOn(Fcb->Flags, FCB_IS_FAT | FCB_IS_VOLUME)) {
+	/* If cache is still initialized, we need to release it here. This only affects
+	 * directories.
+	 *
+	 * TODO: This seems to leak the FCB refcount since FatFcbInitializeCacheFromVolume
+	 * increased it when initializing caching. The overall FCB refcounting of the
+	 * ReactOS vfatfs driver (which we took our code from) is very much unclear.
+	 * I should have used the Microsoft fastfat code at the beginning, but now it's
+	 * too late to change :(. */
+	if (Fcb->OpenHandleCount == 0 && BooleanFlagOn(Fcb->Flags, FCB_CACHE_INITIALIZED)) {
+	    PFILE_OBJECT FcbFileObject;
+	    FcbFileObject = Fcb->FileObject;
+	    if (FcbFileObject != NULL) {
+		Fcb->FileObject = NULL;
+		CcUninitializeCacheMap(FcbFileObject, NULL);
+		ClearFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
+		ObDereferenceObject(FcbFileObject);
+	    }
+	}
+
 	FatReleaseFcb(DeviceExt, Fcb);
 	Fcb->Flags |= FCB_CLOSED;
+
     }
 
     FileObject->FsContext2 = NULL;

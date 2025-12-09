@@ -237,6 +237,7 @@ VOID FatReleaseFcb(PDEVICE_EXTENSION Vcb, PFATFCB Fcb)
 	RefCount = --Fcb->RefCount;
 
 	if (RefCount == 1 && BooleanFlagOn(Fcb->Flags, FCB_CACHE_INITIALIZED)) {
+	    DPRINT("Uninitializing caching for FCB %p\n", Fcb);
 	    PFILE_OBJECT FileObj = Fcb->FileObject;
 
 	    Fcb->FileObject = NULL;
