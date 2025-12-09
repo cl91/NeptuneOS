@@ -55,7 +55,7 @@ typedef seL4_Word MWORD;
 #define MWORD_BITS_LOG2SIZE		(MWORD_LOG2SIZE + 3)
 
 /* All hard-coded addresses in client processes' address space go here. */
-#define LOWEST_USER_ADDRESS		(1ULL << PAGE_LOG2SIZE)
+#define LOWEST_USER_ADDRESS		(0x00010000ULL)
 /* First 1MB unmapped to catch stack overflow */
 #define THREAD_STACK_START		(0x00100000ULL)
 /* Start of the address space where we can map user images */
