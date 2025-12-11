@@ -563,10 +563,10 @@ ULONG CiProcessDirtyBufferList(IN ULONG RemainingBufferSize,
     LoopOverList(PinnedBuf, &CiDirtyBufferList, PINNED_BUFFER, Link) {
 	MWORD ProcessedLength = 0;
 	while (ProcessedLength < PinnedBuf->Length) {
-	    MWORD ViewAddress = VIEW_ALIGN(PinnedBuf->MappedAddress);
+	    MWORD ViewAddress = VIEW_ALIGN(PinnedBuf->MappedAddress + ProcessedLength);
 	    ULONG ViewLength = min(ViewAddress + VIEW_SIZE - (MWORD)PinnedBuf->MappedAddress,
-				   PinnedBuf->Length - ProcessedLength);
-	    ULONG ViewOffset = (MWORD)PinnedBuf->MappedAddress - ViewAddress;
+				   PinnedBuf->Length) - ProcessedLength;
+	    ULONG ViewOffset = (MWORD)PinnedBuf->MappedAddress + ProcessedLength - ViewAddress;
 	    assert(ViewOffset < VIEW_SIZE);
 	    ULONG StartPage = ViewOffset >> PAGE_LOG2SIZE;
 	    ULONG EndPage = PAGE_ALIGN_UP(ViewOffset + ViewLength) >> PAGE_LOG2SIZE;
