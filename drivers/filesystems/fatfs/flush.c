@@ -121,6 +121,7 @@ NTSTATUS FatFlush(PFAT_IRP_CONTEXT IrpContext)
     IO_STATUS_BLOCK IoStatus;
     CcFlushCache(IrpContext->FileObject, NULL, 0, &IoStatus);
     if (!NT_SUCCESS(IoStatus.Status)) {
+	assert(FALSE);
 	Status = IoStatus.Status;
     }
     return Status;

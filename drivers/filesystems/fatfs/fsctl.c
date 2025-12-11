@@ -1126,6 +1126,7 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
     CcFlushCache(FileObject, NULL, 0, &IoStatus);
     if (!NT_SUCCESS(IoStatus.Status)) {
 	DPRINT("CcFlushCache failed with error 0x%08x\n", IoStatus.Status);
+	assert(FALSE);
     }
 
     /* The volume is now clean */

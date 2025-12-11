@@ -841,6 +841,7 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
 					      sizeof(FLUSH_CACHE_REQUEST));
     if (!Req) {
 	if (IoStatus) {
+	    assert(FALSE);
 	    IoStatus->Status = STATUS_INSUFFICIENT_RESOURCES;
 	}
 	return;
@@ -854,6 +855,7 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
     }
     if (!Vpb) {
 	if (IoStatus) {
+	    assert(FALSE);
 	    IoStatus->Status = STATUS_INVALID_PARAMETER;
 	}
 	return;
