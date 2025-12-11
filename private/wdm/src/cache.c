@@ -64,15 +64,16 @@ typedef struct _CACHE_MAP {
  * the file region [FileOffset1, FileOffset1 + 2*ClusterSize) for FileObj1 will
  * have Node.Key == FileOffset1 with Length == 2*ClusterSize, and MappedAddress
  * == PageStart + ClusterSize.
+ *
+ * Note although we showed an example where the BCBs are aligned by the FS cluster
+ * size, this is not a requirement. BCBs do not need to be cluster-aligned. The
+ * only requirement is that the BCBs of a FCB are non-overlapping.
  */
 typedef struct _BUFFER_CONTROL_BLOCK {
     AVL_NODE Node; /* Key is the starting file offset of the buffer.
-		    * This is always aligned by FS cluster size.
 		    * Must be the first member in this struct. */
-    PVOID MappedAddress; /* Where the buffer is mapped to in memory.
-			  * Always cluster size aligned. */
-    MWORD Length;     /* Length of the buffer in terms of file offset.
-		       * Always cluster size aligned. */
+    PVOID MappedAddress; /* Where the buffer is mapped to in memory. */
+    MWORD Length;     /* Length of the buffer in terms of file offset. */
     PCACHE_MAP CacheMap;   /* The cache map this BCB belongs to. */
     LIST_ENTRY PinList;	 /* List of pinned sub-buffers of this BCB. */
 } BUFFER_CONTROL_BLOCK, *PBUFFER_CONTROL_BLOCK;

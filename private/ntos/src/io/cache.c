@@ -1395,6 +1395,8 @@ VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb)
 		ULONG Length = NextOffset - FileOffset;
 		if (IS_PAGE_ALIGNED(FileOffset) && IS_PAGE_ALIGNED(VolumeFileOffset) &&
 		    Length == PAGE_SIZE) {
+		    /* In this case the page is shared between the volume view and the
+		     * file view, so simply mark the page in the volume view as dirty. */
 		    PCC_VIEW VolumeView = NULL;
 		    CiGetView(VolumeFcb, NULL, VolumeFileOffset, FALSE, &VolumeView);
 		    if (VolumeView) {
@@ -1402,9 +1404,12 @@ VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb)
 				 (VolumeFileOffset - VIEW_ALIGN64(VolumeFileOffset))
 				 >> PAGE_LOG2SIZE);
 		    } else {
+			/* Volume view should always exist. */
 			assert(FALSE);
 		    }
 		} else {
+		    /* Otherwise, we need to copy the data from the file view to the
+		     * volume view. */
 		    CcCopyWrite(VolumeFcb, VolumeFileOffset, Length,
 				(PUCHAR)View->MappedAddress + ViewOffset);
 		}
