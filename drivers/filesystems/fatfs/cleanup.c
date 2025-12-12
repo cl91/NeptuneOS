@@ -67,7 +67,12 @@ static VOID FatCleanupFile(PFAT_IRP_CONTEXT IrpContext)
 		CcUninitializeCacheMap(MasterFileObject, NULL);
 		ClearFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
 		/* The file object itself will be dereferenced (and hence deleted)
-		 * in FatCloseFile, as a result of a CloseFile server message. */
+		 * in FatCloseFile, as a result of a CloseFile server message. We
+		 * need to deref the stream file object (in the case of a directory)
+		 * that we have created in FatFcbInitializeCacheFromVolume. */
+		if (MasterFileObject->Flags & FO_STREAM_FILE) {
+		    ObDereferenceObject(MasterFileObject);
+		}
 	    }
 
 	    Fcb->Base.FileSizes.ValidDataLength.QuadPart = 0;

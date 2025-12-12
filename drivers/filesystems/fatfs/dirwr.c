@@ -29,6 +29,7 @@ NTSTATUS FatFcbInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
     NTSTATUS Status;
     PFATCCB NewCcb = ExAllocateFromLookasideList(&FatGlobalData->CcbLookasideList);
     if (!NewCcb) {
+	assert(FALSE);
 	Status = STATUS_INSUFFICIENT_RESOURCES;
 	goto Quit;
     }
@@ -41,12 +42,12 @@ NTSTATUS FatFcbInitializeCacheFromVolume(IN PVCB Vcb, IN PFATFCB Fcb)
 
     Status = CcInitializeCacheMap(FileObject);
     if (!NT_SUCCESS(Status)) {
+	assert(FALSE);
 	Fcb->FileObject = NULL;
 	ExFreeToLookasideList(&FatGlobalData->CcbLookasideList, NewCcb);
 	goto Quit;
     }
 
-    FatGrabFcb(Vcb, Fcb);
     SetFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
     Status = STATUS_SUCCESS;
 

@@ -236,26 +236,25 @@ VOID FatReleaseFcb(PDEVICE_EXTENSION Vcb, PFATFCB Fcb)
 	ASSERT(Fcb->RefCount > 0);
 	RefCount = --Fcb->RefCount;
 
-	if (RefCount == 1 && BooleanFlagOn(Fcb->Flags, FCB_CACHE_INITIALIZED)) {
-	    DPRINT("Uninitializing caching for FCB %p\n", Fcb);
-	    PFILE_OBJECT FileObj = Fcb->FileObject;
-
-	    Fcb->FileObject = NULL;
-	    CcUninitializeCacheMap(FileObj, NULL);
-	    ClearFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
-	    ObDereferenceObject(FileObj);
-	}
-
-	PFATFCB ParentFcb;
 	if (RefCount == 0) {
+	    if (BooleanFlagOn(Fcb->Flags, FCB_CACHE_INITIALIZED)) {
+		DPRINT("Uninitializing caching for FCB %p\n", Fcb);
+		PFILE_OBJECT FileObj = Fcb->FileObject;
+		Fcb->FileObject = NULL;
+		CcUninitializeCacheMap(FileObj, NULL);
+		ClearFlag(Fcb->Flags, FCB_CACHE_INITIALIZED);
+		assert(FileObj->Flags & FO_STREAM_FILE);
+		ObDereferenceObject(FileObj);
+	    }
+
 	    ASSERT(Fcb->OpenHandleCount == 0);
-	    ParentFcb = Fcb->ParentFcb;
+	    PFATFCB ParentFcb = Fcb->ParentFcb;
 	    FatDelFcbFromTable(Vcb, Fcb);
 	    FatDestroyFcb(Fcb);
+	    Fcb = ParentFcb;
 	} else {
-	    ParentFcb = NULL;
+	    break;
 	}
-	Fcb = ParentFcb;
     }
 }
 
