@@ -256,7 +256,7 @@ again:
 	PVOID Context, BaseAddress;
 	ULONG MappedLength = 0;
 	NTSTATUS Status = MapFatFile(DevExt, CurrentCluster * WordSize,
-				     (FatLength - CurrentCluster) * WordSize,
+				     min((FatLength - CurrentCluster) * WordSize, PAGE_SIZE),
 				     &Context, &BaseAddress, &MappedLength);
 	if (!NT_SUCCESS(Status)) {
 	    return Status;
@@ -414,7 +414,7 @@ static NTSTATUS Fat1632CountAvailableClusters(IN PDEVICE_EXTENSION DevExt)
 	ULONG_PTR Block = (ULONG_PTR)BaseAddress;
 	ULONG_PTR BlockEnd = (ULONG_PTR)BaseAddress + MappedLength;
 
-	/* Now mark the whole block as available */
+	/* Now count the available blocks */
 	while (Block < BlockEnd && CurrentCluster < FatLength) {
 	    ULONG Word = Fat32 ? (*(PULONG)Block & 0x0fffffff) : *(PUSHORT)Block;
 	    if (Word == 0) {
