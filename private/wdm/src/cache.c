@@ -269,7 +269,8 @@ FORCEINLINE BOOLEAN CiAdjacentBcbs(IN PBUFFER_CONTROL_BLOCK Prev,
 
 /*
  * ROUTINE DESCRIPTION:
- *     Map a contiguous region of a file object into memory.
+ *     Call the file system driver to map a contiguous region of a
+ *     file object into memory.
  *
  * ARGUMENTS:
  *     FileObject   - A pointer to a file object with caching enabled
@@ -299,11 +300,11 @@ FORCEINLINE BOOLEAN CiAdjacentBcbs(IN PBUFFER_CONTROL_BLOCK Prev,
  * REMARKS:
  *     Due to the alias-free design (see the Developer Guide for details),
  *     of the Neptune OS cache manager, the CcMapData will only map the
- *     specified file region up till the point where it is contiguous on the
- *     underlying disk storage. If the entire region specified by FileOffset
- *     and Length is contiguous on the disk, CcMapData returns STATUS_SUCCESS
- *     if mapping is successful. Otherwise, it returns STATUS_SOME_NOT_MAPPED,
- *     and *MappedLength will contain the number of bytes mapped.
+ *     specified file region up to the point where it is contiguously mapped
+ *     in the cache map. If the entire region specified by FileOffset and
+ *     Length is contiguous in the cache map, CcMapData returns STATUS_SUCCESS.
+ *     Otherwise, it returns STATUS_SOME_NOT_MAPPED, and *MappedLength will
+ *     contain the number of bytes mapped.
  *
  *     Note that STATUS_SOME_NOT_MAPPED is an NT_SUCCESS status.
  */
@@ -316,6 +317,10 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 			 OUT PVOID *pBuffer)
 {
     assert(FileObject);
+    assert(Length);
+    if (!Length) {
+	return STATUS_INVALID_PARAMETER_3;
+    }
     PDEVICE_OBJECT DeviceObject = FileObject->DeviceObject;
     assert(DeviceObject);
     PVPB Vpb = DeviceObject->Vpb;
@@ -329,10 +334,14 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	assert(FALSE);
 	return STATUS_INVALID_DEVICE_REQUEST;
     }
+    if (FileOffset->QuadPart >= Fcb->FileSizes.FileSize.QuadPart) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER_2;
+    }
     PCACHE_MAP CacheMap = Fcb->CacheMap;
     if (!CacheMap) {
 	assert(FALSE);
-	return STATUS_INVALID_PARAMETER;
+	return STATUS_INVALID_PARAMETER_1;
     }
 
     /* In order to reduce the number of IRPs we need to send below, we align the read
@@ -425,9 +434,9 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 	CurrentOffset += CurrentLength;
     }
 
-    /* Forward the IRPs to the lower driver. Wait on the first IRP. */
+    /* Forward the IRPs to the device object associated with the given file object. */
     LoopOverList(Req, &ReqList, READ_REQUEST, Link) {
-	DPRINT("Calling storage device driver with irp %p\n", Req->Irp);
+	DPRINT("Calling driver with irp %p\n", Req->Irp);
 	Status = IoCallDriver(Vpb->DeviceObject, Req->Irp);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT("IoCallDriver failed with error code %x\n", Status);
@@ -494,8 +503,8 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 
 map:
     PBUFFER_CONTROL_BLOCK Bcb = AVL_NODE_TO_BCB(AvlTreeFindNodeOrPrev(&CacheMap->BcbTree,
-								      AlignedOffset));
-    if (!Bcb || !AvlNodeContainsAddr(&Bcb->Node, Bcb->Length, AlignedOffset)) {
+								      FileOffset->QuadPart));
+    if (!Bcb || !AvlNodeContainsAddr(&Bcb->Node, Bcb->Length, FileOffset->QuadPart)) {
 	return NT_SUCCESS(Status) ? STATUS_NONE_MAPPED : Status;
     }
     PPINNED_BUFFER PinnedBuf = ExAllocatePool(NonPagedPool, sizeof(PINNED_BUFFER));
@@ -504,6 +513,13 @@ map:
 	goto out;
     }
     *MappedLength = min(Length, Bcb->Length - (FileOffset->QuadPart - Bcb->Node.Key));
+    if (!*MappedLength) {
+	/* This shouldn't happen because we checked above that the BCB contains the
+	 * specified file offset. We assert in this case. */
+	assert(FALSE);
+	ExFreePool(PinnedBuf);
+	return STATUS_NONE_MAPPED;
+    }
     *pBuffer = (PUCHAR)Bcb->MappedAddress + (FileOffset->QuadPart - Bcb->Node.Key);
     *pBcb = PinnedBuf;
     PinnedBuf->Bcb = Bcb;
