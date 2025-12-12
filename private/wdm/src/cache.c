@@ -799,15 +799,15 @@ NTAPI NTSTATUS CcMdlRead(IN PFILE_OBJECT FileObject,
 	}
 	assert(PinnedBuf);
 	assert(Buffer);
-	/* Get the BCB. Once we obtained the BCB there is no need for the
-	 * PINNED_BUFFER so we release it. */
+#if DBG
 	PBUFFER_CONTROL_BLOCK Bcb = PinnedBuf->Bcb;
-	CcUnpinData(PinnedBuf);
 	/* Sanity checks for CcMapData. It should never map more than requested. It
 	 * should also map as much data as possible that are contiguous in the cache map. */
 	assert(MappedLength <= RemainingLength);
 	assert(MappedLength == RemainingLength ||
 	       Bcb->Node.Key + Bcb->Length == CurrentOffset.QuadPart + MappedLength);
+#endif
+	CcUnpinData(PinnedBuf);
 	PMDL Mdl = ExAllocatePool(NonPagedPool, sizeof(MDL));
 	if (!Mdl) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
