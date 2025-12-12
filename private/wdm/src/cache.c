@@ -783,51 +783,56 @@ NTAPI NTSTATUS CcMdlRead(IN PFILE_OBJECT FileObject,
 {
     assert(MdlChain);
     assert(IoStatus);
-    ULONG MappedLength = 0;
-    PPINNED_BUFFER PinnedBuf = NULL;
-    PVOID Buffer = NULL;
-    NTSTATUS Status = CcMapData(FileObject, FileOffset, Length, MAP_WAIT,
-				&MappedLength, (PVOID *)&PinnedBuf, &Buffer);
-    if (!NT_SUCCESS(Status)) {
-	goto out;
-    }
-    assert(PinnedBuf);
-    assert(Buffer);
-    PBUFFER_CONTROL_BLOCK Bcb = PinnedBuf->Bcb;
-    CcUnpinData(PinnedBuf);
+    LARGE_INTEGER CurrentOffset = *FileOffset;
+    ULONG ProcessedLength = 0;
+    NTSTATUS Status = STATUS_SUCCESS;
     *MdlChain = NULL;
-    PMDL Mdl = ExAllocatePool(NonPagedPool, sizeof(MDL));
-    if (!Mdl) {
-	Status = STATUS_INSUFFICIENT_RESOURCES;
-	goto out;
-    }
-    Mdl->MappedSystemVa = Buffer;
-    Mdl->ByteCount = MappedLength;
-    *MdlChain = Mdl;
-    assert(MappedLength <= Length);
-    assert(MappedLength == Length ||
-	   Bcb->Node.Key + Bcb->Length == FileOffset->QuadPart + MappedLength);
-    while (MappedLength < Length) {
-	Bcb = NEXT_BCB(Bcb);
-	if (!Bcb || Bcb->Node.Key > FileOffset->QuadPart + MappedLength) {
-	    Status = STATUS_SOME_NOT_MAPPED;
+    while (ProcessedLength < Length) {
+	ULONG RemainingLength = Length - ProcessedLength;
+	ULONG MappedLength = 0;
+	PPINNED_BUFFER PinnedBuf = NULL;
+	PVOID Buffer = NULL;
+	Status = CcMapData(FileObject, &CurrentOffset, RemainingLength, MAP_WAIT,
+			   &MappedLength, (PVOID *)&PinnedBuf, &Buffer);
+	if (!NT_SUCCESS(Status)) {
 	    goto out;
 	}
-	PMDL NextMdl = ExAllocatePool(NonPagedPool, sizeof(MDL));
-	if (!NextMdl) {
+	assert(PinnedBuf);
+	assert(Buffer);
+	/* Get the BCB. Once we obtained the BCB there is no need for the
+	 * PINNED_BUFFER so we release it. */
+	PBUFFER_CONTROL_BLOCK Bcb = PinnedBuf->Bcb;
+	CcUnpinData(PinnedBuf);
+	/* Sanity checks for CcMapData. It should never map more than requested. It
+	 * should also map as much data as possible that are contiguous in the cache map. */
+	assert(MappedLength <= RemainingLength);
+	assert(MappedLength == RemainingLength ||
+	       Bcb->Node.Key + Bcb->Length == CurrentOffset.QuadPart + MappedLength);
+	PMDL Mdl = ExAllocatePool(NonPagedPool, sizeof(MDL));
+	if (!Mdl) {
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    goto out;
 	}
-	NextMdl->MappedSystemVa = Bcb->MappedAddress;
-	NextMdl->ByteCount = min(Length - MappedLength, Bcb->Length);
-	MappedLength += NextMdl->ByteCount;
-	Mdl->Next = NextMdl;
-	Mdl = NextMdl;
+	Mdl->MappedSystemVa = Buffer;
+	Mdl->ByteCount = MappedLength;
+	/* If the MDL chain is empty, add us as the head. Otherwise, append to
+	 * the end of the MDL chain. */
+	if (!*MdlChain) {
+	    *MdlChain = Mdl;
+	} else {
+	    PMDL PrevMdl = *MdlChain;
+	    while (PrevMdl->Next) {
+		PrevMdl = PrevMdl->Next;
+	    }
+	    PrevMdl->Next = Mdl;
+	}
+	ProcessedLength += MappedLength;
+	CurrentOffset.QuadPart += MappedLength;
     }
     Status = STATUS_SUCCESS;
 out:
     IoStatus->Status = Status;
-    IoStatus->Information = MappedLength;
+    IoStatus->Information = ProcessedLength;
     return Status;
 }
 
