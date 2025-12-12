@@ -675,6 +675,12 @@ static NTSTATUS FatCreateFile(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 	Status = STATUS_NOT_A_DIRECTORY;
 	goto OpenFail;
     }
+    /* If the directory is not empty, reject the deletion. */
+    if (FatFcbIsDirectory(Fcb) && !FatIsDirectoryEmpty(DeviceExt, Fcb) &&
+	BooleanFlagOn(RequestedOptions, FILE_DELETE_ON_CLOSE)) {
+	Status = STATUS_DIRECTORY_NOT_EMPTY;
+	goto OpenFail;
+    }
     if (TrailingBackslash && !FatFcbIsDirectory(Fcb)) {
 	Status = STATUS_OBJECT_NAME_INVALID;
 	goto OpenFail;
