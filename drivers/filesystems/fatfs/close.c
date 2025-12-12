@@ -94,6 +94,8 @@ BOOLEAN FatCheckForDismount(IN PDEVICE_EXTENSION DeviceExt,
 	 * that when receiving a CloseDevice message. */
 	IoDeleteDevice(DeviceExt->VolumeDevice);
 	/* The storage device should not have any lingering reference at this point. */
+	DPRINT("DeviceExt->StorageDevice->Header.RefCount %d\n",
+	       DeviceExt->StorageDevice->Header.RefCount);
 	assert(DeviceExt->StorageDevice->Header.RefCount == 1);
     }
 

@@ -6,12 +6,18 @@ LIST_ENTRY IopDmaPoolList;
 NTAPI VOID ObReferenceObject(IN PVOID Obj)
 {
     POBJECT_HEADER Header = Obj;
+    DPRINT("Ref obj %p refcount %d, caller %p %p %p %p\n", Obj, Header->RefCount,
+	   __builtin_return_address(0),
+	   __builtin_return_address(1),
+	   __builtin_return_address(2),
+	   __builtin_return_address(3));
     Header->RefCount++;
 }
 
 NTAPI VOID ObDereferenceObject(IN PVOID Obj)
 {
     POBJECT_HEADER Header = Obj;
+    DPRINT("DeRef obj %p refcount %d\n", Obj, Header->RefCount);
     Header->RefCount--;
     if (Header->RefCount <= 0) {
 	assert(Header->RefCount == 0);

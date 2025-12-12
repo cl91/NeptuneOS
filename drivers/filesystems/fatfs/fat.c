@@ -147,6 +147,7 @@ static NTSTATUS Fat1632GetNextCluster(PDEVICE_EXTENSION DevExt,
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
+    DPRINT("Buffer %02x %02x %02x %02x\n", Buffer[0], Buffer[1], Buffer[2], Buffer[3]);
 
     if (Fat32) {
 	CurrentCluster = *(PULONG)Buffer & 0x0fffffff;
@@ -255,6 +256,7 @@ again:
     do {
 	PVOID Context, BaseAddress;
 	ULONG MappedLength = 0;
+	DPRINT("FatLength 0x%x CurrentCluster 0x%x\n", FatLength, CurrentCluster);
 	NTSTATUS Status = MapFatFile(DevExt, CurrentCluster * WordSize,
 				     min((FatLength - CurrentCluster) * WordSize, PAGE_SIZE),
 				     &Context, &BaseAddress, &MappedLength);
@@ -404,6 +406,7 @@ static NTSTATUS Fat1632CountAvailableClusters(IN PDEVICE_EXTENSION DevExt)
     do {
 	PVOID Context, BaseAddress;
 	ULONG MappedLength = 0;
+	DPRINT("fatlength 0x%x current cluster 0x%x\n", FatLength, CurrentCluster);
 	NTSTATUS Status = MapFatFile(DevExt, CurrentCluster * WordSize,
 				     (FatLength - CurrentCluster) * WordSize,
 				     &Context, &BaseAddress, &MappedLength);

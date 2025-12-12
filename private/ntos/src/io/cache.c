@@ -1322,6 +1322,9 @@ VOID CcSetDirtyData(IN PIO_DRIVER_OBJECT DriverObject,
 		    IN MWORD ViewAddress,
 		    IN ULONG64 DirtyBits)
 {
+    DbgTrace("Setting dirty status: driver object %p (%s) "
+	     "view address 0x%zx dirty bits 0x%llx\n",
+	     DriverObject, DriverObject->DriverImagePath, ViewAddress, DirtyBits);
     assert(DriverObject);
     assert(ViewAddress);
     assert(IS_VIEW_ALIGNED(ViewAddress));
@@ -1797,6 +1800,23 @@ typedef enum _COPY_TYPE {
     CopyZero
 } COPY_TYPE;
 
+#if DBG
+PCSTR CiCopyTypeToStr(IN COPY_TYPE Type)
+{
+    switch (Type) {
+    case CopyRead:
+	return "Reading";
+    case CopyWrite:
+	return "Writing";
+    case CopyZero:
+	return "Zeroing";
+    default:
+	assert(FALSE);
+	return "INVALID-COPY-TYPE!!!";
+    }
+}
+#endif
+
 /*
  * Map the given length of the file object and copy to/from the given buffer.
  * Write == TRUE means copying from the buffer to the cache.
@@ -1812,6 +1832,8 @@ static NTSTATUS CiCopyReadWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
     assert(Fcb);
     assert(Length);
     assert(Type == CopyZero || Buffer);
+    DbgTrace("%s file offset 0x%llx length 0x%llx buffer %p\n",
+	     CiCopyTypeToStr(Type), FileOffset, Length, Buffer);
     NTSTATUS Status = STATUS_SUCCESS;
     ULONG64 BytesCopied = 0;
     while ((LONG64)Length > 0) {

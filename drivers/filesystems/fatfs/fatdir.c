@@ -251,6 +251,7 @@ static NTSTATUS AddEntry(IN PDEVICE_EXTENSION DeviceExt,
 	if (!MoveContext) {
 	    CurrentCluster = 0;
 	    Status = NextCluster(DeviceExt, 0, &CurrentCluster, TRUE);
+	    DPRINT("CurrentCluster is 0x%x\n", CurrentCluster);
 	    if (CurrentCluster == 0xffffffff || !NT_SUCCESS(Status)) {
 		ExFreePoolWithTag(Buffer, TAG_DIRENT);
 		if (!NT_SUCCESS(Status)) {

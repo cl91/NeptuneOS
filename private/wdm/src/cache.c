@@ -351,6 +351,7 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
     if (EndOffset > Fcb->FileSizes.FileSize.QuadPart) {
 	EndOffset = Fcb->FileSizes.FileSize.QuadPart;
     }
+    DPRINT("File size 0x%llx\n", Fcb->FileSizes.FileSize.QuadPart);
 
     /* Build a list of file regions for which locally cached file data do not exist
      * and therefore a server call is needed to get the file data. */
@@ -504,6 +505,10 @@ NTAPI NTSTATUS CcMapData(IN PFILE_OBJECT FileObject,
 map:
     PBUFFER_CONTROL_BLOCK Bcb = AVL_NODE_TO_BCB(AvlTreeFindNodeOrPrev(&CacheMap->BcbTree,
 								      FileOffset->QuadPart));
+    if (Bcb) {
+	DbgTrace("Bcb %p key 0x%llx length 0x%zx aligned offset 0x%llx FO 0x%llx\n",
+		 Bcb, Bcb->Node.Key, Bcb->Length, AlignedOffset, FileOffset->QuadPart);
+    }
     if (!Bcb || !AvlNodeContainsAddr(&Bcb->Node, Bcb->Length, FileOffset->QuadPart)) {
 	return NT_SUCCESS(Status) ? STATUS_NONE_MAPPED : Status;
     }
@@ -527,6 +532,9 @@ map:
     PinnedBuf->MappedAddress = *pBuffer;
     PinnedBuf->Length = *MappedLength;
     InsertHeadList(&Bcb->PinList, &PinnedBuf->Link);
+    DPRINT("Bcb %p Key 0x%llx length 0x%zx mapped %p FO 0x%llx mapped %p len 0x%zx\n",
+	   Bcb, Bcb->Node.Key, Bcb->Length, Bcb->MappedAddress,
+	   PinnedBuf->FileOffset, PinnedBuf->MappedAddress, PinnedBuf->Length);
     if (NT_SUCCESS(Status)) {
 	Status = (*MappedLength == Length) ? STATUS_SUCCESS : STATUS_SOME_NOT_MAPPED;
     }
@@ -582,6 +590,7 @@ ULONG CiProcessDirtyBufferList(IN ULONG RemainingBufferSize,
 	    MWORD ViewAddress = VIEW_ALIGN(PinnedBuf->MappedAddress + ProcessedLength);
 	    ULONG ViewLength = min(ViewAddress + VIEW_SIZE - (MWORD)PinnedBuf->MappedAddress,
 				   PinnedBuf->Length) - ProcessedLength;
+	    DPRINT("ViewAddr 0x%zx ViewLength 0x%x\n", ViewAddress, ViewLength);
 	    ULONG ViewOffset = (MWORD)PinnedBuf->MappedAddress + ProcessedLength - ViewAddress;
 	    assert(ViewOffset < VIEW_SIZE);
 	    ULONG StartPage = ViewOffset >> PAGE_LOG2SIZE;
@@ -592,6 +601,10 @@ ULONG CiProcessDirtyBufferList(IN ULONG RemainingBufferSize,
 	    for (ULONG i = StartPage; i < EndPage; i++) {
 		SetBit64(DirtyBits, i);
 	    }
+	    DbgTrace("Processed Length 0x%zx Buf len 0x%zx, FO 0x%llx, mapped %p.\n"
+		     "Sending dirty page status: view address 0x%zx dirty bits 0x%llx\n",
+		     ProcessedLength, PinnedBuf->Length, PinnedBuf->FileOffset,
+		     PinnedBuf->MappedAddress, ViewAddress, DirtyBits);
 
 	    /* If the view address has already been recorded, update its dirty bits. */
 	    for (ULONG i = 0; i <= MsgCount; i++) {
