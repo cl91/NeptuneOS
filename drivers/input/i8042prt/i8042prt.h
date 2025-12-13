@@ -298,7 +298,6 @@ KSERVICE_ROUTINE i8042KbdInterruptService;
 
 /* i8042prt.c */
 DRIVER_DISPATCH ForwardIrpAndForget;
-DRIVER_DISPATCH ForwardIrpAndWait;
 DRIVER_ADD_DEVICE i8042AddDevice;
 BOOLEAN i8042PacketIsr(IN PPORT_DEVICE_EXTENSION DeviceExtension,
 		       IN UCHAR Output);
