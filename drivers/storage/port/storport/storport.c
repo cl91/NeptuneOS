@@ -12,16 +12,15 @@
 #include <pci.h>
 #include <srbhelper.h>
 
+/* Increase this if your system has more than 256 storage device controllers. */
+#define STORPORT_MAX_PORT_NUMBER 256
+
 #define GET_VA_ARG(ArgList, Type, Name)		\
     Type Name = (Type)va_arg(ArgList, Type)
 
 #define POINTER_IS_IN_REGION(Ptr, Start, Size)			\
     ((ULONG_PTR)(Ptr) >= (ULONG_PTR)(Start) &&			\
      (ULONG_PTR)(Ptr) < (ULONG_PTR)(Start) + (ULONG_PTR)(Size))	\
-
-/* GLOBALS ********************************************************************/
-
-static ULONG StorPortTotalPortCount = 0;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -163,8 +162,9 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
     PFDO_DEVICE_EXTENSION DeviceExtension = NULL;
     WCHAR NameBuffer[80];
     UNICODE_STRING DeviceName;
+    ULONG PortNumber = 0;
     PDEVICE_OBJECT Fdo = NULL;
-    NTSTATUS Status;
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
 
     DPRINT1("PortAddDevice(%p %p)\n", DriverObject, PhysicalDeviceObject);
 
@@ -194,18 +194,30 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
     if (InitData == NULL)
 	return STATUS_NOT_SUPPORTED;
 
-    swprintf(NameBuffer, L"\\Device\\RaidPort%lu", StorPortTotalPortCount);
-    RtlInitUnicodeString(&DeviceName, NameBuffer);
+    while (PortNumber < STORPORT_MAX_PORT_NUMBER) {
+	swprintf(NameBuffer, L"\\Device\\RaidPort%lu", PortNumber);
+	RtlInitUnicodeString(&DeviceName, NameBuffer);
 
-    DPRINT1("Creating device: %wZ\n", &DeviceName);
+	DPRINT1("Creating device: %wZ\n", &DeviceName);
 
-    /* Create the port device */
-    Status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_EXTENSION), &DeviceName,
-			    FILE_DEVICE_CONTROLLER,
-			    FILE_DEVICE_SECURE_OPEN | DO_DIRECT_IO | DO_POWER_PAGABLE,
-			    FALSE, &Fdo);
+	/* Create the port device */
+	Status = IoCreateDevice(DriverObject, sizeof(FDO_DEVICE_EXTENSION), &DeviceName,
+				FILE_DEVICE_CONTROLLER,
+				FILE_DEVICE_SECURE_OPEN | DO_DIRECT_IO | DO_POWER_PAGABLE,
+				FALSE, &Fdo);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT1("IoCreateDevice() failed (Status 0x%08x)\n", Status);
+	    if (Status == STATUS_OBJECT_NAME_COLLISION) {
+		PortNumber++;
+		continue;
+	    }
+	    return Status;
+	} else {
+	    break;
+	}
+    }
+
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("IoCreateDevice() failed (Status 0x%08x)\n", Status);
 	return Status;
     }
 
@@ -223,8 +235,7 @@ static NTAPI NTSTATUS PortAddDevice(IN PDRIVER_OBJECT DriverObject,
     DeviceExtension->Miniport.InitData = InitData;
 
     DeviceExtension->PnpState = dsStopped;
-    DeviceExtension->PortNumber = StorPortTotalPortCount;
-    StorPortTotalPortCount++;
+    DeviceExtension->PortNumber = PortNumber;
 
     InitializeListHead(&DeviceExtension->PdoListHead);
 
