@@ -11,6 +11,9 @@
 
 static const WCHAR PartitionSymLinkFormat[] = L"\\Device\\Harddisk%lu\\Partition%lu";
 
+/* Increase this if your system has more than 256 volumes */
+#define PARTMGR_MAX_VOLUME_NUMBER	256
+
 NTSTATUS PartitionCreateDevice(IN PDEVICE_OBJECT Fdo,
 			       IN PPARTITION_INFORMATION_EX PartitionEntry,
 			       IN UINT32 PdoNumber,
@@ -22,37 +25,48 @@ NTSTATUS PartitionCreateDevice(IN PDEVICE_OBJECT Fdo,
     static UINT32 HarddiskVolumeNextId = 1; // this is 1-based
 
     WCHAR nameBuf[64];
-    UNICODE_STRING deviceName;
-    UINT32 volumeNum;
-
-    volumeNum = HarddiskVolumeNextId++;
-    swprintf(nameBuf, L"\\Device\\HarddiskVolume%lu", volumeNum);
-    RtlCreateUnicodeString(&deviceName, nameBuf);
-
     ULONG64 flags = FILE_DEVICE_SECURE_OPEN | DO_DIRECT_IO;
 
     /* mark partition as removable if parent device is removable */
     if (Fdo->Flags & FILE_REMOVABLE_MEDIA)
 	flags |= FILE_REMOVABLE_MEDIA;
 
-    /*
-     * Create the partition/volume device object.
-     *
-     * Due to the fact we are also a (basic) volume manager, this device is
-     * ALSO a volume device. Because of this, we need to assign it a device
-     * name, and a specific device type for IoCreateDevice() to create a VPB
-     * for this device, so that a filesystem can be mounted on it.
-     * Once we get a separate volume manager, this partition DO can become
-     * anonymous, have a different device type, and without any associated VPB.
-     * (The attached volume, on the contrary, would require a VPB.)
-     */
+    UNICODE_STRING deviceName;
+    UINT32 volumeNum = HarddiskVolumeNextId++;
     PDEVICE_OBJECT partitionDevice;
-    NTSTATUS status = IoCreateDevice(Fdo->DriverObject, sizeof(PARTITION_EXTENSION),
-				     &deviceName,
-				     FILE_DEVICE_DISK, // FILE_DEVICE_MASS_STORAGE,
-				     flags, FALSE, &partitionDevice);
+    NTSTATUS status = STATUS_UNSUCCESSFUL;
+    while (volumeNum < PARTMGR_MAX_VOLUME_NUMBER) {
+	swprintf(nameBuf, L"\\Device\\HarddiskVolume%lu", volumeNum);
+	RtlCreateUnicodeString(&deviceName, nameBuf);
+
+	/*
+	 * Create the partition/volume device object.
+	 *
+	 * Due to the fact we are also a (basic) volume manager, this device is
+	 * ALSO a volume device. Because of this, we need to assign it a device
+	 * name, and a specific device type for IoCreateDevice() to create a VPB
+	 * for this device, so that a filesystem can be mounted on it.
+	 * Once we get a separate volume manager, this partition DO can become
+	 * anonymous, have a different device type, and without any associated VPB.
+	 * (The attached volume, on the contrary, would require a VPB.)
+	 */
+	status = IoCreateDevice(Fdo->DriverObject, sizeof(PARTITION_EXTENSION),
+				&deviceName,
+				FILE_DEVICE_DISK, // FILE_DEVICE_MASS_STORAGE,
+				flags, FALSE, &partitionDevice);
+	if (!NT_SUCCESS(status)) {
+	    ERR("Unable to create device object %wZ\n", &deviceName);
+	    if (status == STATUS_OBJECT_NAME_COLLISION) {
+		volumeNum = HarddiskVolumeNextId++;
+		continue;
+	    }
+	    return status;
+	} else {
+	    break;
+	}
+    }
+
     if (!NT_SUCCESS(status)) {
-	ERR("Unable to create device object %wZ\n", &deviceName);
 	return status;
     }
 
