@@ -990,7 +990,18 @@ static NTSTATUS NTAPI PartMgrAddDevice(_In_ PDRIVER_OBJECT DriverObject,
 
     PAGED_CODE();
 
+    /* We should always be loaded in someone else's address space so return
+     * error if we are not. */
     if (IoIsSingletonMode(DriverObject)) {
+	assert(FALSE);
+	return STATUS_INVALID_DEVICE_REQUEST;
+    }
+
+    /* If the PDO is created by us, it means that we are being called for the
+     * volume device (enumerated by us, hardware id \STORAGE\Volume). In this
+     * case we are effectively acking as volmgr.sys (since ReactOS does not yet
+     * have a volume manager driver from which we can steal), so do nothing. */
+    if (PhysicalDeviceObject->DriverObject == DriverObject) {
 	return STATUS_SUCCESS;
     }
 
@@ -1239,8 +1250,11 @@ NTAPI NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject,
     DriverObject->DriverUnload = PartMgrUnload;
     DriverObject->AddDevice = PartMgrAddDevice;
 
+    /* We should always be loaded in someone else's address space so return
+     * error if we are not. */
     if (IoIsSingletonMode(DriverObject)) {
-	return STATUS_SUCCESS;
+	assert(FALSE);
+	return STATUS_DRIVER_UNABLE_TO_LOAD;
     }
 
     DriverObject->MajorFunction[IRP_MJ_CREATE] = ForwardIrpAndForget;

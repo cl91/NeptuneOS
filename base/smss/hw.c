@@ -47,6 +47,7 @@ static struct {
     PWSTR MatchString;		/* MULTI_SZ */
     ULONG_PTR ServiceParameterCount;
     PDRIVER_SERVICE_PARAMETER ServiceParameters;
+    BOOLEAN LoadIntoBusDriver;
     BOOLEAN LoadFailed;
 } BootDrivers[] = {
     { "null" },
@@ -59,12 +60,12 @@ static struct {
     { "i8042prt", L"*PNP0303\0",
       ARRAYSIZE(I8042prtParameters), I8042prtParameters },
     { "kbdclass", NULL, ARRAYSIZE(KbdclassParameters), KbdclassParameters },
-    { "storahci", L"PCI\\CC_0106\0SCSI\\SATA\0",
+    { "storahci", L"PCI\\CC_0106\0",
       ARRAYSIZE(StorAhciParameters), StorAhciParameters },
-    { "stornvme", L"PCI\\CC_010802\0SCSI\\NVME\0",
+    { "stornvme", L"PCI\\CC_010802\0",
       ARRAYSIZE(StorNvmeParameters), StorNvmeParameters },
-    { "disk" },
-    { "partmgr", L"STORAGE\\Volume\0" },
+    { "disk", L"GenDisk\0", 0, NULL, TRUE },
+    { "partmgr", L"STORAGE\\Volume\0", 0, NULL, TRUE },
     { "mountmgr" }
 };
 
@@ -78,7 +79,7 @@ static struct {
     { "Keyboard", "{4D36E96B-E325-11CE-BFC1-08002BE10318}",
       L"*PNP0303\0", NULL, "kbdclass\0" },
     { "Disk", "{4D36E967-E325-11CE-BFC1-08002BE10318}",
-      L"SCSI\\Disk\0", NULL, "disk\0partmgr\0" }
+      L"GenDisk\0", NULL, "partmgr\0" }
 };
 
 static LIST_ENTRY SmKnownDeviceList;
@@ -221,6 +222,9 @@ static LONG SmFindDriver(IN PWCHAR InstancePath, OUT PCSTR *ClassGuid)
 	    break;
 	}
     }
+    if (Driver >= 0) {
+	goto out;
+    }
 
     PWCHAR Buffer = NULL;
     /* Query the hardware IDs of the device and try finding a matching driver for it. */
@@ -247,6 +251,9 @@ static LONG SmFindDriver(IN PWCHAR InstancePath, OUT PCSTR *ClassGuid)
 		break;
 	    }
 	}
+    }
+    if (Driver >= 0) {
+	goto out;
     }
 
     /* Query the compatible IDs of the device and try finding a matching driver for it. */
@@ -346,6 +353,11 @@ static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
 			     (PVOID)BootDrivers[Index].ServiceName, 0));
     if (ClassGuid) {
 	RET_ERR(SmSetRegKeyValue(EnumKey, "ClassGUID", REG_SZ, (PVOID)ClassGuid, 0));
+    }
+    if (BootDrivers[Index].LoadIntoBusDriver) {
+	ULONG Data = 1;
+	RET_ERR(SmSetRegKeyValue(EnumKey, "LoadIntoBusDriver", REG_DWORD,
+				 &Data, sizeof(ULONG)));
     }
 
     InstalledDevice->Installed = TRUE;

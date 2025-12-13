@@ -129,8 +129,7 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 
 NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
-		       IN PCSTR DriverServicePath,
-		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject)
+		       IN PCSTR DriverServicePath)
 {
     NTSTATUS Status;
     ULONG RegValueType = 0;
@@ -189,9 +188,6 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 	/* Loading an already loaded driver does NOT increase its reference
 	 * count, so decrease the reference count increased by the call above. */
 	ObDereferenceObject(DriverObject);
-	if (pDriverObject) {
-	    *pDriverObject = DriverObject;
-	}
 	ASYNC_RETURN(State, STATUS_SUCCESS);
     }
 
@@ -278,9 +274,8 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     }
     if (!NT_SUCCESS(Status)) {
 	ObDereferenceObject(Locals.DriverObject);
-    } else if (pDriverObject) {
+    } else {
 	Locals.DriverObject->DriverLoaded = TRUE;
-	*pDriverObject = Locals.DriverObject;
     }
 
 out:
@@ -299,6 +294,26 @@ out:
 	ObDereferenceObject(Locals.DriverImageFile);
     }
     ASYNC_END(State, Status);
+}
+
+PIO_DRIVER_OBJECT IopGetDriverObject(IN PCSTR DriverName)
+{
+    POBJECT DriverObjectDirectory;
+    NTSTATUS Status = ObReferenceObjectByName(DRIVER_OBJECT_DIRECTORY,
+					      OBJECT_TYPE_DIRECTORY,
+					      FALSE, NULL,
+					      &DriverObjectDirectory);
+    if (!NT_SUCCESS(Status)) {
+	assert(FALSE);
+	return NULL;
+    }
+    assert(DriverObjectDirectory);
+    PIO_DRIVER_OBJECT DriverObject = NULL;
+    ObReferenceObjectByName(DriverName, OBJECT_TYPE_DRIVER,
+			    DriverObjectDirectory, FALSE,
+			    (POBJECT *)&DriverObject);
+    ObDereferenceObject(DriverObjectDirectory);
+    return DriverObject;
 }
 
 NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
@@ -378,24 +393,9 @@ NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 
 NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
-		      IN PCSTR DriverServiceName)
+		      IN PCSTR DriverServicePath)
 {
-    PIO_DRIVER_OBJECT DriverObject = NULL;
-    NTSTATUS Status;
-
-    ASYNC_BEGIN(State, Locals, {
-	    PIO_DRIVER_OBJECT DriverObject;
-	});
-
-    AWAIT_EX(Status, IopLoadDriver, State, Locals, Thread,
-	     DriverServiceName, &DriverObject);
-    if (!NT_SUCCESS(Status)) {
-	ASYNC_RETURN(State, Status);
-    }
-    assert(DriverObject != NULL);
-    Locals.DriverObject = DriverObject;
-
-    ASYNC_END(State, Status);
+    return IopLoadDriver(State, Thread, DriverServicePath);
 }
 
 NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,

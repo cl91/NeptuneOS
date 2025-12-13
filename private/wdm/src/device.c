@@ -89,8 +89,7 @@ PDEVICE_OBJECT IopGetDeviceObjectOrCreate(IN GLOBAL_HANDLE DeviceHandle,
 	}
 	IopInitializeDeviceObject(DeviceObject, 0, DevInfo, DeviceHandle, StackSize, NULL);
     } else {
-	assert(StackSize >= DeviceObject->StackSize);
-	DeviceObject->StackSize = StackSize;
+	assert(StackSize <= DeviceObject->StackSize);
 	if (Reference) {
 	    ObReferenceObject(DeviceObject);
 	}

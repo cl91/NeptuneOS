@@ -295,7 +295,13 @@ NTSTATUS CmReadKeyValueByPointer(IN POBJECT KeyObject,
     assert(ValueObj->Type != REG_QWORD);
 #endif
     *Type = ValueObj->Type;
-    *Data = ValueObj->Data;
+    if (ValueObj->Type == REG_DWORD) {
+	*Data = &ValueObj->Dword;
+    } else if (ValueObj->Type == REG_QWORD) {
+	*Data = &ValueObj->Qword;
+    } else {
+	*Data = ValueObj->Data;
+    }
     return STATUS_SUCCESS;
 }
 

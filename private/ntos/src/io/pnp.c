@@ -312,6 +312,22 @@ err:
     return STATUS_NO_MEMORY;
 }
 
+static ULONG IopGetRegDword(IN POBJECT Key,
+			    IN PCSTR Value)
+{
+    ULONG RegValueType = 0;
+    PULONG RegDword = NULL;
+    if (NT_SUCCESS(CmReadKeyValueByPointer(Key, Value, &RegValueType, (PPVOID)&RegDword))) {
+	if (RegValueType != REG_DWORD) {
+	    assert(FALSE);
+	    return 0;
+	}
+	assert(RegDword);
+	return *RegDword;
+    }
+    return 0;
+}
+
 static PCSTR IopGetMultiSz(IN POBJECT Key,
 			   IN PCSTR Value)
 {
@@ -343,8 +359,7 @@ static PCSTR IopGetRegSz(IN POBJECT Key,
  */
 static NTSTATUS IopLoadDriverByBaseName(IN ASYNC_STATE State,
 					IN PTHREAD Thread,
-					IN PCSTR BaseName,
-					OUT PIO_DRIVER_OBJECT *DriverObject)
+					IN PCSTR BaseName)
 {
     NTSTATUS Status;
     ASYNC_BEGIN(State, Locals, {
@@ -353,7 +368,7 @@ static NTSTATUS IopLoadDriverByBaseName(IN ASYNC_STATE State,
     snprintf(Locals.DriverService, sizeof(Locals.DriverService),
 	     REG_SERVICE_KEY "\\%s", BaseName);
     AWAIT_EX(Status, IopLoadDriver, State, Locals, Thread,
-	     Locals.DriverService, DriverObject);
+	     Locals.DriverService);
     ASYNC_END(State, Status);
 }
 
@@ -407,6 +422,17 @@ static NTSTATUS IopQueueDeviceInstallEvent(IN const GUID *EventGuid,
     return STATUS_SUCCESS;
 }
 
+static PCSTR IopGetDriverProcessName(IN PDEVICE_NODE DeviceNode)
+{
+    PCSTR DriverProcessName = DeviceNode->DriverServiceName;
+    while (DeviceNode->Parent && DeviceNode->LoadIntoBusDriver) {
+	DeviceNode = DeviceNode->Parent;
+	DriverProcessName = DeviceNode->DriverServiceName;
+    }
+    assert(DriverProcessName);
+    return DriverProcessName;
+}
+
 /*
  * Load the class, filter, and function driver(s) of the device node.
  *
@@ -416,6 +442,12 @@ static NTSTATUS IopQueueDeviceInstallEvent(IN const GUID *EventGuid,
  * after the function driver has finished loading. The reason for doing
  * this is so that the class and filter drivers can send IRPs to the
  * function driver without incurring context switch costs.
+ *
+ * For a function driver, its driver service registry can specify whether
+ * the function driver is loaded into the same process as its bus driver,
+ * or whether the function driver is loaded into its own address space.
+ * In the former case, either driver crashing will bring down both the
+ * bus device nodes and the child device nodes.
  *
  * A note about driver loading order: for the standalone driver objects,
  * device lower filters are loaded first, followed by class lower filters,
@@ -435,6 +467,7 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN ASYNC_STATE State,
     POBJECT EnumKey = NULL;
     ULONG RegValueType = 0;
     PCSTR DriverServiceName = NULL;
+    PCSTR DriverProcessName = NULL;
 
     ASYNC_BEGIN(State, Locals, {
 	    CHAR KeyPath[256];
@@ -464,17 +497,17 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN ASYNC_STATE State,
 	IopFreePool(DeviceNode->DriverServiceName);
 	DeviceNode->DriverServiceName = NULL;
     }
-    if (DeviceNode->UpperFilterDriverNames != NULL) {
+    if (DeviceNode->UpperFilterNames != NULL) {
 	IopFreeFilterDriverNames(DeviceNode->UpperFilterCount,
-				 DeviceNode->UpperFilterDriverNames);
+				 DeviceNode->UpperFilterNames);
 	DeviceNode->UpperFilterCount = 0;
-	DeviceNode->UpperFilterDriverNames = NULL;
+	DeviceNode->UpperFilterNames = NULL;
     }
-    if (DeviceNode->LowerFilterDriverNames != NULL) {
+    if (DeviceNode->LowerFilterNames != NULL) {
 	IopFreeFilterDriverNames(DeviceNode->LowerFilterCount,
-				 DeviceNode->LowerFilterDriverNames);
+				 DeviceNode->LowerFilterNames);
 	DeviceNode->LowerFilterCount = 0;
-	DeviceNode->LowerFilterDriverNames = NULL;
+	DeviceNode->LowerFilterNames = NULL;
     }
 
     /* Query the device enum key to find the driver service to load */
@@ -498,6 +531,7 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN ASYNC_STATE State,
 	Status = STATUS_NO_MEMORY;
 	goto out;
     }
+    DeviceNode->LoadIntoBusDriver = IopGetRegDword(Locals.EnumKey, "LoadIntoBusDriver");
 
     /* Also query the upper and lower device filter drivers */
     Locals.DeviceUpperFilterNames = IopGetMultiSz(Locals.EnumKey, "UpperFilters");
@@ -533,31 +567,28 @@ load:
 		IopAllocateFilterDriverNames(Locals.DeviceUpperFilterNames,
 					     Locals.ClassUpperFilterNames,
 					     &DeviceNode->UpperFilterCount,
-					     &DeviceNode->UpperFilterDriverNames));
+					     &DeviceNode->UpperFilterNames));
     IF_ERR_GOTO(out, Status,
 		IopAllocateFilterDriverNames(Locals.DeviceLowerFilterNames,
 					     Locals.ClassLowerFilterNames,
 					     &DeviceNode->LowerFilterCount,
-					     &DeviceNode->LowerFilterDriverNames));
+					     &DeviceNode->LowerFilterNames));
 
-    /* Load lower filter drivers first */
-    if (DeviceNode->LowerFilterCount != 0) {
-	DeviceNode->LowerFilterDrivers = (PIO_DRIVER_OBJECT *)ExAllocatePoolWithTag(
-	    sizeof(PIO_DRIVER_OBJECT) * DeviceNode->LowerFilterCount, NTOS_IO_TAG);
-	if (DeviceNode->LowerFilterDrivers == NULL) {
-	    Status = STATUS_NO_MEMORY;
-	    goto out;
-	}
+    /* If the function driver service key specified that it should be loaded
+     * into the bus driver, inject the entire driver stack (filters and
+     * function) into the bus driver process. */
+    if (DeviceNode->LoadIntoBusDriver) {
+	goto inject;
     }
 
+    /* Otherwise, load lower filter drivers first */
     Locals.Idx = 0;
 lower:
     if (Locals.Idx >= DeviceNode->LowerFilterCount) {
 	goto function;
     }
     AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
-	     DeviceNode->LowerFilterDriverNames[Locals.Idx],
-	     &DeviceNode->LowerFilterDrivers[Locals.Idx]);
+	     DeviceNode->LowerFilterNames[Locals.Idx]);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -567,28 +598,19 @@ lower:
 function:
     /* Load function driver next */
     AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
-	     DeviceNode->DriverServiceName, &DeviceNode->FunctionDriverObject);
+	     DeviceNode->DriverServiceName);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
 
     /* Finally, load upper filter drivers */
-    if (DeviceNode->UpperFilterCount != 0) {
-	DeviceNode->UpperFilterDrivers = (PIO_DRIVER_OBJECT *)ExAllocatePoolWithTag(
-	    sizeof(PIO_DRIVER_OBJECT) * DeviceNode->UpperFilterCount, NTOS_IO_TAG);
-	if (DeviceNode->UpperFilterDrivers == NULL) {
-	    Status = STATUS_NO_MEMORY;
-	    goto out;
-	}
-    }
     Locals.Idx = 0;
 upper:
     if (Locals.Idx >= DeviceNode->UpperFilterCount) {
 	goto inject;
     }
     AWAIT_EX(Status, IopLoadDriverByBaseName, State, Locals, Thread,
-	     DeviceNode->UpperFilterDriverNames[Locals.Idx],
-	     &DeviceNode->UpperFilterDrivers[Locals.Idx]);
+	     DeviceNode->UpperFilterNames[Locals.Idx]);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -601,15 +623,27 @@ inject:
      * the driver process to reply since we are simply queuing a server notification
      * message. If there was an error during the load, the driver process will
      * raise an exception, and clean up is done in IoUnloadDriver. */
+    DriverProcessName = IopGetDriverProcessName(DeviceNode);
+    assert(DriverProcessName);
+    PIO_DRIVER_OBJECT DriverObject = IopGetDriverObject(DriverProcessName);
+    if (!DriverObject) {
+	Status = STATUS_DRIVER_UNABLE_TO_LOAD;
+	goto out;
+    }
     for (ULONG i = 0; i < DeviceNode->LowerFilterCount; i++) {
 	IF_ERR_GOTO(out, Status,
-		    IopQueueLoadDriverMsg(DeviceNode->FunctionDriverObject,
-					  DeviceNode->LowerFilterDriverNames[i]));
+		    IopQueueLoadDriverMsg(DriverObject,
+					  DeviceNode->LowerFilterNames[i]));
+    }
+    if (DeviceNode->LoadIntoBusDriver) {
+	IF_ERR_GOTO(out, Status,
+		    IopQueueLoadDriverMsg(DriverObject,
+					  DeviceNode->DriverServiceName));
     }
     for (ULONG i = 0; i < DeviceNode->UpperFilterCount; i++) {
 	IF_ERR_GOTO(out, Status,
-		    IopQueueLoadDriverMsg(DeviceNode->FunctionDriverObject,
-					  DeviceNode->UpperFilterDriverNames[i]));
+		    IopQueueLoadDriverMsg(DriverObject,
+					  DeviceNode->UpperFilterNames[i]));
     }
     Status = STATUS_SUCCESS;
 
@@ -677,9 +711,10 @@ static NTSTATUS IopQueueBusQueryInformationRequest(IN PTHREAD Thread,
 static NTSTATUS IopQueueAddDeviceRequest(IN PTHREAD Thread,
 					 IN PDEVICE_NODE DeviceNode,
 					 IN PIO_DRIVER_OBJECT DriverObject,
-					 IN OPTIONAL PCSTR DriverService,
+					 IN PCSTR DriverName,
 					 OUT PPENDING_IRP *PendingIrp)
 {
+    assert(DriverName);
     PIO_DEVICE_OBJECT PhyDevObj = DeviceNode->PhyDevObj;
     IO_REQUEST_PARAMETERS Irp = {
 	.MajorFunction = IRP_MJ_ADD_DEVICE,
@@ -688,37 +723,37 @@ static NTSTATUS IopQueueAddDeviceRequest(IN PTHREAD Thread,
     if (PhyDevObj) {
 	Irp.AddDevice.PhysicalDeviceInfo = PhyDevObj->DeviceInfo;
     }
-    if (DriverService) {
-	/* Locate the last path separator to find the base name of the driver service. */
-	DriverService += ObLocateLastPathSeparator(DriverService) + 1;
-	ULONG BaseNameLength = strlen(DriverService) + 1;
-	if (BaseNameLength > sizeof(Irp.AddDevice.BaseName)) {
-	    /* If this happens, we should increase the size of the BaseName buffer. */
-	    assert(FALSE);
-	    return STATUS_BUFFER_TOO_SMALL;
-	}
-	memcpy(Irp.AddDevice.BaseName, DriverService, BaseNameLength);
+    ULONG BaseNameLength = strlen(DriverName) + 1;
+    if (BaseNameLength > sizeof(Irp.AddDevice.BaseName)) {
+	/* If this happens, we should increase the size of the BaseName buffer. */
+	assert(FALSE);
+	return STATUS_BUFFER_TOO_SMALL;
     }
+    memcpy(Irp.AddDevice.BaseName, DriverName, BaseNameLength);
     return IopCallDriverEx(Thread, &Irp, DriverObject, PendingIrp);
 }
 
 /*
  * For each upper-filter/function/lower-filter driver, call the AddDevice
- * routine of the driver object. (Of course, here "call" means queuing the
- * IRP and wait for driver response. We are a micro-kernel OS.) Note that
- * we need to wait for lower drivers to complete the request before we can
- * continue sending AddDevice to higher drivers. Note also that for class
- * and filter drivers, two AddDevice requests are sent: first to the standalone,
- * singleton driver objects, and then to the function driver, specifying the
- * class/filter driver service name. The latter is done so that the driver
- * image that sits inside the function driver process can call their AddDevice
- * routines accordingly. If a class or filter driver wishes to process the
- * IRPs locally (within the function driver process), its AddDevice routine
- * should do nothing and return STATUS_SUCCESS if it detects it's running in
- * singleton mode (via the IoIsSingletonMode routine). If on the other hand
- * the class/filter driver wishes to process IO in the standalone process,
- * its AddDevice routine should do nothing and return STATUS_SUCCESS if
- * IoIsSingletonMode returns FALSE.
+ * routine of the driver object. Of course, here "call" means queuing the
+ * IRP and wait for driver response (we are a micro-kernel OS!). If the
+ * function driver is loaded into the bus driver's address space, we send
+ * the AddDevice messages to the bus driver, specifying the driver name
+ * for the function and filter drivers. If the function driver is loaded
+ * into its own driver process, for each filter driver two kinds of
+ * AddDevice requests will be sent: first to the standalone, singleton
+ * driver object of the filter driver, and then to the function driver,
+ * specifying the filter driver service name. This is so that the filter
+ * drivers can decide whether it wants to process the IRPs within the
+ * function driver process or not. If the communication between filter
+ * and function drivers is heavy, the filter drivers should preferably
+ * process IRPs within the function driver process. In this case, the
+ * filter driver's AddDevice routine should do nothing and simply return
+ * STATUS_SUCCESS if it detects it's running in singleton mode (via the
+ * IoIsSingletonMode routine). If on the other hand the filter driver
+ * wishes to process IO in the standalone process, its AddDevice routine
+ * should do nothing and return STATUS_SUCCESS if IoIsSingletonMode returns
+ * FALSE.
  */
 static NTSTATUS IopDeviceNodeAddDevice(IN ASYNC_STATE AsyncState,
 				       IN PTHREAD Thread,
@@ -726,16 +761,12 @@ static NTSTATUS IopDeviceNodeAddDevice(IN ASYNC_STATE AsyncState,
 {
     NTSTATUS Status;
     ASYNC_BEGIN(AsyncState, Locals, {
-	    PIO_DRIVER_OBJECT DriverObject;
 	    PPENDING_IRP PendingIrp;
+	    PCSTR DriverName;
 	    ULONG LowerFilterCount;
 	    ULONG UpperFilterCount;
 	    BOOLEAN FunctionDriverCalled;
 	});
-    Locals.PendingIrp = NULL;
-    Locals.LowerFilterCount = 0;
-    Locals.UpperFilterCount = 0;
-    Locals.FunctionDriverCalled = FALSE;
 
     if (IopDeviceNodeGetCurrentState(DeviceNode) != DeviceNodeDriversLoaded) {
 	DbgTrace("Device node state is %d. Not adding device.\n",
@@ -745,26 +776,39 @@ static NTSTATUS IopDeviceNodeAddDevice(IN ASYNC_STATE AsyncState,
 
 check:
     if (Locals.LowerFilterCount < DeviceNode->LowerFilterCount) {
-	Locals.DriverObject = DeviceNode->LowerFilterDrivers[Locals.LowerFilterCount++];
+	Locals.DriverName = DeviceNode->LowerFilterNames[Locals.LowerFilterCount++];
 	goto call;
     }
-    if (!Locals.FunctionDriverCalled && DeviceNode->FunctionDriverObject != NULL) {
-	Locals.DriverObject = DeviceNode->FunctionDriverObject;
+    if (!Locals.FunctionDriverCalled) {
+	Locals.DriverName = DeviceNode->DriverServiceName;
 	Locals.FunctionDriverCalled = TRUE;
 	goto call;
     }
     if (Locals.UpperFilterCount < DeviceNode->UpperFilterCount) {
-	Locals.DriverObject = DeviceNode->UpperFilterDrivers[Locals.UpperFilterCount++];
+	Locals.DriverName = DeviceNode->UpperFilterNames[Locals.UpperFilterCount++];
 	goto call;
     }
     Status = STATUS_SUCCESS;
     goto end;
 
 call:
-    assert(Locals.DriverObject != NULL);
+    if (!Locals.DriverName) {
+	assert(FALSE);
+	Status = STATUS_INTERNAL_ERROR;
+	goto end;
+    }
+    PCSTR DriverProcessName = Locals.DriverName;
+    if (DeviceNode->LoadIntoBusDriver) {
+	assert(DeviceNode->Parent);
+	DriverProcessName = IopGetDriverProcessName(DeviceNode);
+    }
+    assert(DriverProcessName);
+    PIO_DRIVER_OBJECT DriverObject = IopGetDriverObject(DriverProcessName);
     IF_ERR_GOTO(end, Status, IopQueueAddDeviceRequest(Thread, DeviceNode,
-						      Locals.DriverObject, NULL,
+						      DriverObject,
+						      Locals.DriverName,
 						      &Locals.PendingIrp));
+    ObDereferenceObject(DriverObject);
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
@@ -773,16 +817,19 @@ call:
     }
     IopCleanupPendingIrp(Locals.PendingIrp);
     Locals.PendingIrp = NULL;
-    if (!DeviceNode->FunctionDriverObject ||
-	Locals.DriverObject == DeviceNode->FunctionDriverObject) {
+    if (DeviceNode->LoadIntoBusDriver ||
+	Locals.DriverName == DeviceNode->DriverServiceName) {
 	goto check;
     }
-    /* For class and filter drivers, we need to send another AddDevice message
-     * to the function driver, specifying the class/filter driver service. */
+
+    /* For filter drivers, if the function driver is loaded in its own process,
+     * we send another AddDevice request. */
+    PIO_DRIVER_OBJECT FunctionDriver = IopGetDriverObject(DeviceNode->DriverServiceName);
     IF_ERR_GOTO(end, Status, IopQueueAddDeviceRequest(Thread, DeviceNode,
-						      DeviceNode->FunctionDriverObject,
-						      Locals.DriverObject->DriverRegistryPath,
+						      FunctionDriver,
+						      Locals.DriverName,
 						      &Locals.PendingIrp));
+    ObDereferenceObject(FunctionDriver);
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.PendingIrp->IoResponseStatus.Status;

@@ -344,15 +344,13 @@ typedef struct _DEVICE_NODE {
     PCSTR DriverServiceName;
     ULONG UpperFilterCount;
     ULONG LowerFilterCount;
-    PCSTR *UpperFilterDriverNames;
-    PCSTR *LowerFilterDriverNames;
-    PIO_DRIVER_OBJECT FunctionDriverObject;
-    PIO_DRIVER_OBJECT *UpperFilterDrivers;
-    PIO_DRIVER_OBJECT *LowerFilterDrivers;
+    PCSTR *UpperFilterNames;
+    PCSTR *LowerFilterNames;
     PCM_RESOURCE_LIST RawResources;
     PCM_RESOURCE_LIST TranslatedResources;
     PNP_BUS_INFORMATION BusInformation;
     ULONG SlotNumber;
+    BOOLEAN LoadIntoBusDriver;
 } DEVICE_NODE, *PDEVICE_NODE;
 
 /*
@@ -609,8 +607,8 @@ NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
 VOID IopDriverObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
-		       IN PCSTR DriverServicePath,
-		       OUT OPTIONAL PIO_DRIVER_OBJECT *pDriverObject);
+		       IN PCSTR DriverServicePath);
+PIO_DRIVER_OBJECT IopGetDriverObject(IN PCSTR DriverName);
 
 FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel(IN PTHREAD Thread)
 {

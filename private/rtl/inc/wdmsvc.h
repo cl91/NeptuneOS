@@ -647,7 +647,8 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		 IoPacket->Request.DataSize, IoPacket->Request.Flags);
 	switch (IoPacket->Request.MajorFunction) {
 	case IRP_MJ_ADD_DEVICE:
-	    DbgPrint("    ADD-DEVICE\n");
+	    DbgPrint("    ADD-DEVICE  BaseName %.64s\n",
+		     IoPacket->Request.AddDevice.BaseName);
 	    break;
 	case IRP_MJ_CREATE:
 	    DbgPrint("    CREATE  Options 0x%x FileAttr 0x%x ShareAccess 0x%x\n",
