@@ -582,6 +582,9 @@ NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject
 				      OUT GLOBAL_HANDLE *DeviceHandle);
 VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
 		     IN BOOLEAN Force);
+NTSTATUS IopShutdownDevice(IN ASYNC_STATE State,
+			   IN PTHREAD Thread,
+			   IN PIO_DEVICE_OBJECT DeviceObject);
 VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DeviceObject,
 			    IN ULONG Indentation);
 
@@ -640,6 +643,8 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
 VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 		       IN BOOLEAN Force);
 VOID IopUnregisterFileSystem(IN PIO_DEVICE_OBJECT DevObj);
+NTSTATUS IopShutdownFileSystems(IN ASYNC_STATE State,
+				IN PTHREAD Thread);
 VOID IopDbgDumpVcb(IN PIO_VOLUME_CONTROL_BLOCK Vcb);
 
 FORCEINLINE BOOLEAN IopIsStorageDevice(IN PIO_DEVICE_OBJECT DevObj)

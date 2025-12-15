@@ -175,9 +175,9 @@ NTSTATUS PciFdoSetPowerState(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,
     UNREFERENCED_PARAMETER(DeviceExtension);
 
     UNIMPLEMENTED;
-    while (TRUE)
-	;
-    return STATUS_NOT_SUPPORTED;
+    /* For now we return success as our only supported power transition is
+     * poweroff/reset. */
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS PciFdoIrpQueryPower(IN PIRP Irp, IN PIO_STACK_LOCATION IoStackLocation,

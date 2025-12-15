@@ -133,7 +133,7 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp,
 VOID AcpiInitializeHwHacks(VOID);
 
 /* busmgr/system.c */
-ACPI_STATUS AcpiBusSuspendSystem(UINT32 state);
+ACPI_STATUS AcpiBusSuspendSystem(UINT32 State, POWER_ACTION Action);
 
 /* bugmgr/utils.c */
-NTSTATUS AcpiCreateVolatileRegistryTables(void);
+NTSTATUS AcpiCreateVolatileRegistryTables(VOID);

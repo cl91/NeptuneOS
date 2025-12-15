@@ -432,7 +432,9 @@ static inline VOID IopUnmarshalIoBuffer(IN PIRP Irp)
     case IRP_MJ_CREATE:
     case IRP_MJ_PNP:
     case IRP_MJ_FLUSH_BUFFERS:
+    case IRP_MJ_SHUTDOWN:
     case IRP_MJ_CLEANUP:
+    case IRP_MJ_POWER:
     case IRP_MJ_ADD_DEVICE:
 	/* Do nothing */
 	break;
@@ -804,7 +806,24 @@ static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
 	}
 	break;
     }
+
+    case IRP_MJ_POWER:
+	switch (Src->Request.MinorFunction) {
+	case IRP_MN_SET_POWER:
+	    IoStack->Parameters.Power.Type = Src->Request.Power.Type;
+	    IoStack->Parameters.Power.State = Src->Request.Power.State;
+	    IoStack->Parameters.Power.ShutdownType = Src->Request.Power.ShutdownType;
+	    break;
+
+	default:
+	    UNIMPLEMENTED;
+	    assert(FALSE);
+	    return STATUS_NOT_IMPLEMENTED;
+	}
+	break;
+
     case IRP_MJ_FLUSH_BUFFERS:
+    case IRP_MJ_SHUTDOWN:
     case IRP_MJ_CLEANUP:
     case IRP_MJ_ADD_DEVICE:
 	/* Do nothing */
@@ -1474,6 +1493,7 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
 	break;
     }
     case IRP_MJ_FLUSH_BUFFERS:
+    case IRP_MJ_SHUTDOWN:
 	/* Do nothing */
 	break;
     case IRP_MJ_PNP:
@@ -1619,6 +1639,10 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 
     case IRP_MJ_CLOSE:
 	DbgPrint("    CLOSE\n");
+	break;
+
+    case IRP_MJ_SHUTDOWN:
+	DbgPrint("    SHUTDOWN\n");
 	break;
 
     case IRP_MJ_CLEANUP:
@@ -1873,6 +1897,35 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	    break;
 	default:
 	    DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");
+	    assert(FALSE);
+	}
+	break;
+    case IRP_MJ_POWER:
+	switch (Stack->MinorFunction) {
+	case IRP_MN_POWER_SEQUENCE:
+	    DbgPrint("    POWER  POWER-SEQUENCE %p",
+		     Stack->Parameters.PowerSequence.PowerSequence);
+	    if (Stack->Parameters.PowerSequence.PowerSequence) {
+		DbgPrint("(%d %d %d)\n",
+			 Stack->Parameters.PowerSequence.PowerSequence->SequenceD1,
+			 Stack->Parameters.PowerSequence.PowerSequence->SequenceD2,
+			 Stack->Parameters.PowerSequence.PowerSequence->SequenceD3);
+	    } else {
+		DbgPrint("\n");
+	    }
+	    break;
+	case IRP_MN_SET_POWER:
+	case IRP_MN_QUERY_POWER:
+	    DbgPrint("    POWER  %s-POWER Type %d State %d PowerAction %d\n",
+		     Stack->MinorFunction == IRP_MN_SET_POWER ? "SET" : "QUERY",
+		     Stack->Parameters.Power.Type,
+		     Stack->Parameters.Power.State.SystemState,
+		     Stack->Parameters.Power.ShutdownType);
+	    break;
+	default:
+	    DbgPrint("    POWER  UNKNOWN-MINOR-FUNCTION 0x%x\n",
+		     Stack->MinorFunction);
+	    assert(FALSE);
 	}
 	break;
     case IRP_MJ_ADD_DEVICE:
@@ -1880,6 +1933,7 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	break;
     default:
 	DbgPrint("    UNKNOWN-MAJOR-FUNCTION\n");
+	assert(FALSE);
     }
 #endif
 }

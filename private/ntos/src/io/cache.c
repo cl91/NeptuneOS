@@ -1515,28 +1515,39 @@ static BOOLEAN CiPagedWriteCallback(IN PPENDING_IRP PendingIrp,
 }
 
 VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
-		  IN PIO_FILE_OBJECT FileObject,
+		  IN OPTIONAL PIO_FILE_OBJECT FileObject,
 		  IN PCC_CACHE_FLUSHED_CALLBACK Callback,
 		  IN OUT PVOID Context)
 {
-    assert(FileObject);
     assert(VolumeDevice);
     assert(VolumeDevice == VolumeDevice->Vcb->VolumeDevice);
-    /* For all the open files in the volume with caching enabled, propagate
-     * their dirty maps to the volume FCB. */
-    LoopOverList(File, &VolumeDevice->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
-	PIO_FILE_CONTROL_BLOCK Fcb = File->Fcb;
+    if (FileObject) {
+	/* If a file object is specified, flush the dirty buffers of this file
+	 * object to the volume. */
+	PIO_FILE_CONTROL_BLOCK Fcb = FileObject->Fcb;
+	assert(Fcb != VolumeDevice->Vcb->VolumeFcb);
 	if (Fcb && Fcb->SharedCacheMap && Fcb != VolumeDevice->Vcb->VolumeFcb) {
 	    CiFlushPrivateCacheToShared(Fcb);
 	    CiFlushDirtyDataToVolume(Fcb);
 	}
+    } else {
+	/* For all the open files in the volume with caching enabled, propagate
+	 * their dirty maps to the volume FCB. */
+	LoopOverList(File, &VolumeDevice->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
+	    PIO_FILE_CONTROL_BLOCK Fcb = File->Fcb;
+	    if (Fcb && Fcb->SharedCacheMap && Fcb != VolumeDevice->Vcb->VolumeFcb) {
+		CiFlushPrivateCacheToShared(Fcb);
+		CiFlushDirtyDataToVolume(Fcb);
+	    }
+	}
     }
+
     PIO_FILE_CONTROL_BLOCK VolumeFcb = VolumeDevice->Vcb->VolumeFcb;
     assert(VolumeFcb);
     CiFlushPrivateCacheToShared(VolumeFcb);
     /* At this point all dirty bits should have been migrated to the volume FCB shared map. */
-    LoopOverList(File, &VolumeDevice->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
-	PIO_FILE_CONTROL_BLOCK Fcb = File->Fcb;
+    if (FileObject) {
+	PIO_FILE_CONTROL_BLOCK Fcb = FileObject->Fcb;
 	if (Fcb && Fcb != VolumeFcb && Fcb->SharedCacheMap) {
 	    LoopOverView(View, Fcb->SharedCacheMap) {
 		assert(!View->DirtyMap);
@@ -1546,6 +1557,22 @@ VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
 	    LoopOverList(CacheMap, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
 		LoopOverView(View, CacheMap) {
 		    assert(!View->DirtyMap);
+		}
+	    }
+	}
+    } else {
+	LoopOverList(File, &VolumeDevice->OpenFileList, IO_FILE_OBJECT, DeviceLink) {
+	    PIO_FILE_CONTROL_BLOCK Fcb = File->Fcb;
+	    if (Fcb && Fcb != VolumeFcb && Fcb->SharedCacheMap) {
+		LoopOverView(View, Fcb->SharedCacheMap) {
+		    assert(!View->DirtyMap);
+		}
+	    }
+	    if (Fcb) {
+		LoopOverList(CacheMap, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
+		    LoopOverView(View, CacheMap) {
+			assert(!View->DirtyMap);
+		    }
 		}
 	    }
 	}

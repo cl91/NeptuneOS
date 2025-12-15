@@ -552,7 +552,7 @@ BOOLEAN FsdSystemTimeToDosDateTime(PDEVICE_EXTENSION DeviceExt,
 /* dirwr.c */
 NTSTATUS FatFcbInitializeCacheFromVolume(PVCB Vcb, PFATFCB Fcb);
 NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt,
-			PFATFCB Fcb);
+			IN PFATFCB Fcb);
 BOOLEAN FatFindDirSpace(PDEVICE_EXTENSION DeviceExt,
 			PFATFCB DirFcb,
 			ULONG Slots,

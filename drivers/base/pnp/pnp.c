@@ -966,6 +966,13 @@ NTAPI NTSTATUS PnpDispatch(IN PDEVICE_OBJECT DeviceObject,
     return PnpRootDispatch(DeviceObject, Irp);
 }
 
+NTAPI NTSTATUS PowerDispatch(IN PDEVICE_OBJECT DeviceObject,
+			     IN PIRP Irp)
+{
+    UNIMPLEMENTED;
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS NTAPI PnpAddDevice(IN PDRIVER_OBJECT DriverObject,
 				   IN PDEVICE_OBJECT Pdo)
 {
@@ -993,6 +1000,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     }
 
     DriverObject->MajorFunction[IRP_MJ_PNP] = PnpDispatch;
+    DriverObject->MajorFunction[IRP_MJ_POWER] = PowerDispatch;
     DriverObject->AddDevice = PnpAddDevice;
 
     return STATUS_SUCCESS;

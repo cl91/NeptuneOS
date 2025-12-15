@@ -361,6 +361,48 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
     }
 }
 
+static NTSTATUS IopShutdownFileSystemList(IN ASYNC_STATE State,
+					  IN PTHREAD Thread,
+					  IN PLIST_ENTRY FsList)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+    ASYNC_BEGIN(State, Locals, {
+	    PLIST_ENTRY Entry;
+	    PIO_FILE_SYSTEM Fs;
+	});
+
+    Locals.Entry = FsList->Flink;
+loop:
+    if (Locals.Entry == FsList) {
+	goto done;
+    }
+    Locals.Fs = CONTAINING_RECORD(Locals.Entry, IO_FILE_SYSTEM, ListEntry);
+    assert(Locals.Fs->FsctlDevObj);
+    AWAIT_EX(Status, IopShutdownDevice, State, Locals, Thread,
+	     Locals.Fs->FsctlDevObj);
+    Locals.Entry = Locals.Entry->Flink;
+    goto loop;
+
+done:
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS IopShutdownFileSystems(IN ASYNC_STATE State,
+				IN PTHREAD Thread)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(State);
+    AWAIT_EX(Status, IopShutdownFileSystemList, State, _, Thread,
+	     &IopDiskFileSystemList);
+    AWAIT_EX(Status, IopShutdownFileSystemList, State, _, Thread,
+	     &IopNetworkFileSystemList);
+    AWAIT_EX(Status, IopShutdownFileSystemList, State, _, Thread,
+	     &IopCdRomFileSystemList);
+    AWAIT_EX(Status, IopShutdownFileSystemList, State, _, Thread,
+	     &IopTapeFileSystemList);
+    ASYNC_END(State, Status);
+}
+
 static VOID IopDbgVcbSubobjectVisitor(IN POBJECT Object,
 				      IN PVOID Context)
 {

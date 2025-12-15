@@ -60,6 +60,8 @@ NTAPI NTSTATUS FatShutdown(PDEVICE_OBJECT DeviceObject, PIRP Irp)
 		if (!NT_SUCCESS(Status)) {
 		    DPRINT1("FatDiskShutDown failed, status = %x\n",
 			    Status);
+		    /* We ignore the disk shutdown errors. */
+		    Status = STATUS_SUCCESS;
 		}
 	    } else {
 		DPRINT1("FatFlushVolume failed, status = %x\n", Status);

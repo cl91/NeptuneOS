@@ -327,6 +327,11 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 	    GLOBAL_HANDLE StorageDevice;
 	    IO_DEVICE_INFO StorageDeviceInfo;
 	} MountVolume;
+	struct {
+	    POWER_STATE_TYPE Type;
+	    POWER_STATE State;
+	    POWER_ACTION ShutdownType;
+	} Power;
     };
 } IO_REQUEST_PARAMETERS, *PIO_REQUEST_PARAMETERS;
 
@@ -728,6 +733,9 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		DbgPrint("UNKNOWN-MINOR-CODE\n");
 	    }
 	    break;
+	case IRP_MJ_SHUTDOWN:
+	    DbgPrint("    SHUTDOWN\n");
+	    break;
 	case IRP_MJ_CLEANUP:
 	    DbgPrint("    CLEANUP\n");
 	    break;
@@ -764,7 +772,27 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 			 IoPacket->Request.ReadWriteConfig.Offset);
 		break;
 	    default:
-		DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION\n");
+		DbgPrint("    PNP  UNKNOWN-MINOR-FUNCTION 0x%x\n",
+			 IoPacket->Request.MinorFunction);
+		assert(FALSE);
+	    }
+	    break;
+	case IRP_MJ_POWER:
+	    switch (IoPacket->Request.MinorFunction) {
+	    case IRP_MN_POWER_SEQUENCE:
+		DbgPrint("    POWER  POWER-SEQUENCE\n");
+		break;
+	    case IRP_MN_SET_POWER:
+	    case IRP_MN_QUERY_POWER:
+		DbgPrint("    POWER  %s-POWER Type %d State %d PowerAction %d",
+			 IoPacket->Request.MinorFunction == IRP_MN_SET_POWER ? "SET" : "QUERY",
+			 IoPacket->Request.Power.Type,
+			 IoPacket->Request.Power.State.SystemState,
+			 IoPacket->Request.Power.ShutdownType);
+		break;
+	    default:
+		DbgPrint("    POWER  UNKNOWN-MINOR-FUNCTION 0x%x",
+			 IoPacket->Request.MinorFunction);
 		assert(FALSE);
 	    }
 	    break;

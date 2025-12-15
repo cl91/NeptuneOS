@@ -15,16 +15,37 @@
 
 /* FUNCTIONS ****************************************************************/
 
-static NTSTATUS FatFlushFile(PDEVICE_EXTENSION DeviceExt, PFATFCB Fcb)
+static NTSTATUS FatFlushFile(PDEVICE_EXTENSION DeviceExt, PFILE_OBJECT FileObject)
 {
+    PFATFCB Fcb = (PFATFCB)FileObject->FsContext;
     DPRINT("FatFlushFile(DeviceExt %p, Fcb %p) for '%wZ'\n", DeviceExt,
 	   Fcb, &Fcb->PathNameU);
 
+    NTSTATUS Status = STATUS_SUCCESS;
+    IO_STATUS_BLOCK IoStatus;
     if (BooleanFlagOn(Fcb->Flags, FCB_IS_DIRTY)) {
-	return FatUpdateEntry(DeviceExt, Fcb);
+	Status = FatUpdateEntry(DeviceExt, Fcb);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT1("FatUpdateEntry failed, status = %x\n", Status);
+	    assert(FALSE);
+	}
+	if (Fcb->ParentFcb && !BooleanFlagOn(Fcb->ParentFcb->Flags, FCB_IS_VOLUME)) {
+	    assert(Fcb->ParentFcb->FileObject);
+	    CcFlushCache(Fcb->ParentFcb->FileObject, NULL, 0, &IoStatus);
+	    if (!NT_SUCCESS(IoStatus.Status)) {
+		assert(FALSE);
+		Status = IoStatus.Status;
+	    }
+	}
     }
 
-    return STATUS_SUCCESS;
+    assert(FileObject);
+    CcFlushCache(FileObject, NULL, 0, &IoStatus);
+    if (!NT_SUCCESS(IoStatus.Status)) {
+	assert(FALSE);
+	return IoStatus.Status;
+    }
+    return Status;
 }
 
 NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
@@ -44,31 +65,28 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
     while (ListEntry != &DeviceExt->FcbListHead) {
 	Fcb = CONTAINING_RECORD(ListEntry, FATFCB, FcbListEntry);
 	ListEntry = ListEntry->Flink;
-	if (!FatFcbIsDirectory(Fcb)) {
-	    Status = FatFlushFile(DeviceExt, Fcb);
+	if (BooleanFlagOn(Fcb->Flags, FCB_IS_DIRTY)) {
+	    Status = FatUpdateEntry(DeviceExt, Fcb);
 	    if (!NT_SUCCESS(Status)) {
-		DPRINT1("FatFlushFile failed, status = %x\n", Status);
+		DPRINT1("FatUpdateEntry failed, status = %x\n", Status);
+		assert(FALSE);
 		ReturnStatus = Status;
 	    }
 	}
     }
 
-    ListEntry = DeviceExt->FcbListHead.Flink;
-    while (ListEntry != &DeviceExt->FcbListHead) {
-	Fcb = CONTAINING_RECORD(ListEntry, FATFCB, FcbListEntry);
-	ListEntry = ListEntry->Flink;
-	if (FatFcbIsDirectory(Fcb)) {
-	    Status = FatFlushFile(DeviceExt, Fcb);
-	    if (!NT_SUCCESS(Status)) {
-		DPRINT1("FatFlushFile failed, status = %x\n", Status);
-		ReturnStatus = Status;
-	    }
-	}
+    /* Note we don't need to call CcFlushCache for every open file we have.
+     * We only need to call it once, for the volume FCB, because what this
+     * routine does is flushing the server-side dirty buffers. The client-side
+     * dirty buffers have already been taken care of by CcSetDirtyData (this
+     * is guaranteed to happen since we process IO messages sequentially). */
+    IO_STATUS_BLOCK IoStatus;
+    assert(VolumeFcb->FileObject);
+    CcFlushCache(VolumeFcb->FileObject, NULL, 0, &IoStatus);
+    if (!NT_SUCCESS(IoStatus.Status)) {
+	assert(FALSE);
+	return IoStatus.Status;
     }
-
-    Fcb = (PFATFCB)DeviceExt->FatFileObject->FsContext;
-
-    Status = FatFlushFile(DeviceExt, Fcb);
 
     /* Prepare an IRP to flush device buffers */
     KEVENT Event;
@@ -94,6 +112,7 @@ NTSTATUS FatFlushVolume(PDEVICE_EXTENSION DeviceExt, PFATFCB VolumeFcb)
 
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("FatFlushFile failed, status = %x\n", Status);
+	assert(FALSE);
 	ReturnStatus = Status;
     }
 
@@ -115,14 +134,8 @@ NTSTATUS FatFlush(PFAT_IRP_CONTEXT IrpContext)
     if (BooleanFlagOn(Fcb->Flags, FCB_IS_VOLUME)) {
 	Status = FatFlushVolume(IrpContext->DeviceExt, Fcb);
     } else {
-	Status = FatFlushFile(IrpContext->DeviceExt, Fcb);
+	Status = FatFlushFile(IrpContext->DeviceExt, IrpContext->FileObject);
     }
 
-    IO_STATUS_BLOCK IoStatus;
-    CcFlushCache(IrpContext->FileObject, NULL, 0, &IoStatus);
-    if (!NT_SUCCESS(IoStatus.Status)) {
-	assert(FALSE);
-	Status = IoStatus.Status;
-    }
     return Status;
 }

@@ -61,7 +61,8 @@ Quit:
 /*
  * Update an existing FAT entry
  */
-NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt, IN PFATFCB Fcb)
+NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt,
+			IN PFATFCB Fcb)
 {
     ULONG SizeDirEntry;
     ULONG DirIndex;
@@ -94,10 +95,11 @@ NTSTATUS FatUpdateEntry(IN PDEVICE_EXTENSION DeviceExt, IN PFATFCB Fcb)
 	.LowPart = DirIndex * SizeDirEntry
     };
     ULONG BytesWritten;
+    assert(Fcb->ParentFcb->FileObject);
     Status = CcCopyWrite(Fcb->ParentFcb->FileObject, &Offset, SizeDirEntry,
 			 TRUE, &Fcb->Entry, &BytesWritten);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("Failed write to \'%wZ\'.\n", &Fcb->ParentFcb->PathNameU);
+	DPRINT1("Failed to write to \'%wZ\'.\n", &Fcb->ParentFcb->PathNameU);
 	return Status;
     }
     assert(BytesWritten == SizeDirEntry);

@@ -1121,13 +1121,6 @@ static NTSTATUS FatDismountVolume(PFAT_IRP_CONTEXT IrpContext)
 
     /* Flush volume & files */
     FatFlushVolume(DeviceExt, (PFATFCB)FileObject->FsContext);
-    IO_STATUS_BLOCK IoStatus;
-    /* If cache flushing failed, there isn't a lot we can do. */
-    CcFlushCache(FileObject, NULL, 0, &IoStatus);
-    if (!NT_SUCCESS(IoStatus.Status)) {
-	DPRINT("CcFlushCache failed with error 0x%08x\n", IoStatus.Status);
-	assert(FALSE);
-    }
 
     /* The volume is now clean */
     if (BooleanFlagOn(DeviceExt->VolumeFcb->Flags, VCB_CLEAR_DIRTY) &&

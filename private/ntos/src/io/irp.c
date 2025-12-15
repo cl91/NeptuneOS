@@ -1291,8 +1291,11 @@ static NTSTATUS IopHandleFlushCacheMessage(IN PIO_PACKET Msg,
     }
     PIO_DEVICE_OBJECT VolumeDevice = DeviceObject->Vcb->VolumeDevice;
     assert(VolumeDevice);
-    PIO_FILE_OBJECT FileObject = IopGetFileObject(VolumeDevice, FileHandle);
-    assert(FileObject);
+    PIO_FILE_OBJECT FileObject = NULL;
+    if (FileHandle) {
+	FileObject = IopGetFileObject(VolumeDevice, FileHandle);
+    }
+    assert(!FileHandle || FileObject);
     CcFlushCache(VolumeDevice, FileObject, IopCacheFlushedCallback, DriverObject);
     return STATUS_SUCCESS;
 }

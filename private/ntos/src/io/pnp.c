@@ -2110,6 +2110,128 @@ NTSTATUS IopInitPnpManager()
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS IopQueueSetPowerRequest(IN PTHREAD Thread,
+					IN PIO_DEVICE_OBJECT DevObj,
+					IN POWER_STATE_TYPE Type,
+					IN SHUTDOWN_ACTION ShutdownAction,
+					OUT PPENDING_IRP *PendingIrp)
+{
+    POWER_STATE State;
+    if (Type == SystemPowerState) {
+	State.SystemState = PowerSystemShutdown;
+    } else {
+	State.DeviceState = PowerDeviceD3;
+    }
+    POWER_ACTION Action = (ShutdownAction == ShutdownReboot) ?
+	PowerActionShutdownReset : PowerActionShutdownOff;
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_POWER,
+	.MinorFunction = IRP_MN_SET_POWER,
+	.Device.Object = DevObj,
+	.Power = {
+	    .Type = Type,
+	    .State = State,
+	    .ShutdownType = Action
+	}
+    };
+    return IopCallDriver(Thread, &Irp, PendingIrp);
+}
+
+static NTSTATUS IopDeviceNodeSetPower(IN ASYNC_STATE State,
+				      IN PTHREAD Thread,
+				      IN PDEVICE_NODE DeviceNode,
+				      IN POWER_STATE_TYPE Type,
+				      IN SHUTDOWN_ACTION Action)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+    ASYNC_BEGIN(State, Locals, {
+	    PPENDING_IRP PendingIrp;
+	});
+    Status = IopQueueSetPowerRequest(Thread, IopGetTopDevice(DeviceNode->PhyDevObj),
+				     Type, Action, &Locals.PendingIrp);
+    if (!NT_SUCCESS(Status)) {
+	assert(FALSE);
+	goto done;
+    }
+    AWAIT_EX(Status, KeWaitForSingleObject, State, Locals, Thread,
+	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    assert(NT_SUCCESS(Status));
+    IopCleanupPendingIrp(Locals.PendingIrp);
+    Locals.PendingIrp = NULL;
+done:
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS IoShutdownSystem(IN ASYNC_STATE State,
+                          IN PTHREAD Thread,
+                          IN SHUTDOWN_ACTION Action)
+{
+    NTSTATUS Status = STATUS_SUCCESS;
+    ASYNC_BEGIN(State, Locals, {
+	    PLIST_ENTRY Entry;
+	    PDEVICE_NODE DeviceNode;
+	    PPENDING_IRP PendingIrp;
+	});
+
+    /* Send the shutdown notifications to devices that have registered for them. */
+    Locals.Entry = IopShutdownNotificationList.Flink;
+devices:
+    if (Locals.Entry == &IopShutdownNotificationList) {
+	goto fs;
+    }
+    AWAIT_EX(Status, IopShutdownDevice, State, Locals, Thread,
+	     CONTAINING_RECORD(Locals.Entry, IO_DEVICE_OBJECT, ShutdownNotificationLink));
+    Locals.Entry = Locals.Entry->Flink;
+    goto devices;
+
+fs:
+    /* Call the file systems to flush dirty buffers to the storage devices */
+    AWAIT_EX(Status, IopShutdownFileSystems, State, Locals, Thread);
+
+    if (Action == ShutdownNoReboot) {
+	goto done;
+    }
+
+    /* Send the IRP_MN_SET_POWER IRPs to PnP devices to poweroff/reboot system.
+     * Parent device is powered off after its child devices are powered off. In
+     * other words, we do a depth-first post-order traversal of the device tree. */
+    Locals.DeviceNode = IopRootDeviceNode;
+    while (!IsListEmpty(&Locals.DeviceNode->ChildrenList)) {
+	Locals.DeviceNode = GetIndexedElementOfList(&Locals.DeviceNode->ChildrenList,
+						    0, DEVICE_NODE, SiblingLink);
+    }
+power:
+    AWAIT_EX(Status, IopDeviceNodeSetPower, State, Locals, Thread,
+	     Locals.DeviceNode, SystemPowerState, Action);
+    assert(NT_SUCCESS(Status));
+    AWAIT_EX(Status, IopDeviceNodeSetPower, State, Locals, Thread,
+	     Locals.DeviceNode, DevicePowerState, Action);
+    assert(NT_SUCCESS(Status));
+    /* Move on to the next device node: first of all, if we have hit the root device
+     * node, we are done. */
+    if (!Locals.DeviceNode->Parent) {
+	goto done;
+    }
+    /* Secondly, if we have hit the end of the sibling list of the current node,
+     * move on to the parent node. */
+    if (Locals.DeviceNode->SiblingLink.Flink == &Locals.DeviceNode->Parent->ChildrenList) {
+	Locals.DeviceNode = Locals.DeviceNode->Parent;
+	goto power;
+    }
+    /* Otherwise, move to the next sibling node. */
+    Locals.DeviceNode = CONTAINING_RECORD(Locals.DeviceNode->SiblingLink.Flink,
+					  DEVICE_NODE, SiblingLink);
+    while (!IsListEmpty(&Locals.DeviceNode->ChildrenList)) {
+	Locals.DeviceNode = GetIndexedElementOfList(&Locals.DeviceNode->ChildrenList,
+						    0, DEVICE_NODE, SiblingLink);
+    }
+    goto power;
+
+done:
+    ASYNC_END(State, Status);
+}
+
 /*
  * NtGetPlugPlayEvent
  *

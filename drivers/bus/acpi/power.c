@@ -70,16 +70,15 @@ static PCHAR DbgDevicePowerString(DEVICE_POWER_STATE Type)
 static NTSTATUS Bus_FDO_Power(PFDO_DEVICE_DATA Data, PIRP Irp)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    POWER_STATE PowerState;
-    POWER_STATE_TYPE PowerType;
     PIO_STACK_LOCATION Stack;
     ULONG AcpiState;
     ACPI_STATUS AcpiStatus;
     SYSTEM_POWER_STATE OldPowerState;
 
     Stack = IoGetCurrentIrpStackLocation(Irp);
-    PowerType = Stack->Parameters.Power.Type;
-    PowerState = Stack->Parameters.Power.State;
+    POWER_STATE PowerState = Stack->Parameters.Power.State;
+    POWER_STATE_TYPE PowerType = Stack->Parameters.Power.Type;
+    POWER_ACTION PowerAction = Stack->Parameters.Power.ShutdownType;
 
     if (Stack->MinorFunction == IRP_MN_SET_POWER) {
 	DPRINT("\tRequest to set %s state to %s\n",
@@ -112,7 +111,7 @@ static NTSTATUS Bus_FDO_Power(PFDO_DEVICE_DATA Data, PIRP Irp)
 	    }
 	    OldPowerState = Data->Common.SystemPowerState;
 	    Data->Common.SystemPowerState = PowerState.SystemState;
-	    AcpiStatus = AcpiBusSuspendSystem(AcpiState);
+	    AcpiStatus = AcpiBusSuspendSystem(AcpiState, PowerAction);
 	    if (!ACPI_SUCCESS(AcpiStatus)) {
 		DPRINT1("Failed to enter sleep state %d (Status 0x%X)\n", AcpiState,
 			AcpiStatus);

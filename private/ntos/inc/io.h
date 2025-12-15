@@ -239,7 +239,7 @@ VOID CcSetDirtyData(IN PIO_DRIVER_OBJECT DriverObject,
 		    IN MWORD ViewAddress,
 		    IN ULONG64 DirtyBits);
 VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
-		  IN PIO_FILE_OBJECT FileObject,
+		  IN OPTIONAL PIO_FILE_OBJECT FileObject,
 		  IN PCC_CACHE_FLUSHED_CALLBACK IopCacheFlushedCallback,
 		  IN OUT PVOID Context);
 NTSTATUS CcMapDataEx(IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
@@ -309,6 +309,9 @@ NTSTATUS IoInitSystemPhase1();
 /* pnp.c */
 NTSTATUS IoMaskInterruptVector(IN ULONG Vector);
 NTSTATUS IoAllocateInterruptVector(OUT ULONG *Vector);
+NTSTATUS IoShutdownSystem(IN ASYNC_STATE State,
+                          IN struct _THREAD *Thread,
+                          IN SHUTDOWN_ACTION Action);
 
 /*
  * Debug helper functions

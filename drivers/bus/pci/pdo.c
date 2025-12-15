@@ -44,7 +44,9 @@ static NTSTATUS PciPdoSetPowerState(IN PIRP Irp,
     UNREFERENCED_PARAMETER(DeviceExtension);
 
     UNIMPLEMENTED;
-    return STATUS_NOT_SUPPORTED;
+    /* For now we return success as our only supported power transition is
+     * poweroff/reset. */
+    return STATUS_SUCCESS;
 }
 
 static NTSTATUS PciPdoIrpQueryPower(IN PIRP Irp,

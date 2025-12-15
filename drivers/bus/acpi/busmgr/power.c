@@ -606,11 +606,12 @@ INT AcpiPowerInit(IN PDEVICE_OBJECT BusFdo)
 /**
  * AcpiBusSuspendSystem - Set the system power state to one of the S? sleep states.
  */
-ACPI_STATUS AcpiBusSuspendSystem(UINT32 State)
+ACPI_STATUS AcpiBusSuspendSystem(UINT32 State, POWER_ACTION Action)
 {
     AcpiEnterSleepStatePrep(State);
 
-    ACPI_STATUS Status = AcpiEnterSleepState(State);
+    ACPI_STATUS Status = (Action == PowerActionShutdownReset) ?
+	AcpiReset() : AcpiEnterSleepState(State);
     if (!ACPI_SUCCESS(Status))
 	return Status;
 

@@ -898,6 +898,31 @@ NTSTATUS WdmUnregisterShutdownNotification(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS IopShutdownDevice(IN ASYNC_STATE State,
+			   IN PTHREAD Thread,
+			   IN PIO_DEVICE_OBJECT DeviceObject)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Locals, {
+	    PPENDING_IRP PendingIrp;
+	});
+
+    IO_REQUEST_PARAMETERS Irp = {
+	.MajorFunction = IRP_MJ_SHUTDOWN,
+	.Device.Object = DeviceObject,
+    };
+    Status = IopCallDriver(Thread, &Irp, &Locals.PendingIrp);
+    if (!NT_SUCCESS(Status)) {
+	ASYNC_RETURN(State, Status);
+    }
+    AWAIT_EX(Status, KeWaitForSingleObject, State, Locals, Thread,
+	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    assert(NT_SUCCESS(Status));
+    IopCleanupPendingIrp(Locals.PendingIrp);
+    ASYNC_END(State, Status);
+}
+
 VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DevObj,
 			    IN ULONG Indentation)
 {
