@@ -30,8 +30,8 @@
 /*
  * @implemented
  */
-NTSTATUS MountMgrChangeNotify(IN PDEVICE_EXTENSION DeviceExtension,
-			      IN PIRP Irp)
+static NTSTATUS MountMgrChangeNotify(IN PDEVICE_EXTENSION DeviceExtension,
+				     IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -74,7 +74,7 @@ NTSTATUS MountMgrChangeNotify(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountmgrWriteNoAutoMount(IN PDEVICE_EXTENSION DeviceExtension)
+static NTSTATUS MountmgrWriteNoAutoMount(IN PDEVICE_EXTENSION DeviceExtension)
 {
     ULONG Value = DeviceExtension->NoAutoMount;
 
@@ -86,8 +86,8 @@ NTSTATUS MountmgrWriteNoAutoMount(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS MountMgrSetAutoMount(IN PDEVICE_EXTENSION DeviceExtension,
-			      IN PIRP Irp)
+static NTSTATUS MountMgrSetAutoMount(IN PDEVICE_EXTENSION DeviceExtension,
+				     IN PIRP Irp)
 {
     PIO_STACK_LOCATION Stack;
     PMOUNTMGR_SET_AUTO_MOUNT SetState;
@@ -117,8 +117,8 @@ NTSTATUS MountMgrSetAutoMount(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrQueryAutoMount(IN PDEVICE_EXTENSION DeviceExtension,
-				IN PIRP Irp)
+static NTSTATUS MountMgrQueryAutoMount(IN PDEVICE_EXTENSION DeviceExtension,
+				       IN PIRP Irp)
 {
     PIO_STACK_LOCATION Stack;
     PMOUNTMGR_QUERY_AUTO_MOUNT QueryState;
@@ -141,12 +141,12 @@ NTSTATUS MountMgrQueryAutoMount(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTAPI NTSTATUS ScrubRegistryRoutine(IN PWSTR ValueName,
-				    IN ULONG ValueType,
-				    IN PVOID ValueData,
-				    IN ULONG ValueLength,
-				    IN PVOID Context,
-				    IN PVOID EntryContext)
+static NTAPI NTSTATUS ScrubRegistryRoutine(IN PWSTR ValueName,
+					   IN ULONG ValueType,
+					   IN PVOID ValueData,
+					   IN ULONG ValueLength,
+					   IN PVOID Context,
+					   IN PVOID EntryContext)
 {
     NTSTATUS Status;
     PLIST_ENTRY NextEntry;
@@ -192,7 +192,7 @@ NTAPI NTSTATUS ScrubRegistryRoutine(IN PWSTR ValueName,
 /*
  * @implemented
  */
-NTSTATUS MountMgrScrubRegistry(IN PDEVICE_EXTENSION DeviceExtension)
+static NTSTATUS MountMgrScrubRegistry(IN PDEVICE_EXTENSION DeviceExtension)
 {
     NTSTATUS Status;
     BOOLEAN Continue;
@@ -214,8 +214,8 @@ NTSTATUS MountMgrScrubRegistry(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS MountMgrCreatePoint(IN PDEVICE_EXTENSION DeviceExtension,
-			     IN PIRP Irp)
+static NTSTATUS MountMgrCreatePoint(IN PDEVICE_EXTENSION DeviceExtension,
+				    IN PIRP Irp)
 {
     ULONG MaxLength;
     PIO_STACK_LOCATION Stack;
@@ -251,8 +251,8 @@ NTSTATUS MountMgrCreatePoint(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrCheckUnprocessedVolumes(IN PDEVICE_EXTENSION DeviceExtension,
-					 IN PIRP Irp)
+static NTSTATUS MountMgrCheckUnprocessedVolumes(IN PDEVICE_EXTENSION DeviceExtension,
+						IN PIRP Irp)
 {
     PLIST_ENTRY NextEntry;
     PDEVICE_INFORMATION DeviceInformation;
@@ -270,7 +270,7 @@ NTSTATUS MountMgrCheckUnprocessedVolumes(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* Reactivate all the offline volumes */
     while (!IsListEmpty(&(DeviceExtension->OfflineDeviceListHead))) {
-	NextEntry = RemoveHeadList(&(DeviceExtension->OfflineDeviceListHead));
+	NextEntry = RemoveHeadList(&DeviceExtension->OfflineDeviceListHead);
 	DeviceInformation = CONTAINING_RECORD(NextEntry, DEVICE_INFORMATION,
 					      DeviceListEntry);
 
@@ -291,7 +291,7 @@ NTSTATUS MountMgrCheckUnprocessedVolumes(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-BOOLEAN IsFtVolume(IN PUNICODE_STRING SymbolicName)
+static BOOLEAN IsFtVolume(IN PUNICODE_STRING SymbolicName)
 {
     NTSTATUS Status;
     PARTITION_INFORMATION PartitionInfo;
@@ -332,7 +332,7 @@ BOOLEAN IsFtVolume(IN PUNICODE_STRING SymbolicName)
 /*
  * @implemented
  */
-VOID ProcessSuggestedDriveLetters(IN PDEVICE_EXTENSION DeviceExtension)
+static VOID ProcessSuggestedDriveLetters(IN PDEVICE_EXTENSION DeviceExtension)
 {
     WCHAR NameBuffer[DRIVE_LETTER_LENGTH / sizeof(WCHAR)];
     PLIST_ENTRY NextEntry;
@@ -380,9 +380,9 @@ VOID ProcessSuggestedDriveLetters(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
-				       IN PUNICODE_STRING DeviceName,
-				       OUT PMOUNTMGR_DRIVE_LETTER_INFORMATION DriveLetterInfo)
+static NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
+					      IN PUNICODE_STRING DeviceName,
+					      OUT PMOUNTMGR_DRIVE_LETTER_INFORMATION Info)
 {
     NTSTATUS Status;
     UCHAR DriveLetter;
@@ -427,7 +427,7 @@ NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
     }
 
     /* Now, assume we will assign a letter */
-    DeviceInformation->LetterAssigned = DriveLetterInfo->DriveLetterWasAssigned = TRUE;
+    DeviceInformation->LetterAssigned = Info->DriveLetterWasAssigned = TRUE;
 
     /* Browse all the symlinks to check if there is already a drive letter */
     NextEntry = DeviceInformation->SymbolicLinksListHead.Flink;
@@ -437,8 +437,8 @@ NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
 
 	/* If this is a drive letter and it is online, forget about new drive letter */
 	if (IsDriveLetter(&(SymlinkInformation->Name)) && SymlinkInformation->Online) {
-	    DriveLetterInfo->DriveLetterWasAssigned = FALSE;
-	    DriveLetterInfo->CurrentDriveLetter =
+	    Info->DriveLetterWasAssigned = FALSE;
+	    Info->CurrentDriveLetter =
 		(CHAR)SymlinkInformation->Name.Buffer[LETTER_POSITION];
 	    break;
 	}
@@ -450,8 +450,8 @@ NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
      * a no-drive entry by querying GPT attributes & database */
     if (NextEntry == &(DeviceInformation->SymbolicLinksListHead)) {
 	if (!GptDriveLetter || HasNoDriveLetterEntry(DeviceInformation->UniqueId)) {
-	    DriveLetterInfo->DriveLetterWasAssigned = FALSE;
-	    DriveLetterInfo->CurrentDriveLetter = 0;
+	    Info->DriveLetterWasAssigned = FALSE;
+	    Info->CurrentDriveLetter = 0;
 	    goto Release;
 	}
     }
@@ -459,15 +459,15 @@ NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
     /* If automount is disabled, and the device is not removable
      * but needs a drive letter, don't assign one and bail out */
     if (DeviceExtension->NoAutoMount && !Removable) {
-	if (DriveLetterInfo->DriveLetterWasAssigned) {
-	    DriveLetterInfo->DriveLetterWasAssigned = FALSE;
-	    DriveLetterInfo->CurrentDriveLetter = 0;
+	if (Info->DriveLetterWasAssigned) {
+	    Info->DriveLetterWasAssigned = FALSE;
+	    Info->CurrentDriveLetter = 0;
 	    goto Release;
 	}
     }
 
     /* Stop now if we don't need to assign the drive a letter */
-    if (!DriveLetterInfo->DriveLetterWasAssigned)
+    if (!Info->DriveLetterWasAssigned)
 	goto Release;
 
     /* Now everything is fine, begin drive letter assignment */
@@ -489,8 +489,8 @@ NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
     /* If we don't have suggested letter but it's a FT volume, fail */
     if (!DeviceInformation->SuggestedDriveLetter &&
 	IsFtVolume(&(DeviceInformation->DeviceName))) {
-	DriveLetterInfo->DriveLetterWasAssigned = FALSE;
-	DriveLetterInfo->CurrentDriveLetter = 0;
+	Info->DriveLetterWasAssigned = FALSE;
+	Info->CurrentDriveLetter = 0;
 	goto Release;
     }
 
@@ -502,7 +502,7 @@ NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
 
     /* It's all prepared, create mount point */
     if (DeviceInformation->SuggestedDriveLetter) {
-	DriveLetterInfo->CurrentDriveLetter = DeviceInformation->SuggestedDriveLetter;
+	Info->CurrentDriveLetter = DeviceInformation->SuggestedDriveLetter;
 	NameBuffer[LETTER_POSITION] = DeviceInformation->SuggestedDriveLetter;
 
 	Status = MountMgrCreatePointWorker(DeviceExtension, &SymbolicName,
@@ -513,10 +513,10 @@ NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
     }
 
     /* It failed with this letter... Try another one! */
-    for (DriveLetterInfo->CurrentDriveLetter = DriveLetter;
-	 DriveLetterInfo->CurrentDriveLetter <= L'Z';
-	 DriveLetterInfo->CurrentDriveLetter++) {
-	NameBuffer[LETTER_POSITION] = DriveLetterInfo->CurrentDriveLetter;
+    for (Info->CurrentDriveLetter = DriveLetter;
+	 Info->CurrentDriveLetter <= L'Z';
+	 Info->CurrentDriveLetter++) {
+	NameBuffer[LETTER_POSITION] = Info->CurrentDriveLetter;
 
 	Status = MountMgrCreatePointWorker(DeviceExtension, &SymbolicName,
 					   &TargetDeviceName);
@@ -526,9 +526,9 @@ NTSTATUS MountMgrNextDriveLetterWorker(IN PDEVICE_EXTENSION DeviceExtension,
     }
 
     /* We failed setting a letter */
-    if (DriveLetterInfo->CurrentDriveLetter > L'Z') {
-	DriveLetterInfo->DriveLetterWasAssigned = FALSE;
-	DriveLetterInfo->CurrentDriveLetter = 0;
+    if (Info->CurrentDriveLetter > L'Z') {
+	Info->DriveLetterWasAssigned = FALSE;
+	Info->CurrentDriveLetter = 0;
 
 	/* Try at least to add a no drive letter entry */
 	Status = QueryDeviceInformation(&TargetDeviceName, NULL, &UniqueId, NULL, NULL,
@@ -548,8 +548,8 @@ Release:
 /*
  * @implemented
  */
-NTSTATUS MountMgrNextDriveLetter(IN PDEVICE_EXTENSION DeviceExtension,
-				 IN PIRP Irp)
+static NTSTATUS MountMgrNextDriveLetter(IN PDEVICE_EXTENSION DeviceExtension,
+					IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -591,12 +591,12 @@ NTSTATUS MountMgrNextDriveLetter(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTAPI NTSTATUS MountMgrQuerySystemVolumeNameQueryRoutine(IN PWSTR ValueName,
-							 IN ULONG ValueType,
-							 IN PVOID ValueData,
-							 IN ULONG ValueLength,
-							 IN PVOID Context,
-							 IN PVOID EntryContext)
+static NTAPI NTSTATUS MountMgrQuerySystemVolumeNameQueryRoutine(IN PWSTR ValueName,
+								IN ULONG ValueType,
+								IN PVOID ValueData,
+								IN ULONG ValueLength,
+								IN PVOID Context,
+								IN PVOID EntryContext)
 {
     UNICODE_STRING ValueString;
     PUNICODE_STRING SystemVolumeName;
@@ -627,7 +627,7 @@ NTAPI NTSTATUS MountMgrQuerySystemVolumeNameQueryRoutine(IN PWSTR ValueName,
 /*
  * @implemented
  */
-NTSTATUS MountMgrQuerySystemVolumeName(OUT PUNICODE_STRING SystemVolumeName)
+static NTSTATUS MountMgrQuerySystemVolumeName(OUT PUNICODE_STRING SystemVolumeName)
 {
     RTL_QUERY_REGISTRY_TABLE QueryTable[2];
 
@@ -651,7 +651,7 @@ NTSTATUS MountMgrQuerySystemVolumeName(OUT PUNICODE_STRING SystemVolumeName)
 /*
  * @implemented
  */
-VOID MountMgrAssignDriveLetters(IN PDEVICE_EXTENSION DeviceExtension)
+static VOID MountMgrAssignDriveLetters(IN PDEVICE_EXTENSION DeviceExtension)
 {
     NTSTATUS Status;
     PLIST_ENTRY NextEntry;
@@ -722,8 +722,8 @@ VOID MountMgrAssignDriveLetters(IN PDEVICE_EXTENSION DeviceExtension)
 /*
  * @implemented
  */
-NTSTATUS MountMgrQueryDosVolumePath(IN PDEVICE_EXTENSION DeviceExtension,
-				    IN PIRP Irp)
+static NTSTATUS MountMgrQueryDosVolumePath(IN PDEVICE_EXTENSION DeviceExtension,
+					   IN PIRP Irp)
 {
     NTSTATUS Status;
     ULONG DevicesFound;
@@ -933,9 +933,9 @@ TryWithVolumeName:
 /*
  * @implemented
  */
-NTSTATUS MountMgrValidateBackPointer(IN PASSOCIATED_DEVICE_ENTRY AssociatedDeviceEntry,
-				     IN PDEVICE_INFORMATION DeviceInformation,
-				     OUT PBOOLEAN Invalid)
+static NTSTATUS MountMgrValidateBackPointer(IN PASSOCIATED_DEVICE_ENTRY AssociatedDeviceEntry,
+					    IN PDEVICE_INFORMATION DeviceInformation,
+					    OUT PBOOLEAN Invalid)
 {
     HANDLE Handle;
     NTSTATUS Status;
@@ -1030,11 +1030,11 @@ NTSTATUS MountMgrValidateBackPointer(IN PASSOCIATED_DEVICE_ENTRY AssociatedDevic
 /*
  * @implemented
  */
-NTSTATUS MountMgrQueryVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
-				  IN PDEVICE_INFORMATION DeviceInformation,
-				  IN PLIST_ENTRY DeviceInfoList,
-				  OUT PMOUNTMGR_VOLUME_PATHS *VolumePaths,
-				  OUT PDEVICE_INFORMATION *FailedDevice)
+static NTSTATUS MountMgrQueryVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
+					 IN PDEVICE_INFORMATION DeviceInformation,
+					 IN PLIST_ENTRY DeviceInfoList,
+					 OUT PMOUNTMGR_VOLUME_PATHS *VolumePaths,
+					 OUT PDEVICE_INFORMATION *FailedDevice)
 {
     ULONG Written;
     NTSTATUS Status;
@@ -1291,8 +1291,8 @@ NTSTATUS MountMgrQueryVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrQueryDosVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
-				     IN PIRP Irp)
+static NTSTATUS MountMgrQueryDosVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
+					    IN PIRP Irp)
 {
     NTSTATUS Status;
     PLIST_ENTRY Entry;
@@ -1429,8 +1429,8 @@ NTSTATUS MountMgrQueryDosVolumePaths(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrKeepLinksWhenOffline(IN PDEVICE_EXTENSION DeviceExtension,
-				      IN PIRP Irp)
+static NTSTATUS MountMgrKeepLinksWhenOffline(IN PDEVICE_EXTENSION DeviceExtension,
+					     IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -1470,8 +1470,8 @@ NTSTATUS MountMgrKeepLinksWhenOffline(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrVolumeArrivalNotification(IN PDEVICE_EXTENSION DeviceExtension,
-					   IN PIRP Irp)
+static NTSTATUS MountMgrVolumeArrivalNotification(IN PDEVICE_EXTENSION DeviceExtension,
+						  IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -1504,8 +1504,8 @@ NTSTATUS MountMgrVolumeArrivalNotification(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension,
-			     IN PIRP Irp)
+static NTSTATUS MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension,
+				    IN PIRP Irp)
 {
     NTSTATUS Status;
     PIO_STACK_LOCATION Stack;
@@ -1628,8 +1628,8 @@ NTSTATUS MountMgrQueryPoints(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrDeletePoints(IN PDEVICE_EXTENSION DeviceExtension,
-			      IN PIRP Irp)
+static NTSTATUS MountMgrDeletePoints(IN PDEVICE_EXTENSION DeviceExtension,
+				     IN PIRP Irp)
 {
     ULONG Link;
     NTSTATUS Status;
@@ -1729,8 +1729,8 @@ NTSTATUS MountMgrDeletePoints(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrDeletePointsDbOnly(IN PDEVICE_EXTENSION DeviceExtension,
-				    IN PIRP Irp)
+static NTSTATUS MountMgrDeletePointsDbOnly(IN PDEVICE_EXTENSION DeviceExtension,
+					   IN PIRP Irp)
 {
     ULONG Link;
     NTSTATUS Status;
@@ -1794,12 +1794,12 @@ NTSTATUS MountMgrDeletePointsDbOnly(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrVolumeMountPointChanged(IN PDEVICE_EXTENSION DeviceExtension,
-					 IN PIRP Irp,
-					 IN NTSTATUS LockStatus,
-					 OUT PUNICODE_STRING SourceDeviceName,
-					 OUT PUNICODE_STRING SourceSymbolicName,
-					 OUT PUNICODE_STRING TargetVolumeName)
+static NTSTATUS MountMgrVolumeMountPointChanged(IN PDEVICE_EXTENSION DeviceExtension,
+						IN PIRP Irp,
+						IN NTSTATUS LockStatus,
+						OUT PUNICODE_STRING SourceDeviceName,
+						OUT PUNICODE_STRING SourceSymbolicName,
+						OUT PUNICODE_STRING TargetVolumeName)
 {
     HANDLE Handle;
     NTSTATUS Status;
@@ -1986,9 +1986,9 @@ Cleanup:
 /*
  * @implemented
  */
-NTSTATUS MountMgrVolumeMountPointCreated(IN PDEVICE_EXTENSION DeviceExtension,
-					 IN PIRP Irp,
-					 IN NTSTATUS LockStatus)
+static NTSTATUS MountMgrVolumeMountPointCreated(IN PDEVICE_EXTENSION DeviceExtension,
+						IN PIRP Irp,
+						IN NTSTATUS LockStatus)
 {
     LONG Offset;
     BOOLEAN Found;
@@ -2216,9 +2216,9 @@ NTSTATUS MountMgrVolumeMountPointCreated(IN PDEVICE_EXTENSION DeviceExtension,
 /*
  * @implemented
  */
-NTSTATUS MountMgrVolumeMountPointDeleted(IN PDEVICE_EXTENSION DeviceExtension,
-					 IN PIRP Irp,
-					 IN NTSTATUS LockStatus)
+static NTSTATUS MountMgrVolumeMountPointDeleted(IN PDEVICE_EXTENSION DeviceExtension,
+						IN PIRP Irp,
+						IN NTSTATUS LockStatus)
 {
     LONG Offset;
     NTSTATUS Status;

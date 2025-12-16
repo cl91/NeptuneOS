@@ -586,7 +586,7 @@ VOID MountMgrFreeSavedLink(IN PSAVED_LINK_INFORMATION SavedLinkInformation)
 /*
  * @implemented
  */
-VOID NTAPI MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
+NTAPI VOID MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
 {
     PLIST_ENTRY NextEntry;
     PUNIQUE_ID_WORK_ITEM WorkItem;

@@ -151,16 +151,14 @@ VOID WaitForOnlinesToComplete(IN PDEVICE_EXTENSION DeviceExtension)
 
 	KeWaitForSingleObject(&DeviceExtension->OnlineNotificationEvent, Executive,
 			      KernelMode, FALSE, NULL);
-
-	DeviceExtension->OnlineNotificationCount++;
     }
 }
 
 /*
  * @implemented
  */
-NTAPI NTSTATUS MountMgrTargetDeviceNotification(IN PVOID NotificationStructure,
-						IN PVOID Context)
+static NTAPI NTSTATUS MountMgrTargetDeviceNotification(IN PVOID NotificationStructure,
+						       IN PVOID Context)
 {
     PDEVICE_EXTENSION DeviceExtension;
     PDEVICE_INFORMATION DeviceInformation;
@@ -261,7 +259,8 @@ VOID MountMgrNotify(IN PDEVICE_EXTENSION DeviceExtension)
  * @implemented
  */
 VOID MountMgrNotifyNameChange(IN PDEVICE_EXTENSION DeviceExtension,
-			      IN PUNICODE_STRING DeviceName, IN BOOLEAN ValidateVolume)
+			      IN PUNICODE_STRING DeviceName,
+			      IN BOOLEAN ValidateVolume)
 {
     PIRP Irp;
     KEVENT Event;
@@ -392,7 +391,7 @@ VOID RemoveWorkItem(IN PUNIQUE_ID_WORK_ITEM WorkItem)
 /*
  * @implemented
  */
-NTAPI VOID UniqueIdChangeNotifyWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
+static NTAPI VOID UniqueIdChangeNotifyWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 {
     PUNIQUE_ID_WORK_ITEM WorkItem = Context;
     PMOUNTDEV_UNIQUE_ID OldUniqueId, NewUniqueId;
@@ -408,8 +407,7 @@ NTAPI VOID UniqueIdChangeNotifyWorker(IN PDEVICE_OBJECT DeviceObject, IN PVOID C
 
     UniqueIdChange = WorkItem->Irp->SystemBuffer;
     /* Get the old unique ID */
-    OldUniqueId = AllocatePool(UniqueIdChange->OldUniqueIdLength +
-			       sizeof(MOUNTDEV_UNIQUE_ID));
+    OldUniqueId = AllocatePool(UniqueIdChange->OldUniqueIdLength + sizeof(MOUNTDEV_UNIQUE_ID));
     if (!OldUniqueId) {
 	RemoveWorkItem(WorkItem);
 	return;

@@ -536,11 +536,11 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 
     /* Mark mounted only if not unloading */
     if (!(DeviceObject->Flags & DO_UNLOAD_PENDING)) {
-	InterlockedExchangeAdd(&ListDeviceInfo->MountState, 1);
+	ListDeviceInfo->MountState++;
     }
     ObDereferenceObject(DeviceObject);
 
-    /* Force default: no DB, and need for reconcile */
+    /* Force default: need to reconcile, and no DB */
     DeviceInformation->NeedsReconcile = TRUE;
     DeviceInformation->NoDatabase = TRUE;
     FailedFinding = FALSE;
@@ -605,8 +605,7 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
     }
 
     /* Query reparse point information
-     * We only pay attention to mout point
-     */
+     * We only pay attention to mout point */
     RtlZeroMemory(FileNameBuffer, sizeof(FileNameBuffer));
     FileName.Buffer = FileNameBuffer;
     FileName.Length = sizeof(FileNameBuffer);
@@ -679,7 +678,7 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 	} else {
 	    /* If we get the same one, we're done, bail out */
 	    if (ReparsePointInformation.FileReference ==
-		    SavedReparsePointInformation.FileReference &&
+		SavedReparsePointInformation.FileReference &&
 		ReparsePointInformation.Tag == SavedReparsePointInformation.Tag) {
 		break;
 	    }
@@ -758,15 +757,14 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 
 		    KeSetEvent(&DeviceExtension->DeviceLock);
 		    FreePool(DatabaseEntry);
-		}
-		/* If the Unique ID didn't change */
-		else if (UniqueId->UniqueIdLength == DatabaseEntry->UniqueIdLength &&
-			 RtlCompareMemory(UniqueId->UniqueId,
-					  (PVOID)((ULONG_PTR)DatabaseEntry +
-						  DatabaseEntry->UniqueIdOffset),
-					  UniqueId->UniqueIdLength) ==
-			     UniqueId->UniqueIdLength) {
-		    /* Reference the entry, and update to remote */
+		} else if (UniqueId->UniqueIdLength == DatabaseEntry->UniqueIdLength &&
+			   RtlCompareMemory(UniqueId->UniqueId,
+					    (PVOID)((ULONG_PTR)DatabaseEntry +
+						    DatabaseEntry->UniqueIdOffset),
+					    UniqueId->UniqueIdLength) ==
+			   UniqueId->UniqueIdLength) {
+		    /* If the Unique ID didn't change, reference the entry, and
+		     * update to remote */
 		    ++DatabaseEntry->EntryReferences;
 		    Status = WriteRemoteDatabaseEntry(DatabaseHandle, Offset,
 						      DatabaseEntry);
@@ -777,10 +775,9 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 		    FreePool(UniqueId);
 		    KeSetEvent(&DeviceExtension->DeviceLock);
 		    FreePool(DatabaseEntry);
-		}
-		/* Would, by chance, the Unique ID be present elsewhere? */
-		else if (IsUniqueIdPresent(DeviceExtension, DatabaseEntry)) {
-		    /* Push the ID to master */
+		} else if (IsUniqueIdPresent(DeviceExtension, DatabaseEntry)) {
+		    /* Would, by chance, the Unique ID be present elsewhere?
+		     * If so, push the ID to master */
 		    Status = WriteUniqueIdToMaster(DeviceExtension, DatabaseEntry);
 		    if (!NT_SUCCESS(Status)) {
 			goto FreeUniqueId;
@@ -856,8 +853,7 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 	    KeSetEvent(&DeviceExtension->DeviceLock);
 	    if (NT_SUCCESS(Status)) {
 		/* Allocate a new entry big enough */
-		DatabaseEntry = AllocatePool(UniqueId->UniqueIdLength +
-					     SymbolicName.Length +
+		DatabaseEntry = AllocatePool(UniqueId->UniqueIdLength + SymbolicName.Length +
 					     sizeof(DATABASE_ENTRY));
 		if (DatabaseEntry != NULL) {
 		    /* Configure it */
@@ -956,9 +952,8 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 		KeSetEvent(&DeviceExtension->DeviceLock);
 		goto CloseRDB;
 	    }
-	}
-	/* Update the Unique IDs to reflect the changes we might have done previously */
-	else {
+	} else {
+	    /* Update the Unique IDs to reflect the changes we might have done previously */
 	    if (ListDeviceInfo != NULL) {
 		UpdateReplicatedUniqueIds(ListDeviceInfo, DatabaseEntry);
 	    }

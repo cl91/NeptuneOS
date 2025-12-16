@@ -216,11 +216,9 @@ BOOLEAN IsUniqueIdPresent(IN PDEVICE_EXTENSION DeviceExtension,
 	}
 
 	/* It's matching! */
-	if (RtlCompareMemory((PVOID)((ULONG_PTR)DatabaseEntry +
-				     DatabaseEntry->UniqueIdOffset),
+	if (RtlCompareMemory((PVOID)((ULONG_PTR)DatabaseEntry + DatabaseEntry->UniqueIdOffset),
 			     DeviceInformation->UniqueId->UniqueId,
-			     DatabaseEntry->UniqueIdLength) ==
-	    DatabaseEntry->UniqueIdLength) {
+			     DatabaseEntry->UniqueIdLength) == DatabaseEntry->UniqueIdLength) {
 	    return TRUE;
 	}
     }
@@ -271,8 +269,6 @@ VOID CreateNoDriveLetterEntry(IN PMOUNTDEV_UNIQUE_ID UniqueId)
 			  UniqueId->UniqueId, UniqueId->UniqueIdLength);
 
     FreePool(String);
-
-    return;
 }
 
 /*
