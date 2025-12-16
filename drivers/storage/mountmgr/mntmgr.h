@@ -24,8 +24,6 @@ typedef struct _DEVICE_EXTENSION {
     BOOLEAN ProcessedSuggestions;
     BOOLEAN NoAutoMount;
     LIST_ENTRY WorkerQueueListHead;
-    KEVENT WorkerSemaphore;
-    LONG WorkerReferences;
     LIST_ENTRY UniqueIdWorkerItemListHead;
     PMOUNTDEV_UNIQUE_ID DriveLetterData;
     UNICODE_STRING RegistryPath;

@@ -606,15 +606,11 @@ NTAPI VOID MountMgrUnload(IN PDRIVER_OBJECT DriverObject)
 	DeviceExtension->RegistryPath.Buffer = NULL;
     }
 
-    InterlockedExchange(&Unloading, TRUE);
+    Unloading = TRUE;
 
-    /* Wait for workers to finish */
-    if (InterlockedIncrement(&DeviceExtension->WorkerReferences) > 0) {
-	KeSetEvent(&DeviceExtension->WorkerSemaphore);
-
+    /* Wait for database reconciliation workers to finish */
+    if (!IsListEmpty(&DeviceExtension->WorkerQueueListHead)) {
 	KeWaitForSingleObject(&UnloadEvent, Executive, KernelMode, FALSE, NULL);
-    } else {
-	InterlockedDecrement(&DeviceExtension->WorkerReferences);
     }
 
     /* Don't get any notification any longer */
@@ -1449,14 +1445,11 @@ static NTAPI NTSTATUS MountMgrShutdown(IN PDEVICE_OBJECT DeviceObject,
 
     DeviceExtension = DeviceObject->DeviceExtension;
 
-    InterlockedExchange(&Unloading, TRUE);
+    Unloading = TRUE;
 
-    /* Wait for workers */
-    if (InterlockedIncrement(&DeviceExtension->WorkerReferences) > 0) {
-	KeSetEvent(&DeviceExtension->WorkerSemaphore);
+    /* Wait for database reconciliation workers to finish */
+    if (!IsListEmpty(&DeviceExtension->WorkerQueueListHead)) {
 	KeWaitForSingleObject(&UnloadEvent, Executive, KernelMode, FALSE, NULL);
-    } else {
-	InterlockedDecrement(&DeviceExtension->WorkerReferences);
     }
 
     Irp->IoStatus.Status = STATUS_SUCCESS;
@@ -1506,8 +1499,6 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     InitializeListHead(&DeviceExtension->SavedLinksListHead);
 
     InitializeListHead(&DeviceExtension->WorkerQueueListHead);
-    KeInitializeEvent(&DeviceExtension->WorkerSemaphore, SynchronizationEvent, FALSE);
-    DeviceExtension->WorkerReferences = -1;
 
     InitializeListHead(&DeviceExtension->UniqueIdWorkerItemListHead);
     InitializeListHead(&DeviceExtension->OnlineNotificationListHead);

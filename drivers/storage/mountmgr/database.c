@@ -305,7 +305,7 @@ NTSTATUS WaitForRemoteDatabaseSemaphore(IN PDEVICE_EXTENSION DeviceExtension)
 
     /* Wait for 7 minutes */
     Timeout.QuadPart = 0xFA0A1F00;
-    Status = KeWaitForSingleObject(&(DeviceExtension->RemoteDatabaseLock), Executive,
+    Status = KeWaitForSingleObject(&DeviceExtension->RemoteDatabaseLock, Executive,
 				   KernelMode, FALSE, &Timeout);
     if (Status != STATUS_TIMEOUT) {
 	return Status;
@@ -1013,8 +1013,10 @@ static NTAPI VOID WorkerThread(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
      * We will write remote databases only if it is safe
      * to access volumes. */
     Status = NtOpenEvent(&SafeEvent, EVENT_ALL_ACCESS, &ObjectAttributes);
-    if (NT_SUCCESS(Status)) {
-	return;
+    if (!NT_SUCCESS(Status)) {
+	/* The VolumesSafeForWriteAccess event does not exist. Most likely
+	 * smss doesn't think it needs to call autochk, so continue. */
+	goto work;
     }
 
     /* We managed to open the event, wait until autochk signals it */
@@ -1024,18 +1026,15 @@ static NTAPI VOID WorkerThread(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 
     NtClose(SafeEvent);
 
+work:
     DeviceExtension = Context;
 
-    InterlockedExchange(&DeviceExtension->WorkerThreadStatus, 1);
-
-    /* Acquire workers lock */
-    KeWaitForSingleObject(&DeviceExtension->WorkerSemaphore, Executive, KernelMode,
-			  FALSE, NULL);
+    DeviceExtension->WorkerThreadStatus = 1;
 
     /* Ensure there are workers */
     while (!IsListEmpty(&(DeviceExtension->WorkerQueueListHead))) {
 	/* Unqueue a worker */
-	Entry = RemoveHeadList(&(DeviceExtension->WorkerQueueListHead));
+	Entry = RemoveHeadList(&DeviceExtension->WorkerQueueListHead);
 	WorkItem = CONTAINING_RECORD(Entry, RECONCILE_WORK_ITEM, WorkerQueueListEntry);
 
 	/* Call it */
@@ -1043,16 +1042,7 @@ static NTAPI VOID WorkerThread(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 
 	IoFreeWorkItem(WorkItem->WorkItem);
 	FreePool(WorkItem);
-
-	if (InterlockedDecrement(&DeviceExtension->WorkerReferences) < 0) {
-	    return;
-	}
-
-	KeWaitForSingleObject(&DeviceExtension->WorkerSemaphore, Executive, KernelMode,
-			      FALSE, NULL);
     }
-
-    InterlockedDecrement(&DeviceExtension->WorkerReferences);
 
     KeSetEvent(&UnloadEvent);
 }
@@ -1066,19 +1056,15 @@ NTSTATUS QueueWorkItem(IN PDEVICE_EXTENSION DeviceExtension,
 {
     WorkItem->Context = Context;
 
-    /* When called, lock is already acquired */
-
-    /* If noone (-1 as references), start to work */
-    if (InterlockedIncrement(&(DeviceExtension->WorkerReferences)) == 0) {
+    /* If the work queue is empty, queue the work item. */
+    if (IsListEmpty(&DeviceExtension->WorkerQueueListHead)) {
 	IoQueueWorkItem(WorkItem->WorkItem, WorkerThread, DelayedWorkQueue,
 			DeviceExtension);
     }
 
-    /* Otherwise queue worker for delayed execution */
+    /* Add the reconcile work item to the work queue. */
     InsertTailList(&DeviceExtension->WorkerQueueListHead,
 		   &WorkItem->WorkerQueueListEntry);
-
-    KeSetEvent(&DeviceExtension->WorkerSemaphore);
 
     return STATUS_SUCCESS;
 }
