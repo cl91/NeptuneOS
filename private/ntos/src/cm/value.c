@@ -123,21 +123,13 @@ static NTSTATUS CmpMarshalValueData(IN PCM_REG_VALUE Value,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
-				 IN PCSTR ValueName,
-				 IN KEY_VALUE_INFORMATION_CLASS InfoClass,
-				 IN PVOID OutputBuffer,
-				 IN ULONG BufferSize,
-				 OUT ULONG *ResultLength,
-				 IN BOOLEAN Utf16)
+static NTSTATUS CmpQueryValue(IN PCM_REG_VALUE Value,
+			      IN KEY_VALUE_INFORMATION_CLASS InfoClass,
+			      IN PVOID OutputBuffer,
+			      IN ULONG BufferSize,
+			      OUT ULONG *ResultLength,
+			      IN BOOLEAN Utf16)
 {
-    assert(ResultLength != NULL);
-    PCM_NODE Node = CmpGetNamedNode(Key, ValueName, 0);
-    if (Node == NULL) {
-	return STATUS_OBJECT_NAME_NOT_FOUND;
-    } else if (Node->Type != CM_NODE_VALUE) {
-	return STATUS_OBJECT_TYPE_MISMATCH;
-    }
 #ifdef _WIN64
     /* On 64-bit, always align to 8 bytes */
     ULONG Alignment = 8;
@@ -152,7 +144,6 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
     }
 #endif
 
-    PCM_REG_VALUE Value = (PCM_REG_VALUE)Node;
     switch (InfoClass) {
     case KeyValueBasicInformation:
     {
@@ -246,6 +237,25 @@ static NTSTATUS CmpQueryValueKey(IN PCM_KEY_OBJECT Key,
     }
 
     return STATUS_SUCCESS;
+}
+
+static NTSTATUS CmpQueryValueByName(IN PCM_KEY_OBJECT Key,
+				    IN PCSTR ValueName,
+				    IN KEY_VALUE_INFORMATION_CLASS InfoClass,
+				    IN PVOID OutputBuffer,
+				    IN ULONG BufferSize,
+				    OUT ULONG *ResultLength,
+				    IN BOOLEAN Utf16)
+{
+    assert(ResultLength != NULL);
+    PCM_NODE Node = CmpGetNamedNode(Key, ValueName, 0);
+    if (Node == NULL) {
+	return STATUS_OBJECT_NAME_NOT_FOUND;
+    } else if (Node->Type != CM_NODE_VALUE) {
+	return STATUS_OBJECT_TYPE_MISMATCH;
+    }
+    return CmpQueryValue((PCM_REG_VALUE)Node, InfoClass, OutputBuffer,
+			 BufferSize, ResultLength, Utf16);
 }
 
 /*
@@ -465,25 +475,20 @@ VOID CmpDbgDumpValue(IN PCM_REG_VALUE Value)
     }
 }
 
-/*
- * This corresponds to the NtQueryValueKey stub routine in the client-side.
- * Note that as opposed to the server-side NtQueryValueKeyA function below,
- * the output here is in UTF-16LE.
- */
-NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
-			  IN PTHREAD Thread,
-			  IN HANDLE KeyHandle,
-			  IN PCSTR ValueName,
-			  IN KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
-			  IN PVOID OutputBuffer,
-			  IN ULONG BufferSize,
-			  OUT ULONG *ResultLength)
+static NTSTATUS CmpQueryValueKeyByHandle(IN PTHREAD Thread,
+					 IN HANDLE KeyHandle,
+					 IN PCSTR ValueName,
+					 IN KEY_VALUE_INFORMATION_CLASS InfoClass,
+					 IN PVOID OutputBuffer,
+					 IN ULONG BufferSize,
+					 OUT ULONG *ResultLength,
+					 IN BOOLEAN Utf16)
 {
     CmDbg("Querying value %s for key handle %p KVIC %x bufsize 0x%x\n",
-	  ValueName, KeyHandle, KeyValueInformationClass, BufferSize);
+	  ValueName, KeyHandle, InfoClass, BufferSize);
     assert(Thread->Process != NULL);
-    if ((KeyValueInformationClass == KeyValueFullInformationAlign64 ||
-	 KeyValueInformationClass == KeyValuePartialInformationAlign64)
+    if ((InfoClass == KeyValueFullInformationAlign64 ||
+	 InfoClass == KeyValuePartialInformationAlign64)
 	&& (ALIGN_DOWN_POINTER(OutputBuffer, ULONGLONG) != OutputBuffer)) {
 	return STATUS_DATATYPE_MISALIGNMENT;
     }
@@ -492,12 +497,29 @@ NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     CmpDbgDumpKey(Key);
-    NTSTATUS Status = CmpQueryValueKey(Key, ValueName,
-				       KeyValueInformationClass,
-				       OutputBuffer, BufferSize,
-				       ResultLength, TRUE);
+    NTSTATUS Status = CmpQueryValueByName(Key, ValueName, InfoClass, OutputBuffer,
+					     BufferSize, ResultLength, Utf16);
     ObDereferenceObject(Key);
     return Status;
+
+}
+
+/*
+ * This corresponds to the NtQueryValueKey stub routine on the client-side.
+ * Note that as opposed to the server-side NtQueryValueKeyA function below,
+ * the output here is in UTF-16LE.
+ */
+NTSTATUS NtQueryValueKeyW(IN ASYNC_STATE AsyncState,
+			  IN PTHREAD Thread,
+			  IN HANDLE KeyHandle,
+			  IN PCSTR ValueName,
+			  IN KEY_VALUE_INFORMATION_CLASS InfoClass,
+			  IN PVOID OutputBuffer,
+			  IN ULONG BufferSize,
+			  OUT ULONG *ResultLength)
+{
+    return CmpQueryValueKeyByHandle(Thread, KeyHandle, ValueName, InfoClass,
+				    OutputBuffer, BufferSize, ResultLength, TRUE);
 }
 
 /*
@@ -508,29 +530,13 @@ NTSTATUS NtQueryValueKeyA(IN ASYNC_STATE AsyncState,
 			  IN PTHREAD Thread,
 			  IN HANDLE KeyHandle,
 			  IN PCSTR ValueName,
-			  IN KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
+			  IN KEY_VALUE_INFORMATION_CLASS InfoClass,
 			  IN PVOID OutputBuffer,
 			  IN ULONG BufferSize,
 			  OUT ULONG *ResultLength)
 {
-    CmDbg("Querying value %s for key handle %p KVIC %x bufsize 0x%x\n",
-	  ValueName, KeyHandle, KeyValueInformationClass, BufferSize);
-    assert(Thread->Process != NULL);
-    if ((KeyValueInformationClass == KeyValueFullInformationAlign64 ||
-	 KeyValueInformationClass == KeyValuePartialInformationAlign64)
-	&& (ALIGN_DOWN_POINTER(OutputBuffer, ULONGLONG) != OutputBuffer)) {
-	return STATUS_DATATYPE_MISALIGNMENT;
-    }
-    PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
-				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
-    assert(Key != NULL);
-    NTSTATUS Status = CmpQueryValueKey(Key, ValueName,
-				       KeyValueInformationClass,
-				       OutputBuffer, BufferSize,
-				       ResultLength, FALSE);
-    ObDereferenceObject(Key);
-    return Status;
+    return CmpQueryValueKeyByHandle(Thread, KeyHandle, ValueName, InfoClass,
+				    OutputBuffer, BufferSize, ResultLength, FALSE);
 }
 
 /*
@@ -588,16 +594,100 @@ NTSTATUS NtSetValueKey(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtEnumerateValueKey(IN ASYNC_STATE AsyncState,
-                             IN PTHREAD Thread,
-                             IN HANDLE KeyHandle,
-                             IN ULONG Index,
-                             IN KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
-                             IN PVOID InformationBuffer,
-                             IN ULONG BufferSize,
-                             OUT ULONG *ResultLength)
+static PCM_REG_VALUE CmpGetValueByIndex(IN PCM_KEY_OBJECT Key,
+					IN ULONG Index)
 {
-    UNIMPLEMENTED;
+    ULONG ValueCount = 0;
+    for (ULONG i = 0; i < CM_KEY_HASH_BUCKETS; i++) {
+	LoopOverList(Node, &Key->HashBuckets[i], CM_NODE, HashLink) {
+	    if (Node->Type == CM_NODE_VALUE) {
+		if (ValueCount++ == Index) {
+		    return (PCM_REG_VALUE)Node;
+		}
+	    }
+	}
+    }
+    return NULL;
+}
+
+static NTSTATUS CmpEnumerateValueKey(IN PCM_KEY_OBJECT Key,
+				     IN ULONG Index,
+				     IN KEY_VALUE_INFORMATION_CLASS InfoClass,
+				     IN PVOID OutputBuffer,
+				     IN ULONG BufferSize,
+				     OUT ULONG *ResultLength,
+				     IN BOOLEAN Utf16)
+{
+    /* Reject classes we don't know about */
+    if (InfoClass != KeyValueBasicInformation &&
+	InfoClass != KeyValueFullInformation &&
+        InfoClass != KeyValuePartialInformation &&
+	InfoClass != KeyValueFullInformationAlign64 &&
+        InfoClass != KeyValuePartialInformationAlign64) {
+        return STATUS_INVALID_PARAMETER;
+    }
+    CmpDbgDumpKey(Key);
+
+    /* Find the Index-th (zero-based) value of the key */
+    PCM_REG_VALUE Value = CmpGetValueByIndex(Key, Index);
+    if (!Value) {
+	CmDbg("No value with index %d\n", Index);
+	return STATUS_NO_MORE_ENTRIES;
+    }
+    CmDbg("Found value with index %d:\n", Index);
+    CmpDbgDumpValue(Value);
+
+    /* Returned the information for the value */
+    return CmpQueryValue(Value, InfoClass, OutputBuffer, BufferSize, ResultLength, Utf16);
+}
+
+static NTSTATUS CmpEnumerateValueKeyByHandle(IN ASYNC_STATE AsyncState,
+					     IN PTHREAD Thread,
+					     IN HANDLE KeyHandle,
+					     IN ULONG Index,
+					     IN KEY_VALUE_INFORMATION_CLASS InfoClass,
+					     IN PVOID OutputBuffer,
+					     IN ULONG BufferSize,
+					     OUT ULONG *ResultLength,
+					     IN BOOLEAN Utf16)
+{
+    CmDbg("NtEnumerateValueKey() KH 0x%p, Index 0x%x, KVIC %d, Length 0x%x\n",
+	  KeyHandle, Index, InfoClass, BufferSize);
+
+    PCM_KEY_OBJECT Key = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
+				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
+    assert(Key != NULL);
+    NTSTATUS Status = CmpEnumerateValueKey(Key, Index, InfoClass, OutputBuffer,
+					   BufferSize, ResultLength, Utf16);
+    ObDereferenceObject(Key);
+    return Status;
+}
+
+NTSTATUS NtEnumerateValueKeyA(IN ASYNC_STATE AsyncState,
+			      IN PTHREAD Thread,
+			      IN HANDLE KeyHandle,
+			      IN ULONG Index,
+			      IN KEY_VALUE_INFORMATION_CLASS InfoClass,
+			      IN PVOID InformationBuffer,
+			      IN ULONG BufferSize,
+			      OUT ULONG *ResultLength)
+{
+    return CmpEnumerateValueKeyByHandle(AsyncState, Thread, KeyHandle, Index, InfoClass,
+					InformationBuffer, BufferSize, ResultLength, FALSE);
+}
+
+NTSTATUS NtEnumerateValueKeyW(IN ASYNC_STATE AsyncState,
+			      IN PTHREAD Thread,
+			      IN HANDLE KeyHandle,
+			      IN ULONG Index,
+			      IN KEY_VALUE_INFORMATION_CLASS InfoClass,
+			      IN PVOID InformationBuffer,
+			      IN ULONG BufferSize,
+			      OUT ULONG *ResultLength)
+{
+    return CmpEnumerateValueKeyByHandle(AsyncState, Thread, KeyHandle, Index, InfoClass,
+					InformationBuffer, BufferSize, ResultLength, TRUE);
 }
 
 NTSTATUS NtDeleteValueKey(IN ASYNC_STATE AsyncState,

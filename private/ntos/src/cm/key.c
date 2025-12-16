@@ -713,14 +713,15 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
     ASYNC_END(AsyncState, Status);
 }
 
-NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE AsyncState,
-			 IN PTHREAD Thread,
-			 IN HANDLE KeyHandle,
-			 IN ULONG Index,
-			 IN KEY_INFORMATION_CLASS KeyInformationClass,
-			 OUT OPTIONAL PVOID InformationBuffer,
-			 IN ULONG BufferSize,
-			 OUT ULONG *ResultLength)
+static NTSTATUS CmpEnumerateKeyByHandle(IN ASYNC_STATE AsyncState,
+					IN PTHREAD Thread,
+					IN HANDLE KeyHandle,
+					IN ULONG Index,
+					IN KEY_INFORMATION_CLASS KeyInformationClass,
+					OUT OPTIONAL PVOID InformationBuffer,
+					IN ULONG BufferSize,
+					OUT ULONG *ResultLength,
+					IN BOOLEAN Utf16)
 {
     CmDbg("KeyHandle %p, Index 0x%x, KIC %d, Length 0x%x\n",
 	  KeyHandle, Index, KeyInformationClass, BufferSize);
@@ -732,13 +733,12 @@ NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE AsyncState,
     assert(Key != NULL);
     NTSTATUS Status = CmpEnumerateKey(Key, Index, KeyInformationClass,
 				      InformationBuffer, BufferSize,
-				      ResultLength, TRUE);
+				      ResultLength, Utf16);
     ObDereferenceObject(Key);
     return Status;
 }
 
-
-NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE AsyncState,
+NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE State,
 			 IN PTHREAD Thread,
 			 IN HANDLE KeyHandle,
 			 IN ULONG Index,
@@ -747,50 +747,31 @@ NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE AsyncState,
 			 IN ULONG BufferSize,
 			 OUT ULONG *ResultLength)
 {
-    CmDbg("NtEnumerateKey() KY %p, Index 0x%x, KIC %d, Length 0x%x\n",
-	  KeyHandle, Index, KeyInformationClass, BufferSize);
-    assert(Thread->Process != NULL);
-
-    PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
-				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
-    assert(Key != NULL);
-    NTSTATUS Status = CmpEnumerateKey(Key, Index, KeyInformationClass,
-				      InformationBuffer, BufferSize,
-				      ResultLength, FALSE);
-    ObDereferenceObject(Key);
-    return Status;
+    return CmpEnumerateKeyByHandle(State, Thread, KeyHandle, Index, KeyInformationClass,
+				   InformationBuffer, BufferSize, ResultLength, TRUE);
 }
 
-NTSTATUS NtQueryKeyW(IN ASYNC_STATE AsyncState,
-		     IN PTHREAD Thread,
-		     IN HANDLE KeyHandle,
-		     IN KEY_INFORMATION_CLASS KeyInformationClass,
-		     OUT OPTIONAL PVOID OutputBuffer,
-		     IN ULONG BufferSize,
-		     OUT ULONG *ResultLength)
+NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE State,
+			 IN PTHREAD Thread,
+			 IN HANDLE KeyHandle,
+			 IN ULONG Index,
+			 IN KEY_INFORMATION_CLASS KeyInformationClass,
+			 OUT OPTIONAL PVOID InformationBuffer,
+			 IN ULONG BufferSize,
+			 OUT ULONG *ResultLength)
 {
-    CmDbg("Querying key information class %d for key handle %p bufsize 0x%x\n",
-	  KeyInformationClass, KeyHandle, BufferSize);
-    assert(Thread->Process != NULL);
-
-    PCM_KEY_OBJECT Key = NULL;
-    RET_ERR(ObReferenceObjectByHandle(Thread, KeyHandle,
-				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
-    assert(Key != NULL);
-    NTSTATUS Status = CmpQueryKey(Key, KeyInformationClass, OutputBuffer,
-				  BufferSize, ResultLength, TRUE);
-    ObDereferenceObject(Key);
-    return Status;
+    return CmpEnumerateKeyByHandle(State, Thread, KeyHandle, Index, KeyInformationClass,
+				   InformationBuffer, BufferSize, ResultLength, FALSE);
 }
 
-NTSTATUS NtQueryKeyA(IN ASYNC_STATE AsyncState,
-		     IN PTHREAD Thread,
-		     IN HANDLE KeyHandle,
-		     IN KEY_INFORMATION_CLASS KeyInformationClass,
-		     OUT OPTIONAL PVOID OutputBuffer,
-		     IN ULONG BufferSize,
-		     OUT ULONG *ResultLength)
+static NTSTATUS CmpQueryKeyByHandle(IN ASYNC_STATE AsyncState,
+				    IN PTHREAD Thread,
+				    IN HANDLE KeyHandle,
+				    IN KEY_INFORMATION_CLASS KeyInformationClass,
+				    OUT OPTIONAL PVOID OutputBuffer,
+				    IN ULONG BufferSize,
+				    OUT ULONG *ResultLength,
+				    IN BOOLEAN Utf16)
 {
     CmDbg("Querying key information for key handle %p\n", KeyHandle);
     assert(Thread->Process != NULL);
@@ -800,9 +781,33 @@ NTSTATUS NtQueryKeyA(IN ASYNC_STATE AsyncState,
 				      OBJECT_TYPE_KEY, (POBJECT *)&Key));
     assert(Key != NULL);
     NTSTATUS Status = CmpQueryKey(Key, KeyInformationClass, OutputBuffer,
-				  BufferSize, ResultLength, FALSE);
+				  BufferSize, ResultLength, Utf16);
     ObDereferenceObject(Key);
     return Status;
+}
+
+NTSTATUS NtQueryKeyW(IN ASYNC_STATE State,
+		     IN PTHREAD Thread,
+		     IN HANDLE KeyHandle,
+		     IN KEY_INFORMATION_CLASS KeyInformationClass,
+		     OUT OPTIONAL PVOID OutputBuffer,
+		     IN ULONG BufferSize,
+		     OUT ULONG *ResultLength)
+{
+    return CmpQueryKeyByHandle(State, Thread, KeyHandle, KeyInformationClass,
+			       OutputBuffer, BufferSize, ResultLength, TRUE);
+}
+
+NTSTATUS NtQueryKeyA(IN ASYNC_STATE State,
+		     IN PTHREAD Thread,
+		     IN HANDLE KeyHandle,
+		     IN KEY_INFORMATION_CLASS KeyInformationClass,
+		     OUT OPTIONAL PVOID OutputBuffer,
+		     IN ULONG BufferSize,
+		     OUT ULONG *ResultLength)
+{
+    return CmpQueryKeyByHandle(State, Thread, KeyHandle, KeyInformationClass,
+			       OutputBuffer, BufferSize, ResultLength, FALSE);
 }
 
 NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,

@@ -550,7 +550,7 @@
     <parameter annotation="in" type="HANDLE" name="KeyHandle" />
     <parameter annotation="in" type="ULONG" name="Index" />
     <parameter annotation="in" type="KEY_VALUE_INFORMATION_CLASS" name="InfoClass" />
-    <parameter annotation="out" type="buf::Void" name="InformationBuffer" />
+    <parameter annotation="out unicode" type="buf::Void" name="InformationBuffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="BufferSize" />
     <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
   </svc>
