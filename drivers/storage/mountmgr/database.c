@@ -536,7 +536,7 @@ NTAPI VOID ReconcileThisDatabaseWithMasterWorker(IN PVOID Parameter)
 
     /* Mark mounted only if not unloading */
     if (!(DeviceObject->Flags & DO_UNLOAD_PENDING)) {
-	ListDeviceInfo->MountState++;
+	ListDeviceInfo->MountState = TRUE;
     }
     ObDereferenceObject(DeviceObject);
 

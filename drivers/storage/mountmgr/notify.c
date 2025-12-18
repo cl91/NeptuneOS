@@ -177,16 +177,12 @@ static NTAPI NTSTATUS MountMgrTargetDeviceNotification(IN PVOID NotificationStru
      */
     if (IsEqualGUID(&Notification->Event, &GUID_IO_VOLUME_MOUNT)) {
 	/* If we were already mounted, then mark us unmounted */
-	if (InterlockedCompareExchange(&DeviceInformation->MountState, FALSE, FALSE) ==
-	    TRUE) {
-	    InterlockedDecrement(&DeviceInformation->MountState);
-	}
-	/* Otherwise, start mounting the device and first, reconcile its DB if required */
-	else {
-	    if (DeviceInformation->NeedsReconcile) {
-		DeviceInformation->NeedsReconcile = FALSE;
-		ReconcileThisDatabaseWithMaster(DeviceExtension, DeviceInformation);
-	    }
+	if (DeviceInformation->MountState) {
+	    DeviceInformation->MountState = FALSE;
+	} else if (DeviceInformation->NeedsReconcile) {
+	    /* Otherwise, start mounting the device and first, reconcile its DB if required */
+	    DeviceInformation->NeedsReconcile = FALSE;
+	    ReconcileThisDatabaseWithMaster(DeviceExtension, DeviceInformation);
 	}
     }
 
@@ -485,7 +481,7 @@ VOID IssueUniqueIdChangeNotifyWorker(IN PUNIQUE_ID_WORK_ITEM WorkItem,
     Irp = WorkItem->Irp;
     IoInitializeIrp(Irp, IoSizeOfIrp(WorkItem->StackSize), (CCHAR)WorkItem->StackSize);
 
-    if (InterlockedExchange((PLONG) & (WorkItem->Event), 0) != 0) {
+    if (WorkItem->Event) {
 	ObDereferenceObject(DeviceObject);
 	ObDereferenceObject(AttachedDevice);
 	RemoveWorkItem(WorkItem);

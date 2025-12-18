@@ -39,21 +39,21 @@ typedef struct _DEVICE_INFORMATION {
     LIST_ENTRY SymbolicLinksListHead;
     LIST_ENTRY ReplicatedUniqueIdsListHead;
     LIST_ENTRY AssociatedDevicesHead;
-    UNICODE_STRING SymbolicName;
     PMOUNTDEV_UNIQUE_ID UniqueId;
+    PVOID TargetDeviceNotificationEntry;
+    PDEVICE_EXTENSION DeviceExtension;
+    UNICODE_STRING SymbolicName;
     UNICODE_STRING DeviceName;
-    BOOLEAN KeepLinks;
+    ULONG Migrated;
     UCHAR SuggestedDriveLetter;
+    BOOLEAN KeepLinks;
     BOOLEAN ManuallyRegistered;
     BOOLEAN Removable;
     BOOLEAN LetterAssigned;
     BOOLEAN NeedsReconcile;
     BOOLEAN NoDatabase;
     BOOLEAN SkipNotifications;
-    ULONG Migrated;
-    LONG MountState;
-    PVOID TargetDeviceNotificationEntry;
-    PDEVICE_EXTENSION DeviceExtension;
+    BOOLEAN MountState;
 } DEVICE_INFORMATION, *PDEVICE_INFORMATION;
 
 typedef struct _SYMLINK_INFORMATION {
