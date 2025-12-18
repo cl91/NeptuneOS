@@ -283,8 +283,56 @@ NTSTATUS HalpAdapterObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
+static SMBIOS_MATCH_ENTRY_TABLE HalpIsaDmaQuirkMatchTable[] = {
+    {	 /* GPD MicroPC (generic strings, also match on bios date)  */
+	{ SYS_VENDOR, "Default string" },
+	{ SYS_PRODUCT, "Default string" },
+	{ BOARD_VENDOR, "Default string" },
+	{ BOARD_NAME, "Default string" }
+    },
+    {  /* GPD MicroPC (later BIOS versions with proper DMI strings) */
+	{ SYS_VENDOR, "GPD" },
+	{ SYS_PRODUCT, "MicroPC" }
+    }
+};
+
+/* Returns TRUE if the platform does not support ISA DMA. */
+static BOOLEAN HalpSkipIsaDmaInit()
+{
+    for (ULONG i = 0; i < _ARRAYSIZE(HalpIsaDmaQuirkMatchTable); i++) {
+	ULONG j;
+	for (j = 0; j < MAX_MATCH_ENTRIES; j++) {
+	    ULONG Type = HalpIsaDmaQuirkMatchTable[i][j].Type;
+
+	    if (Type == SMBIOS_STRING_ID_NONE) {
+		/* Note this does NOT skip the increment (j++). */
+		continue;
+	    }
+
+	    /* If the specified string does not match, break out of the loop.
+	     * Note in this case j will be strictly less than MAX_MATCH_ENTRIES. */
+	    if (!HalpSmbiosStrings[Type] ||
+		strcmp(HalpIsaDmaQuirkMatchTable[i][j].String,
+		       HalpSmbiosStrings[Type])) {
+		break;
+	    }
+	}
+
+	if (j == MAX_MATCH_ENTRIES) {
+	    return TRUE;
+	}
+    }
+
+    return FALSE;
+}
+
 NTSTATUS HalpInitDma()
 {
+    /* On platforms that do not support ISA DMA, we skip ISA DMA init. */
+    if (HalpSkipIsaDmaInit()) {
+	return STATUS_SUCCESS;
+    }
+
     /* Create the system adapter object type */
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = HalpAdapterObjectCreateProc,

@@ -221,6 +221,15 @@ NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
     HalpAllocateArrayEx(Var, Type, Size, {})
 #define HalpFreePool(Var) ExFreePoolWithTag(Var, NTOS_HAL_TAG)
 
+typedef const struct _SMBIOS_MATCH_ENTRY {
+    ULONG Type;
+    PCHAR String;
+} SMBIOS_MATCH_ENTRY;
+
+#define MAX_MATCH_ENTRIES 4
+
+typedef SMBIOS_MATCH_ENTRY SMBIOS_MATCH_ENTRY_TABLE[MAX_MATCH_ENTRIES];
+
 /* coreboot.c */
 NTSTATUS HalpInitCoreboot(VOID);
 
