@@ -110,7 +110,7 @@ typedef struct _DRIVER_REINIT_ITEM {
  * X86 IO port object
  */
 typedef struct _X86_IOPORT {
-    SLIST_ENTRY Link;
+    LIST_ENTRY Link;
     MWORD Cap;
     USHORT PortNum;
     USHORT Count;
@@ -249,7 +249,8 @@ VOID IopAcquireDpcMutex();
 VOID IopReleaseDpcMutex();
 
 /* ioport.c */
-extern SLIST_HEADER IopX86PortList;
+extern LIST_ENTRY IopX86PortList;
+extern KMUTEX IopX86PortMutex;
 
 /* timer.c */
 extern LIST_ENTRY IopPendingTimerList;

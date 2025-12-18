@@ -424,6 +424,38 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
 #endif
 }
 
+NTSTATUS WdmDisableX86Port(IN ASYNC_STATE AsyncState,
+			   IN PTHREAD Thread,
+			   IN USHORT PortNum,
+			   IN USHORT Count,
+			   IN MWORD Cap)
+{
+#if defined(_M_IX86) || defined(_M_AMD64)
+    assert(Thread != NULL);
+    assert(Cap);
+    assert(Count == 1 || Count == 2 || Count == 4);
+    PPROCESS Process = Thread->Process;
+    assert(Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = Process->DriverObject;
+    assert(DriverObject != NULL);
+
+    LoopOverList(IoPort, &DriverObject->IoPortList, X86_IOPORT, Link) {
+	if (IoPort->PortNum == PortNum) {
+	    assert(IoPort->Count == Count);
+	    assert(IoPort->TreeNode.Cap == Cap);
+	    KeDisableIoPort(IoPort);
+	    RemoveEntryList(&IoPort->Link);
+	    IopFreePool(IoPort);
+	    return STATUS_SUCCESS;
+	}
+    }
+    assert(FALSE);
+    return STATUS_INVALID_PARAMETER;
+#else
+    return STATUS_NOT_SUPPORTED;
+#endif
+}
+
 static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 						IN PPNP_BUS_INFORMATION BusInfo,
 						IN ULONG SlotNumber,

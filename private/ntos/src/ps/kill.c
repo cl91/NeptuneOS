@@ -131,6 +131,11 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     if (Process->WorkItemMutex.TreeNode.Cap) {
 	KeDestroyNotification(&Process->WorkItemMutex);
     }
+#if defined(_M_IX86) || defined(_M_AMD64)
+    if (Process->X86PortMutex.TreeNode.Cap) {
+	KeDestroyNotification(&Process->X86PortMutex);
+    }
+#endif
     MmDestroyVSpace(&Process->VSpace);
     MmDeleteCNode(Process->SharedCNode);
     RemoveEntryList(&Process->ProcessListEntry);

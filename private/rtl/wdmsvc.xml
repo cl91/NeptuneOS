@@ -62,6 +62,12 @@
     <parameter annotation="out" type="ptr::MWORD" name="Cap" />
   </svc>
 
+  <svc name="WdmDisableX86Port">
+    <parameter annotation="in" type="USHORT" name="PortNum" />
+    <parameter annotation="in" type="USHORT" name="Count" />
+    <parameter annotation="in" type="MWORD" name="Cap" />
+  </svc>
+
   <svc name="WdmConnectInterrupt">
     <parameter annotation="in" type="ULONG" name="Vector" />
     <parameter annotation="in" type="PIO_INTERRUPT_SERVICE_THREAD_ENTRY" name="EntryPoint" />

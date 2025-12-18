@@ -190,6 +190,9 @@ typedef struct _NTDLL_DRIVER_INIT_INFO {
     MWORD X86TscFreq;
     MWORD DpcMutexCap;
     MWORD WorkItemMutexCap;
+#if defined(_M_IX86) || defined(_M_AMD64)
+    MWORD X86PortMutexCap;
+#endif
     CHAR ServicePath[INIT_INFO_SERVICE_PATH_SIZE]; /* Driver service registry key */
 } NTDLL_DRIVER_INIT_INFO, *PNTDLL_DRIVER_INIT_INFO;
 

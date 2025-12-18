@@ -3,45 +3,77 @@
 #if defined(_M_IX86) || defined(_M_AMD64)
 
 /* This list is accessed by both the ISR and non-ISR code, so we must synchronize access. */
-SLIST_HEADER IopX86PortList;
+LIST_ENTRY IopX86PortList;
+KMUTEX IopX86PortMutex;
+
+/* Note: you must hold the IopX86PortMutex mutex when calling this routine. */
+static PX86_IOPORT IopGetIoPort(IN USHORT PortNum)
+{
+    assert(IopX86PortMutex.Counter > 0);
+    LoopOverList(Port, &IopX86PortList, X86_IOPORT, Link) {
+	if (Port->PortNum <= PortNum && PortNum < Port->PortNum + Port->Count) {
+	    return Port;
+	}
+    }
+    return NULL;
+}
+
+/* Note: you must hold the IopX86PortMutex mutex when calling this routine. */
+static NTSTATUS IopDisableIoPort(IN PX86_IOPORT IoPort)
+{
+    assert(IopX86PortMutex.Counter > 0);
+    NTSTATUS Status = WdmDisableX86Port(IoPort->PortNum, IoPort->Count, IoPort->Cap);
+    if (!NT_SUCCESS(Status)) {
+	assert(FALSE);
+	return Status;
+    }
+    RemoveEntryList(&IoPort->Link);
+    IopFreePool(IoPort);
+    return STATUS_SUCCESS;
+}
 
 static NTSTATUS IopEnableIoPort(IN USHORT PortNum,
 				IN USHORT Len,
 				OUT PX86_IOPORT *pIoPort)
 {
     Len /= 8;
-    PSLIST_ENTRY Entry = RtlFirstEntrySList(&IopX86PortList);
-    while (Entry) {
-	PX86_IOPORT Port = CONTAINING_RECORD(Entry, X86_IOPORT, Link);
-	if (Port->PortNum == PortNum) {
-	    if (Port->Count == Len) {
-		*pIoPort = Port;
-		return STATUS_SUCCESS;
-	    } else {
-		return STATUS_ALREADY_INITIALIZED;
-	    }
-	}
-	Entry = Entry->Next;
+    KeAcquireMutex(&IopX86PortMutex);
+    PX86_IOPORT IoPort = IopGetIoPort(PortNum);
+    if (IoPort && IoPort->PortNum == PortNum && IoPort->Count == Len) {
+	*pIoPort = IoPort;
+	KeReleaseMutex(&IopX86PortMutex);
+	return STATUS_SUCCESS;
     }
     if (!IoThreadIsAtPassiveLevel()) {
 	assert(FALSE);
+	KeReleaseMutex(&IopX86PortMutex);
 	return STATUS_INVALID_THREAD;
     }
-    PX86_IOPORT IoPort = ExAllocatePool(NonPagedPool, sizeof(X86_IOPORT));
+    /* Remove the IO port range between PortNum and PortNum + Len (excluding). */
+    for (USHORT i = PortNum; i < PortNum + Len; i++) {
+	PX86_IOPORT PortToDisable = IopGetIoPort(i);
+	if (PortToDisable) {
+	    IopDisableIoPort(PortToDisable);
+	}
+    }
+    IoPort = ExAllocatePool(NonPagedPool, sizeof(X86_IOPORT));
     if (!IoPort) {
+	KeReleaseMutex(&IopX86PortMutex);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
     MWORD Cap = 0;
     NTSTATUS Status = WdmEnableX86Port(PortNum, Len, &Cap);
     if (!NT_SUCCESS(Status)) {
 	IopFreePool(IoPort);
+	KeReleaseMutex(&IopX86PortMutex);
 	return Status;
     }
     IoPort->Cap = Cap;
     IoPort->PortNum = PortNum;
     IoPort->Count = Len;
-    RtlInterlockedPushEntrySList(&IopX86PortList, &IoPort->Link);
+    InsertTailList(&IopX86PortList, &IoPort->Link);
     *pIoPort = IoPort;
+    KeReleaseMutex(&IopX86PortMutex);
     return STATUS_SUCCESS;
 }
 

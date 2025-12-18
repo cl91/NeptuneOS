@@ -698,6 +698,10 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 	Process->InitInfo.DriverInitInfo.DpcMutexCap = Process->DpcMutex.TreeNode.Cap;
 	RET_ERR(KeCreateNotificationEx(&Process->WorkItemMutex, Process->SharedCNode));
 	Process->InitInfo.DriverInitInfo.WorkItemMutexCap = Process->WorkItemMutex.TreeNode.Cap;
+#if defined(_M_IX86) || defined(_M_AMD64)
+	RET_ERR(KeCreateNotificationEx(&Process->X86PortMutex, Process->SharedCNode));
+	Process->InitInfo.DriverInitInfo.X86PortMutexCap = Process->X86PortMutex.TreeNode.Cap;
+#endif
     }
 
     /* Create the Event objects used by the NTDLL ldr component */

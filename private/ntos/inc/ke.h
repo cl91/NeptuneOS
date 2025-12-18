@@ -854,6 +854,12 @@ static inline NTSTATUS KeEnableIoPort(IN USHORT PortNum,
     extern CNODE MiNtosCNode;
     return KeEnableIoPortEx(&MiNtosCNode, PortNum, Count, IoPort);
 }
+
+static inline VOID KeDisableIoPort(IN PX86_IOPORT IoPort)
+{
+    assert(IoPort->TreeNode.Type == CAP_TREE_NODE_X86_IOPORT);
+    MmCapTreeDeleteNode(&IoPort->TreeNode);
+}
 #endif
 
 /* init.c */

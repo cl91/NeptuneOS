@@ -87,6 +87,9 @@ typedef struct _PROCESS {
     ULONG Cookie;
     NOTIFICATION DpcMutex;
     NOTIFICATION WorkItemMutex;
+#if defined(_M_IX86) || defined(_M_AMD64)
+    NOTIFICATION X86PortMutex;
+#endif
     ULONG_PTR AffinityMask;
     ULONG_PTR InheritedFromUniqueProcessId;
     ULONG_PTR BasePriority;
