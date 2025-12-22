@@ -155,13 +155,21 @@ NTSTATUS NtClearEvent(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS NtOpenEvent(IN ASYNC_STATE AsyncState,
+NTSTATUS NtOpenEvent(IN ASYNC_STATE State,
                      IN PTHREAD Thread,
                      OUT HANDLE *EventHandle,
                      IN ACCESS_MASK DesiredAccess,
                      IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
-    UNIMPLEMENTED;
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State);
+    AWAIT_EX(Status, ObOpenObjectByName, State, _, Thread,
+	     ObjectAttributes, OBJECT_TYPE_EVENT, DesiredAccess,
+	     NULL, EventHandle);
+    ASYNC_END(State, Status);
 }
 
 /* If the object is a dispatcher object, return the dispatcher header.
