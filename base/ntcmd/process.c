@@ -37,7 +37,8 @@ NTSTATUS CreateNativeProcess(IN PCWSTR FileName, IN PCWSTR CmdLine,
 					&DllPath, &UnicodeCmdLine, Env, 0, 0, 0, 0);
 
     if (!NT_SUCCESS(Status)) {
-	RtlCliDisplayString("RtlCreateProcessParameters failed\n");
+	RtlCliDisplayString("RtlCreateProcessParameters failed with error 0x%08x\n",
+			    Status);
 	return STATUS_UNSUCCESSFUL;
     }
 
@@ -48,14 +49,15 @@ NTSTATUS CreateNativeProcess(IN PCWSTR FileName, IN PCWSTR CmdLine,
 				  NULL, NULL, &ProcessInformation);
 
     if (!NT_SUCCESS(Status)) {
-	RtlCliDisplayString("RtlCreateUserProcess failed\n");
+	RtlCliDisplayString("RtlCreateUserProcess failed with error 0x%08x\n",
+			    Status);
 	return STATUS_UNSUCCESSFUL;
     }
 
     Status = NtResumeThread(ProcessInformation.ThreadHandle, NULL);
 
     if (!NT_SUCCESS(Status)) {
-	RtlCliDisplayString("NtResumeThread failed\n");
+	RtlCliDisplayString("NtResumeThread failed with error 0x%08x\n", Status);
 	return STATUS_UNSUCCESSFUL;
     }
     NtClose(ProcessInformation.ThreadHandle);
