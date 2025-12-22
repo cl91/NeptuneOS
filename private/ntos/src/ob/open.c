@@ -321,7 +321,7 @@ done:
     if (Type == OBJECT_TYPE_ANY || Type == OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->Index) {
 	/* Type is valid. Assign the handle. */
 	if (AssignHandle) {
-	    Status = ObCreateHandle(Thread->Process, Locals.Object, TRUE, pHandle);
+	    Status = ObCreateHandle(Thread->Process, Locals.Object, TRUE, pHandle, NULL);
 	} else {
 	    /* We are returning a pointer to the object to another server component.
 	     * In this case we should increse the refcount because the caller is

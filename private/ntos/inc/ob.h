@@ -564,20 +564,12 @@ NTSTATUS ObReferenceObjectByHandle(IN struct _THREAD *Thread,
 				   IN HANDLE Handle,
 				   IN OBJECT_TYPE_ENUM Type,
 				   OUT POBJECT *pObject);
-NTSTATUS ObAllocateHandle(IN struct _PROCESS *Process,
-			  OUT PHANDLE_TABLE_ENTRY *pEntry,
-			  OUT PAVL_NODE *Parent);
-VOID ObFreeHandleTableEntry(IN PHANDLE_TABLE_ENTRY Entry);
-VOID ObInsertHandle(IN struct _PROCESS *Process,
-		    IN POBJECT Object,
-		    IN BOOLEAN ObjectOpened,
-		    IN PHANDLE_TABLE_ENTRY Entry,
-		    IN PAVL_NODE Parent,
-		    OUT HANDLE *pHandle);
 NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			IN POBJECT Object,
 			IN BOOLEAN ObjectOpened,
-			OUT HANDLE *pHandle);
+			OUT HANDLE *pHandle,
+			OUT OPTIONAL PHANDLE_TABLE_ENTRY *pEntry);
+VOID ObRemoveHandle(IN PHANDLE_TABLE_ENTRY Entry);
 VOID ObRemoveObject(IN POBJECT Object);
 VOID ObDereferenceObject(IN POBJECT Object);
 VOID ObDbgDumpObjectHandles(IN POBJECT Object,

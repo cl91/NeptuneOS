@@ -100,19 +100,27 @@ typedef struct _TIMER_OBJ_CREATE_CONTEXT {
     TIMER_TYPE Type;
 } TIMER_OBJ_CREATE_CONTEXT, *PTIMER_OBJ_CREATE_CONTEXT;
 
+/* event.c */
+struct _PROCESS;
+struct _HANDLE_TABLE_ENTRY;
+NTSTATUS ExCreateEvent(IN struct _PROCESS *Process,
+		       IN EVENT_TYPE EventType,
+		       OUT PEVENT_OBJECT *Event,
+		       OUT HANDLE *EventHandle,
+		       OUT struct _HANDLE_TABLE_ENTRY **HandleTableEntry);
 
 /* init.c */
 NTSTATUS ExInitSystemPhase0(seL4_BootInfo *bootinfo);
 NTSTATUS ExInitSystemPhase1();
-
-/* pool.c */
-NTSTATUS ExInitializePool(IN MWORD HeapStart, IN LONG NumPages);
-PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes, IN ULONG Tag);
-VOID ExFreePoolWithTag(IN PCVOID Ptr, IN ULONG Tag);
-BOOLEAN ExCheckPoolObjectTag(IN PCVOID Ptr, IN ULONG Tag);
 
 /* lpc.c */
 VOID ExClosePortConnection(IN PLPC_PORT_CONNECTION Connection,
 			   IN BOOLEAN ThreadIsTerminating);
 NTSTATUS ExCloseLocalHandle(IN struct _THREAD *Thread,
 			    IN HANDLE Handle);
+
+/* pool.c */
+NTSTATUS ExInitializePool(IN MWORD HeapStart, IN LONG NumPages);
+PVOID ExAllocatePoolWithTag(IN MWORD NumberOfBytes, IN ULONG Tag);
+VOID ExFreePoolWithTag(IN PCVOID Ptr, IN ULONG Tag);
+BOOLEAN ExCheckPoolObjectTag(IN PCVOID Ptr, IN ULONG Tag);

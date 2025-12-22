@@ -50,14 +50,25 @@ NTSTATUS EiInitEventObject()
     return EiCreateEventType();
 }
 
-NTSTATUS EiCreateEvent(IN PPROCESS Process,
+NTSTATUS ExCreateEvent(IN PPROCESS Process,
 		       IN EVENT_TYPE EventType,
-		       OUT PEVENT_OBJECT *Event)
+		       OUT PEVENT_OBJECT *EventObject,
+		       OUT HANDLE *EventHandle,
+		       OUT PHANDLE_TABLE_ENTRY *HandleTableEntry)
 {
+    *EventObject = NULL;
+    *HandleTableEntry = NULL;
     EVENT_OBJ_CREATE_CONTEXT Ctx = {
 	.EventType = EventType
     };
-    return ObCreateObject(OBJECT_TYPE_EVENT, (POBJECT *)Event, &Ctx);
+    RET_ERR(ObCreateObject(OBJECT_TYPE_EVENT, (POBJECT *)EventObject, &Ctx));
+    RET_ERR_EX(ObCreateHandle(Process, *EventObject, FALSE,
+			      EventHandle, HandleTableEntry),
+	       {
+		   ObDereferenceObject(*EventObject);
+		   *EventObject = NULL;
+	       });
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtCreateEvent(IN ASYNC_STATE State,
@@ -76,16 +87,16 @@ NTSTATUS NtCreateEvent(IN ASYNC_STATE State,
 
     NTSTATUS Status = STATUS_NTOS_BUG;
     PEVENT_OBJECT Event = NULL;
+    PHANDLE_TABLE_ENTRY HandleTableEntry = NULL;
     IF_ERR_GOTO(out, Status,
-		EiCreateEvent(Thread->Process, EventType, &Event));
+		ExCreateEvent(Thread->Process, EventType, &Event,
+			      EventHandle, &HandleTableEntry));
     assert(Event != NULL);
 
     if (ObjectAttributes.ObjectNameBuffer && ObjectAttributes.ObjectNameBuffer[0]) {
 	IF_ERR_GOTO(out, Status, ObInsertObject(RootDirectory, Event,
 						ObjectAttributes.ObjectNameBuffer, 0));
     }
-
-    IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, Event, FALSE, EventHandle));
 
     /* Even if the object is inserted into the NT namespace, NT API semantics says that
      * it is still a temporary object. */
@@ -101,8 +112,9 @@ out:
 	ObDereferenceObject(RootDirectory);
     }
     if (!NT_SUCCESS(Status)) {
-	/* ObRemoveObject is a no-op if Event is not inserted. */
-	ObRemoveObject(Event);
+	if (HandleTableEntry) {
+	    ObRemoveHandle(HandleTableEntry);
+	}
 	ObDereferenceObject(Event);
     }
     return Status;

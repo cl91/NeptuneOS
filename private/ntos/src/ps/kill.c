@@ -131,6 +131,19 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     if (Process->WorkItemMutex.TreeNode.Cap) {
 	KeDestroyNotification(&Process->WorkItemMutex);
     }
+#define DESTROY_EVENT(ObjName)					\
+    if (Process->ObjName) {					\
+	assert(ObGetObjectRefCount(Process->ObjName) == 1);	\
+	ObDereferenceObject(Process->ObjName);			\
+    }
+    DESTROY_EVENT(CriticalSectionLockSemaphore);
+    DESTROY_EVENT(LoaderLockSemaphore);
+    DESTROY_EVENT(FastPebLockSemaphore);
+    DESTROY_EVENT(ProcessHeapListLockSemaphore);
+    DESTROY_EVENT(VectoredHandlerLockSemaphore);
+    DESTROY_EVENT(ProcessHeapLockSemaphore);
+    DESTROY_EVENT(LoaderHeapLockSemaphore);
+#undef DESTROY_EVENT
 #if defined(_M_IX86) || defined(_M_AMD64)
     if (Process->X86PortMutex.TreeNode.Cap) {
 	KeDestroyNotification(&Process->X86PortMutex);

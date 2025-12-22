@@ -1070,7 +1070,7 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
     }
     assert(Section);
     assert(SectionHandle);
-    Status = ObCreateHandle(Thread->Process, Section, FALSE, SectionHandle);
+    Status = ObCreateHandle(Thread->Process, Section, FALSE, SectionHandle, NULL);
     if (!NT_SUCCESS(Status)) {
 	ObDereferenceObject(Section);
     }

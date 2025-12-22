@@ -144,7 +144,7 @@ NTSTATUS NtCreateSymbolicLinkObject(IN ASYNC_STATE AsyncState,
      * NOT increase refcount of the object), making the object permanent as per
      * NT API semantics. */
     IF_ERR_GOTO(out, Status, ObCreateHandle(Thread->Process, Symlink,
-					    FALSE, SymbolicLinkHandle));
+					    FALSE, SymbolicLinkHandle, NULL));
 
     Status = STATUS_SUCCESS;
 

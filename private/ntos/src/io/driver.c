@@ -530,7 +530,7 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 
     /* Assign a handle for the ISR thread in the driver process */
     IF_ERR_GOTO(err, Status, ObCreateHandle(DriverProcess, Svc->IsrThread, FALSE,
-					    &Svc->ThreadHandle));
+					    &Svc->ThreadHandle, NULL));
 
     Svc->Vector = Vector;
     InsertTailList(&DriverObject->InterruptServiceList, &Svc->Link);
@@ -638,7 +638,7 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 
     /* Assign a handle for the DPC thread in the driver process */
     IF_ERR_GOTO(err, Status, ObCreateHandle(Thread->Process, DriverObject->DpcThread,
-					    FALSE, ThreadHandle));
+					    FALSE, ThreadHandle, NULL));
     *WdmServiceCap =
 	PsThreadCNodeIndexToGuardedCap(DriverObject->DpcThread->WdmServiceEndpoint->TreeNode.Cap,
 				       DriverObject->DpcThread);

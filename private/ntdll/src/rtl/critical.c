@@ -398,7 +398,8 @@ NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
     PRTL_CRITICAL_SECTION_DEBUG CriticalSectionDebugData;
 
     /* First things first, set up the Object */
-    DPRINT("Initializing Critical Section: %p\n", CriticalSection);
+    DPRINT("Initializing Critical Section: %p (handle %p spincount %d)\n",
+	   CriticalSection, LockSemaphore, SpinCount);
     CriticalSection->LockCount = -1;
     CriticalSection->RecursionCount = 0;
     CriticalSection->OwningThread = 0;

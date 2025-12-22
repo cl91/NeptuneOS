@@ -1265,7 +1265,7 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
      * to reply to the client without asking the file system driver. */
     if (FileInfoClass == FilePositionInformation) {
 	/* TODO: Eventually we will schedule an IO APC to deliver the results
-	 * to the client side in order to avoid doing a syscall. For now we
+	 * to the client side in order to avoid doing an seL4 syscall. For now we
 	 * will just map the user buffer to NT Executive address space. */
 	PFILE_POSITION_INFORMATION PosInfo = NULL;
 	IF_ERR_GOTO(out, Status, MmMapUserBuffer(&Thread->Process->VSpace,

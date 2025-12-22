@@ -377,7 +377,7 @@ NTSTATUS NtCreateTimer(IN ASYNC_STATE State,
     RET_ERR(KeCreateTimer(TimerType, &Timer));
     assert(Timer != NULL);
 
-    RET_ERR_EX(ObCreateHandle(Thread->Process, Timer, FALSE, Handle),
+    RET_ERR_EX(ObCreateHandle(Thread->Process, Timer, FALSE, Handle, NULL),
 	       KeUninitializeTimer(Timer));
     ObMakeTemporaryObject(Timer);
     assert(*Handle != NULL);

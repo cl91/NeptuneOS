@@ -81,6 +81,13 @@ typedef struct _PROCESS {
     MWORD UserExceptionDispatcher; /* Address to dispatch to when an exception occurs. */
     MWORD PebClientAddr;
     LIST_ENTRY ProcessListEntry;
+    PEVENT_OBJECT CriticalSectionLockSemaphore;
+    PEVENT_OBJECT LoaderLockSemaphore;
+    PEVENT_OBJECT FastPebLockSemaphore;
+    PEVENT_OBJECT ProcessHeapListLockSemaphore;
+    PEVENT_OBJECT VectoredHandlerLockSemaphore;
+    PEVENT_OBJECT ProcessHeapLockSemaphore;
+    PEVENT_OBJECT LoaderHeapLockSemaphore;
     NTDLL_PROCESS_INIT_INFO InitInfo;
     PIO_DRIVER_OBJECT DriverObject;
     NTSTATUS ExitStatus;	    /* Exit status of process */

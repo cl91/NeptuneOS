@@ -704,10 +704,35 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 #endif
     }
 
-    /* Create the Event objects used by the NTDLL ldr component */
-    /* FIXME: TODO */
-    Process->InitInfo.ProcessHeapLockSemaphore = (HANDLE)3;
-    Process->InitInfo.LoaderHeapLockSemaphore = (HANDLE)3;
+    /* Create the Event objects used by the NTDLL ldr component. Note if creation of
+     * these events failed, we need to cleanup the handle entries here because in the
+     * delete routine of the PROCESS object, we require that the handle table of the
+     * process be empty (PsTerminateProcess is required to cleanup the handle table). */
+#define DECLARE_EVENT_HANDLE(ObjName)				\
+    PHANDLE_TABLE_ENTRY ObjName ## HandleTableEntry = NULL
+    DECLARE_EVENT_HANDLE(CriticalSectionLockSemaphore);
+    DECLARE_EVENT_HANDLE(LoaderLockSemaphore);
+    DECLARE_EVENT_HANDLE(FastPebLockSemaphore);
+    DECLARE_EVENT_HANDLE(ProcessHeapListLockSemaphore);
+    DECLARE_EVENT_HANDLE(VectoredHandlerLockSemaphore);
+    DECLARE_EVENT_HANDLE(ProcessHeapLockSemaphore);
+    DECLARE_EVENT_HANDLE(LoaderHeapLockSemaphore);
+#undef DECLARE_EVENT_HANDLE
+    NTSTATUS Status;
+#define CREATE_EVENT(ObjName)						\
+    IF_ERR_GOTO(fail, Status, ExCreateEvent(Process,			\
+					    SynchronizationEvent,	\
+					    &Process->ObjName,		\
+					    &Process->InitInfo.ObjName,	\
+					    &ObjName##HandleTableEntry))
+    CREATE_EVENT(CriticalSectionLockSemaphore);
+    CREATE_EVENT(LoaderLockSemaphore);
+    CREATE_EVENT(FastPebLockSemaphore);
+    CREATE_EVENT(ProcessHeapListLockSemaphore);
+    CREATE_EVENT(VectoredHandlerLockSemaphore);
+    CREATE_EVENT(ProcessHeapLockSemaphore);
+    CREATE_EVENT(LoaderHeapLockSemaphore);
+#undef CREATE_EVENT
 
     /* Generate a per-process security cookie */
     LARGE_INTEGER SystemTime = { .QuadPart = KeQuerySystemTime() };
@@ -716,6 +741,21 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     InsertTailList(&PspProcessList, &Process->ProcessListEntry);
 
     return STATUS_SUCCESS;
+
+fail:
+#define CLEANUP_HANDLE_ENTRY(ObjName)			\
+    if (ObjName##HandleTableEntry) {			\
+	ObRemoveHandle(ObjName##HandleTableEntry);	\
+    }
+    CLEANUP_HANDLE_ENTRY(CriticalSectionLockSemaphore);
+    CLEANUP_HANDLE_ENTRY(LoaderLockSemaphore);
+    CLEANUP_HANDLE_ENTRY(FastPebLockSemaphore);
+    CLEANUP_HANDLE_ENTRY(ProcessHeapListLockSemaphore);
+    CLEANUP_HANDLE_ENTRY(VectoredHandlerLockSemaphore);
+    CLEANUP_HANDLE_ENTRY(ProcessHeapLockSemaphore);
+    CLEANUP_HANDLE_ENTRY(LoaderHeapLockSemaphore);
+#undef CLEANUP_HANDLE_ENTRY
+    return Status;
 }
 
 NTSTATUS PsCreateThread(IN PPROCESS Process,
@@ -797,7 +837,7 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
      * states that thread object is always created as a temporary object, we don't make
      * it temporary at this point. The refcount decrement is done in PsTerminateThread,
      * when the thread exits. */
-    RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, FALSE, ThreadHandle),
+    RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, FALSE, ThreadHandle, NULL),
 	       ObDereferenceObject(CreatedThread));
     *ClientId = PsGetClientId(CreatedThread);
     return STATUS_SUCCESS;
@@ -838,7 +878,7 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
     /* Like the case of thread objects, the newly created thread object will have
      * refcount 2, but we don't make decrement its refcount at this point. That is
      * done in PsTerminateProcess, when the process exits. */
-    RET_ERR_EX(ObCreateHandle(Thread->Process, Process, FALSE, ProcessHandle),
+    RET_ERR_EX(ObCreateHandle(Thread->Process, Process, FALSE, ProcessHandle, NULL),
 	       ObDereferenceObject(Process));
 
     return STATUS_SUCCESS;

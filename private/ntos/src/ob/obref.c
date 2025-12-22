@@ -42,9 +42,9 @@ static NTSTATUS ObpLookupObjectHandleWithType(IN PPROCESS Process,
     return STATUS_OBJECT_TYPE_MISMATCH;
 }
 
-NTSTATUS ObAllocateHandle(IN PPROCESS Process,
-			  OUT PHANDLE_TABLE_ENTRY *pEntry,
-			  OUT PAVL_NODE *Parent)
+static NTSTATUS ObpAllocateHandle(IN PPROCESS Process,
+				  OUT PHANDLE_TABLE_ENTRY *pEntry,
+				  OUT PAVL_NODE *Parent)
 {
     ObpAllocatePool(Entry, HANDLE_TABLE_ENTRY);
     /* Check if we have enough unused handle slot at the end of the
@@ -102,17 +102,12 @@ NTSTATUS ObAllocateHandle(IN PPROCESS Process,
     }
 }
 
-VOID ObFreeHandleTableEntry(IN PHANDLE_TABLE_ENTRY Entry)
-{
-    ObpFreePool(Entry);
-}
-
-VOID ObInsertHandle(IN PPROCESS Process,
-		    IN POBJECT Object,
-		    IN BOOLEAN ObjectOpened,
-		    IN PHANDLE_TABLE_ENTRY Entry,
-		    IN PAVL_NODE Parent,
-		    OUT HANDLE *pHandle)
+static VOID ObpInsertHandle(IN PPROCESS Process,
+			    IN POBJECT Object,
+			    IN BOOLEAN ObjectOpened,
+			    IN PHANDLE_TABLE_ENTRY Entry,
+			    IN PAVL_NODE Parent,
+			    OUT HANDLE *pHandle)
 {
     assert(Entry);
     assert(Entry->AvlNode.Key);
@@ -134,15 +129,40 @@ VOID ObInsertHandle(IN PPROCESS Process,
 NTSTATUS ObCreateHandle(IN PPROCESS Process,
 			IN POBJECT Object,
 			IN BOOLEAN ObjectOpened,
-			OUT HANDLE *pHandle)
+			OUT HANDLE *pHandle,
+			OUT OPTIONAL PHANDLE_TABLE_ENTRY *pEntry)
 {
     assert(Object != NULL);
     assert(pHandle != NULL);
     PHANDLE_TABLE_ENTRY Entry = NULL;
     PAVL_NODE Parent = NULL;
-    RET_ERR(ObAllocateHandle(Process, &Entry, &Parent));
-    ObInsertHandle(Process, Object, ObjectOpened, Entry, Parent, pHandle);
+    RET_ERR(ObpAllocateHandle(Process, &Entry, &Parent));
+    ObpInsertHandle(Process, Object, ObjectOpened, Entry, Parent, pHandle);
+    if (pEntry) {
+	*pEntry = Entry;
+    }
     return STATUS_SUCCESS;
+}
+
+/*
+ * Remove the handle table entry from the process and free the handle table entry.
+ * This routine basically un-does what ObCreateHandle did.
+ */
+VOID ObRemoveHandle(IN PHANDLE_TABLE_ENTRY Entry)
+{
+    assert(Entry->Process);
+    AvlTreeRemoveNode(&Entry->Process->HandleTable.Tree, &Entry->AvlNode);
+    RemoveEntryList(&Entry->HandleEntryLink);
+    /* If the handle was created during an open, decrease the object refcount
+     * because the open routine increased it. */
+    if (Entry->InvokeClose) {
+	assert(ObGetObjectRefCount(Entry->Object) >= 2);
+	ObDereferenceObject(Entry->Object);
+    }
+    /* Decrease the object refcount because ObCreateHandle increased it. */
+    assert(ObGetObjectRefCount(Entry->Object) >= 1);
+    ObDereferenceObject(Entry->Object);
+    ObpFreePool(Entry);
 }
 
 /*
@@ -273,6 +293,8 @@ static NTSTATUS ObpCloseHandle(IN ASYNC_STATE State,
 						   &Locals.Object, &Locals.Entry));
     assert(Locals.Object);
     assert(Locals.Entry);
+    assert(Locals.Object == Locals.Entry->Object);
+    assert(Locals.Entry->Process == Process);
     /* Handle count should always be smaller than or equal to refcount. */
     assert(ObGetObjectHandleCount(Locals.Object)
            <= OBJECT_TO_OBJECT_HEADER(Locals.Object)->RefCount);
@@ -282,16 +304,7 @@ static NTSTATUS ObpCloseHandle(IN ASYNC_STATE State,
 	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.CloseProc,
 	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.CloseProc,
 	     State, Locals, Thread, Locals.Object);
-    AvlTreeRemoveNode(&Process->HandleTable.Tree, &Locals.Entry->AvlNode);
-    RemoveEntryList(&Locals.Entry->HandleEntryLink);
-    /* If the handle was created during an open, decrease the object refcount
-     * because the open routine increased it. */
-    if (Locals.Entry->InvokeClose) {
-	ObDereferenceObject(Locals.Object);
-    }
-    ObpFreePool(Locals.Entry);
-    /* Decrease the object refcount because ObCreateHandle increased it. */
-    ObDereferenceObject(Locals.Object);
+    ObRemoveHandle(Locals.Entry);
     Status = STATUS_SUCCESS;
 out:
     ASYNC_END(State, Status);

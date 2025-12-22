@@ -123,7 +123,7 @@ NTSTATUS NtCreatePort(IN ASYNC_STATE AsyncState,
     }
 
     IF_ERR_GOTO(out, Status,
-		ObCreateHandle(Thread->Process, Port, FALSE, PortHandle));
+		ObCreateHandle(Thread->Process, Port, FALSE, PortHandle, NULL));
 
     /* Even if the object is inserted into the NT namespace, NT API semantics says that
      * it is still a temporary object. */
@@ -274,24 +274,18 @@ NTSTATUS NtAcceptPort(IN ASYNC_STATE AsyncState,
     PAVL_NODE Parent = NULL;
     if (EventHandle) {
 	IF_ERR_GOTO(refuse, Status,
-		    EiCreateEvent(Thread->Process, SynchronizationEvent,
-				  &Connection->EventObject));
-	IF_ERR_GOTO(refuse, Status,
-		    ObAllocateHandle(Thread->Process, &Entry, &Parent));
+		    ExCreateEvent(Thread->Process, SynchronizationEvent,
+				  &Connection->EventObject, EventHandle, &Entry));
     }
 
     Connection->PortContext = PortContext;
-    if (EventHandle) {
-	ObInsertHandle(Thread->Process, Connection->EventObject,
-		       FALSE, Entry, Parent, EventHandle);
-    }
     Status = STATUS_SUCCESS;
     goto ok;
 
 refuse:
     Connection->ConnectionRefused = TRUE;
     if (Entry) {
-	ObFreeHandleTableEntry(Entry);
+	ObRemoveHandle(Entry);
     }
 ok:
     KeSetEvent(&Connection->Connected);
@@ -380,15 +374,16 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 
     assert(Locals.Connection->ConnectionInserted);
     assert(!Locals.Connection->ClientDied);
+    PHANDLE_TABLE_ENTRY Entry = NULL;
     if (Locals.Connection->ConnectionRefused) {
 	Status = STATUS_CONNECTION_REFUSED;
 	goto err;
     }
 
-    PHANDLE_TABLE_ENTRY Entry = NULL;
-    PAVL_NODE Parent = NULL;
     if (EventHandle && Locals.Connection->EventObject) {
-	IF_ERR_GOTO(err, Status, ObAllocateHandle(Thread->Process, &Entry, &Parent));
+	IF_ERR_GOTO(err, Status, ObCreateHandle(Thread->Process,
+						Locals.Connection->EventObject,
+						FALSE, EventHandle, &Entry));
     }
 
     /* Mint the server communication endpoint with the specified badge and
@@ -400,10 +395,6 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 					  ENDPOINT_RIGHTS_SEND,
 					  Locals.Connection->PortContext));
 
-    if (EventHandle && Locals.Connection->EventObject) {
-	ObInsertHandle(Thread->Process, Locals.Connection->EventObject,
-		       FALSE, Entry, Parent, EventHandle);
-    }
     *PortHandle =
 	(HANDLE)(PsThreadCNodeIndexToGuardedCap(Locals.Connection->ClientEndpoint.TreeNode.Cap,
 						Thread) | LOCAL_HANDLE_FLAG);
@@ -412,6 +403,9 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 
 err:
     ExClosePortConnection(Locals.Connection, FALSE);
+    if (Entry) {
+	ObRemoveHandle(Entry);
+    }
 out:
     if (Locals.PortObject) {
 	ObDereferenceObject(Locals.PortObject);
