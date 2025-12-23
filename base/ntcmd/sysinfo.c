@@ -107,20 +107,29 @@ NTSTATUS RtlCliListDrivers(VOID)
 {
     PRTL_PROCESS_MODULES ModuleInfo;
     PRTL_PROCESS_MODULE_INFORMATION ModuleEntry;
-    NTSTATUS Status;
     ULONG Size = 0;
-    ULONG i;
 
     //
     // Get the count first
     //
-    Status = NtQuerySystemInformation(SystemModuleInformation,
-				      &Size, sizeof(Size), NULL);
+    NTSTATUS Status = NtQuerySystemInformation(SystemModuleInformation,
+					       &Size, sizeof(Size), NULL);
+    if (!NT_SUCCESS(Status)) {
+        RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
+	return Status;
+    }
+
+    if (!Size) {
+	RtlCliDisplayString("No active driver loaded.\n");
+	return STATUS_SUCCESS;
+    }
 
     //
     // Get the total buffer size
     //
-    Size = sizeof(*ModuleInfo) + (Size * sizeof(*ModuleInfo));
+    Size = FIELD_OFFSET(RTL_PROCESS_MODULES, Modules) +
+	Size * sizeof(RTL_PROCESS_MODULE_INFORMATION);
 
     //
     // Allocate it
@@ -134,20 +143,21 @@ NTSTATUS RtlCliListDrivers(VOID)
 				      ModuleInfo, Size, NULL);
 
     if (!NT_SUCCESS(Status)) {
-        RtlCliDisplayString("**** FAILED TO QUERY SYSTEM INFORMATION");
-        return Status;
+        RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
+	goto out;
     }
 
     //
     // Display Header
     //
-    RtlCliDisplayString("*** ACTIVE MODULE LIST - DUMPING %d MODULES\n",
+    RtlCliDisplayString("List of driver objects (%d total):\n",
 			ModuleInfo->NumberOfModules);
 
     //
     // Now walk every module in it
     //
-    for (i = 0; i < ModuleInfo->NumberOfModules; i++) {
+    for (ULONG i = 0; i < ModuleInfo->NumberOfModules; i++) {
 	//
 	// Check if we've displayed 20
 	// BUGBUG: Should be natively handled by our display routines
@@ -169,15 +179,14 @@ NTSTATUS RtlCliListDrivers(VOID)
 	//
 	// Display basic data
 	//
-	RtlCliDisplayString("%s - Base: %p Size: 0x%lx\n",
+	RtlCliDisplayString("  %s - Base: %p Size: 0x%lx\n",
 			    ModuleEntry->FullPathName,
-			    ModuleEntry->ImageBase,
+			    ModuleEntry->MappedBase,
 			    ModuleEntry->ImageSize);
     }
 
-    //
-    // Return error code
-    //
+out:
+    RtlFreeHeap(RtlGetProcessHeap(), 0, ModuleInfo);
     return Status;
 }
 
@@ -212,8 +221,11 @@ NTSTATUS RtlCliListProcesses(VOID)
     //
     Status = NtQuerySystemInformation(SystemProcessInformation,
 				      ModuleInfo, Size, NULL);
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status)) {
+        RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
 	return Status;
+    }
 
     //
     // Display Header
@@ -245,9 +257,8 @@ NTSTATUS RtlCliListProcesses(VOID)
 	//
 	// Get next entry
 	//
-	ModuleInfo =
-	    (PSYSTEM_PROCESS_INFORMATION) ((ULONG_PTR) ModuleInfo +
-					   ModuleInfo->NextEntryOffset);
+	ModuleInfo = (PSYSTEM_PROCESS_INFORMATION)((ULONG_PTR)ModuleInfo +
+						   ModuleInfo->NextEntryOffset);
     }
 
     //

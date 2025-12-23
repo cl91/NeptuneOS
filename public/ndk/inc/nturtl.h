@@ -389,35 +389,6 @@ typedef struct _TEB {                                        /* win32/win64 */
 
 C_ASSERT(sizeof(TEB) < PAGE_SIZE);
 
-typedef struct _RTL_USER_PROCESS_INFORMATION {
-    ULONG Size;
-    HANDLE ProcessHandle;
-    HANDLE ThreadHandle;
-    CLIENT_ID ClientId;
-    SECTION_IMAGE_INFORMATION ImageInformation;
-} RTL_USER_PROCESS_INFORMATION, *PRTL_USER_PROCESS_INFORMATION;
-
-/*
- * Information Structures for RTL Debug Functions
- */
-typedef struct _RTL_PROCESS_MODULE_INFORMATION {
-    ULONG Section;
-    PVOID MappedBase;
-    PVOID ImageBase;
-    ULONG ImageSize;
-    ULONG Flags;
-    USHORT LoadOrderIndex;
-    USHORT InitOrderIndex;
-    USHORT LoadCount;
-    USHORT OffsetToFileName;
-    CHAR FullPathName[256];
-} RTL_PROCESS_MODULE_INFORMATION, *PRTL_PROCESS_MODULE_INFORMATION;
-
-typedef struct _RTL_PROCESS_MODULES {
-    ULONG NumberOfModules;
-    RTL_PROCESS_MODULE_INFORMATION Modules[1];
-} RTL_PROCESS_MODULES, *PRTL_PROCESS_MODULES;
-
 /*
  * End of Exception List
  */

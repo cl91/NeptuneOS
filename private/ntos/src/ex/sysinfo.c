@@ -63,7 +63,6 @@ QSI_DEF(SystemProcessorInformation)
     return STATUS_SUCCESS;
 }
 
-
 /* Class 3 - Time Of Day Information */
 QSI_DEF(SystemTimeOfDayInformation)
 {
@@ -100,6 +99,62 @@ QSI_DEF(SystemTimeOfDayInformation)
     return STATUS_SUCCESS;
 }
 
+static VOID EiGetDriverObjectCount(IN POBJECT Object,
+				   IN PVOID Context)
+{
+    PULONG Count = Context;
+    if (ObObjectGetType(Object) == OBJECT_TYPE_DRIVER) {
+	++*Count;
+    }
+}
+
+static VOID EiWriteDriverModuleInfo(IN POBJECT Object,
+				    IN PVOID Context)
+{
+    PRTL_PROCESS_MODULE_INFORMATION *pInfo = Context;
+    if (ObObjectGetType(Object) == OBJECT_TYPE_DRIVER) {
+	PRTL_PROCESS_MODULE_INFORMATION Info = (*pInfo)++;
+	PIO_DRIVER_OBJECT DriverObject = Object;
+	Info->MappedBase = (PVOID)DriverObject->DriverProcess->InitInfo.ImageBase;
+	Info->ImageBase =
+	    (PVOID)DriverObject->DriverProcess->ImageSection->ImageSectionObject->ImageBase;
+	Info->ImageSize = DriverObject->DriverProcess->ImageSection->Size;
+	snprintf(Info->FullPathName, sizeof(Info->FullPathName),
+		 "%s", DriverObject->DriverImagePath);
+    }
+}
+
+/* Class 11 - Module Information */
+QSI_DEF(SystemModuleInformation)
+{
+    *ReqSize = FIELD_OFFSET(RTL_PROCESS_MODULES, Modules);
+    if (Size < *ReqSize) {
+	return STATUS_BUFFER_TOO_SMALL;
+    }
+    PRTL_PROCESS_MODULES Modules = Buffer;
+    /* Query the \Driver object directory for all drivers loaded in the system */
+    POBJECT DriverObjectDirectory = NULL;
+    RET_ERR(ObReferenceObjectByName(DRIVER_OBJECT_DIRECTORY,
+				    OBJECT_TYPE_DIRECTORY,
+				    FALSE, NULL,
+				    &DriverObjectDirectory));
+    ULONG DriverObjectCount = 0;
+    ObDirectoryObjectVisitObject(DriverObjectDirectory, EiGetDriverObjectCount,
+				 &DriverObjectCount);
+    Modules->NumberOfModules = DriverObjectCount;
+    *ReqSize = FIELD_OFFSET(RTL_PROCESS_MODULES, Modules) +
+	DriverObjectCount * sizeof(RTL_PROCESS_MODULE_INFORMATION);
+    if (Size < *ReqSize) {
+	ObDereferenceObject(DriverObjectDirectory);
+	return STATUS_BUFFER_TOO_SMALL;
+    }
+    PRTL_PROCESS_MODULE_INFORMATION Info = Modules->Modules;
+    ObDirectoryObjectVisitObject(DriverObjectDirectory, EiWriteDriverModuleInfo,
+				 &Info);
+    ObDereferenceObject(DriverObjectDirectory);
+    return STATUS_SUCCESS;
+}
+
 /* Query/Set Calls Table */
 typedef struct _QSSI_CALLS {
     NTSTATUS(*Query) (PVOID, ULONG, PULONG);
@@ -128,7 +183,7 @@ static QSSI_CALLS CallQS[] = {
     SI_XX(SystemProcessorPerformanceInformation),    /* SI_QX(SystemProcessorPerformanceInformation) */
     SI_XX(SystemFlagsInformation),    /* SI_QS(SystemFlagsInformation) */
     SI_XX(SystemCallTimeInformation),    /* SI_QX(SystemCallTimeInformation) */	/* should be SI_XX */
-    SI_XX(SystemModuleInformation),    /* SI_QX(SystemModuleInformation) */
+    SI_QX(SystemModuleInformation),
     SI_XX(SystemLocksInformation),    /* SI_QX(SystemLocksInformation) */
     SI_XX(SystemStackTraceInformation),    /* SI_QX(SystemStackTraceInformation) */	/* should be SI_XX */
     SI_XX(SystemPagedPoolInformation),    /* SI_QX(SystemPagedPoolInformation) */	/* should be SI_XX */
