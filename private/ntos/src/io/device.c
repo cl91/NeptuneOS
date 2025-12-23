@@ -206,16 +206,19 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     Locals.TargetDevice = IopIsStorageDevice(Device) && Device->Vcb ?
 	Device->Vcb->VolumeDevice : Device;
 
+    BOOLEAN DirectIo = OpenPacket->CreateOptions & FILE_NO_INTERMEDIATE_BUFFERING;
     if (MasterFileObject) {
 	FILE_OBJ_CREATE_CONTEXT Ctx = {
 	    .MasterFileObject = MasterFileObject,
-	    .AllocateCloseMsg = !!MasterFileObject->DeviceObject
+	    .AllocateCloseMsg = !!MasterFileObject->DeviceObject,
+	    .DirectIo = DirectIo
 	};
 	Status = ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&Locals.FileObject, &Ctx);
     } else {
 	Status = IopCreateMasterFileObject(SubPath, Locals.TargetDevice,
 					   OpenPacket->FileAttributes, DesiredAccess,
-					   OpenPacket->ShareAccess, &Locals.FileObject);
+					   OpenPacket->ShareAccess, DirectIo,
+					   &Locals.FileObject);
     }
     if (!NT_SUCCESS(Status)) {
 	goto out;

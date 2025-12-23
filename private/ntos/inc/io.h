@@ -166,6 +166,7 @@ typedef struct _IO_FILE_OBJECT {
     BOOLEAN SharedRead;
     BOOLEAN SharedWrite;
     BOOLEAN SharedDelete;
+    BOOLEAN DirectIo; /* If TRUE, the file is opened without intermediate buffering. */
     BOOLEAN Zombie; /* If TRUE, the device object of the file object has been
 		     * forcibly removed but an NT client still has an open handle
 		     * to the file object. The file object will be deleted when

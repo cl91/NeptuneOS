@@ -133,6 +133,7 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     File->SharedRead = Ctx->ShareAccess & FILE_SHARE_READ;
     File->SharedWrite = Ctx->ShareAccess & FILE_SHARE_WRITE;
     File->SharedDelete = Ctx->ShareAccess & FILE_SHARE_DELETE;
+    File->DirectIo = Ctx->DirectIo;
     if (File->DeviceObject) {
 	InsertTailList(&File->DeviceObject->OpenFileList, &File->DeviceLink);
     }
@@ -149,6 +150,7 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN ULONG FileAttributes,
 				   IN ACCESS_MASK DesiredAccess,
 				   IN ULONG ShareAccess,
+				   IN BOOLEAN DirectIo,
 				   OUT PIO_FILE_OBJECT *pFile)
 {
     assert(FileName);
@@ -161,7 +163,8 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 	.Vcb = DeviceObject->Vcb,
 	.FileAttributes = FileAttributes,
 	.DesiredAccess = DesiredAccess,
-	.ShareAccess = ShareAccess
+	.ShareAccess = ShareAccess,
+	.DirectIo = DirectIo
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&File, &CreaCtx));
     assert(File != NULL);
@@ -270,6 +273,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     if (!CallDriver || !FileObject->DeviceObject) {
 	FILE_OBJ_CREATE_CONTEXT CreaCtx = {
 	    .MasterFileObject = FileObject,
+	    .DirectIo = OpenPacket->CreateOptions & FILE_NO_INTERMEDIATE_BUFFERING
 	};
 	IF_ERR_GOTO(out, Status,
 		    ObCreateObject(OBJECT_TYPE_FILE, (POBJECT *)&OpenedFile, &CreaCtx));
@@ -717,8 +721,9 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 	     KeWaitForSingleObject, State, Locals, Thread,
 	     &Locals.FileObject->Fcb->WriteCompleted.Header, FALSE, NULL);
 
-    /* If the target file is part of a mounted volume, go through Cc to do the IO. */
-    if (Locals.FileObject->Fcb) {
+    /* If the target file is part of a mounted volume, go through Cc to do the IO,
+     * unless FILE_NO_INTERMEDIATE_BUFFERING was set when the file was opened. */
+    if (Locals.FileObject->Fcb && !Locals.FileObject->DirectIo) {
 	/* We don't let NT clients read or write to directory files. */
 	if (Locals.FileObject->Fcb->IsDirectory) {
 	    Status = STATUS_FILE_IS_A_DIRECTORY;
@@ -742,11 +747,19 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 		    IopCachedIoCallback, Locals.Context);
 	Locals.IoCompletionEvent = &Locals.Context->IoCompletionEvent;
     } else {
-	/* Otherwise, queue an IRP to the target driver object. */
-	assert(Locals.FileObject->DeviceObject);
+	/* Otherwise, queue an IRP to the target driver object. If the file object
+	 * has a master file object, the IRP will be sent to the master file object. */
+	PIO_FILE_OBJECT TargetFileObject = Locals.FileObject;
+	PIO_FILE_CONTROL_BLOCK Fcb = TargetFileObject->Fcb;
+	assert(!Fcb || Fcb->MasterFileObject);
+	if (Fcb && Fcb->MasterFileObject) {
+	    assert(Fcb->MasterFileObject->Fcb == Fcb);
+	    TargetFileObject = Fcb->MasterFileObject;
+	}
+	assert(TargetFileObject->DeviceObject);
 	IO_REQUEST_PARAMETERS Irp = {
-	    .Device.Object = Locals.FileObject->DeviceObject,
-	    .File.Object = Locals.FileObject,
+	    .Device.Object = TargetFileObject->DeviceObject,
+	    .File.Object = TargetFileObject,
 	};
 	if (Write) {
 	    Irp.MajorFunction = IRP_MJ_WRITE;
@@ -1775,6 +1788,8 @@ VOID IoDbgDumpFileObject(IN PIO_FILE_OBJECT File,
     DbgPrint("  Read %d Write %d Delete %d  SharedRead %d ShareWrite %d ShareDelete %d\n",
 	     File->ReadAccess, File->WriteAccess, File->DeleteAccess,
 	     File->SharedRead, File->SharedWrite, File->SharedDelete);
+    RtlDbgPrintIndentation(Indentation);
+    DbgPrint("  DirectIo = %d\n", File->DirectIo);
     RtlDbgPrintIndentation(Indentation);
     DbgPrint("  CurrentOffset = 0x%llx\n", File->CurrentOffset);
     RtlDbgPrintIndentation(Indentation);

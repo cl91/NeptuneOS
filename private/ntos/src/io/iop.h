@@ -256,6 +256,7 @@ typedef struct _FILE_OBJ_CREATE_CONTEXT {
     ULONG ShareAccess;
     BOOLEAN NoFcb;
     BOOLEAN AllocateCloseMsg;
+    BOOLEAN DirectIo;
 } FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
 
 /*
@@ -519,6 +520,7 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
 				   IN ULONG FileAttributes,
 				   IN ACCESS_MASK DesiredAccess,
 				   IN ULONG ShareAccess,
+				   IN BOOLEAN DirectIo,
 				   OUT PIO_FILE_OBJECT *pFile);
 
 /*
