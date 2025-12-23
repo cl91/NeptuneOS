@@ -24,6 +24,7 @@ Revision History:
 
 #define MAX_DEVICE_ID_LEN   200
 #define ROOT_NAME           L"HTREE\\ROOT\\0"
+#define DEVTREE_MAXLINES    16
 
 static NTSTATUS RtlCliGetEnumKey(OUT PHANDLE KeyHandle)
 {
@@ -173,7 +174,8 @@ out:
 
 static VOID RtlCliListSubNodes(IN PWCHAR DeviceInstance,
 			       IN HANDLE RootKey,
-			       IN ULONG Level)
+			       IN ULONG Level,
+			       IN OUT PULONG LinesDisplayed)
 {
     NTSTATUS Status;
     WCHAR RelatedDevice[MAX_DEVICE_ID_LEN] = L"\0";
@@ -182,6 +184,15 @@ static VOID RtlCliListSubNodes(IN PWCHAR DeviceInstance,
     // Print the node name
     //
 again:
+    ++*LinesDisplayed;
+    if (*LinesDisplayed > DEVTREE_MAXLINES) {
+	//
+	// Hold for more input
+	//
+	RtlCliDisplayString("\n--- PRESS SPACE TO CONTINUE ---\n\n");
+	while (RtlCliGetChar(hKeyboard) != ' ') ;
+	*LinesDisplayed = 0;
+    }
     RtlCliPrintDeviceName(DeviceInstance, Level, RootKey);
 
     //
@@ -193,7 +204,7 @@ again:
 	//
 	// Get its children's subnodes
 	//
-	RtlCliListSubNodes(RelatedDevice, RootKey, Level + 1);
+	RtlCliListSubNodes(RelatedDevice, RootKey, Level + 1, LinesDisplayed);
     }
 
     //
@@ -225,7 +236,8 @@ NTSTATUS RtlCliListHardwareTree(VOID)
     // Now get the entire tree
     //
     WCHAR DeviceInstance[MAX_DEVICE_ID_LEN] = ROOT_NAME;
-    RtlCliListSubNodes(DeviceInstance, RootKey, 0);
+    ULONG LinesDisplayed = 0;
+    RtlCliListSubNodes(DeviceInstance, RootKey, 0, &LinesDisplayed);
     NtClose(RootKey);
     return STATUS_SUCCESS;
 }

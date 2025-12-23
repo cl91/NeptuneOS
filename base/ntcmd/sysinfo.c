@@ -167,7 +167,7 @@ NTSTATUS RtlCliListDrivers(VOID)
 	    //
 	    // Hold for more input
 	    //
-	    RtlCliDisplayString("--- PRESS SPACE TO CONTINUE ---\n");
+	    RtlCliDisplayString("\n--- PRESS SPACE TO CONTINUE ---\n\n");
 	    while (RtlCliGetChar(hKeyboard) != ' ');
 	}
 
