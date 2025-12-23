@@ -890,6 +890,10 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN MEMORY_CACHING_TYPE CacheType,
 					      OUT MWORD *VirtAddr,
 					      OUT MWORD *PhyAddr);
+NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
+					  IN MWORD VirtAddr,
+					  IN MWORD Length,
+					  IN MEMORY_CACHING_TYPE CacheType);
 NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
 			     IN MWORD StartAddr,
 			     IN MWORD WindowSize);

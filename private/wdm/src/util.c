@@ -42,7 +42,7 @@ NTAPI VOID MmFreeContiguousMemorySpecifyCache(IN PVOID BaseAddress,
 					      IN SIZE_T NumberOfBytes,
 					      IN MEMORY_CACHING_TYPE CacheType)
 {
-    UNIMPLEMENTED;
+    WdmHalFreeDmaBuffer(BaseAddress, NumberOfBytes, CacheType);
 }
 
 /*

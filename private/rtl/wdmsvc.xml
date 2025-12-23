@@ -162,6 +162,12 @@
     <parameter annotation="out" type="ptr::PHYSICAL_ADDRESS" name="PhyAddr" />
   </svc>
 
+  <svc name="WdmHalFreeDmaBuffer">
+    <parameter annotation="in" type="PVOID" name="BaseAddress" />
+    <parameter annotation="in" type="SIZE_T" name="NumberOfBytes" />
+    <parameter annotation="in" type="MEMORY_CACHING_TYPE" name="CacheType" />
+  </svc>
+
   <svc name="WdmHalDmaStartTransfer">
     <parameter annotation="in" type="HANDLE" name="AdapterHandle" />
     <parameter annotation="in" type="UCHAR" name="DmaMode" />

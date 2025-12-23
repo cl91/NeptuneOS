@@ -580,3 +580,14 @@ NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
     pPhyAddr->QuadPart = PhyAddr;
     return STATUS_SUCCESS;
 }
+
+NTSTATUS WdmHalFreeDmaBuffer(IN ASYNC_STATE AsyncState,
+			     IN PTHREAD Thread,
+			     IN PVOID BaseAddress,
+			     IN SIZE_T NumberOfBytes,
+			     IN MEMORY_CACHING_TYPE CacheType)
+{
+    return MmFreePhysicallyContiguousMemory(&Thread->Process->VSpace,
+					    (MWORD)BaseAddress,
+					    NumberOfBytes, CacheType);
+}

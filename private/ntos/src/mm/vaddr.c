@@ -1190,6 +1190,25 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
+					  IN MWORD VirtAddr,
+					  IN MWORD Length,
+					  IN MEMORY_CACHING_TYPE CacheType)
+{
+    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, VirtAddr);
+    if (!Vad) {
+	MmDbg("Invalid base address %p\n", VirtAddr);
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER_1;
+    }
+    assert(VirtAddr == Vad->AvlNode.Key);
+    assert(Length == Vad->WindowSize);
+    assert(Vad->Flags.PhysicalMapping);
+    assert(CacheType == Vad->PhysicalSectionView.CacheType);
+    MmDeleteVad(Vad);
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
                                  IN HANDLE ProcessHandle,
