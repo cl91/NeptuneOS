@@ -310,9 +310,9 @@ NTSTATUS FatRead(PFAT_IRP_CONTEXT IrpContext)
 	goto ByeBye;
     }
 
-    if (ByteOffset & (BytesPerCluster - 1)) {
-	/* Read must be cluster aligned. */
-	DPRINT("Unaligned read: cluster size = 0x%x\n", BytesPerCluster);
+    if (ByteOffset & (BytesPerSector - 1)) {
+	/* Read must be sector aligned. */
+	DPRINT("Unaligned read: sector size = 0x%x\n", BytesPerSector);
 	Status = STATUS_INVALID_PARAMETER;
 	goto ByeBye;
     }
@@ -418,10 +418,10 @@ NTSTATUS FatWrite(PFAT_IRP_CONTEXT *pIrpContext)
     LARGE_INTEGER OldFileSize = Fcb->Base.FileSizes.FileSize;
     LARGE_INTEGER ByteOffset = Stack->Parameters.Write.ByteOffset;
 
-    ULONG BytesPerCluster = DeviceExt->FatInfo.BytesPerCluster;
-    if (ByteOffset.LowPart & (BytesPerCluster - 1)) {
-	/* Write must be cluster aligned. */
-	DPRINT("Unaligned read: cluster size = 0x%x\n", BytesPerCluster);
+    ULONG BytesPerSector = DeviceExt->FatInfo.BytesPerSector;
+    if (ByteOffset.LowPart & (BytesPerSector - 1)) {
+	/* Write must be sector aligned. */
+	DPRINT("Unaligned read: sector size = 0x%x\n", BytesPerSector);
 	Status = STATUS_INVALID_PARAMETER;
 	goto ByeBye;
     }
