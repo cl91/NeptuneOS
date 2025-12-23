@@ -223,6 +223,20 @@ typedef struct _SYSTEM_TIMEOFDAY_INFORMATION {
 // Class 4
 // This class is obsolete, please use KUSER_SHARED_DATA instead
 
+//
+// Thread States (SYSTEM_THREAD_INFORMATION::ThreadState).
+//
+typedef enum _KTHREAD_STATE {
+    Initialized,
+    Ready,
+    Running,
+    Standby,
+    Terminated,
+    Waiting,
+    Transition,
+    DeferredReady
+} KTHREAD_STATE, *PKTHREAD_STATE;
+
 // Class 5
 typedef struct _SYSTEM_THREAD_INFORMATION {
     LARGE_INTEGER KernelTime;

@@ -165,6 +165,20 @@ VOID ObRemoveHandle(IN PHANDLE_TABLE_ENTRY Entry)
     ObpFreePool(Entry);
 }
 
+static VOID ObpCountProcessHandles(IN PAVL_NODE Node,
+				   IN PVOID Context)
+{
+    PULONG Count = Context;
+    ++*Count;
+}
+
+ULONG ObGetProcessHandleCount(IN PPROCESS Process)
+{
+    ULONG Count = 0;
+    AvlVisitTreeLinear(&Process->HandleTable.Tree, ObpCountProcessHandles, &Count);
+    return Count;
+}
+
 /*
  * Search the object manager namespace for the specified Path with the
  * given type (or OBJECT_TYPE_ANY), returning the pointer to the object body.

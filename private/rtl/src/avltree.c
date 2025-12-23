@@ -636,20 +636,21 @@ VOID AvlDumpTree(PAVL_TREE tree)
 }
 
 #if DBG
-static VOID AvlpVisitTree(IN PAVL_NODE Node)
+static VOID AvlpVisitTree(IN PAVL_NODE Node, IN PVOID Context)
 {
     DbgPrint("%p ", (PVOID) Node->Key);
 }
 #endif
 
 VOID AvlVisitTreeLinear(PAVL_TREE Tree,
-			PAVL_TREE_VISITOR Visitor)
+			PAVL_TREE_VISITOR Visitor,
+			PVOID Context)
 {
     assert(Tree != NULL);
     assert(Visitor != NULL);
     PAVL_NODE Node = AvlGetFirstNode(Tree);
     while (Node != NULL) {
-	Visitor(Node);
+	Visitor(Node, Context);
 	Node = AvlGetNextNode(Node);
     }
 }
@@ -657,6 +658,6 @@ VOID AvlVisitTreeLinear(PAVL_TREE Tree,
 VOID AvlDumpTreeLinear(PAVL_TREE Tree)
 {
 #if DBG
-    AvlVisitTreeLinear(Tree, AvlpVisitTree);
+    AvlVisitTreeLinear(Tree, AvlpVisitTree, NULL);
 #endif
 }

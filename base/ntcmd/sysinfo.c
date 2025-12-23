@@ -230,23 +230,27 @@ NTSTATUS RtlCliListProcesses(VOID)
     //
     // Display Header
     //
-    RtlCliDisplayString("*** ACTIVE PROCESS LIST\n");
+    RtlCliDisplayString("List of process objects:\n");
 
     //
     // Now walk every module in it
     //
     while (TRUE) {
 	//
+	// ModuleInfo->ImageName.Buffer is a relative offset so we need to adjust it
+	//
+	ModuleInfo->ImageName.Buffer = (PVOID)((ULONG_PTR)ModuleInfo->ImageName.Buffer +
+					       (ULONG_PTR)ModuleInfo);
+	//
 	// Display basic data
 	//
-	RtlCliDisplayString("[%lx] %ws - WS/PF/V:[%dK/%dK/%dK] Threads: %d\n",
+	RtlCliDisplayString("  [%p] %ws - WS/PF/V:[%zdK/%zdK/%zdK] Threads: %d\n",
 			    ModuleInfo->UniqueProcessId,
 			    ModuleInfo->ImageName.Buffer,
 			    ModuleInfo->WorkingSetSize / 1024,
 			    ModuleInfo->PagefileUsage / 1024,
 			    ModuleInfo->VirtualSize / 1024,
 			    ModuleInfo->NumberOfThreads);
-
 
 	//
 	// Break out if we're done

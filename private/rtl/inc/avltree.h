@@ -172,9 +172,10 @@ VOID AvlTreeInsertNode(IN PAVL_TREE Tree,
 		       IN PAVL_NODE Node);
 VOID AvlTreeRemoveNode(IN PAVL_TREE Tree,
 		       IN PAVL_NODE Node);
-typedef VOID (*PAVL_TREE_VISITOR)(PAVL_NODE Node);
+typedef VOID (*PAVL_TREE_VISITOR)(PAVL_NODE Node, PVOID Context);
 VOID AvlVisitTreeLinear(PAVL_TREE Tree,
-			PAVL_TREE_VISITOR Visitor);
+			PAVL_TREE_VISITOR Visitor,
+			PVOID Context);
 VOID AvlDumpTree(PAVL_TREE tree);
 VOID AvlDumpTreeLinear(PAVL_TREE Tree);
 

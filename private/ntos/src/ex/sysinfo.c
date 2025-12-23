@@ -99,6 +99,101 @@ QSI_DEF(SystemTimeOfDayInformation)
     return STATUS_SUCCESS;
 }
 
+/* Class 5 - Process Information */
+QSI_DEF(SystemProcessInformation)
+{
+    ULONG TotalSize = 0;
+
+    *ReqSize = sizeof(SYSTEM_PROCESS_INFORMATION);
+
+    if (Size < sizeof(SYSTEM_PROCESS_INFORMATION)) {
+	return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    RtlZeroMemory(Buffer, Size);
+
+    /* Scan the process list */
+    PSYSTEM_PROCESS_INFORMATION Spi = Buffer;
+    PUCHAR Current = (PUCHAR)Spi;
+    PSYSTEM_PROCESS_INFORMATION SpiCurrent = NULL;
+    BOOLEAN Overflow = FALSE;
+    extern LIST_ENTRY PspProcessList;
+    LoopOverList(Process, &PspProcessList, PROCESS, ProcessListEntry) {
+	SpiCurrent = (PSYSTEM_PROCESS_INFORMATION)Current;
+
+	if (!Process->Initialized) {
+	    DbgTrace("Process %p (%s) is a zombie, skipping\n", Process,
+		     KEDBG_PROCESS_TO_FILENAME(Process));
+	    continue;
+	}
+
+	ULONG ThreadCount = GetListLength(&Process->ThreadList);
+	ULONG CurrentSize = sizeof(SYSTEM_PROCESS_INFORMATION) +
+	    sizeof(SYSTEM_THREAD_INFORMATION) * ThreadCount;
+	PCSTR ImageName = KEDBG_PROCESS_TO_FILENAME(Process);
+	ULONG ImageNameLength = 0;
+	RtlUTF8ToUnicodeN(NULL, ULONG_MAX, &ImageNameLength, ImageName, strlen(ImageName));
+	/* Round up the image name length as NT does */
+	ULONG ImageNameMaximumLength = 0;
+	if (ImageNameLength) {
+	    ImageNameMaximumLength = ALIGN_UP_BY(ImageNameLength + sizeof(WCHAR), 8);
+	}
+
+	TotalSize += CurrentSize + ImageNameMaximumLength;
+
+	/* Check for overflow */
+	if (TotalSize > Size) {
+	    Overflow = TRUE;
+	}
+
+	/* Fill system information */
+	if (!Overflow) {
+	    /* Relative offset to the beginning of the next structure */
+	    SpiCurrent->NextEntryOffset = CurrentSize + ImageNameMaximumLength;
+	    SpiCurrent->NumberOfThreads = ThreadCount;
+	    SpiCurrent->ImageName.Length = ImageNameLength;
+	    SpiCurrent->ImageName.MaximumLength = ImageNameMaximumLength;
+	    /* We make ImageName.Buffer a relative offset (from the start of this
+	     * entry of SYSTEM_PROCESS_INFORMATION) since the client pointer is in
+	     * a different address space. */
+	    SpiCurrent->ImageName.Buffer = (PWSTR)CurrentSize;
+
+	    /* Copy name to the end of the struct */
+	    RtlUTF8ToUnicodeN((PWSTR)(Current + CurrentSize), ImageNameLength,
+			      &ImageNameLength, ImageName, strlen(ImageName));
+
+	    SpiCurrent->BasePriority = Process->BasePriority;
+	    SpiCurrent->UniqueProcessId = (HANDLE)PsGetProcessId(Process);
+	    SpiCurrent->InheritedFromUniqueProcessId = (HANDLE)
+		Process->InheritedFromUniqueProcessId;
+
+	    SpiCurrent->HandleCount = ObGetProcessHandleCount(Process);
+
+	    SpiCurrent->PeakVirtualSize = Process->ImageVirtualSize;
+	    SpiCurrent->VirtualSize = Process->ImageVirtualSize;
+	    PSYSTEM_THREAD_INFORMATION ThreadInfo = (PVOID)(SpiCurrent + 1);
+
+	    LoopOverList(Thread, &Process->ThreadList, THREAD, ThreadListEntry) {
+		ThreadInfo->StartAddress = Thread->EntryPoint;
+		ThreadInfo->ClientId = PsGetClientId(Thread);
+		ThreadInfo->Priority = Thread->CurrentPriority;
+		ThreadInfo->BasePriority = Thread->CurrentPriority;
+		ThreadInfo->ThreadState = Thread->Suspended ? Standby : Running;
+		ThreadInfo++;
+	    }
+	}
+
+	Current += CurrentSize + ImageNameMaximumLength;
+    }
+
+    if (SpiCurrent && !Overflow) {
+	SpiCurrent->NextEntryOffset = 0;
+    }
+
+    *ReqSize = TotalSize;
+    return Overflow ? STATUS_BUFFER_TOO_SMALL : STATUS_SUCCESS;
+}
+
 static VOID EiGetDriverObjectCount(IN POBJECT Object,
 				   IN PVOID Context)
 {
@@ -177,7 +272,7 @@ static QSSI_CALLS CallQS[] = {
     SI_XX(SystemPerformanceInformation),    /* SI_QX(SystemPerformanceInformation) */
     SI_QX(SystemTimeOfDayInformation),
     SI_XX(SystemPathInformation),    /* SI_QX(SystemPathInformation) */
-    SI_XX(SystemProcessInformation),    /* SI_QX(SystemProcessInformation) */
+    SI_QX(SystemProcessInformation),
     SI_XX(SystemCallCountInformation),    /* SI_QX(SystemCallCountInformation) */
     SI_XX(SystemDeviceInformation),    /* SI_QX(SystemDeviceInformation) */
     SI_XX(SystemProcessorPerformanceInformation),    /* SI_QX(SystemProcessorPerformanceInformation) */

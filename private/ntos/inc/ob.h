@@ -570,6 +570,7 @@ NTSTATUS ObCreateHandle(IN struct _PROCESS *Process,
 			OUT HANDLE *pHandle,
 			OUT OPTIONAL PHANDLE_TABLE_ENTRY *pEntry);
 VOID ObRemoveHandle(IN PHANDLE_TABLE_ENTRY Entry);
+ULONG ObGetProcessHandleCount(IN struct _PROCESS *Process);
 VOID ObRemoveObject(IN POBJECT Object);
 VOID ObDereferenceObject(IN POBJECT Object);
 VOID ObDbgDumpObjectHandles(IN POBJECT Object,
