@@ -63,6 +63,21 @@ QSI_DEF(SystemProcessorInformation)
     return STATUS_SUCCESS;
 }
 
+QSI_DEF(SystemPerformanceInformation)
+{
+    *ReqSize = sizeof(SYSTEM_PERFORMANCE_INFORMATION);
+
+    /* Check user buffer's size */
+    if (Size != *ReqSize) {
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    /* TODO: Fill out the system performance information */
+    PSYSTEM_PERFORMANCE_INFORMATION Spi = Buffer;
+    RtlZeroMemory(Spi, *ReqSize);
+    return STATUS_SUCCESS;
+}
+
 /* Class 3 - Time Of Day Information */
 QSI_DEF(SystemTimeOfDayInformation)
 {
@@ -73,7 +88,7 @@ QSI_DEF(SystemTimeOfDayInformation)
     *ReqSize = 0;
 
     /* Check user buffer's size */
-    if (Size > sizeof(SYSTEM_TIMEOFDAY_INFORMATION)) {
+    if (Size != sizeof(SYSTEM_TIMEOFDAY_INFORMATION)) {
 	return STATUS_INFO_LENGTH_MISMATCH;
     }
 
@@ -156,7 +171,7 @@ QSI_DEF(SystemProcessInformation)
 	    /* We make ImageName.Buffer a relative offset (from the start of this
 	     * entry of SYSTEM_PROCESS_INFORMATION) since the client pointer is in
 	     * a different address space. */
-	    SpiCurrent->ImageName.Buffer = (PWSTR)CurrentSize;
+	    SpiCurrent->ImageName.Buffer = (PWSTR)(ULONG_PTR)CurrentSize;
 
 	    /* Copy name to the end of the struct */
 	    RtlUTF8ToUnicodeN((PWSTR)(Current + CurrentSize), ImageNameLength,
@@ -192,6 +207,21 @@ QSI_DEF(SystemProcessInformation)
 
     *ReqSize = TotalSize;
     return Overflow ? STATUS_BUFFER_TOO_SMALL : STATUS_SUCCESS;
+}
+
+/* Class 8 - Processor Performance Information */
+QSI_DEF(SystemProcessorPerformanceInformation)
+{
+    *ReqSize = KeProcessorCount * sizeof(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION);
+
+    /* Check user buffer's size */
+    if (Size < *ReqSize) {
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    /* TODO: Return process performance information */
+    RtlZeroMemory(Buffer, *ReqSize);
+    return STATUS_SUCCESS;
 }
 
 static VOID EiGetDriverObjectCount(IN POBJECT Object,
@@ -250,6 +280,21 @@ QSI_DEF(SystemModuleInformation)
     return STATUS_SUCCESS;
 }
 
+/* Class 21 - File Cache Information */
+QSI_DEF(SystemFileCacheInformation)
+{
+    *ReqSize = sizeof(SYSTEM_FILECACHE_INFORMATION);
+
+    if (Size != *ReqSize) {
+        return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    /* TODO: Return system file cache information. */
+    SYSTEM_FILECACHE_INFORMATION *Sci = Buffer;
+    RtlZeroMemory(Sci, *ReqSize);
+    return STATUS_SUCCESS;
+}
+
 /* Class 32 - Boot Console Information */
 QSI_DEF(SystemBootConsoleInformation)
 {
@@ -285,13 +330,13 @@ typedef struct _QSSI_CALLS {
 static QSSI_CALLS CallQS[] = {
     SI_QX(SystemBasicInformation),
     SI_QX(SystemProcessorInformation),
-    SI_XX(SystemPerformanceInformation),    /* SI_QX(SystemPerformanceInformation) */
+    SI_QX(SystemPerformanceInformation),
     SI_QX(SystemTimeOfDayInformation),
     SI_XX(SystemPathInformation),    /* SI_QX(SystemPathInformation) */
     SI_QX(SystemProcessInformation),
     SI_XX(SystemCallCountInformation),    /* SI_QX(SystemCallCountInformation) */
     SI_XX(SystemDeviceInformation),    /* SI_QX(SystemDeviceInformation) */
-    SI_XX(SystemProcessorPerformanceInformation),    /* SI_QX(SystemProcessorPerformanceInformation) */
+    SI_QX(SystemProcessorPerformanceInformation),
     SI_XX(SystemFlagsInformation),    /* SI_QS(SystemFlagsInformation) */
     SI_XX(SystemCallTimeInformation),    /* SI_QX(SystemCallTimeInformation) */	/* should be SI_XX */
     SI_QX(SystemModuleInformation),
@@ -304,7 +349,7 @@ static QSSI_CALLS CallQS[] = {
     SI_XX(SystemPageFileInformation),    /* SI_QX(SystemPageFileInformation) */
     SI_XX(SystemVdmInstemulInformation),    /* SI_QX(SystemVdmInstemulInformation) */
     SI_XX(SystemVdmBopInformation),    /* SI_QX(SystemVdmBopInformation) */	/* it should be SI_XX */
-    SI_XX(SystemFileCacheInformation),    /* SI_QS(SystemFileCacheInformation) */
+    SI_QX(SystemFileCacheInformation),
     SI_XX(SystemPoolTagInformation),    /* SI_QX(SystemPoolTagInformation) */
     SI_XX(SystemInterruptInformation),    /* SI_QX(SystemInterruptInformation) */
     SI_XX(SystemDpcBehaviourInformation),    /* SI_QS(SystemDpcBehaviourInformation) */

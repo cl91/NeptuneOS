@@ -34,7 +34,7 @@ ULONG ConsoleMaxRows = 24;
 
 #define NTCMD_BANNER "Neptune OS Native Command Prompt [Version " VER_PRODUCTVERSION_STRING "]\n"
 
-PCSTR helpstr =
+PCSTR HELPSTR =
     "\n"
     "dir      - Show directory contents    pwd      - Print working directory\n"
     "dump X   - Show hexdump for file X    edlin X  - Edit lines for file X\n"
@@ -107,7 +107,7 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	//
 	// Display help
 	//
-	RtlCliDisplayString("%s", helpstr);
+	RtlCliDisplayString("%s", HELPSTR);
     } else if (COMPARE_CMD(Command, "lm")) {
 	//
 	// List Modules (!lm)

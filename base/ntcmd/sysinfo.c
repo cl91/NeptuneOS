@@ -292,7 +292,6 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     SYSTEM_PROCESSOR_INFORMATION ProcInfo;
     SYSTEM_PERFORMANCE_INFORMATION PerfInfo;
     SYSTEM_TIMEOFDAY_INFORMATION TimeInfo;
-    SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION ProcPerfInfo[2];
     SYSTEM_FILECACHE_INFORMATION CacheInfo;
     PKUSER_SHARED_DATA SharedData = (PKUSER_SHARED_DATA) USER_SHARED_DATA;
     TIME_FIELDS BootTime, IdleTime, KernelTime, UserTime, DpcTime;
@@ -302,59 +301,83 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     //
     Status = NtQuerySystemInformation(SystemBasicInformation,
 				      &BasicInfo, sizeof(BasicInfo), NULL);
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status)) {
+	RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
 	return Status;
+    }
 
     //
     // Query basic processor information
     //
     Status = NtQuerySystemInformation(SystemProcessorInformation,
 				      &ProcInfo, sizeof(ProcInfo), NULL);
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status)) {
+	RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
 	return Status;
+    }
 
     //
     // Query basic system information
     //
     Status = NtQuerySystemInformation(SystemPerformanceInformation,
 				      &PerfInfo, sizeof(PerfInfo), NULL);
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status)) {
+	RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
 	return Status;
+    }
 
     //
     // Query basic system information
     //
     Status = NtQuerySystemInformation(SystemTimeOfDayInformation,
 				      &TimeInfo, sizeof(TimeInfo), NULL);
-    if (!NT_SUCCESS(Status))
+    if (!NT_SUCCESS(Status)) {
+	RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
 	return Status;
+    }
 
     //
     // Query basic system information
     //
+    ULONG ProcPerfSize =
+	BasicInfo.NumberOfProcessors * sizeof(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION);
+    PSYSTEM_PROCESSOR_PERFORMANCE_INFORMATION ProcPerfInfo =
+	RtlAllocateHeap(RtlGetProcessHeap(), 0, ProcPerfSize);
+    if (!ProcPerfInfo) {
+	RtlCliDisplayString("No memory.\n");
+	return STATUS_NO_MEMORY;
+    }
     Status = NtQuerySystemInformation(SystemProcessorPerformanceInformation,
-				      &ProcPerfInfo, sizeof(ProcPerfInfo),
-				      NULL);
-    if (!NT_SUCCESS(Status))
+				      ProcPerfInfo, ProcPerfSize, NULL);
+    if (!NT_SUCCESS(Status)) {
+	RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
 	return Status;
+    }
 
     //
     // Query basic system information
     //
     Status = NtQuerySystemInformation(SystemFileCacheInformation,
 				      &CacheInfo, sizeof(CacheInfo), NULL);
-    if (!NT_SUCCESS(Status))
-	return Status;
+    if (!NT_SUCCESS(Status)) {
+	RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
+			    Status);
+	goto out;
+    }
 
     //
     // Display Header
-    // FIXME: Center it
     //
     RtlTimeToTimeFields(&TimeInfo.BootTime, &BootTime);
-    RtlCliDisplayString("Native shell running in %ws booted on %02d-%02d-%02d "
-			"at %02d:%02d. CPUs: %d\n", SharedData->NtSystemRoot,
+    RtlCliDisplayString("System root is %ws. System booted on %02d-%02d-%02d "
+			"at %02d:%02d.\n", SharedData->NtSystemRoot,
 			BootTime.Day, BootTime.Month, BootTime.Year, BootTime.Hour,
-			BootTime.Minute, BasicInfo.NumberOfProcessors);
+			BootTime.Minute);
 
     //
     // Display System Flags
@@ -378,8 +401,9 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     } else if (ProcInfo.ProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64) {
 	ProcessorArchitecture = "amd64";
     }
-    RtlCliDisplayString("[CPU] %s Family %d Model %x Stepping %x. "
-			"Feature Bits: 0x%X NX: 0x%x\n",
+    RtlCliDisplayString("[CPU] %d CPU(s). %s Family %d Model %x Stepping %x. "
+			"Feature Bits: 0x%X NX: 0x%x.\n",
+			BasicInfo.NumberOfProcessors,
 			ProcessorArchitecture,
 			ProcInfo.ProcessorLevel,
 			ProcInfo.ProcessorRevision >> 8,
@@ -391,16 +415,15 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     // Display RAM Information
     //
     RtlCliDisplayString("[RAM] Page Size: %dKB. Physical Pages: 0x%X. "
-			"Total Physical RAM: %dKB\n",
+			"Total Physical RAM: %lldKB\n",
 			BasicInfo.PageSize / 1024,
 			BasicInfo.NumberOfPhysicalPages,
-			BasicInfo.NumberOfPhysicalPages * PAGE_SIZE /
-			1024);
+			(ULONG64)BasicInfo.NumberOfPhysicalPages * PAGE_SIZE / 1024);
 
     //
     // Display User-Mode Virtual Memory Information
     //
-    RtlCliDisplayString("[USR] User-Mode Range: 0x%08X-0x%X. "
+    RtlCliDisplayString("[USR] User-Mode Range: 0x%08zX-0x%zX. "
 			"Allocation Granularity: %dKB\n",
 			BasicInfo.MinimumUserModeAddress,
 			BasicInfo.MaximumUserModeAddress,
@@ -496,5 +519,8 @@ NTSTATUS RtlCliDumpSysInfo(VOID)
     //
     // Return success
     //
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+out:
+    RtlFreeHeap(RtlGetProcessHeap(), 0, ProcPerfInfo);
+    return Status;
 }
