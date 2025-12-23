@@ -274,6 +274,7 @@ NTSTATUS FillUnicodeStringWithAnsi(OUT PUNICODE_STRING UnicodeString,
     return RtlAnsiStringToUnicodeString(UnicodeString, &AnsiString, TRUE);
 }
 
+// Note: This function is not re-entrant
 PCSTR RtlCliStatusToErrorMessage(IN NTSTATUS Status)
 {
     static CHAR Buffer[128];
