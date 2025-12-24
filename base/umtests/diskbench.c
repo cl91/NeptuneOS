@@ -50,6 +50,7 @@ NTSTATUS DiskBench(IN PCSTR VolumePath)
 	if (!NT_SUCCESS(Status)) {
 	    VgaPrint("Failed to read volume file, offset 0x%llx, buffer size 0x%x\n",
 		     Offset, RANDOM_IO_SIZE);
+	    return Status;
 	}
     }
 
@@ -70,7 +71,12 @@ NTSTATUS DiskBench(IN PCSTR VolumePath)
 
     ULONGLONG Offset = 0;
     for (ULONG i = 0; i < SEQ_IO_COUNT; i++) {
-        ReadFile(VolumeHandle, SeqBuffer, SEQ_IO_SIZE, Offset);
+        Status = ReadFile(VolumeHandle, SeqBuffer, SEQ_IO_SIZE, Offset);
+	if (!NT_SUCCESS(Status)) {
+	    VgaPrint("Failed to read volume file, offset 0x%llx, buffer size 0x%x\n",
+		     Offset, SEQ_IO_SIZE);
+	    return Status;
+	}
         Offset += SEQ_IO_SIZE;
     }
 
