@@ -180,7 +180,7 @@ NTSTATUS RtlCliDumpFile(IN PWSTR FileName)
 	    RtlCliDisplayString("|\n");
 	    Length += 16;
 	    TotalLength += 16;
-	    if (++LineNum > 20) {
+	    if (++LineNum > (ConsoleMaxRows - 2)) {
 		LineNum = 0;
 		RtlCliDisplayString("Continue listing (Y/N): ");
 		while (TRUE) {

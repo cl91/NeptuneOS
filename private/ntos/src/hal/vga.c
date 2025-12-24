@@ -3170,3 +3170,13 @@ VOID HalRegisterFramebuffer(IN PHAL_FRAMEBUFFER Fb)
 	HalpHasFramebuffer = TRUE;
     }
 }
+
+ULONG HalGetConsoleMaxColumns()
+{
+    return HalpVgaCursorMaxColumns;
+}
+
+ULONG HalGetConsoleMaxRows()
+{
+    return HalpVgaCursorMaxRows;
+}

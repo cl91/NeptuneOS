@@ -36,7 +36,7 @@ typedef enum _SYSTEM_INFORMATION_CLASS {
     SystemSummaryMemoryInformation,
     SystemMirrorMemoryInformation,
     SystemPerformanceTraceInformation,
-    SystemObsolete0,
+    SystemBootConsoleInformation,
     SystemExceptionInformation,
     SystemCrashDumpStateInformation,
     SystemKernelDebuggerInformation,
@@ -576,7 +576,11 @@ typedef struct _SYSTEM_REF_TRACE_INFORMATION {
    UNICODE_STRING TracePoolTags;
 } SYSTEM_REF_TRACE_INFORMATION, *PSYSTEM_REF_TRACE_INFORMATION;
 
-// Class 32 - OBSOLETE
+// Class 32
+typedef struct _SYSTEM_BOOT_CONSOLE_INFORMATION {
+    ULONG NumberOfRows;
+    ULONG NumberOfColumns;
+} SYSTEM_BOOT_CONSOLE_INFORMATION, *PSYSTEM_BOOT_CONSOLE_INFORMATION;
 
 // Class 33
 typedef struct _SYSTEM_EXCEPTION_INFORMATION {

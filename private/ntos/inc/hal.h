@@ -61,6 +61,8 @@ PMSSmBios_RawSMBiosTables HalGetRawSmbiosTables();
 /* vga.c */
 VOID HalRegisterFramebuffer(IN PHAL_FRAMEBUFFER Fb);
 VOID HalDisplayString(PCSTR String);
+ULONG HalGetConsoleMaxColumns();
+ULONG HalGetConsoleMaxRows();
 
 static inline __attribute__((format(printf, 1, 2))) ULONG HalVgaPrint(PCSTR Format, ...)
 {

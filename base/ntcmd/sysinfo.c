@@ -163,12 +163,13 @@ NTSTATUS RtlCliListDrivers(VOID)
 	// BUGBUG: Should be natively handled by our display routines
 	//
 
-	if (i && !(i % 20)) {
+	if (i && !(i % (ConsoleMaxRows - 2))) {
 	    //
 	    // Hold for more input
 	    //
-	    RtlCliDisplayString("\n--- PRESS SPACE TO CONTINUE ---\n\n");
+	    RtlCliDisplayString("--- PRESS SPACE TO CONTINUE ---");
 	    while (RtlCliGetChar(hKeyboard) != ' ');
+	    RtlCliDisplayString("\n");
 	}
 
 	//

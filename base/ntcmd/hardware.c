@@ -24,7 +24,6 @@ Revision History:
 
 #define MAX_DEVICE_ID_LEN   200
 #define ROOT_NAME           L"HTREE\\ROOT\\0"
-#define DEVTREE_MAXLINES    16
 
 static NTSTATUS RtlCliGetEnumKey(OUT PHANDLE KeyHandle)
 {
@@ -185,12 +184,13 @@ static VOID RtlCliListSubNodes(IN PWCHAR DeviceInstance,
     //
 again:
     ++*LinesDisplayed;
-    if (*LinesDisplayed > DEVTREE_MAXLINES) {
+    if (*LinesDisplayed > (ConsoleMaxRows - 2)) {
 	//
 	// Hold for more input
 	//
-	RtlCliDisplayString("\n--- PRESS SPACE TO CONTINUE ---\n\n");
+	RtlCliDisplayString("--- PRESS SPACE TO CONTINUE ---");
 	while (RtlCliGetChar(hKeyboard) != ' ') ;
+	RtlCliDisplayString("\n");
 	*LinesDisplayed = 0;
     }
     RtlCliPrintDeviceName(DeviceInstance, Level, RootKey);

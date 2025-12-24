@@ -250,6 +250,22 @@ QSI_DEF(SystemModuleInformation)
     return STATUS_SUCCESS;
 }
 
+/* Class 32 - Boot Console Information */
+QSI_DEF(SystemBootConsoleInformation)
+{
+    *ReqSize = sizeof(SYSTEM_BOOT_CONSOLE_INFORMATION);
+
+    if (Size != *ReqSize) {
+	return STATUS_INFO_LENGTH_MISMATCH;
+    }
+
+    PSYSTEM_BOOT_CONSOLE_INFORMATION Info = Buffer;
+    Info->NumberOfRows = HalGetConsoleMaxRows();
+    Info->NumberOfColumns = HalGetConsoleMaxColumns();
+
+    return STATUS_SUCCESS;
+}
+
 /* Query/Set Calls Table */
 typedef struct _QSSI_CALLS {
     NTSTATUS(*Query) (PVOID, ULONG, PULONG);
@@ -299,7 +315,7 @@ static QSSI_CALLS CallQS[] = {
     SI_XX(SystemSummaryMemoryInformation),    /* SI_QX(SystemSummaryMemoryInformation) */	/* it should be SI_XX */
     SI_XX(SystemNextEventIdInformation),    /* SI_QX(SystemNextEventIdInformation) */	/* it should be SI_XX */
     SI_XX(SystemPerformanceTraceInformation),    /* SI_QX(SystemPerformanceTraceInformation) */	/* it should be SI_XX */
-    SI_XX(SystemCrashDumpInformation),    /* SI_QX(SystemCrashDumpInformation) */
+    SI_QX(SystemBootConsoleInformation),
     SI_XX(SystemExceptionInformation),    /* SI_QX(SystemExceptionInformation) */
     SI_XX(SystemCrashDumpStateInformation),    /* SI_QX(SystemCrashDumpStateInformation) */
     SI_XX(SystemKernelDebuggerInformation),    /* SI_QX(SystemKernelDebuggerInformation) */

@@ -30,6 +30,7 @@ Revision History:
 #include "string.h"
 
 HANDLE hKeyboard;
+ULONG ConsoleMaxRows = 24;
 
 #define NTCMD_BANNER "Neptune OS Native Command Prompt [Version " VER_PRODUCTVERSION_STRING "]\n"
 
@@ -415,9 +416,21 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     RtlCliDisplayString("Type \"help\".\n\n");
 
     //
+    // Query the system to get the console size
+    //
+    SYSTEM_BOOT_CONSOLE_INFORMATION ConsoleInfo = {};
+    ULONG BufferSize = sizeof(ConsoleInfo);
+    NTSTATUS Status = NtQuerySystemInformation(SystemBootConsoleInformation,
+					       &ConsoleInfo, BufferSize, &BufferSize);
+    assert(!NT_SUCCESS(Status) || (ConsoleInfo.NumberOfRows && ConsoleInfo.NumberOfColumns));
+    if (NT_SUCCESS(Status) && ConsoleInfo.NumberOfRows) {
+	ConsoleMaxRows = ConsoleInfo.NumberOfRows;
+    }
+
+    //
     // Setup keyboard input
     //
-    NTSTATUS Status = RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
+    Status = RtlCliOpenInputDevice(&hKeyboard, KeyboardType);
     if (!NT_SUCCESS(Status)) {
 	RtlCliDisplayString("Unable to open keyboard. Error 0x%.8x\n", Status);
 	goto end;
