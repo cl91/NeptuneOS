@@ -160,7 +160,7 @@ typedef struct _PCI_POWER_STATE {
 } PCI_POWER_STATE, *PPCI_POWER_STATE;
 
 /*
- * Device Extension for a Bus FDO
+ * Device Extension for a Bus FDO.
  */
 typedef struct _PCI_FDO_EXTENSION {
     SINGLE_LIST_ENTRY List;
@@ -191,6 +191,16 @@ typedef struct _PCI_FDO_EXTENSION {
     LONG BusHackFlags;
 } PCI_FDO_EXTENSION, *PPCI_FDO_EXTENSION;
 
+/*
+ * Maximum number of IO resources we need to handle for a PCI function
+ *
+ * Type 0 (PCI Endpoints) headers have the most number of resources
+ * (6 BARs plus one expansion ROM base address). Type 1 (PCI bridge)
+ * has 2 BARs, a forwarded IO window, a non-prefetchable memory window,
+ * a prefetchable memory window, and expansion ROM base address (so six
+ * in total). Type 2 (Cardbus bridge) has 4 BARs, cardbus socket base
+ * address, and 16-bit legacy mode base address, so also six in total.
+ */
 #define PCI_MAX_RESOURCE_COUNT	(PCI_TYPE0_ADDRESSES + 1)
 
 typedef struct _PCI_FUNCTION_RESOURCES {
@@ -215,7 +225,6 @@ typedef union _PCI_HEADER_TYPE_DEPENDENT {
 	UCHAR IsaBitSet : 1;
 	UCHAR VgaBitSet : 1;
 	UCHAR WeChangedBusNumbers : 1;
-	UCHAR IsaBitRequired : 1;
     } Type1;
     struct {
 	UCHAR Spare[4];
@@ -299,8 +308,8 @@ typedef struct _PCI_PDO_EXTENSION {
  * IRP Dispatch Function Type
  */
 typedef NTSTATUS (*PCI_DISPATCH_FUNCTION)(IN PIRP Irp,
-					       IN PIO_STACK_LOCATION IoStackLocation,
-					       IN PVOID DeviceExtension);
+					  IN PIO_STACK_LOCATION IoStackLocation,
+					  IN PVOID DeviceExtension);
 
 /*
  * IRP Dispatch Minor Table
@@ -357,7 +366,7 @@ typedef VOID (*PCI_CONFIGURATOR_GET_ADDITIONAL_RESOURCE_DESCRIPTORS)(
     IN PIO_RESOURCE_DESCRIPTOR IoDescriptor);
 
 typedef VOID (*PCI_CONFIGURATOR_RESET_DEVICE)(IN PPCI_PDO_EXTENSION PdoExtension,
-						   IN PPCI_COMMON_HEADER PciData);
+					      IN PPCI_COMMON_HEADER PciData);
 
 /*
  * PCI Configurator

@@ -557,7 +557,7 @@ UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
 	    /* Check if was at a valid offset and length */
 	    if (Offset && (Length > sizeof(PCI_CAPABILITIES_HEADER))) {
 		/* Sanity check */
-		ASSERT(Length <= (sizeof(PCI_COMMON_CONFIG) - Offset));
+		ASSERT(Length <= (PCI_EXTENDED_CONFIG_LENGTH - Offset));
 
 		/* Now read the whole capability data into the buffer */
 		PciReadDeviceConfig(DeviceExtension,

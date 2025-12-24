@@ -136,16 +136,25 @@ static VOID PciIdPrintf(IN PPCI_ID_BUFFER IdBuffer, IN PWCHAR Format, ...)
 
 static VOID PciIdPrintfAppend(IN PPCI_ID_BUFFER IdBuffer, IN PWCHAR Format, ...)
 {
+    LONG RemainingWchars = sizeof(IdBuffer->BufferData)/sizeof(WCHAR) - IdBuffer->TotalWchars;
+    assert(RemainingWchars >= 0);
+    if (RemainingWchars <= 1) {
+	return;
+    }
     if (IdBuffer->TotalWchars) {
 	assert(IdBuffer->BufferData[IdBuffer->TotalWchars - 1] == L'\0');
 	IdBuffer->TotalWchars--;
+	RemainingWchars++;
     }
-    ULONG RemainingWchars = sizeof(IdBuffer->BufferData)/sizeof(WCHAR) - IdBuffer->TotalWchars;
     va_list va;
     va_start(va, Format);
-    ULONG WcharsWritten = _vsnwprintf(IdBuffer->BufferData + IdBuffer->TotalWchars,
-				      RemainingWchars - 1, Format, va) + 1;
+    LONG WcharsWritten = _vsnwprintf(IdBuffer->BufferData + IdBuffer->TotalWchars,
+				     RemainingWchars - 1, Format, va) + 1;
     va_end(va);
+    if (WcharsWritten <= 0) {
+	assert(FALSE);
+	return;
+    }
     IdBuffer->TotalWchars += WcharsWritten;
     assert(IdBuffer->TotalWchars <= sizeof(IdBuffer->BufferData) / sizeof(WCHAR));
     assert(IdBuffer->BufferData[IdBuffer->TotalWchars - 1] == L'\0');
@@ -248,6 +257,7 @@ NTSTATUS PciQueryId(IN PPCI_PDO_EXTENSION DeviceExtension,
 	    PciIdPrintfAppend(&IdBuffer, L"%02X",
 			      (PdoExtension->Slot.Bits.DeviceNumber << 3) |
 				  PdoExtension->Slot.Bits.FunctionNumber);
+	    ParentExtension = ParentExtension->ParentFdoExtension;
 	}
 	break;
 

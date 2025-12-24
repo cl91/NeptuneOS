@@ -14,16 +14,14 @@
 
 static ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
 {
-    BOOLEAN Is32Bit;
-    ULONG Base, IoBase;
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the base */
-    Base = PciData->Type1.IOLimit;
+    ULONG Base = PciData->Type1.IOLimit;
 
     /* Low bit specifies 32-bit address, top bits specify the base */
-    Is32Bit = (Base & 0xF) == 1;
-    IoBase = (Base & 0xF0) << 8;
+    BOOLEAN Is32Bit = (Base & 0xF) == 1;
+    ULONG IoBase = (Base & 0xF0) << 8;
 
     /* Is it 32-bit? */
     if (Is32Bit) {
@@ -38,16 +36,14 @@ static ULONG PciBridgeIoBase(IN PPCI_COMMON_HEADER PciData)
 
 static ULONG PciBridgeIoLimit(IN PPCI_COMMON_HEADER PciData)
 {
-    BOOLEAN Is32Bit;
-    ULONG Limit, IoLimit;
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the limit */
-    Limit = PciData->Type1.IOLimit;
+    ULONG Limit = PciData->Type1.IOLimit;
 
     /* Low bit specifies 32-bit address, top bits specify the limit */
-    Is32Bit = (Limit & 0xF) == 1;
-    IoLimit = (Limit & 0xF0) << 8;
+    BOOLEAN Is32Bit = (Limit & 0xF) == 1;
+    ULONG IoLimit = (Limit & 0xF0) << 8;
 
     /* Is it 32-bit? */
     if (Is32Bit) {
@@ -78,17 +74,14 @@ static ULONG PciBridgeMemoryLimit(IN PPCI_COMMON_HEADER PciData)
 
 static PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciData)
 {
-    BOOLEAN Is64Bit;
-    LARGE_INTEGER Base;
-    USHORT PrefetchBase;
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the base */
-    PrefetchBase = PciData->Type1.PrefetchBase;
+    USHORT PrefetchBase = PciData->Type1.PrefetchBase;
 
     /* Low bit specifies 64-bit address, top bits specify the base */
-    Is64Bit = (PrefetchBase & 0xF) == 1;
-    Base.LowPart = ((PrefetchBase & 0xFFF0) << 16);
+    BOOLEAN Is64Bit = (PrefetchBase & 0xF) == 1;
+    LARGE_INTEGER Base = { .LowPart = ((PrefetchBase & 0xFFF0) << 16) };
 
     /* Is it 64-bit? */
     if (Is64Bit) {
@@ -102,17 +95,14 @@ static PHYSICAL_ADDRESS PciBridgePrefetchMemoryBase(IN PPCI_COMMON_HEADER PciDat
 
 static PHYSICAL_ADDRESS PciBridgePrefetchMemoryLimit(IN PPCI_COMMON_HEADER PciData)
 {
-    BOOLEAN Is64Bit;
-    LARGE_INTEGER Limit;
-    USHORT PrefetchLimit;
     ASSERT(PCI_CONFIGURATION_TYPE(PciData) == PCI_BRIDGE_TYPE);
 
     /* Get the base */
-    PrefetchLimit = PciData->Type1.PrefetchLimit;
+    USHORT PrefetchLimit = PciData->Type1.PrefetchLimit;
 
     /* Low bit specifies 64-bit address, top bits specify the limit */
-    Is64Bit = (PrefetchLimit & 0xF) == 1;
-    Limit.LowPart = (PrefetchLimit << 16) | 0xFFFFF;
+    BOOLEAN Is64Bit = (PrefetchLimit & 0xF) == 1;
+    LARGE_INTEGER Limit = { .LowPart = (PrefetchLimit << 16) | 0xFFFFF };
 
     /* Is it 64-bit? */
     if (Is64Bit) {
@@ -296,7 +286,7 @@ VOID PCIBridge_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 		Limit.LowPart = PciBridgeMemoryLimit(Current);
 
 		/* These should always be there, so check their alignment */
-		DPRINT1("Bridge MEM Base and Limit: %xlx %xlx\n", Base.LowPart,
+		DPRINT1("Bridge MEM Base and Limit: %x %x\n", Base.LowPart,
 			Limit.LowPart);
 		CheckAlignment = TRUE;
 	    } else if (i == 4) {
@@ -596,13 +586,8 @@ VOID PCIBridge_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
 VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 				      IN PPCI_COMMON_HEADER PciData)
 {
-    //BOOLEAN IoActive;
     PPCI_FDO_EXTENSION FdoExtension;
     PPCI_FUNCTION_RESOURCES PciResources;
-    ULONG i;
-
-    /* Check if I/O Decodes are enabled */
-    //IoActive = (PciData->Type1.IOBase & 0xF) == 1;
 
     /*
      * Check for Intel ICH PCI-to-PCI (i82801) bridges (used on the i810,
@@ -654,12 +639,87 @@ VOID PCIBridge_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	    FdoExtension->PreservedConfig->Header.Type1.IOLimitUpper16;
     }
 
-    /* Loop bus resources */
     PciResources = PdoExtension->Resources;
     if (PciResources) {
-	/* Loop each resource type (the BARs, ROM BAR and Prefetch) */
-	for (i = 0; i < 6; i++) {
-	    UNIMPLEMENTED;
+	/* Set the BAR resources first */
+	for (ULONG i = 0; i < PCI_TYPE1_ADDRESSES; i++) {
+	    PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = &PdoExtension->Resources->Current[i];
+            if (Res->Type == CmResourceTypeNull) {
+                continue;
+            }
+
+	    assert(Res->Type == CmResourceTypeMemory || Res->Type == CmResourceTypePort);
+	    if (Res->Type == CmResourceTypeMemory){
+		ULONG BaseAddress = PciData->Type1.BaseAddresses[i];
+		if ((BaseAddress & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT) {
+		    /* We have a 64-bit BAR. It must be the first resource, and the
+		     * second resource must be NULL. */
+		    assert(i == 0);
+		    assert((Res+1)->Type == CmResourceTypeNull);
+		    PciData->Type1.BaseAddresses[1] = Res->Memory.Start.HighPart;
+		}
+	    }
+	    /* This applies for both Memory and Port resources. */
+	    PciData->Type1.BaseAddresses[i] = Res->Generic.Start.LowPart;
+	}
+
+	/* The next resource must be IO forward window */
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = &PdoExtension->Resources->Current[2];
+	if (Res->Type == CmResourceTypePort) {
+	    ULONG Start = Res->Port.Start.LowPart;
+	    ULONG End = Start + Res->Port.Length - 1;
+	    /* Port window is always 4K aligned. */
+	    assert(((Start & 0xFFF) == 0) && ((End & 0xFFF) == 0xFFF));
+	    /* If the bridge only supports 16-bit IO ports, make sure the upper
+	     * 16 bits are zero. */
+	    if ((PciData->Type1.IOBase & 0xF) != 1) {
+		assert(!(Start & 0xFFFF0000));
+		assert(!(End & 0xFFFF0000));
+	    }
+	    PciData->Type1.IOBaseUpper16  = Start >> 16;
+	    PciData->Type1.IOLimitUpper16 = End >> 16;
+	    PciData->Type1.IOBase  = (Start >> 8) & 0xF0;
+	    PciData->Type1.IOLimit = (End >> 8) & 0xF0;
+	} else {
+	    assert(Res->Type == CmResourceTypeNull);
+	}
+
+	/* The next resource must be non-prefetchable memory window */
+	Res = &PdoExtension->Resources->Current[3];
+	if (Res->Type == CmResourceTypeMemory) {
+	    ULONG Start = Res->Memory.Start.LowPart;
+	    ULONG End = Start + Res->Memory.Length - 1;
+	    /* Memory window is always 1MB aligned. */
+	    assert(((Start & 0xFFFFF) == 0) && ((End & 0xFFFFF) == 0xFFFFF));
+	    PciData->Type1.MemoryBase = Start >> 16;
+	    PciData->Type1.MemoryLimit = (End >> 16) & 0xFFF0;
+	} else {
+	    assert(Res->Type == CmResourceTypeNull);
+	}
+
+	/* The next resource must be prefetchable memory window */
+	Res = &PdoExtension->Resources->Current[4];
+	if (Res->Type == CmResourceTypeMemory) {
+	    ULONG64 Start = Res->Memory.Start.QuadPart;
+	    ULONG64 End = Res->Memory.Start.QuadPart + Res->Memory.Length - 1;
+	    assert(((Start & 0xFFFFFULL) == 0) && (End & 0xFFFFFULL) == 0xFFFFFULL);
+	    PciData->Type1.PrefetchBase = Start >> 16;
+	    PciData->Type1.PrefetchLimit = (End >> 16) & 0xFFF0ULL;
+	    PciData->Type1.PrefetchBaseUpper32 = Start >> 32;
+	    PciData->Type1.PrefetchLimitUpper32 = End >> 32;
+	} else {
+	    assert(Res->Type == CmResourceTypeNull);
+	}
+
+	/* The last resource must be ROM */
+	Res = &PdoExtension->Resources->Current[5];
+	if (Res->Type == CmResourceTypeMemory) {
+	    ULONG BaseAddress = PciData->Type1.ROMBaseAddress;
+	    BaseAddress &= ~PCI_ADDRESS_ROM_ADDRESS_MASK;
+	    BaseAddress |= Res->Memory.Start.LowPart & PCI_ADDRESS_ROM_ADDRESS_MASK;
+	    PciData->Type0.ROMBaseAddress = BaseAddress;
+	} else {
+	    assert(Res->Type == CmResourceTypeNull);
 	}
     }
 

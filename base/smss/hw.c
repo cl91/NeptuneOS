@@ -55,7 +55,7 @@ static struct {
     { "fatfs" },
     { "pnp", L"HTREE\\ROOT\\0\0" },
     { "acpi", L"ROOT\\ACPI\\0\0" },
-    { "pci", L"*PNP0A03\0*PNP0A08\0" },
+    { "pci", L"*PNP0A03\0*PNP0A08\0PCI\\CC_0604\0CC_0607\0" },
     { "fdc", L"*PNP0700\0FDC\\GENERIC_FLOPPY_DRIVE\0" },
     { "i8042prt", L"*PNP0303\0",
       ARRAYSIZE(I8042prtParameters), I8042prtParameters },

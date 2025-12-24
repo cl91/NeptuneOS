@@ -27,16 +27,16 @@ static VOID PciReadWriteConfigSpace(IN PPCI_FDO_EXTENSION DeviceExtension,
 {
     /* Only the root FDO can access configuration space */
     ASSERT(PCI_IS_ROOT_FDO(DeviceExtension->BusRootFdoExtension));
-    PHYSICAL_ADDRESS PhyAddr = DeviceExtension->ConfigBase;
+    PHYSICAL_ADDRESS PhyAddr = DeviceExtension->BusRootFdoExtension->ConfigBase;
     PhyAddr.QuadPart += ((DeviceExtension->BaseBus << 8) | (Slot.Bits.DeviceNumber << 3) |
 			 Slot.Bits.FunctionNumber) << CFG_SHIFT;
     volatile CHAR *Ptr = MmMapIoSpace(PhyAddr, 1UL << CFG_SHIFT, MmNonCached);
     DPRINT("%s PCI Config Base 0x%llx BaseBus 0x%x Dev 0x%x Func 0x%x "
 	   "Mapped %p Buffer %p Offset 0x%x Length 0x%x\n",
 	   Read ? "Reading" : "Writing",
-	   DeviceExtension->ConfigBase.QuadPart, DeviceExtension->BaseBus,
-	   Slot.Bits.DeviceNumber, Slot.Bits.FunctionNumber, Ptr,
-	   Buffer, Offset, Length);
+	   DeviceExtension->BusRootFdoExtension->ConfigBase.QuadPart,
+	   DeviceExtension->BaseBus, Slot.Bits.DeviceNumber, Slot.Bits.FunctionNumber,
+	   Ptr, Buffer, Offset, Length);
     if (!Ptr) {
 	RtlRaiseStatus(STATUS_ACCESS_DENIED);
     }

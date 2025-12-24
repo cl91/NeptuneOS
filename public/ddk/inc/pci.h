@@ -518,6 +518,298 @@ typedef enum {
     BusWidth64Bits
 } PCI_BUS_WIDTH;
 
+typedef union _PCI_EXPRESS_CAPABILITIES_REGISTER {
+    struct {
+        USHORT CapabilityVersion : 4;
+        USHORT DeviceType : 4;
+        USHORT SlotImplemented : 1;
+        USHORT InterruptMessageNumber : 5;
+        USHORT Rsvd : 2;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_CAPABILITIES_REGISTER, *PPCI_EXPRESS_CAPABILITIES_REGISTER;
+
+typedef union _PCI_EXPRESS_DEVICE_CAPABILITIES_REGISTER {
+    struct {
+        ULONG MaxPayloadSizeSupported : 3;
+        ULONG PhantomFunctionsSupported : 2;
+        ULONG ExtendedTagSupported : 1;
+        ULONG L0sAcceptableLatency : 3;
+        ULONG L1AcceptableLatency : 3;
+        ULONG Undefined : 3;
+        ULONG RoleBasedErrorReporting : 1;
+        ULONG Rsvd1 : 2;
+        ULONG CapturedSlotPowerLimit : 8;
+        ULONG CapturedSlotPowerLimitScale : 2;
+        ULONG FunctionLevelResetCapability : 1;
+        ULONG Rsvd2 : 3;
+    };
+    ULONG AsULONG;
+} PCI_EXPRESS_DEVICE_CAPABILITIES_REGISTER, *PPCI_EXPRESS_DEVICE_CAPABILITIES_REGISTER;
+
+#define PCI_EXPRESS_AER_DEVICE_CONTROL_MASK 0x07;
+
+typedef union _PCI_EXPRESS_DEVICE_CONTROL_REGISTER {
+    struct {
+        USHORT CorrectableErrorEnable : 1;
+        USHORT NonFatalErrorEnable : 1;
+        USHORT FatalErrorEnable : 1;
+        USHORT UnsupportedRequestErrorEnable : 1;
+        USHORT EnableRelaxedOrder : 1;
+        USHORT MaxPayloadSize : 3;
+        USHORT ExtendedTagEnable : 1;
+        USHORT PhantomFunctionsEnable : 1;
+        USHORT AuxPowerEnable : 1;
+        USHORT NoSnoopEnable : 1;
+        USHORT MaxReadRequestSize : 3;
+        USHORT BridgeConfigRetryEnable : 1;
+    };
+    struct {
+        USHORT ReservedBits : 15;
+        USHORT InitiateFunctionLevelReset : 1;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_DEVICE_CONTROL_REGISTER, *PPCI_EXPRESS_DEVICE_CONTROL_REGISTER;
+
+#define PCI_EXPRESS_AER_DEVICE_STATUS_MASK 0x0F;
+
+typedef union _PCI_EXPRESS_DEVICE_STATUS_REGISTER {
+    struct {
+        USHORT CorrectableErrorDetected : 1;
+        USHORT NonFatalErrorDetected : 1;
+        USHORT FatalErrorDetected : 1;
+        USHORT UnsupportedRequestDetected : 1;
+        USHORT AuxPowerDetected : 1;
+        USHORT TransactionsPending : 1;
+        USHORT Rsvd : 10;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_DEVICE_STATUS_REGISTER, *PPCI_EXPRESS_DEVICE_STATUS_REGISTER;
+
+typedef union _PCI_EXPRESS_LINK_CAPABILITIES_REGISTER {
+    struct {
+        ULONG MaximumLinkSpeed : 4;
+        ULONG MaximumLinkWidth : 6;
+        ULONG ActiveStatePMSupport : 2;
+        ULONG L0sExitLatency : 3;
+        ULONG L1ExitLatency : 3;
+        ULONG ClockPowerManagement : 1;
+        ULONG SurpriseDownErrorReportingCapable : 1;
+        ULONG DataLinkLayerActiveReportingCapable : 1;
+        ULONG LinkBandwidthNotificationCapability : 1;
+        ULONG AspmOptionalityCompliance : 1;
+        ULONG Rsvd : 1;
+        ULONG PortNumber : 8;
+    };
+    ULONG AsULONG;
+} PCI_EXPRESS_LINK_CAPABILITIES_REGISTER, *PPCI_EXPRESS_LINK_CAPABILITIES_REGISTER;
+
+typedef union _PCI_EXPRESS_LINK_CONTROL_REGISTER {
+    struct {
+        USHORT ActiveStatePMControl : 2;
+        USHORT Rsvd1 : 1;
+        USHORT ReadCompletionBoundary : 1;
+        USHORT LinkDisable : 1;
+        USHORT RetrainLink : 1;
+        USHORT CommonClockConfig : 1;
+        USHORT ExtendedSynch : 1;
+        USHORT EnableClockPowerManagement : 1;
+        USHORT Rsvd2 : 7;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_LINK_CONTROL_REGISTER, *PPCI_EXPRESS_LINK_CONTROL_REGISTER;
+
+typedef union _PCI_EXPRESS_LINK_STATUS_REGISTER {
+    struct {
+        USHORT LinkSpeed : 4;
+        USHORT LinkWidth : 6;
+        USHORT Undefined : 1;
+        USHORT LinkTraining : 1;
+        USHORT SlotClockConfig : 1;
+        USHORT DataLinkLayerActive : 1;
+        USHORT Rsvd : 2;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_LINK_STATUS_REGISTER, *PPCI_EXPRESS_LINK_STATUS_REGISTER;
+
+typedef union _PCI_EXPRESS_SLOT_CAPABILITIES_REGISTER {
+    struct {
+        ULONG AttentionButtonPresent : 1;
+        ULONG PowerControllerPresent : 1;
+        ULONG MRLSensorPresent : 1;
+        ULONG AttentionIndicatorPresent : 1;
+        ULONG PowerIndicatorPresent : 1;
+        ULONG HotPlugSurprise : 1;
+        ULONG HotPlugCapable : 1;
+        ULONG SlotPowerLimit : 8;
+        ULONG SlotPowerLimitScale : 2;
+        ULONG ElectromechanicalLockPresent : 1;
+        ULONG NoCommandCompletedSupport : 1;
+        ULONG PhysicalSlotNumber : 13;
+    };
+    ULONG AsULONG;
+} PCI_EXPRESS_SLOT_CAPABILITIES_REGISTER, *PPCI_EXPRESS_SLOT_CAPABILITIES_REGISTER;
+
+typedef union _PCI_EXPRESS_SLOT_CONTROL_REGISTER {
+    struct {
+        USHORT AttentionButtonEnable : 1;
+        USHORT PowerFaultDetectEnable : 1;
+        USHORT MRLSensorEnable : 1;
+        USHORT PresenceDetectEnable : 1;
+        USHORT CommandCompletedEnable : 1;
+        USHORT HotPlugInterruptEnable : 1;
+        USHORT AttentionIndicatorControl : 2;
+        USHORT PowerIndicatorControl : 2;
+        USHORT PowerControllerControl : 1;
+        USHORT ElectromechanicalLockControl : 1;
+        USHORT DataLinkStateChangeEnable : 1;
+        USHORT Rsvd : 3;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_SLOT_CONTROL_REGISTER, *PPCI_EXPRESS_SLOT_CONTROL_REGISTER;
+
+typedef union _PCI_EXPRESS_SLOT_STATUS_REGISTER {
+    struct {
+        USHORT AttentionButtonPressed : 1;
+        USHORT PowerFaultDetected : 1;
+        USHORT MRLSensorChanged : 1;
+        USHORT PresenceDetectChanged : 1;
+        USHORT CommandCompleted : 1;
+        USHORT MRLSensorState : 1;
+        USHORT PresenceDetectState : 1;
+        USHORT ElectromechanicalLockEngaged : 1;
+        USHORT DataLinkStateChanged : 1;
+        USHORT Rsvd : 7;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_SLOT_STATUS_REGISTER, *PPCI_EXPRESS_SLOT_STATUS_REGISTER;
+
+typedef union _PCI_EXPRESS_ROOT_CONTROL_REGISTER {
+    struct {
+        USHORT CorrectableSerrEnable : 1;
+        USHORT NonFatalSerrEnable : 1;
+        USHORT FatalSerrEnable : 1;
+        USHORT PMEInterruptEnable : 1;
+        USHORT CRSSoftwareVisibilityEnable : 1;
+        USHORT Rsvd : 11;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_ROOT_CONTROL_REGISTER, *PPCI_EXPRESS_ROOT_CONTROL_REGISTER;
+
+typedef union _PCI_EXPRESS_ROOT_CAPABILITIES_REGISTER {
+    struct {
+        USHORT CRSSoftwareVisibility : 1;
+        USHORT Rsvd : 15;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_ROOT_CAPABILITIES_REGISTER, *PPCI_EXPRESS_ROOT_CAPABILITIES_REGISTER;
+
+typedef union _PCI_EXPRESS_ROOT_STATUS_REGISTER {
+    struct {
+        ULONG PMERequestorId : 16;
+        ULONG PMEStatus : 1;
+        ULONG PMEPending : 1;
+        ULONG Rsvd : 14;
+    };
+    ULONG AsULONG;
+} PCI_EXPRESS_ROOT_STATUS_REGISTER, *PPCI_EXPRESS_ROOT_STATUS_REGISTER;
+
+typedef union _PCI_EXPRESS_DEVICE_CAPABILITIES_2_REGISTER {
+    struct {
+        ULONG CompletionTimeoutRangesSupported : 4;
+        ULONG CompletionTimeoutDisableSupported : 1;
+        ULONG AriForwardingSupported : 1;
+        ULONG AtomicOpRoutingSupported : 1;
+        ULONG AtomicOpCompleterSupported32Bit : 1;
+        ULONG AtomicOpCompleterSupported64Bit : 1;
+        ULONG CASCompleterSupported128Bit : 1;
+        ULONG NoROEnabledPRPRPassing : 1;
+        ULONG LTRMechanismSupported : 1;
+        ULONG TPHCompleterSupported : 2;
+        ULONG Rsvd : 4;
+        ULONG OBFFSupported : 2;
+        ULONG ExtendedFmtFieldSuported : 1;
+        ULONG EndEndTLPPrefixSupported : 1;
+        ULONG MaxEndEndTLPPrefixes : 2;
+        ULONG Rsvd2 : 4;
+        ULONG DmwrCompleterSupported : 1;
+        ULONG DmwrLengthsSupported : 2;
+        ULONG Rsvd3 : 1;
+    };
+    ULONG AsULONG;
+} PCI_EXPRESS_DEVICE_CAPABILITIES_2_REGISTER, *PPCI_EXPRESS_DEVICE_CAPABILITIES_2_REGISTER;
+
+typedef union _PCI_EXPRESS_DEVICE_CONTROL_2_REGISTER {
+    struct {
+        USHORT CompletionTimeoutValue : 4;
+        USHORT CompletionTimeoutDisable : 1;
+        USHORT AriForwardingEnable : 1;
+        USHORT AtomicOpRequesterEnable : 1;
+        USHORT AtomicOpEgresBlocking : 1;
+        USHORT IDORequestEnable : 1;
+        USHORT IDOCompletionEnable : 1;
+        USHORT LTRMechanismEnable : 1;
+        USHORT Rsvd : 2;
+        USHORT OBFFEnable : 2;
+        USHORT EndEndTLPPrefixBlocking : 1;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_DEVICE_CONTROL_2_REGISTER, *PPCI_EXPRESS_DEVICE_CONTROL_2_REGISTER;
+
+typedef union _PCI_EXPRESS_DEVICE_STATUS_2_REGISTER {
+    struct {
+        USHORT Rsvd : 16;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_DEVICE_STATUS_2_REGISTER, *PPCI_EXPRESS_DEVICE_STATUS_2_REGISTER;
+
+typedef union _PCI_EXPRESS_LINK_CAPABILITIES_2_REGISTER {
+    struct {
+        ULONG Rsvd0 : 1;
+        ULONG SupportedLinkSpeedsVector : 7;
+        ULONG Rsvd8_31 : 24;
+    };
+    ULONG AsULONG;
+} PCI_EXPRESS_LINK_CAPABILITIES_2_REGISTER, *PPCI_EXPRESS_LINK_CAPABILITIES_2_REGISTER;
+
+typedef union _PCI_EXPRESS_LINK_CONTROL_2_REGISTER {
+    struct {
+        USHORT TargetLinkSpeed : 4;
+        USHORT Rsvd4_15 : 12;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_LINK_CONTROL_2_REGISTER, *PPCI_EXPRESS_LINK_CONTROL_2_REGISTER;
+
+typedef union _PCI_EXPRESS_LINK_STATUS_2_REGISTER {
+    struct {
+        USHORT Rsvd0_15 : 16;
+    };
+    USHORT AsUSHORT;
+} PCI_EXPRESS_LINK_STATUS_2_REGISTER, *PPCI_EXPRESS_LINK_STATUS_2_REGISTER;
+
+typedef struct _PCI_EXPRESS_CAPABILITY {
+    PCI_CAPABILITIES_HEADER Header;
+    PCI_EXPRESS_CAPABILITIES_REGISTER ExpressCapabilities;
+    PCI_EXPRESS_DEVICE_CAPABILITIES_REGISTER DeviceCapabilities;
+    PCI_EXPRESS_DEVICE_CONTROL_REGISTER DeviceControl;
+    PCI_EXPRESS_DEVICE_STATUS_REGISTER DeviceStatus;
+    PCI_EXPRESS_LINK_CAPABILITIES_REGISTER LinkCapabilities;
+    PCI_EXPRESS_LINK_CONTROL_REGISTER LinkControl;
+    PCI_EXPRESS_LINK_STATUS_REGISTER LinkStatus;
+    PCI_EXPRESS_SLOT_CAPABILITIES_REGISTER SlotCapabilities;
+    PCI_EXPRESS_SLOT_CONTROL_REGISTER SlotControl;
+    PCI_EXPRESS_SLOT_STATUS_REGISTER SlotStatus;
+    PCI_EXPRESS_ROOT_CONTROL_REGISTER RootControl;
+    PCI_EXPRESS_ROOT_CAPABILITIES_REGISTER RootCapabilities;
+    PCI_EXPRESS_ROOT_STATUS_REGISTER RootStatus;
+    PCI_EXPRESS_DEVICE_CAPABILITIES_2_REGISTER DeviceCapabilities2;
+    PCI_EXPRESS_DEVICE_CONTROL_2_REGISTER DeviceControl2;
+    PCI_EXPRESS_DEVICE_STATUS_2_REGISTER DeviceStatus2;
+    PCI_EXPRESS_LINK_CAPABILITIES_2_REGISTER LinkCapabilities2;
+    PCI_EXPRESS_LINK_CONTROL_2_REGISTER LinkControl2;
+    PCI_EXPRESS_LINK_STATUS_2_REGISTER LinkStatus2;
+} PCI_EXPRESS_CAPABILITY, *PPCI_EXPRESS_CAPABILITY;
+
 #define PCI_EXPRESS_ADVANCED_ERROR_REPORTING_CAP_ID                     0x0001
 #define PCI_EXPRESS_VIRTUAL_CHANNEL_CAP_ID                              0x0002
 #define PCI_EXPRESS_DEVICE_SERIAL_NUMBER_CAP_ID                         0x0003
@@ -1056,7 +1348,7 @@ typedef struct _PCI_EXPRESS_SRIOV_CAPABILITY {
 #define PCI_HACK_IGNORE_AER_CAPABILITY 0x0000100000000000LL
 
 //
-// Bit encodes for PCI_COMMON_CONFIG.u.type1.BridgeControl
+// Bit encodes for PCI_COMMON_CONFIG.Type1.BridgeControl
 //
 #define PCI_ENABLE_BRIDGE_PARITY_ERROR 0x0001
 #define PCI_ENABLE_BRIDGE_SERR 0x0002

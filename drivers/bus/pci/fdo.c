@@ -64,10 +64,6 @@ static NTSTATUS PciFdoStartDevice(IN PIRP Irp,
 		break;
 	    }
 	}
-    } else {
-	/* Unhandled for now */
-	ASSERT(Resources->Count == 1);
-	UNIMPLEMENTED_DBGBREAK();
     }
 
 commit:
