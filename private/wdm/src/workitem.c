@@ -85,6 +85,12 @@ VOID IopRemoveWorkItem(IN PIO_WORKITEM WorkItem)
 	assert(ListHasEntry(&IopWorkItemQueue, &WorkItem->QueueEntry));
 	RemoveEntryList(&WorkItem->QueueEntry);
 	KeReleaseMutex(&IopWorkItemMutex);
+    } else {
+#if DBG
+	KeAcquireMutex(&IopWorkItemMutex);
+	assert(!ListHasEntry(&IopWorkItemQueue, &WorkItem->QueueEntry));
+	KeReleaseMutex(&IopWorkItemMutex);
+#endif
     }
 }
 
