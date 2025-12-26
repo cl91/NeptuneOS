@@ -24,7 +24,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
 set(CMAKE_CXX_STANDARD_LIBRARIES "" CACHE STRING "" FORCE)
 set(CMAKE_C_STANDARD_LIBRARIES "-lntpsx -lrtl")
-set(CMAKE_EXE_LINKER_FLAGS "-static -nostdlib")
+set(CMAKE_EXE_LINKER_FLAGS "-static -nostdlib -fuse-ld=lld")
 set(CMAKE_EXECUTABLE_SUFFIX ".so")
 
 include_directories(
