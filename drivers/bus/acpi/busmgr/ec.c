@@ -309,6 +309,7 @@ static BOOLEAN AcpiEcIsFlushed(PACPI_EC Ec)
 
 FORCEINLINE UCHAR AcpiEcReadStatus(PACPI_EC Ec)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     UCHAR Status = READ_PORT_UCHAR(Ec->CommandAddress);
 
     EcDbgRaw("EC_SC(R) = 0x%2.2x "
@@ -320,14 +321,21 @@ FORCEINLINE UCHAR AcpiEcReadStatus(PACPI_EC Ec)
 	     !!(Status & ACPI_EC_FLAG_IBF),
 	     !!(Status & ACPI_EC_FLAG_OBF));
     return Status;
+#else
+    return 0;
+#endif
 }
 
 FORCEINLINE UCHAR AcpiEcReadData(PACPI_EC Ec)
 {
+#if defined(_M_IX86) || defined(_M_AMD64)
     UCHAR Data = READ_PORT_UCHAR(Ec->DataAddress);
 
     EcDbgRaw("EC_DATA(R) = 0x%2.2x", Data);
     return Data;
+#else
+    return 0;
+#endif
 }
 
 FORCEINLINE VOID AcpiEcWriteCmd(PACPI_EC Ec, UCHAR Command)
