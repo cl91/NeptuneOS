@@ -163,7 +163,7 @@ NTSTATUS RtlCliDumpFile(IN PWSTR FileName)
 		if (Length + i < SizeRead) {
 		    RtlCliDisplayString("%02x ", Data[Length+i]);
 		} else {
-		    RtlCliDisplayString("  ");
+		    RtlCliDisplayString("   ");
 		}
 		if (i == 7 || i == 15) {
 		    RtlCliDisplayString(" ");
