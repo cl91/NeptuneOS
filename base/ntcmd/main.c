@@ -177,6 +177,23 @@ BOOLEAN RtlClipProcessMessage(PCHAR Command)
 	} else {
 	    RtlCliDisplayString("Not enough arguments.\n");
 	}
+    } else if (COMPARE_CMD(Command, "edlin")) {
+	//
+	// Open line editor
+	//
+	if (xargc == 2) {
+	    RtlCliEditLineFile(xargv[1]);
+	} else if (xargc > 2) {
+	    RtlCliDisplayString("Too many arguments.\n");
+	} else {
+	    RtlCliDisplayString("Usage: edlin <filename>. Commands:\n");
+	    RtlCliDisplayString("  n          – print line n\n");
+	    RtlCliDisplayString("  n text...  – replace line n\n");
+	    RtlCliDisplayString("  p          – print all lines\n");
+	    RtlCliDisplayString("  s          – save\n");
+	    RtlCliDisplayString("  q          – quit\n");
+	}
+
     } else if (COMPARE_CMD(Command, "shutdown")) {
 	RtlCliShutdown();
     } else if (COMPARE_CMD(Command, "reboot")) {

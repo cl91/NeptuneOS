@@ -112,13 +112,14 @@ NTSTATUS RtlCliListDirectory(VOID);
 NTSTATUS RtlCliSetCurrentDirectory(PCHAR Directory);
 ULONG RtlCliGetCurrentDirectory(IN OUT PWSTR CurrentDirectory);
 NTSTATUS RtlCliDumpFile(IN PWSTR FileName);
+NTSTATUS RtlCliEditLineFile(IN PCSTR FileName);
 NTSTATUS GetFullPath(IN PCSTR FileName,
 		     OUT PWSTR FullPath,
 		     IN ULONG FullPathSize,
 		     IN BOOL AddSlash);
 BOOL FileExists(PCWSTR FileName);
 
-NTSTATUS OpenFile(HANDLE *RetFile, WCHAR *FileName,
+NTSTATUS OpenFile(HANDLE *File, PCWSTR FileName,
 		  BOOLEAN Write, BOOLEAN Overwrite);
 NTSTATUS OpenDirectory(HANDLE *RetFile, WCHAR *FileName,
 		       BOOLEAN Write, BOOLEAN Overwrite);
