@@ -29,6 +29,7 @@ typedef unsigned int ULONG;
 typedef unsigned long long ULONGLONG;
 typedef uint32_t UINT32;
 typedef int NTSTATUS;
+typedef _Bool BOOLEAN;
 typedef void VOID, *HANDLE, *PVOID;
 typedef const char *PCSTR;
 

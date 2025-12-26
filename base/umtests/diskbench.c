@@ -9,7 +9,8 @@
 static UCHAR RandomBuffer[RANDOM_IO_SIZE] __attribute__((aligned(PAGE_SIZE)));
 static UCHAR SeqBuffer[SEQ_IO_SIZE] __attribute__((aligned(PAGE_SIZE)));
 
-NTSTATUS DiskBench(IN PCSTR VolumePath)
+NTSTATUS DiskBench(IN PCSTR VolumePath,
+		   IN BOOLEAN RawDisk)
 {
     HANDLE VolumeHandle = NULL;
     NTSTATUS Status = OpenVolume(VolumePath, &VolumeHandle);
@@ -18,18 +19,20 @@ NTSTATUS DiskBench(IN PCSTR VolumePath)
         return Status;
     }
 
-    ULONGLONG VolumeSize = 0;
-    Status = GetFileSize(VolumeHandle, &VolumeSize);
-    if (!NT_SUCCESS(Status)) {
-	VgaPrint("Failed to query file length for %s, error 0x%x\n",
-		 VolumePath, Status);
-	return Status;
-    }
-    assert(RANDOM_IO_SIZE < SEQ_IO_SIZE);
-    if (VolumeSize < SEQ_IO_SIZE) {
-	VgaPrint("Volume size too small (got 0x%llx, need 0x%x)\n",
-		 VolumeSize, SEQ_IO_SIZE);
-	return STATUS_UNSUCCESSFUL;
+    ULONGLONG VolumeSize = SEQ_IO_COUNT * SEQ_IO_SIZE;
+    if (!RawDisk) {
+	Status = GetFileSize(VolumeHandle, &VolumeSize);
+	if (!NT_SUCCESS(Status)) {
+	    VgaPrint("Failed to query file length for %s, error 0x%x\n",
+		     VolumePath, Status);
+	    return Status;
+	}
+	assert(RANDOM_IO_SIZE < SEQ_IO_SIZE);
+	if (VolumeSize < SEQ_IO_SIZE * SEQ_IO_COUNT) {
+	    VgaPrint("Volume size too small (got 0x%llx, need 0x%x)\n",
+		     VolumeSize, SEQ_IO_SIZE * SEQ_IO_COUNT);
+	    return STATUS_UNSUCCESSFUL;
+	}
     }
     ULONGLONG MaxOffset = VolumeSize - RANDOM_IO_SIZE;
 
@@ -106,7 +109,7 @@ int main(int Argc, char **Argv)
     }
 
     const char *VolumePath = Argv[1];
-    return DiskBench(VolumePath);
+    return DiskBench(VolumePath, FALSE);
 }
 
 #endif

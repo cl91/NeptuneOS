@@ -11,7 +11,8 @@ VOID TestBeepDriver(IN ULONG Freq,
 		    IN ULONG Duration);
 
 /* diskbench.c */
-NTSTATUS DiskBench(IN PCSTR VolumePath);
+NTSTATUS DiskBench(IN PCSTR VolumePath,
+		   IN BOOLEAN RawDisk);
 
 /* file.c */
 NTSTATUS OpenVolume(IN PCSTR Path,
