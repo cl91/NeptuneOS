@@ -120,12 +120,12 @@ _RtlCaptureContext@4:
 
 .global @RtlpSaveFpuContext@4
 @RtlpSaveFpuContext@4:
-    fxsave CONTEXT_XMM_SAVE_AREA(%ecx)
+    ;; fxsave CONTEXT_XMM_SAVE_AREA(%ecx)
     ret
 
 .global @RtlpRestoreFpuContext@4
 @RtlpRestoreFpuContext@4:
-    fxrstor CONTEXT_XMM_SAVE_AREA(%ecx)
+    ;; fxrstor CONTEXT_XMM_SAVE_AREA(%ecx)
     ret
 
 /* See RtlpExecuteHandler for stack and register usage */

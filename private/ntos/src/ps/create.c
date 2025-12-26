@@ -92,6 +92,22 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS PspSetThreadFpu(IN MWORD ThreadCap,
+				IN BOOLEAN Enabled)
+{
+    assert(ThreadCap != 0);
+    MWORD Clear = Enabled ? 1 : 0;
+    MWORD Set = Enabled ? 0 : 1;
+    int Error = seL4_TCB_SetFlags(ThreadCap, Clear, Set).error;
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_SetFlags failed for thread cap 0x%zx with error %d\n",
+		 ThreadCap, Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS PspSetThreadPriority(IN MWORD ThreadCap,
 				     IN THREAD_PRIORITY Priority)
 {
@@ -423,6 +439,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     RET_ERR(PspConfigureThread(Thread->TreeNode.Cap, FaultHandlerCap,
 			       Thread->CSpace, &Process->VSpace, IpcBufferClientPage,
 			       PsGetThreadId(Thread) >> EX_POOL_BLOCK_SHIFT));
+    RET_ERR(PspSetThreadFpu(Thread->TreeNode.Cap, FALSE));
 
     /* Allocate the subsystem-independent Thread Information Block for the client */
     RET_ERR(MmCommitOwnedMemoryEx(&Process->VSpace,
