@@ -90,7 +90,7 @@
 .global RtlpSaveFpuContext
 .PROC RtlpSaveFpuContext
     .endprolog
-    fxsave [rcx + CxFltSave]
+    ;; fxsave [rcx + CxFltSave]
     ret
 .ENDP
 
@@ -101,6 +101,6 @@
 .global RtlpRestoreFpuContext
 .PROC RtlpRestoreFpuContext
     .endprolog
-    fxrstor [rcx + CxFltSave]
+    ;; fxrstor [rcx + CxFltSave]
     ret
 .ENDP

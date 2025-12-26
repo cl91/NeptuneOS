@@ -14,6 +14,9 @@ add_compile_options(
     -nostdinc
     -fno-pic
     -fno-pie
+    -msoft-float
+    -mno-sse
+    -mno-mmx
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
     -fasync-exceptions

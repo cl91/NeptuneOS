@@ -11,6 +11,9 @@ add_compile_options(
     -nostdinc
     -fno-pic
     -fno-pie
+    -msoft-float
+    -mno-sse
+    -mno-mmx
     -Wno-incompatible-library-redeclaration
     -Wno-gnu-variable-sized-type-not-at-end
     -fasync-exceptions
