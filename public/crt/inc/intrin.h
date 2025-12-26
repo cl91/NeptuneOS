@@ -522,6 +522,7 @@ static inline void __faststorefence(void)
 #elif defined(_M_ARM64)
 
 #define _ReadWriteBarrier() __sync_synchronize()
+#define __dmb(type) __builtin_arm_dmb(type)
 
 unsigned __int64 __getReg(int);
 
