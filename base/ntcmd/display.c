@@ -71,13 +71,15 @@ NTSTATUS RtlCliPutChar(IN WCHAR Char)
 NTSTATUS RtlCliDisplayString(IN PCH Message, ...)
 {
     va_list MessageList;
-    UNICODE_STRING MessageString;
     NTSTATUS Status;
 
     //
     // Allocate Memory for the String Buffer
     //
     PCHAR MessageBuffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, CLI_DISPLAY_STRING_BUFSIZE);
+    if (!MessageBuffer) {
+	return STATUS_NO_MEMORY;
+    }
 
     //
     // First, combine the message
@@ -87,20 +89,14 @@ NTSTATUS RtlCliDisplayString(IN PCH Message, ...)
     va_end(MessageList);
 
     //
-    // Now make it a unicode string
-    //
-    RtlCreateUnicodeStringFromAsciiz(&MessageString, MessageBuffer);
-
-    //
     // Display it on screen
     //
-    Status = NtDisplayString(&MessageString);
+    Status = NtDisplayStringA(MessageBuffer);
 
     //
     // Free Memory
     //
     RtlFreeHeap(RtlGetProcessHeap(), 0, MessageBuffer);
-    RtlFreeUnicodeString(&MessageString);
 
     //
     // Return to the caller
