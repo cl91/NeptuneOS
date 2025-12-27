@@ -256,7 +256,6 @@ static VOID HalpAcpiRegisterHpet(IN PACPI_HPET_TABLE Hpet)
 	return;
     }
     HalpHpetTable[HalpNumHpetTables].BaseAddress = Hpet->BaseAddress.Address;
-    HalpHpetTable[HalpNumHpetTables].NumComparators = Hpet->MaxComparatorId + 1;
     HalpNumHpetTables++;
 }
 

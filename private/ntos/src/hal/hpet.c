@@ -141,7 +141,7 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 
 	/* Get the total number of timers that we can use. */
 	UCHAR NumComparators = ((*HalpHpetGetCapId(VirtBase) >> 8) & 0x1F) + 1;
-	assert(NumComparators == HalpHpetTable[i].NumComparators);
+	HalpHpetTable[i].NumComparators = NumComparators;
 
 	BOOLEAN TryMsi = TRUE;
     again:
