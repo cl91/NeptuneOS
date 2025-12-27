@@ -487,12 +487,12 @@ typedef seL4_X86_VMAttributes PAGING_ATTRIBUTES;
 
 FORCEINLINE VOID MmApplyNoCacheAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
 {
-    *Attr |= seL4_X86_CacheDisabled;
+    *Attr = seL4_X86_Uncacheable;
 }
 
 FORCEINLINE VOID MmApplyWriteCombineAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
 {
-    *Attr |= seL4_X86_WriteCombining;
+    *Attr = seL4_X86_WriteCombining;
 }
 
 typedef seL4_X86_Page_GetAddress_t seL4_Page_GetAddress_t;
