@@ -880,11 +880,6 @@ static PACPI_EC_QUERY_HANDLER AcpiEcGetQueryHandlerByValue(PACPI_EC Ec,
     return NULL;
 }
 
-static VOID AcpiEcPutQueryHandler(PACPI_EC_QUERY_HANDLER Handler)
-{
-    ExFreePoolWithTag(Handler, ACPI_TAG);
-}
-
 ACPI_STATUS AcpiEcAddQueryHandler(PACPI_EC Ec,
 				  UCHAR QueryBit,
 				  ACPI_HANDLE Handle,
@@ -921,7 +916,7 @@ static VOID AcpiEcRemoveQueryHandlers(PACPI_EC Ec,
 	 */
 	if (RemoveAll || (Handler->Func && Handler->QueryBit == QueryBit)) {
 	    RemoveEntryList(&Handler->Node);
-	    AcpiEcPutQueryHandler(Handler);
+	    ExFreePoolWithTag(Handler, ACPI_TAG);
 	}
     }
 }
@@ -949,7 +944,6 @@ static NTAPI VOID AcpiEcProcessEvent(IN PACPI_EC_QUERY Query)
     Ec->QueriesInProgress--;
     AcpiEcReleaseLock();
 
-    AcpiEcPutQueryHandler(Handler);
     ExFreePoolWithTag(Query, ACPI_TAG);
 }
 
