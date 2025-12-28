@@ -254,6 +254,9 @@ QSI_DEF(SystemModuleInformation)
 {
     *ReqSize = FIELD_OFFSET(RTL_PROCESS_MODULES, Modules);
     if (Size < *ReqSize) {
+	if (Size) {
+	    RtlZeroMemory(Buffer, Size);
+	}
 	return STATUS_BUFFER_TOO_SMALL;
     }
     PRTL_PROCESS_MODULES Modules = Buffer;
