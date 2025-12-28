@@ -570,7 +570,7 @@ VOID NVMeRunningWaitOnSetFeatures(PNVME_DEVICE_EXTENSION pAE)
     PQUEUE_INFO pQI = &pAE->QueueInfo;
 
     /*
-     * There are multiple steps hanlded in this state as they're all
+     * There are multiple steps handled in this state as they're all
      * grouped into 'set feature' type things.  This simplifies adding more
      * set features in the future as jst this sub-state machine needs updating
      */

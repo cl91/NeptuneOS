@@ -2951,8 +2951,7 @@ BOOLEAN NVMeFreeHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
 	return TRUE;
 
     ULONG status = 0;
-    StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer HMB allocated size %lld\
-		\n",
+    StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer HMB allocated size %lld\n",
 		       pAE->HMBsize);
 
     ULONG TotalDescriptorListCount = pAE->HMBdescriptorListCount;
@@ -2968,13 +2967,11 @@ BOOLEAN NVMeFreeHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
 	    (PVOID)pAE, (PVOID)pDescriptorVirAddrBuffer[i],
 	    (pDescriptorEntry[i].BSIZE) << 12, MmNonCached);
 	if (status != STOR_STATUS_SUCCESS) {
-	    StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer entry fail code %x\
-		\n",
+	    StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer entry fail code %x\n",
 			       status);
 	    return FALSE;
 	}
-	StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer entry addr %llx size %d\
-		\n",
+	StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer entry addr %llx size %d\n",
 			   pDescriptorVirAddrBuffer[i], pDescriptorEntry[i].BSIZE);
     }
 
@@ -2984,8 +2981,7 @@ BOOLEAN NVMeFreeHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
 	sizeof(HOST_MEMORY_BUFFER_DESCRIPTOR_ENTRY) * TotalDescriptorListCount,
 	MmNonCached);
     if (status != STOR_STATUS_SUCCESS) {
-	StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer fail code %x\
-		\n",
+	StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer fail code %x\n",
 			   status);
 	return FALSE;
     }
@@ -2993,21 +2989,17 @@ BOOLEAN NVMeFreeHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
     /* release HMB descriptor virtual addr list */
     status = StorPortFreeContiguousMemorySpecifyCache((PVOID)pAE,
 						      (PVOID)pDescriptorVirAddrBuffer,
-						      sizeof(ULONGLONG) *
-							  TotalDescriptorListCount,
+						      sizeof(ULONGLONG) * TotalDescriptorListCount,
 						      MmNonCached);
     if (status != STOR_STATUS_SUCCESS) {
-	StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer fail code %x\
-		\n",
+	StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer fail code %x\n",
 			   status);
 	return FALSE;
     }
 
-    StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer descriptor list %llx size %d\
-		\n",
+    StorPortDebugPrint(INFO, "NVMeFreeHostMemoryBuffer descriptor list %llx size %d\n",
 		       pBuffer,
-		       sizeof(HOST_MEMORY_BUFFER_DESCRIPTOR_ENTRY) *
-			   TotalDescriptorListCount);
+		       sizeof(HOST_MEMORY_BUFFER_DESCRIPTOR_ENTRY) * TotalDescriptorListCount);
     /* update HMB info */
     pAE->pHMBdescriptorListRangeStart = NULL;
     pAE->HMBdescriptorListCount = 0;
@@ -3122,8 +3114,7 @@ BOOLEAN NVMeAllocateHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
 	pDescriptorEntry[DescNent].BSIZE = HMBchunkSize >> 12; // unit: page size
 	pDescriptorEntry[DescNent].BADD = NVMeGetPhysAddr(pAE, NULL, pBuffer).QuadPart;
 	pDescritorVirAddrList[DescNent] = (ULONGLONG)pBuffer;
-	StorPortDebugPrint(INFO, "allocate entry addr %llx size %d\
-		\n",
+	StorPortDebugPrint(INFO, "allocate entry addr %llx size %d\n",
 			   pDescriptorEntry[DescNent].BADD,
 			   pDescriptorEntry[DescNent].BSIZE);
 	/* update current index*/
@@ -3137,8 +3128,8 @@ BOOLEAN NVMeAllocateHostMemoryBuffer(PNVME_DEVICE_EXTENSION pAE)
     pAE->HMBdescriptorListCount = DescNent;
     pAE->pHMBDescriptorListVirtualAddr = pHMBDescriptorVirtualAddrListBuffer;
 
-    StorPortDebugPrint(INFO, "SAVE allocate HMBDescriptorList %llx \
-		HMBDescriptorListVirtualAddr %llx size %d count %d\n",
+    StorPortDebugPrint(INFO, "SAVE allocate HMBDescriptorList %llx "
+		       "HMBDescriptorListVirtualAddr %llx size %d count %d\n",
 		       pHMBDescriptorListBuffer, pHMBDescriptorVirtualAddrListBuffer,
 		       HMBprefferedSize, DescNent);
     return TRUE;

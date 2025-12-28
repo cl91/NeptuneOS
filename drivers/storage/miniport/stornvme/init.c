@@ -3396,8 +3396,7 @@ BOOLEAN NVMeFetchRegistry(PNVME_DEVICE_EXTENSION pAE)
     memset(pBuf, 0, sizeof(ULONG));
 
     if (NVMeReadRegistry(pAE, INTCOALESCINGTIME, Type, pBuf, (ULONG *)&Len) == TRUE) {
-	if (RANGE_CHK(*(PLONG)pBuf, MIN_INT_COALESCING_TIME, MAX_INT_COALESCING_TIME) ==
-	    TRUE) {
+	if (RANGE_CHK(*(PLONG)pBuf, MIN_INT_COALESCING_TIME, MAX_INT_COALESCING_TIME) == TRUE) {
 	    StorPortCopyMemory((PVOID)(&pAE->InitInfo.IntCoalescingTime), (PVOID)pBuf,
 			       sizeof(ULONG));
 	}
