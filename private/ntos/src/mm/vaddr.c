@@ -1197,7 +1197,7 @@ NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 {
     PMMVAD Vad = MiVSpaceFindVadNode(VSpace, VirtAddr);
     if (!Vad) {
-	MmDbg("Invalid base address %p\n", VirtAddr);
+	MmDbg("Invalid base address %p\n", (PVOID)VirtAddr);
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER_1;
     }

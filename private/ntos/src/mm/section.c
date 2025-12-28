@@ -1240,8 +1240,8 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection)
 	MmDbgPrint("    (nil)\n");
 	return;
     }
-    MmDbgPrint("    Number of subsections = %d\n",
-	       GetListLength(&ImageSection->SubSectionList));
+    MmDbgPrint("    Number of subsections = %zd\n",
+	       (MWORD)GetListLength(&ImageSection->SubSectionList));
     MmDbgPrint("    Image base = %p\n", (PVOID) ImageSection->ImageBase);
     MmDbgPrint("    TransferAddress = %p\n",
 	       (PVOID)ImageSection->ImageInformation.TransferAddress);

@@ -417,7 +417,8 @@ insert:
 }
 
 #ifdef MMDBG
-static VOID MiDbgDumpUntyped(IN PAVL_NODE Node)
+static VOID MiDbgDumpUntyped(IN PAVL_NODE Node,
+			     IN PVOID Context)
 {
     PUNTYPED Untyped = AVL_NODE_TO_UNTYPED(Node);
     MmDbgDumpCapTree(&Untyped->TreeNode, 4);
@@ -448,7 +449,7 @@ VOID MmDbgDumpUntypedForest()
     }
     MmDbgPrint("  Root untyped forest:\n");
     AvlVisitTreeLinear(&MiPhyMemDescriptor.RootUntypedForest,
-		       MiDbgDumpUntyped);
+		       MiDbgDumpUntyped, NULL);
     MmDbgPrint("  Root untyped forest as an AVL tree ordered by physical address:\n");
     AvlDumpTree(&MiPhyMemDescriptor.RootUntypedForest);
 #endif

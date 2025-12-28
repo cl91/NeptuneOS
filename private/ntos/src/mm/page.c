@@ -1000,7 +1000,8 @@ VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
 }
 
 #ifdef MMDBG
-static VOID MiDbgDumpPagingStructureVisitor(IN PAVL_NODE Node)
+static VOID MiDbgDumpPagingStructureVisitor(IN PAVL_NODE Node,
+					    IN PVOID Context)
 {
     MmDbgDumpPagingStructureRecursively(AVL_NODE_TO_PAGING_STRUCTURE(Node));
 }
@@ -1022,6 +1023,6 @@ VOID MmDbgDumpPagingStructureRecursively(IN PPAGING_STRUCTURE Paging)
 	MmDbgPrint("  == %p", (PVOID)MiGetPhysicalAddress(Paging));
     }
     MmDbgPrint("\n");
-    AvlVisitTreeLinear(&Paging->SubStructureTree, MiDbgDumpPagingStructureVisitor);
+    AvlVisitTreeLinear(&Paging->SubStructureTree, MiDbgDumpPagingStructureVisitor, NULL);
 #endif
 }
