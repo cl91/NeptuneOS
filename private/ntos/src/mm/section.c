@@ -974,7 +974,9 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
 	assert(!Vad->PhysicalSectionView.RootUntyped->IsDevice);
     }
     PAGING_ATTRIBUTES Attributes = MM_ATTRIBUTES_DEFAULT;
-    if (PageProtection & PAGE_WRITECOMBINE) {
+    if (PageProtection & PAGE_NOCACHE) {
+	MmApplyNoCacheAttribute(&Attributes);
+    } else if (PageProtection & PAGE_WRITECOMBINE) {
 	MmApplyWriteCombineAttribute(&Attributes);
     }
     BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhysicalBase) &&
