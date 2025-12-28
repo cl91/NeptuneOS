@@ -318,7 +318,8 @@ CLIENT_SVC_GEN_C_TEMPLATE = """
     UNUSED seL4_MessageInfo_t Reply = seL4_Call({{svc_ipc_cap}}, Request);
     assert(seL4_MessageInfo_get_length(Reply) == 3);
     Status = seL4_GetMR(0);
-    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL) {
+    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_OVERFLOW &&
+        Status != STATUS_BUFFER_TOO_SMALL && Status != STATUS_INFO_LENGTH_MISMATCH) {
         goto ClientPostMarshaling;
     }
     ULONG NumApc = seL4_GetMR(1);

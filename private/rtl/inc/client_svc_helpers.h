@@ -195,7 +195,9 @@ static inline NTSTATUS KiServiceUnmarshalBuffer64(IN PVOID ClientBuffer,
 						  IN MWORD *ResultLength)
 {
     assert(ClientBuffer != NULL);
-    MWORD SizeToCopy = (Status != STATUS_BUFFER_OVERFLOW && Status != STATUS_BUFFER_TOO_SMALL) ?
+    MWORD SizeToCopy = (Status != STATUS_BUFFER_OVERFLOW &&
+			Status != STATUS_BUFFER_TOO_SMALL &&
+			Status != STATUS_INFO_LENGTH_MISMATCH) ?
 	*ResultLength : BufferLength;
     if (KiPtrInSvcMsgBuf((PVOID)BufferArg.Word)) {
 	assert(BufferArg.Word >= (MWORD)&OFFSET_TO_ARG(0, CHAR));
@@ -203,36 +205,33 @@ static inline NTSTATUS KiServiceUnmarshalBuffer64(IN PVOID ClientBuffer,
 	assert(BufferArg.Word + SizeToCopy < (MWORD)&OFFSET_TO_ARG(SVC_MSGBUF_SIZE, CHAR));
 	memcpy(ClientBuffer, (PVOID)BufferArg.Word, SizeToCopy);
     }
-    return STATUS_SUCCESS;
+    return Status;
 }
 
-static inline VOID KiServiceUnmarshalBuffer5(IN PVOID ClientBuffer,
-					     IN SERVICE_ARGUMENT BufferArg,
-					     IN NTSTATUS Status,
-					     IN MWORD BufferLength,
-					     IN ULONG *pResultLength)
+static inline NTSTATUS KiServiceUnmarshalBuffer5(IN PVOID ClientBuffer,
+						 IN SERVICE_ARGUMENT BufferArg,
+						 IN NTSTATUS Status,
+						 IN MWORD BufferLength,
+						 IN ULONG *pResultLength)
 {
     MWORD ResultLength = *pResultLength;
-    KiServiceUnmarshalBuffer64(ClientBuffer, BufferArg, Status, BufferLength, &ResultLength);
+    return KiServiceUnmarshalBuffer64(ClientBuffer, BufferArg, Status, BufferLength, &ResultLength);
 }
 
-static inline VOID KiServiceUnmarshalBuffer6(IN PVOID ClientBuffer,
-					     IN SERVICE_ARGUMENT BufferArg,
-					     IN NTSTATUS Status,
-					     IN MWORD BufferLength,
-					     IN ULONG *ResultLength,
-					     IN UNUSED MWORD BufferType)
+static inline NTSTATUS KiServiceUnmarshalBuffer6(IN PVOID ClientBuffer,
+						 IN SERVICE_ARGUMENT BufferArg,
+						 IN NTSTATUS Status,
+						 IN MWORD BufferLength,
+						 IN ULONG *ResultLength,
+						 IN UNUSED MWORD BufferType)
 {
-    KiServiceUnmarshalBuffer5(ClientBuffer, BufferArg, Status, BufferLength, ResultLength);
+    return KiServiceUnmarshalBuffer5(ClientBuffer, BufferArg, Status, BufferLength, ResultLength);
 }
 
 #define KI_GET_7TH_ARG(_1,_2,_3,_4,_5,_6,_7,...)	_7
 #define KiServiceUnmarshalBuffer(...)				\
-    ({								\
-	KI_GET_7TH_ARG(__VA_ARGS__, KiServiceUnmarshalBuffer6,	\
-		       KiServiceUnmarshalBuffer5)(__VA_ARGS__);	\
-	STATUS_SUCCESS;						\
-    })
+    (KI_GET_7TH_ARG(__VA_ARGS__, KiServiceUnmarshalBuffer6,	\
+		    KiServiceUnmarshalBuffer5)(__VA_ARGS__))
 
 static inline VOID KiDeliverApc(IN ULONG MsgBufOffset,
                                 IN ULONG NumApc)
