@@ -220,12 +220,8 @@ BOOLEAN NVMeRunningStartAttempt(PNVME_DEVICE_EXTENSION pAE, BOOLEAN resetDriven,
  ******************************************************************************/
 VOID NVMeStallExecution(PNVME_DEVICE_EXTENSION pAE, ULONG microSeconds)
 {
-    ULONG i;
-
     if (pAE->ntldrDump == FALSE) {
-	for (i = 0; i < microSeconds / MILLI_TO_MICRO; i++) {
-	    StorPortStallExecution(MILLI_TO_MICRO - 1);
-	}
+	StorPortStallExecution(microSeconds);
     } else {
 	NVMeCrashDelay(microSeconds, pAE->ntldrDump);
     }

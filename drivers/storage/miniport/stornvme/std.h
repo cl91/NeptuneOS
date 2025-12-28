@@ -93,12 +93,21 @@ HW_PASSIVE_INITIALIZE_ROUTINE NVMePassiveInitialize;
 #define LIST_CNTLRS_ATTACHED_TO_NS	0x12
 #define LIST_ALL_CNTLRS				0x13
 #define DUMP_POLL_CALLS             3
+#if DBG
+/* In debug build the timing delay means we need to poll less frequently */
+#define STORPORT_TIMER_CB_us        500000 /* .5 seconds */
+#else
 #define STORPORT_TIMER_CB_us        5000 /* .005 seconds */
+#endif
 #define MAX_STATE_STALL_us          STORPORT_TIMER_CB_us
 #define MILLI_TO_MICRO              1000
 #define MICRO_TO_NANO               1000
 #define MSI_ADDR_RH_DM_MASK         0xC
+#if DBG
+#define MICRO_TO_SEC                10
+#else
 #define MICRO_TO_SEC                1000
+#endif
 
 /* Default, minimum, maximum values of Registry keys */
 #define DFT_NAMESPACES              16
