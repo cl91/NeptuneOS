@@ -105,39 +105,32 @@ NTSTATUS RtlCliPowerOff(VOID)
  *--*/
 NTSTATUS RtlCliListDrivers(VOID)
 {
-    PRTL_PROCESS_MODULES ModuleInfo;
-    PRTL_PROCESS_MODULE_INFORMATION ModuleEntry;
+    RTL_PROCESS_MODULES Modules = {};
     ULONG Size = 0;
 
     //
     // Get the count first
     //
     NTSTATUS Status = NtQuerySystemInformation(SystemModuleInformation,
-					       &Size, sizeof(Size), NULL);
-    if (!NT_SUCCESS(Status)) {
+					       &Modules, sizeof(Modules), &Size);
+    if (!NT_SUCCESS(Status) && Status != STATUS_BUFFER_TOO_SMALL) {
         RtlCliDisplayString("NtQuerySystemInformation failed with error 0x%08x\n",
 			    Status);
 	return Status;
     }
 
-    if (!Size) {
+    if (!Modules.NumberOfModules) {
 	RtlCliDisplayString("No active driver loaded.\n");
 	return STATUS_SUCCESS;
     }
 
     //
-    // Get the total buffer size
+    // Allocate the buffer
     //
-    Size = FIELD_OFFSET(RTL_PROCESS_MODULES, Modules) +
-	Size * sizeof(RTL_PROCESS_MODULE_INFORMATION);
+    PRTL_PROCESS_MODULES ModuleInfo = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
 
     //
-    // Allocate it
-    //
-    ModuleInfo = RtlAllocateHeap(RtlGetProcessHeap(), 0, Size);
-
-    //
-    // Query the buffer
+    // Query module information now that we have a large enough buffer
     //
     Status = NtQuerySystemInformation(SystemModuleInformation,
 				      ModuleInfo, Size, NULL);
@@ -175,7 +168,7 @@ NTSTATUS RtlCliListDrivers(VOID)
 	//
 	// Get this entry
 	//
-	ModuleEntry = &ModuleInfo->Modules[i];
+	PRTL_PROCESS_MODULE_INFORMATION ModuleEntry = &ModuleInfo->Modules[i];
 
 	//
 	// Display basic data
