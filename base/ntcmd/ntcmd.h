@@ -61,6 +61,7 @@ typedef struct _KBD_RECORD {
 
 extern HANDLE hKeyboard;
 extern ULONG ConsoleMaxRows;
+extern ULONG ConsoleMaxColumns;
 
 //
 // Registry key

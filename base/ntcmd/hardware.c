@@ -73,12 +73,13 @@ static NTSTATUS RtlCliGetChildOrSibling(IN PWCHAR Name,
 
 static NTSTATUS RtlCliPrintDeviceName(IN PWCHAR Name,
 				      IN ULONG Level,
-				      IN HANDLE RootKey)
+				      IN HANDLE RootKey,
+				      IN OUT ULONG *LinesDisplayed)
 {
     NTSTATUS Status = STATUS_SUCCESS;
     PKEY_VALUE_FULL_INFORMATION FullInformation;
     ULONG ResultLength;
-    CHAR Indentation[MAX_DEVICE_ID_LEN];
+    CHAR Indentation[Level * 2 + 1];
 
     //
     // We must have a root key
@@ -145,10 +146,34 @@ static NTSTATUS RtlCliPrintDeviceName(IN PWCHAR Name,
     //
     Name = (PWCHAR)((ULONG_PTR)FullInformation + FullInformation->DataOffset);
 
+out:
+    //
+    // Close the key to the device instance name
+    //
+    if (RegHandle) {
+	NtClose(RegHandle);
+    }
+
+    //
+    // If we are at the bottom of the screen, give the user a moment before showing more content
+    //
+    LONG LinesToDisplay = (Level * 2 + wcslen(Name) + ConsoleMaxColumns - 1) / ConsoleMaxColumns;
+    LONG RemainingLines = ConsoleMaxRows - *LinesDisplayed;
+    if (RemainingLines <= LinesToDisplay) {
+	//
+	// Hold for more input
+	//
+	RtlCliDisplayString("--- PRESS SPACE TO CONTINUE ---");
+	while (RtlCliGetChar(hKeyboard) != ' ') ;
+	RtlCliDisplayString("\n");
+	*LinesDisplayed = 0;
+    }
+
+    *LinesDisplayed += LinesToDisplay;
+
     //
     // Indent the name to create the appeareance of a tree
     //
-out:
     for (ULONG i = 0; i < (Level * 2); i++)
 	Indentation[i] = ' ';
     Indentation[Level * 2] = '\0';
@@ -157,13 +182,6 @@ out:
     // Add the device name or description, and display it
     //
     RtlCliDisplayString("%s%ws\n", Indentation, Name);
-
-    //
-    // Close the key to the device instance name
-    //
-    if (RegHandle) {
-	NtClose(RegHandle);
-    }
 
     //
     // Return status to caller
@@ -183,17 +201,7 @@ static VOID RtlCliListSubNodes(IN PWCHAR DeviceInstance,
     // Print the node name
     //
 again:
-    ++*LinesDisplayed;
-    if (*LinesDisplayed > (ConsoleMaxRows - 2)) {
-	//
-	// Hold for more input
-	//
-	RtlCliDisplayString("--- PRESS SPACE TO CONTINUE ---");
-	while (RtlCliGetChar(hKeyboard) != ' ') ;
-	RtlCliDisplayString("\n");
-	*LinesDisplayed = 0;
-    }
-    RtlCliPrintDeviceName(DeviceInstance, Level, RootKey);
+    RtlCliPrintDeviceName(DeviceInstance, Level, RootKey, LinesDisplayed);
 
     //
     // Get its children

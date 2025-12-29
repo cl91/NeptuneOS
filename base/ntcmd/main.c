@@ -31,6 +31,7 @@ Revision History:
 
 HANDLE hKeyboard;
 ULONG ConsoleMaxRows = 24;
+ULONG ConsoleMaxColumns = 80;
 
 #define NTCMD_BANNER "Neptune OS Native Command Prompt [Version " VER_PRODUCTVERSION_STRING "]\n"
 
@@ -440,8 +441,9 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     NTSTATUS Status = NtQuerySystemInformation(SystemBootConsoleInformation,
 					       &ConsoleInfo, BufferSize, &BufferSize);
     assert(!NT_SUCCESS(Status) || (ConsoleInfo.NumberOfRows && ConsoleInfo.NumberOfColumns));
-    if (NT_SUCCESS(Status) && ConsoleInfo.NumberOfRows) {
+    if (NT_SUCCESS(Status) && ConsoleInfo.NumberOfRows && ConsoleInfo.NumberOfColumns) {
 	ConsoleMaxRows = ConsoleInfo.NumberOfRows;
+	ConsoleMaxColumns = ConsoleInfo.NumberOfColumns;
     }
 
     //
