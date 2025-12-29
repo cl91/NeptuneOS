@@ -39,8 +39,8 @@ ReactOS project, that supports most of the common shell commands, such as `pwd`,
 annoying sound on the PC speaker.
 
 The entire system fits in a floppy and can be downloaded from
-[Release v0.2.0002](https://github.com/cl91/NeptuneOS/releases/tag/v0.2.0002).
-You can watch a short demo on [YouTube](https://www.youtube.com/watch?v=o3FLRnkh0ic).
+[Release v0.3.0003](https://github.com/cl91/NeptuneOS/releases/tag/v0.3.0003).
+You can watch a short demo on [YouTube](https://www.youtube.com/watch?v=ejNeS7A5qq0).
 You can also build it yourself. See the section on [Building](#building-and-running).
 
 ### Planned Features
@@ -53,7 +53,7 @@ more details, see issue [#19](https://github.com/cl91/NeptuneOS/issues/19).
 
 ## Minimal System Requirements
 
-For i386 systems (should probably be called i686):
+For i386 systems:
 
 1. CPU: At least a Pentium 2 or equivalent: the default clang target is i686 which
    can generate instructions not implemented by 386, 486, and Pentium. Also, on x86
@@ -130,7 +130,7 @@ To create boot isos, type
 ```
 ./mkiso.sh [amd64] [release]
 ```
-To simulate using QEMU, run
+To emulate using QEMU, run
 ```
 ./run.sh [direct|iso|uefi] [amd64] [release] [extra-qemu-args]
 ```
@@ -145,12 +145,12 @@ assumes you are using a recent QEMU version and have pulseaudio)
 ```
 ./run.sh release -machine pcspk-audiodev=snd0 -audiodev pa,id=snd0
 ```
-To simulate an AHCI drive under QEMU, add the following extra QEMU arguments:
+To emulate an AHCI drive under QEMU, add the following extra QEMU arguments:
 ```
 -drive file=disk.img,if=none,id=disk0 -device ich9-ahci,id=ahci0 -device ide-hd,drive=disk0,bus=ahci0.0
 ```
 Replace `disk.img` with the path to your disk image. You may need to add `-boot a` so QEMU
-will boot from the floppy disk. To simulate an NVME drive under QEMU, add the following
+will boot from the floppy disk. To emulate an NVME drive under QEMU, add the following
 extra QEMU arguments:
 ```
 -drive file=disk.img,format=raw,if=none,id=drv0 -device nvme,serial=deadbeef,drive=drv0,id=nvme0
@@ -158,11 +158,81 @@ extra QEMU arguments:
 
 ### Debugging
 
-Add information about debugging using PCI(E) serial port.
+By default, the debug build is built with serial port logging enabled. The default IO port
+for the serial terminal that the seL4 kernel uses to output the debug logs is `0x3f8` and
+can be configured in the boot command line using `console_port=0x###` and `debug_port=0x###`.
+If your machine does not have a built-in serial port (a common case for laptops), you can use
+a PCI(E) serial card or a Cardbus (expresscard) serial card. The form factor does not matter,
+as long as the device shows up as a PCI device when the firmware enumerates the PCI bus. The
+PCI(E) serial card must support IO port decoding. A tested PCI(E) serial bridge chip is Asix
+Electronics AX99100. You can find products based on this chip in the form of PCIE/mini-PCIE/M2
+and Cardbus/expresscard. In the picture below, an AX99100 M.2 serial bridge is connected to a
+cardbus adapter, which is then plugged into the laptop's expresscard slot to enable serial
+debugging.
+
+![An AX99100 M.2 serial bridge connected to a cardbus adapter, which is then plugged into the
+laptop's expresscard slot to enable serial debugging](docs/serial.jpg)
+
+You need to find the bus/device/function number of the serial card you added as well as its
+IO port range that the firmware has configured. Under GRUB, both information is available
+using the `lspci -i` command. Look for the output such as
+```
+04:00.0 125b:9100 [0700] (Serial controller)
+    I/O ports at d000 [size=8]
+    Memory at fea00000 [size=4K]
+```
+Record the IO port ranges that the card decodes, and add `console_port=0xd000 debug_port=0xd000`
+to the GRUB boot command line for seL4. If your boot firmware did not enable IO port decoding
+for the card (this is quite common, so you most likely will need to do it), you will need to
+manually enable it before loading the seL4 kernel, using `setpci -s 04:00.0 0x4.w=0x7`, where
+`04:00.0` is the bus/device/function number of the serial port card. A full example is
+```
+menuentry 'Neptune OS amd64 release' --class os {
+    insmod all_video
+    insmod gzio
+    insmod part_gpt
+    insmod ext2
+    echo 'Enabling serial port...'
+    setpci -s 04:00.0 0x4.w=0x7
+    echo 'Loading seL4 kernel ...'
+    multiboot2 /neptuneos-kernel-amd64-release console_port=0xd000 debug_port=0xd000
+    echo 'Loading NT Executive ...'
+    module2 /neptuneos-ntos-amd64-release
+}
+```
+
+Note USB serial ports will never work as these are USB devices rather than PCI(E) devices.
 
 The debug build might run slowly especially if you turn on serial port logging.
 You can turn off logging by modifying the master header of the NT Executive project
 (see `private/ntos/inc/ntos.h`).
+
+### Benchmarking
+
+We have a basic disk IO benchmarking tool under `base/umtests`. It is a very simple-minded,
+completely unscientific tool generated by ChatGPT that does random 4K and sequential 1MB read
+(via Linux `read()` and NT `NtReadFile()`), single-threaded and uncached (`O_DIRECT` and
+NT equivalent are applied to relevant system calls). It can be compiled and executed under
+Linux using
+```
+cc -Wall -O3 base/umtests/diskbench.c
+sudo ./a.out /dev/nvme0n1
+```
+You should see output such as the following
+```
+Random 4K Reads: 50.14 MB/s (7.079 seconds)
+Sequential 1MB Reads: 3200.00 MB/s (0.080 seconds)
+```
+When compiled for Neptune OS, the tool will benchmark disk and file system IO for the first
+harddrive and its first volume, respectively. The disk IO is sent to the storage driver stack
+directly, and the volume IO is sent to the file system driver, which then forwards the IO to
+the storage drivers. Consequently, the volume IO is significantly slower than the file system
+driver due to the overhead of context switches and IRP serialization and deserialization. It
+is expected that caching will improve overall system IO performance, but this remains to be
+tested. For the raw disk reads, we seem to be able to saturate the AHCI bandwidth without any
+problem, but getting the full NVME speed is a work-in-progress (see issue
+[#40](https://github.com/cl91/NeptuneOS/issues/40)). If you have run any performance benchmarks
+on your own machine, it would be appreciated if you could report them in the issue linked above.
 
 ### Cross-compiling
 We use the LLVM toolchain so cross-compiling in theory should simply work without any

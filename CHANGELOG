@@ -1,22 +1,40 @@
 # Changelog
 
-## Release [v0.1]
+## Release [v0.3]
 
-	- Initial release featuring basic NT Native API, Native Shell and a keyboard driver
-	stack (kbdclass.sys and i8042prt.sys).
+   - Updated seL4 to upstream release 14.0.0
+   - Added support for UEFI booting and UEFI high definition graphics console rendering
+   - Added support for coreboot high definition graphics console
+   - Added support for IOAPIC/IOAPICx2 and MSI/MSI-X interrupt enabling
+   - Added support for High Precision Event Timer (HPET)
+   - Ported the ACPI driver from ReactOS and added support for ACPI device enumeration,
+     poweroff and reboot
+   - Ported the PCI(E) driver from ReactOS and added support for PCI(E) device enumeration
+     and config
+   - Ported the storage class drivers classpnp.sys and disk.sys from the Microsoft open-source
+     sample drivers.
+   - Ported the (incomplete) storport driver from ReactOS and added enough missing pieces
+     to support the AHCI and NVME miniport drivers
+   - Ported the storahci miniport driver from Microsoft open-source sample drivers
+   - Ported the open-source Open Systems Alliance NVME miniport driver
+   - Many bug fixes and overall improvements to the NT Executive and device driver interface
 
 ## Release [v0.2]
 
-	- Update seL4 to upstream release 12.1.0
-	- Update toolchain to llvm/clang-15
-	- Implement Structured Exception Handling (SEH)
-	- Object manager improvements: object deletion, symbolic link, case-insensitivity
-	- More NT system services are implemented: Events, Registry, Virtual Memory
-	- Implement hardware configuration database (part of the volatile registry of NT)
-	- Implement DMA Subsystem: ISA slave DMA, PCI bus mastering, software scatter/gather
-	- Port the floppy driver from ReactOS.
-	-	Add documentations for architectural overview, component design, and driver porting
-	-	Implement the Cache Manager, including the server-side facility inside the NT
-	Executive and client-side API exposed to file system drivers
-	- Implement server-side facilities for file systems and port the FAT file system
-	driver from ReactOS
+   - Updated seL4 to upstream release 12.1.0
+   - Updated toolchain to llvm/clang-15
+   - Implemented Structured Exception Handling (SEH)
+   - Object manager improvements: object deletion, symbolic link, case-insensitivity
+   - More NT system services are implemented: Events, Registry, Virtual Memory
+   - Implemented hardware configuration database (part of the volatile registry of NT)
+   - Implemented DMA Subsystem: ISA slave DMA, PCI bus mastering, software scatter/gather
+   - Ported the floppy driver from ReactOS.
+   - Added documentations for architectural overview, component design, and driver porting
+   - Implemented the Cache Manager, including the server-side routines in NT Executive and
+     client-side API exposed to file system drivers
+   - Ported the FAT file system driver from ReactOS
+
+## Release [v0.1]
+
+   - Initial release featuring basic NT Native API, Native Shell and a keyboard driver
+     stack (kbdclass.sys and i8042prt.sys).

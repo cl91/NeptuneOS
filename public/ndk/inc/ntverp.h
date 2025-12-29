@@ -6,18 +6,18 @@
  */
 
 //
-// Windows NT Build 2.0
+// Windows NT Build 3.0
 //
-#define VER_PRODUCTBUILD                    2
+#define VER_PRODUCTBUILD                    3
 #define VER_PRODUCTBUILD_QFE                0
 
 //
-// Windows NT Version 0.2
+// Windows NT Version 0.3
 //
 #define VER_PRODUCTMAJORVERSION             0
-#define VER_PRODUCTMINORVERSION             2
-#define VER_PRODUCTVERSION_W                (0x0002)
-#define VER_PRODUCTVERSION_DW               (0x00020000 | VER_PRODUCTBUILD)
+#define VER_PRODUCTMINORVERSION             3
+#define VER_PRODUCTVERSION_W                (0x0003)
+#define VER_PRODUCTVERSION_DW               (0x00030000 | VER_PRODUCTBUILD)
 
 //
 // Not a beta
