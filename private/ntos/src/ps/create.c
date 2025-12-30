@@ -533,9 +533,10 @@ NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
 				     USER_ADDRESS_END, DRIVER_COROUTINE_STACK_RESERVE,
 				     0, 0, MEM_RESERVE_OWNED_MEMORY, &Vad));
     assert(Vad != NULL);
-    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, Vad->AvlNode.Key + PAGE_SIZE,
+    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace,
+				    Vad->AvlNode.Key + DRIVER_COROUTINE_STACK_GUARD,
 				    DRIVER_COROUTINE_STACK_COMMIT));
-    *pStackTop = Vad->AvlNode.Key + PAGE_SIZE + DRIVER_COROUTINE_STACK_COMMIT;
+    *pStackTop = Vad->AvlNode.Key + DRIVER_COROUTINE_STACK_GUARD + DRIVER_COROUTINE_STACK_COMMIT;
     return STATUS_SUCCESS;
 }
 
