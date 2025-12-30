@@ -352,8 +352,7 @@ BOOLEAN RetryTransferPacket(PTRANSFER_PACKET Pkt)
 {
     BOOLEAN packetDone;
     BOOLEAN scaleDown = FALSE;
-    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = (PFUNCTIONAL_DEVICE_EXTENSION)
-						    Pkt->Fdo->DeviceExtension;
+    PFUNCTIONAL_DEVICE_EXTENSION fdoExtension = Pkt->Fdo->DeviceExtension;
     PCLASS_PRIVATE_FDO_DATA fdoData = fdoExtension->PrivateFdoData;
     PCDB pCdb = SrbGetCdb(Pkt->Srb);
 
@@ -361,7 +360,7 @@ BOOLEAN RetryTransferPacket(PTRANSFER_PACKET Pkt)
     Pkt->NumRetries--;
 
     TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_GENERAL,
-		"retrying failed transfer (pkt=%ph, op=%s)", Pkt,
+		"retrying failed transfer (pkt=%p, op=%s)\n", Pkt,
 		DBGGETSCSIOPSTR(Pkt->Srb)));
 
     if (!fdoData->DisableThrottling) {
@@ -488,7 +487,7 @@ static NTAPI VOID TransferPacketRetryTimerWorkerRoutine(IN PDEVICE_OBJECT Device
      */
     if (PORT_ALLOCATED_SENSE_EX(fdoExtension, pkt->Srb)) {
 	TracePrint((TRACE_LEVEL_INFORMATION, TRACE_FLAG_RW,
-		    "Freeing port-allocated sense buffer for pkt %ph.", pkt));
+		    "Freeing port-allocated sense buffer for pkt %p.", pkt));
 	FREE_PORT_ALLOCATED_SENSE_BUFFER_EX(fdoExtension, pkt->Srb);
 	SrbSetSenseInfoBuffer(pkt->Srb, &pkt->SrbErrorSenseData);
 	SrbSetSenseInfoBufferLength(pkt->Srb, sizeof(pkt->SrbErrorSenseData));

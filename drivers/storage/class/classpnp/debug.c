@@ -192,11 +192,11 @@ VOID ClassDebugPrint(IN CLASS_DEBUG_LEVEL DebugPrintLevel,
 }
 
 /*
-     *  DbgCheckReturnedPkt
-     *
-     *      Check a completed TRANSFER_PACKET for all sorts of error conditions
-     *      and warn/trap appropriately.
-     */
+ *  DbgCheckReturnedPkt
+ *
+ *      Check a completed TRANSFER_PACKET for all sorts of error conditions
+ *      and warn/trap appropriately.
+ */
 VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 {
     PCDB pCdb = ClasspTransferPacketGetCdb(Pkt);
@@ -208,17 +208,17 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 
     if (SRB_STATUS(Pkt->Srb->SrbStatus) == SRB_STATUS_PENDING) {
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
-		    "SRB completed with status PENDING in packet %ph: (op=%s "
+		    "SRB completed with status PENDING in packet %p: (op=%s "
 		    "srbstat=%s(%xh), irpstat=%xh)\n",
 		    Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 		    (ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status));
     } else if (SRB_STATUS(Pkt->Srb->SrbStatus) == SRB_STATUS_SUCCESS) {
 	/*
-             *  Make sure SRB and IRP status match.
-             */
+	 *  Make sure SRB and IRP status match.
+	 */
 	if (!NT_SUCCESS(Pkt->Irp->IoStatus.Status)) {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
-			"SRB and IRP status don't match in packet %ph: (op=%s "
+			"SRB and IRP status don't match in packet %p: (op=%s "
 			"srbstat=%s(%xh), irpstat=%xh)\n",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			(ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status));
@@ -227,7 +227,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 	if (Pkt->Irp->IoStatus.Information != SrbGetDataTransferLength(Pkt->Srb)) {
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
 			"SRB and IRP result transfer lengths don't match in succeeded "
-			"packet %ph: (op=%s, SrbStatus=%s, Srb.DataTransferLength=%xh, "
+			"packet %p: (op=%s, SrbStatus=%s, Srb.DataTransferLength=%xh, "
 			"Irp->IoStatus.Information=%zxh).\n",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			SrbGetDataTransferLength(Pkt->Srb),
@@ -236,13 +236,13 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
     } else {
 	if (NT_SUCCESS(Pkt->Irp->IoStatus.Status)) {
 	    TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
-			"SRB and IRP status don't match in packet %ph: (op=%s "
+			"SRB and IRP status don't match in packet %p: (op=%s "
 			"srbstat=%s(%xh), irpstat=%xh)\n",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			(ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status));
 	}
 	TracePrint((TRACE_LEVEL_WARNING, TRACE_FLAG_RW,
-		    "Packet %ph failed (op=%s srbstat=%s(%xh), irpstat=%xh, "
+		    "Packet %p failed (op=%s srbstat=%s(%xh), irpstat=%xh, "
 		    "sense=%s/%s/%s)\n",
 		    Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 		    (ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status,
@@ -250,15 +250,15 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 		    DBGGETADSENSEQUALIFIERSTR(Pkt->Srb)));
 
 	/*
-             *  If the SRB failed with underrun or overrun, then the actual
-             *  transferred length should be returned in both SRB and IRP.
-             *  (SRB's only have an error status for overrun, so it's overloaded).
-             */
+	 *  If the SRB failed with underrun or overrun, then the actual
+	 *  transferred length should be returned in both SRB and IRP.
+	 *  (SRB's only have an error status for overrun, so it's overloaded).
+	 */
 	if ((SRB_STATUS(Pkt->Srb->SrbStatus) == SRB_STATUS_DATA_OVERRUN) &&
 	    (Pkt->Irp->IoStatus.Information != SrbGetDataTransferLength(Pkt->Srb))) {
 	    TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
 			"SRB and IRP result transfer lengths don't match in failed "
-			"packet %ph: (op=%s, SrbStatus=%s, Srb.DataTransferLength=%xh, "
+			"packet %p: (op=%s, SrbStatus=%s, Srb.DataTransferLength=%xh, "
 			"Irp->IoStatus.Information=%zxh).\n",
 			Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 			SrbGetDataTransferLength(Pkt->Srb),
@@ -267,18 +267,18 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
     }
 
     /*
-         *  If the port driver returned STATUS_INSUFFICIENT_RESOURCES,
-         *  make sure this is also the InternalStatus in the SRB so that we process it correctly.
-         */
+     *  If the port driver returned STATUS_INSUFFICIENT_RESOURCES,
+     *  make sure this is also the InternalStatus in the SRB so that we process it correctly.
+     */
     if (Pkt->Irp->IoStatus.Status == STATUS_INSUFFICIENT_RESOURCES) {
 	NT_ASSERT(SRB_STATUS(Pkt->Srb->SrbStatus) == SRB_STATUS_INTERNAL_ERROR);
 	NT_ASSERT(SrbGetSystemStatus(Pkt->Srb) == STATUS_INSUFFICIENT_RESOURCES);
     }
 
     /*
-         *  Some miniport drivers have been caught changing the SCSI operation
-         *  code in the SRB.  This is absolutely disallowed as it breaks our error handling.
-         */
+     *  Some miniport drivers have been caught changing the SCSI operation
+     *  code in the SRB.  This is absolutely disallowed as it breaks our error handling.
+     */
     switch (pCdb->CDB10.OperationCode) {
     case SCSIOP_MEDIUM_REMOVAL:
     case SCSIOP_MODE_SENSE:
@@ -292,7 +292,7 @@ VOID DbgCheckReturnedPkt(TRANSFER_PACKET *Pkt)
 	break;
     default:
 	TracePrint((TRACE_LEVEL_ERROR, TRACE_FLAG_RW,
-		    "Miniport illegally changed Srb.Cdb.OperationCode in packet %ph "
+		    "Miniport illegally changed Srb.Cdb.OperationCode in packet %p "
 		    "failed (op=%s srbstat=%s(%xh), irpstat=%xh, sense=%s/%s/%s)\n",
 		    Pkt, DBGGETSCSIOPSTR(Pkt->Srb), DBGGETSRBSTATUSSTR(Pkt->Srb),
 		    (ULONG)Pkt->Srb->SrbStatus, Pkt->Irp->IoStatus.Status,
@@ -330,25 +330,25 @@ VOID DbgLogReturnPacket(TRANSFER_PACKET *Pkt)
     KeQueryTickCount(&Pkt->DbgTimeReturned);
 
 #if 0
-            // ISSUE: there are some problems with this check (e.g. multiproc), so don't include it yet
-            if (Pkt->OriginalIrp){
-                /*
-                 *  No one should have touched the original irp while the packet was outstanding,
-                 *  except for a couple fields that we ourselves update during the transfer
-                 *  or that are allowed to change;
-                 *  make those couple fields the same and then to a bytewise compare
-                 */
-                ULONG lenSame;
+    // ISSUE: there are some problems with this check (e.g. multiproc), so don't include it yet
+    if (Pkt->OriginalIrp){
+	/*
+	 *  No one should have touched the original irp while the packet was outstanding,
+	 *  except for a couple fields that we ourselves update during the transfer
+	 *  or that are allowed to change;
+	 *  make those couple fields the same and then to a bytewise compare
+	 */
+	ULONG lenSame;
 
-                Pkt->DbgOriginalIrpCopy.IoStatus.Status = Pkt->OriginalIrp->IoStatus.Status;
-                Pkt->DbgOriginalIrpCopy.IoStatus.Information = Pkt->OriginalIrp->IoStatus.Information;
-                Pkt->DbgOriginalIrpCopy.Tail.Overlay.DriverContext[0] = Pkt->OriginalIrp->Tail.Overlay.DriverContext[0];
-                Pkt->DbgOriginalIrpCopy.ThreadListEntry = Pkt->OriginalIrp->ThreadListEntry;
-                Pkt->DbgOriginalIrpCopy.Cancel = Pkt->OriginalIrp->Cancel;
+	Pkt->DbgOriginalIrpCopy.IoStatus.Status = Pkt->OriginalIrp->IoStatus.Status;
+	Pkt->DbgOriginalIrpCopy.IoStatus.Information = Pkt->OriginalIrp->IoStatus.Information;
+	Pkt->DbgOriginalIrpCopy.Tail.Overlay.DriverContext[0] = Pkt->OriginalIrp->Tail.Overlay.DriverContext[0];
+	Pkt->DbgOriginalIrpCopy.ThreadListEntry = Pkt->OriginalIrp->ThreadListEntry;
+	Pkt->DbgOriginalIrpCopy.Cancel = Pkt->OriginalIrp->Cancel;
 
-                lenSame = (ULONG)RtlCompareMemory(Pkt->OriginalIrp, &Pkt->DbgOriginalIrpCopy, sizeof(IRP));
-                NT_ASSERT(lenSame == sizeof(IRP));
-            }
+	lenSame = (ULONG)RtlCompareMemory(Pkt->OriginalIrp, &Pkt->DbgOriginalIrpCopy, sizeof(IRP));
+	NT_ASSERT(lenSame == sizeof(IRP));
+    }
 #endif
 
     fdoData->DbgPacketLogs[fdoData->DbgPacketLogNextIndex] = *Pkt;
@@ -369,7 +369,7 @@ VOID DbgLogReturnPacket(TRANSFER_PACKET *Pkt)
 
         A pointer to the value to be incremented.
 
-    --*/
+--*/
 static VOID DbgSafeInc(PULONG pValue)
 {
     ULONG incrementResult;
@@ -386,8 +386,8 @@ VOID DbgLogFlushInfo(PCLASS_PRIVATE_FDO_DATA FdoData, BOOLEAN IsIO, BOOLEAN IsFU
 		     BOOLEAN IsFlush)
 {
     /*
-         *  Reset all FUA/Flush logging fields.
-         */
+     *  Reset all FUA/Flush logging fields.
+     */
     if (FdoData->DbgInitFlushLogging) {
 	FdoData->DbgNumIORequests = 0;
 	FdoData->DbgNumFUAs = 0;
@@ -455,7 +455,7 @@ VOID DbgLogFlushInfo(PCLASS_PRIVATE_FDO_DATA FdoData, BOOLEAN IsIO, BOOLEAN IsFU
 
         NONE.
 
-    --*/
+--*/
 VOID SnapDiskStartup(VOID)
 {
     ULONG Index;
