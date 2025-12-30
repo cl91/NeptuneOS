@@ -436,6 +436,7 @@ typedef struct _TRANSFER_PACKET {
      *  Stuff for retrying the transfer.
      */
     ULONG NumRetries;
+    BOOLEAN TimerInitialized;
     KTIMER RetryTimer;
     PIO_WORKITEM RetryWorkItem;
 

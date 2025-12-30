@@ -515,7 +515,10 @@ VOID TransferPacketSetRetryTimer(PTRANSFER_PACKET Pkt)
 	// sanity check -- 100 seconds is normally too long
 	NT_ASSERT(Pkt->RetryIn100nsUnits < 100 * 1000 * 1000 * 10);
 	timerPeriod.QuadPart = -(Pkt->RetryIn100nsUnits);
-	KeInitializeTimer(&Pkt->RetryTimer);
+	if (!Pkt->TimerInitialized) {
+	    KeInitializeTimer(&Pkt->RetryTimer);
+	    Pkt->TimerInitialized = TRUE;
+	}
 	KeSetLowPriorityTimer(&Pkt->RetryTimer, timerPeriod, 0, Pkt->RetryWorkItem,
 			      TransferPacketRetryTimerWorkerRoutine, Pkt);
     }
