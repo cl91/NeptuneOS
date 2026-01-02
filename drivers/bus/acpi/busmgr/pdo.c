@@ -1702,6 +1702,114 @@ GetDeviceCapabilitiesExit:
     return Status;
 }
 
+static UINT8 *AcpiAppendResource(UINT8 *Ptr, ACPI_RESOURCE *Res)
+{
+    UINT32 Size = ACPI_RS_SIZE(Res);
+    Res->Length = Size;
+    memcpy(Ptr, Res, Size);
+    return Ptr + Size;
+}
+
+static NTSTATUS AcpiConvertCmResources(IN PCM_RESOURCE_LIST CmList,
+				       OUT ACPI_BUFFER *OutBuffer)
+{
+    PCM_PARTIAL_RESOURCE_LIST ResList =  &CmList->List[0].PartialResourceList;
+
+    ULONG ResCount = 0;
+    for (ULONG i = 0; i < ResList->Count; i++) {
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc = &ResList->PartialDescriptors[i];
+	switch (Desc->Type) {
+	case CmResourceTypePort:
+	case CmResourceTypeInterrupt:
+        case CmResourceTypeDma:
+	case CmResourceTypeMemory:
+	    ResCount++;
+	    break;
+	default:
+	    break;
+	}
+    }
+
+    /* Conservative size estimate */
+    UINT32 ResSize = ResCount * sizeof(ACPI_RESOURCE);
+    UINT8 *Cursor = ExAllocatePoolWithTag(NonPagedPool, ResSize, 'RSCA');
+    if (!Cursor)
+        return STATUS_NO_MEMORY;
+
+    UINT8 *Start = Cursor;
+
+    ACPI_RESOURCE Res;
+    for (ULONG i = 0; i < ResList->Count; i++) {
+        PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc = &ResList->PartialDescriptors[i];
+
+        memset(&Res, 0, sizeof(Res));
+
+        switch (Desc->Type) {
+        case CmResourceTypePort:
+            Res.Type = ACPI_RESOURCE_TYPE_IO;
+            Res.Data.Io.Minimum = (UINT16)Desc->Port.Start.LowPart;
+            Res.Data.Io.Maximum = (UINT16)(Desc->Port.Start.LowPart + Desc->Port.Length - 1);
+            Res.Data.Io.Alignment = 1;
+            Res.Data.Io.AddressLength = (UINT8)Desc->Port.Length;
+            Res.Data.Io.IoDecode = ACPI_DECODE_16;
+            Cursor = AcpiAppendResource(Cursor, &Res);
+            break;
+
+        case CmResourceTypeInterrupt:
+            Res.Type = ACPI_RESOURCE_TYPE_IRQ;
+            Res.Data.Irq.InterruptCount = 1;
+            Res.Data.Irq.Interrupts[0] = (UINT8)Desc->Interrupt.Level;
+            Res.Data.Irq.Triggering = ACPI_EDGE_SENSITIVE;
+            Res.Data.Irq.Polarity = ACPI_ACTIVE_HIGH;
+            Res.Data.Irq.Shareable = ACPI_EXCLUSIVE;
+            Cursor = AcpiAppendResource(Cursor, &Res);
+            break;
+
+        case CmResourceTypeDma:
+            Res.Type = ACPI_RESOURCE_TYPE_DMA;
+            Res.Data.Dma.ChannelCount = 1;
+            Res.Data.Dma.Channels[0] = (UINT8)Desc->Dma.Channel;
+            Res.Data.Dma.Transfer = ACPI_TRANSFER_8;
+            Res.Data.Dma.BusMaster = ACPI_NOT_BUS_MASTER;
+            Res.Data.Dma.Type = ACPI_COMPATIBILITY;
+            Cursor = AcpiAppendResource(Cursor, &Res);
+            break;
+
+	case CmResourceTypeMemory:
+            Res.Type = ACPI_RESOURCE_TYPE_MEMORY32;
+            Res.Data.Memory32.Minimum =
+                Desc->Memory.Start.LowPart;
+            Res.Data.Memory32.Maximum =
+                Desc->Memory.Start.LowPart +
+                Desc->Memory.Length - 1;
+            Res.Data.Memory32.Alignment = 1;
+            Res.Data.Memory32.AddressLength =
+                Desc->Memory.Length;
+            Res.Data.Memory32.WriteProtect =
+                (Desc->Flags & CM_RESOURCE_MEMORY_READ_ONLY)
+                    ? ACPI_READ_ONLY_MEMORY
+                    : ACPI_READ_WRITE_MEMORY;
+            Cursor = AcpiAppendResource(Cursor, &Res);
+            break;
+
+        default:
+            /* Unsupported or meaningless to firmware */
+            break;
+        }
+    }
+
+    /* End tag */
+    memset(&Res, 0, sizeof(Res));
+    Res.Type = ACPI_RESOURCE_TYPE_END_TAG;
+    Cursor = AcpiAppendResource(Cursor, &Res);
+
+    OutBuffer->Pointer = Start;
+    OutBuffer->Length = (UINT32)(Cursor - Start);
+
+    return STATUS_SUCCESS;
+}
+
+
 NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION IrpStack,
 		     PPDO_DEVICE_DATA DeviceData)
 {
@@ -1731,6 +1839,22 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 		    DeviceData->AcpiHandle);
 	    Status = STATUS_UNSUCCESSFUL;
 	    break;
+	}
+	PCM_RESOURCE_LIST RawRes = IrpStack->Parameters.StartDevice.AllocatedResources;
+	if (DeviceData->AcpiHandle && RawRes) {
+	    ACPI_BUFFER Buf = {};
+	    Status = AcpiConvertCmResources(RawRes, &Buf);
+	    if (NT_SUCCESS(Status)) {
+		ACPI_STATUS AcpiStatus = AcpiSetCurrentResources(DeviceData->AcpiHandle, &Buf);
+		if (!ACPI_SUCCESS(AcpiStatus)) {
+		    DPRINT1("Failed to set resources for %p, error = 0x%x, but keep going\n",
+			    DeviceData->AcpiHandle, AcpiStatus);
+		}
+		ExFreePoolWithTag(Buf.Pointer, 'RSCA');
+	    } else {
+		DPRINT("Failed to convert CM resources to AML, status = 0x%x, but keep going\n",
+		       Status);
+	    }
 	}
 	if (DeviceData->AcpiHandle && AcpiBusPowerManageable(DeviceData->AcpiHandle) &&
 	    !ACPI_SUCCESS(AcpiBusSetPower(DeviceData->AcpiHandle, ACPI_STATE_D0))) {
