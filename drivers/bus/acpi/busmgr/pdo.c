@@ -1715,7 +1715,7 @@ static NTSTATUS AcpiConvertCmResources(IN PCM_RESOURCE_LIST CmList,
 {
     PCM_PARTIAL_RESOURCE_LIST ResList =  &CmList->List[0].PartialResourceList;
 
-    ULONG ResCount = 0;
+    ULONG ResCount = 1;
     for (ULONG i = 0; i < ResList->Count; i++) {
         PCM_PARTIAL_RESOURCE_DESCRIPTOR Desc = &ResList->PartialDescriptors[i];
 	switch (Desc->Type) {
@@ -1841,21 +1841,36 @@ NTSTATUS Bus_PDO_PnP(PDEVICE_OBJECT DeviceObject, PIRP Irp, PIO_STACK_LOCATION I
 	    break;
 	}
 	PCM_RESOURCE_LIST RawRes = IrpStack->Parameters.StartDevice.AllocatedResources;
-	if (DeviceData->AcpiHandle && RawRes) {
-	    ACPI_BUFFER Buf = {};
-	    Status = AcpiConvertCmResources(RawRes, &Buf);
-	    if (NT_SUCCESS(Status)) {
-		ACPI_STATUS AcpiStatus = AcpiSetCurrentResources(DeviceData->AcpiHandle, &Buf);
-		if (!ACPI_SUCCESS(AcpiStatus)) {
-		    DPRINT1("Failed to set resources for %p, error = 0x%x, but keep going\n",
-			    DeviceData->AcpiHandle, AcpiStatus);
-		}
-		ExFreePoolWithTag(Buf.Pointer, 'RSCA');
-	    } else {
-		DPRINT("Failed to convert CM resources to AML, status = 0x%x, but keep going\n",
-		       Status);
+	if (DeviceData->AcpiHandle && RawRes && RawRes->Count) {
+	    ACPI_BUFFER Buffer = { .Length = 0x20 };
+	    Buffer.Pointer = ExAllocatePoolWithTag(NonPagedPool, Buffer.Length, 'BpcA');
+	    if (!Buffer.Pointer) {
+		Status = STATUS_INSUFFICIENT_RESOURCES;
+		goto power;
 	    }
+	    PUCHAR Res = Buffer.Pointer;
+	    Res[2] = 0xf0;
+	    Res[3] = 0x03;
+	    Res[0x19] = 1U << 6;
+	    Res[0x1C] = 1U << 2;
+
+	    ACPI_OBJECT_LIST ArgList = {};
+	    ACPI_OBJECT Arg = {};
+	    ArgList.Count = 1;
+	    ArgList.Pointer = &Arg;
+	    Arg.Type = ACPI_TYPE_BUFFER;
+	    Arg.Buffer.Length = Buffer.Length;
+	    Arg.Buffer.Pointer = Res;
+
+	    ACPI_STATUS AcpiStatus = AcpiEvaluateObject(DeviceData->AcpiHandle,
+							"_SRS", &ArgList, NULL);
+	    if (!ACPI_SUCCESS(AcpiStatus)) {
+		DPRINT1("Failed to set resources for %p, error = 0x%x, but keep going\n",
+			DeviceData->AcpiHandle, AcpiStatus);
+	    }
+	    ExFreePoolWithTag(Buffer.Pointer, 'RSCA');
 	}
+    power:
 	if (DeviceData->AcpiHandle && AcpiBusPowerManageable(DeviceData->AcpiHandle) &&
 	    !ACPI_SUCCESS(AcpiBusSetPower(DeviceData->AcpiHandle, ACPI_STATE_D0))) {
 	    DPRINT1("Device %p failed to start!\n", DeviceData->AcpiHandle);
