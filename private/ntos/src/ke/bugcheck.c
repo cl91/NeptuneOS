@@ -39,6 +39,26 @@ static VOID KiNotifyDrivers()
     }
 }
 
+static VOID KiWriteBugcheckMsg(IN PCSTR String)
+{
+    PKUSER_SHARED_DATA Data = PsGetUserSharedData();
+    if (Data) {
+	RtlAppendStringBuffer(String, &Data->BugcheckMsgLength,
+			      Data->BugcheckMsg, sizeof(Data->BugcheckMsg));
+    }
+}
+
+static ULONG KiPrintBugcheckMsg(IN PCSTR Format, ...)
+{
+    va_list arglist;
+    va_start(arglist, Format);
+    char Buf[512];
+    vsnprintf(Buf, sizeof(Buf), Format, arglist);
+    KiWriteBugcheckMsg(Buf);
+    va_end(arglist);
+    return 0;
+}
+
 static VOID KiPrintHaltMsg(PCSTR Format, va_list arglist)
 {
     char Buf[512];
@@ -46,6 +66,7 @@ static VOID KiPrintHaltMsg(PCSTR Format, va_list arglist)
     HalDisplayString("\n\n");
     HalDisplayString(Buf);
     HalDisplayString("\nFATAL ERROR. SYSTEM HALTED.\n");
+    KiWriteBugcheckMsg(Buf);
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugPutString(Buf);
     /* Dump some useful information. */
@@ -140,6 +161,7 @@ static VOID KiBugCheckSystem()
 	KiDumpExecutiveThreadFault(Fault, DbgPrint);
 #endif
 	KiDumpExecutiveThreadFault(Fault, HalVgaPrint);
+	KiDumpExecutiveThreadFault(Fault, KiPrintBugcheckMsg);
 	KiNotifyDrivers();
     }
 }

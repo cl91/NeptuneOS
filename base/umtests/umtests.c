@@ -25,6 +25,8 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
 {
     TestNullDriver();
     TestBeepDriver(440, 1000);
+    TestMemDriver();
+    TestEthernetDriver();
     BenchmarkDisk(0);
     BenchmarkVolume('C');
 }

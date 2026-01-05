@@ -1,3 +1,10 @@
 [submodule "sel4"]
 	path = sel4
 	url = https://github.com/cl91/seL4
+[submodule "drivers/linux"]
+	path = drivers/linux
+	url = https://github.com/cl91/linux
+	branch = ntos
+[submodule "drivers/fw"]
+	path = drivers/linux-firmware
+	url = https://gitlab.com/kernel-firmware/linux-firmware.git

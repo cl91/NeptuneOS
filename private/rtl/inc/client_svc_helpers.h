@@ -233,6 +233,30 @@ static inline NTSTATUS KiServiceUnmarshalBuffer6(IN PVOID ClientBuffer,
     (KI_GET_7TH_ARG(__VA_ARGS__, KiServiceUnmarshalBuffer6,	\
 		    KiServiceUnmarshalBuffer5)(__VA_ARGS__))
 
+static inline NTSTATUS KiServiceMarshalPfnDb(IN OPTIONAL PULONG_PTR ClientBuffer,
+					     IN ULONG PfnCount,
+					     OUT SERVICE_ARGUMENT *BufferArg,
+					     OUT SERVICE_ARGUMENT *SizeArg,
+					     IN BOOLEAN InParam,
+					     OUT ULONG *MsgBufOffset)
+{
+    RET_ERR(KiServiceMarshalBuffer(ClientBuffer, PfnCount * sizeof(ULONG_PTR),
+				   BufferArg, SizeArg, InParam, MsgBufOffset));
+    SizeArg->Word = PfnCount;
+    return STATUS_SUCCESS;
+}
+
+static inline NTSTATUS KiServiceUnmarshalPfnDb(IN PULONG_PTR ClientBuffer,
+					       IN SERVICE_ARGUMENT BufferArg,
+					       IN NTSTATUS Status,
+					       IN ULONG PfnCount,
+					       IN ULONG *pResultPfnCount)
+{
+    MWORD ResultLength = *pResultPfnCount * sizeof(ULONG_PTR);
+    return KiServiceUnmarshalBuffer64(ClientBuffer, BufferArg, Status,
+				      PfnCount * sizeof(ULONG_PTR), &ResultLength);
+}
+
 static inline VOID KiDeliverApc(IN ULONG MsgBufOffset,
                                 IN ULONG NumApc)
 {

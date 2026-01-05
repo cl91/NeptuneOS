@@ -1,6 +1,8 @@
 #include <initguid.h>
 #include "smss.h"
 #include <pnpguid.h>
+#define TEXT(t) L##t
+#include <regstr.h>
 
 #define SYSTEM_KEY_PATH				"\\Registry\\Machine\\System"
 #define HARDWARE_KEY_PATH			"\\Registry\\Machine\\Hardware"
@@ -22,8 +24,14 @@ typedef struct _DRIVER_SERVICE_PARAMETER {
     PVOID Data;
 } DRIVER_SERVICE_PARAMETER, *PDRIVER_SERVICE_PARAMETER;
 
-static DRIVER_SERVICE_PARAMETER I8042prtParameters[] = {
-};
+typedef struct _DRIVER_SERVICE {
+    PCSTR ServiceName;
+    PWSTR MatchString;		/* MULTI_SZ */
+    ULONG_PTR ServiceParameterCount;
+    PDRIVER_SERVICE_PARAMETER ServiceParameters;
+    BOOLEAN LoadIntoBusDriver;
+    BOOLEAN LoadFailed;
+} DRIVER_SERVICE, *PDRIVER_SERVICE;
 
 static ULONG DefaultConnectMultiplePorts = 1;
 static DRIVER_SERVICE_PARAMETER KbdclassParameters[] = {
@@ -40,16 +48,27 @@ static DRIVER_SERVICE_PARAMETER StorNvmeParameters[] = {
     { "BusType", REG_DWORD, sizeof(ULONG), &StorNvmeBusType }
 };
 
+static CHAR DriverExtensionPath[] = "\\??\\BootModules\\lnxdrv.elf";
+static CHAR ModulesAliasPath[] = "\\??\\BootModules\\modules.alias";
+static CHAR ModulesDepPath[] = "\\??\\BootModules\\modules.dep";
+static DRIVER_SERVICE_PARAMETER LnxdrvParameters[] = {
+    { "DriverExtensionImage", REG_SZ,
+      sizeof(DriverExtensionPath), DriverExtensionPath },
+    { "ModulesAliasDatabase", REG_SZ,
+      sizeof(ModulesAliasPath), ModulesAliasPath },
+    { "ModulesDepDatabase", REG_SZ,
+      sizeof(ModulesDepPath), ModulesDepPath },
+};
+
+static CHAR MemDrvModules[] = "\\??\\BootModules\\mem.ko\0";
+static DRIVER_SERVICE_PARAMETER MemDrvParameters[] = {
+    { "Modules", REG_MULTI_SZ,
+      sizeof(MemDrvModules), MemDrvModules }
+};
+
 /* For now these are hard-coded, Eventually we want to move this to a
  * registry file (boot configuration database). */
-static struct {
-    PCSTR ServiceName;
-    PWSTR MatchString;		/* MULTI_SZ */
-    ULONG_PTR ServiceParameterCount;
-    PDRIVER_SERVICE_PARAMETER ServiceParameters;
-    BOOLEAN LoadIntoBusDriver;
-    BOOLEAN LoadFailed;
-} BootDrivers[] = {
+static DRIVER_SERVICE BootDrivers[] = {
     { "null" },
     { "beep" },
     { "fatfs" },
@@ -57,8 +76,7 @@ static struct {
     { "acpi", L"ROOT\\ACPI\\0\0" },
     { "pci", L"*PNP0A03\0*PNP0A08\0PCI\\CC_0604\0CC_0607\0" },
     { "fdc", L"*PNP0700\0FDC\\GENERIC_FLOPPY_DRIVE\0" },
-    { "i8042prt", L"*PNP0303\0",
-      ARRAYSIZE(I8042prtParameters), I8042prtParameters },
+    { "i8042prt", L"*PNP0303\0" },
     { "kbdclass", NULL, ARRAYSIZE(KbdclassParameters), KbdclassParameters },
     { "storahci", L"PCI\\CC_0106\0",
       ARRAYSIZE(StorAhciParameters), StorAhciParameters },
@@ -66,7 +84,13 @@ static struct {
       ARRAYSIZE(StorNvmeParameters), StorNvmeParameters },
     { "disk", L"GenDisk\0", 0, NULL, TRUE },
     { "partmgr", L"STORAGE\\Volume\0", 0, NULL, TRUE },
-    { "mountmgr" }
+    { "mountmgr" },
+    { "lnxdrv", NULL, ARRAYSIZE(LnxdrvParameters), LnxdrvParameters },
+    { "mem", NULL, ARRAYSIZE(MemDrvParameters), MemDrvParameters },
+    { "pvpanic", L"PCI\\VEN_1B36&DEV_0011\0" },
+    { "usbhci", L"PCI\\CC_0C03\0" },
+    { "ethernet", L"PCI\\CC_0200\0" },
+    { "videoprt", L"PCI\\CC_0300\0" }
 };
 
 static struct {
@@ -82,19 +106,12 @@ static struct {
       L"GenDisk\0", NULL, "partmgr\0" }
 };
 
-static LIST_ENTRY SmKnownDeviceList;
-
-typedef struct _SM_KNOWN_DEVICE {
-    UNICODE_STRING InstancePath;
-    LIST_ENTRY Link;
-    BOOLEAN Installed;
-} SM_KNOWN_DEVICE, *PSM_KNOWN_DEVICE;
-
 static NTSTATUS SmInitBootDriverConfigs()
 {
     CHAR ServiceFullPath[256];
     CHAR ParametersKeyPath[256];
     CHAR ImagePath[128];
+
     for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
 	snprintf(ServiceFullPath, sizeof(ServiceFullPath),
 		 SERVICE_KEY_PATH "\\%s", BootDrivers[i].ServiceName);
@@ -118,6 +135,7 @@ static NTSTATUS SmInitBootDriverConfigs()
 				     BootDrivers[i].ServiceParameters[j].DataSize));
 	}
     }
+
     CHAR ClassKeyPath[256];
     for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
 	snprintf(ClassKeyPath, sizeof(ClassKeyPath), CLASS_KEY_PATH "\\%s",
@@ -153,11 +171,13 @@ NTSTATUS SmLoadDriver(IN PCSTR DriverToLoad)
 
 static NTSTATUS SmQueryIds(IN BOOLEAN CompatibleIds,
 			   IN PWCHAR DeviceId,
-			   OUT PWCHAR *pBuffer)
+			   OUT PWCHAR *pBuffer,
+			   OUT ULONG *pBufferSize)
 {
     ULONG BufferSize = 512;
     PWCHAR Buffer = SmAllocatePool(BufferSize);
     if (!Buffer) {
+	*pBufferSize = 0;
 	return STATUS_NO_MEMORY;
     }
     PLUGPLAY_CONTROL_QUERY_IDS_DATA Data = {
@@ -174,6 +194,7 @@ static NTSTATUS SmQueryIds(IN BOOLEAN CompatibleIds,
 	BufferSize = Data.BufferSize;
 	Buffer = SmAllocatePool(BufferSize);
 	if (!Buffer) {
+	    *pBufferSize = Data.BufferSize;
 	    return STATUS_NO_MEMORY;
 	}
 	Data.Buffer = Buffer;
@@ -184,9 +205,11 @@ static NTSTATUS SmQueryIds(IN BOOLEAN CompatibleIds,
     if (!NT_SUCCESS(Status)) {
 	SmFreePool(Buffer);
 	*pBuffer = NULL;
+	*pBufferSize = 0;
 	return Status;
     }
     *pBuffer = Buffer;
+    *pBufferSize = BufferSize;
     return STATUS_SUCCESS;
 }
 
@@ -201,7 +224,17 @@ static BOOLEAN SmMatchMultiSz(IN PWCHAR Target,
     return FALSE;
 }
 
-static LONG SmFindDriver(IN PWCHAR InstancePath, OUT PCSTR *ClassGuid)
+static LIST_ENTRY SmKnownDeviceList;
+
+typedef struct _SM_KNOWN_DEVICE {
+    UNICODE_STRING InstancePath;
+    LIST_ENTRY Link;
+    BOOLEAN Installed;
+} SM_KNOWN_DEVICE, *PSM_KNOWN_DEVICE;
+
+static LONG SmFindDriver(IN PWCHAR InstancePath, OUT PCSTR *ClassGuid,
+			 OUT PWSTR *HardwareIDs, OUT ULONG *HardwareIDsSize,
+			 OUT PWSTR *CompatibleIDs, OUT ULONG *CompatibleIDsSize)
 {
     *ClassGuid = NULL;
     LONG Driver = -1;
@@ -226,59 +259,55 @@ static LONG SmFindDriver(IN PWCHAR InstancePath, OUT PCSTR *ClassGuid)
 	goto out;
     }
 
-    PWCHAR Buffer = NULL;
-    /* Query the hardware IDs of the device and try finding a matching driver for it. */
-    NTSTATUS Status = SmQueryIds(FALSE, InstancePath, &Buffer);
-    if (!NT_SUCCESS(Status)) {
-	goto compat;
-    }
-    for (PWCHAR Id = Buffer; *Id != L'\0'; Id += wcslen(Id) + 1) {
-	DPRINT("Got hardware ids %ws\n", Id);
-	if (!*ClassGuid) {
-	    for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
-		assert(ClassDrivers[i].ClassGuid);
-		if (ClassDrivers[i].MatchString &&
-		    SmMatchMultiSz(Id, ClassDrivers[i].MatchString)) {
-		    *ClassGuid = ClassDrivers[i].ClassGuid;
+    SmQueryIds(FALSE, InstancePath, HardwareIDs, HardwareIDsSize);
+    SmQueryIds(TRUE, InstancePath, CompatibleIDs, CompatibleIDsSize);
+    /* Look at the hardware IDs of the device and try finding a matching driver for it. */
+    if (*HardwareIDs) {
+	for (PWCHAR Id = *HardwareIDs; *Id != L'\0'; Id += wcslen(Id) + 1) {
+	    DPRINT("Got hardware ids %ws\n", Id);
+	    if (!*ClassGuid) {
+		for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
+		    assert(ClassDrivers[i].ClassGuid);
+		    if (ClassDrivers[i].MatchString &&
+			SmMatchMultiSz(Id, ClassDrivers[i].MatchString)) {
+			*ClassGuid = ClassDrivers[i].ClassGuid;
+			break;
+		    }
+		}
+	    }
+	    for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
+		if (BootDrivers[i].MatchString &&
+		    SmMatchMultiSz(Id, BootDrivers[i].MatchString)) {
+		    Driver = i;
 		    break;
 		}
 	    }
 	}
-	for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
-	    if (BootDrivers[i].MatchString &&
-		SmMatchMultiSz(Id, BootDrivers[i].MatchString)) {
-		Driver = i;
-		break;
-	    }
+	if (Driver >= 0) {
+	    goto out;
 	}
-    }
-    if (Driver >= 0) {
-	goto out;
     }
 
-    /* Query the compatible IDs of the device and try finding a matching driver for it. */
-compat:
-    Status = SmQueryIds(TRUE, InstancePath, &Buffer);
-    if (!NT_SUCCESS(Status)) {
-	goto out;
-    }
-    for (PWCHAR Id = Buffer; *Id != L'\0'; Id += wcslen(Id) + 1) {
-	DPRINT("Got compatible ids %ws\n", Id);
-	if (!*ClassGuid) {
-	    for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
-		assert(ClassDrivers[i].ClassGuid);
-		if (ClassDrivers[i].MatchString &&
-		    SmMatchMultiSz(Id, ClassDrivers[i].MatchString)) {
-		    *ClassGuid = ClassDrivers[i].ClassGuid;
-		    break;
+    /* Look at the compatible IDs of the device and try finding a matching driver for it. */
+    if (*CompatibleIDs) {
+	for (PWCHAR Id = *CompatibleIDs; *Id != L'\0'; Id += wcslen(Id) + 1) {
+	    DPRINT("Got compatible ids %ws\n", Id);
+	    if (!*ClassGuid) {
+		for (ULONG i = 0; i < ARRAYSIZE(ClassDrivers); i++) {
+		    assert(ClassDrivers[i].ClassGuid);
+		    if (ClassDrivers[i].MatchString &&
+			SmMatchMultiSz(Id, ClassDrivers[i].MatchString)) {
+			*ClassGuid = ClassDrivers[i].ClassGuid;
+			break;
+		    }
 		}
 	    }
-	}
-	for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
-	    if (BootDrivers[i].MatchString &&
-		SmMatchMultiSz(Id, BootDrivers[i].MatchString)) {
-		Driver = i;
-		break;
+	    for (ULONG i = 0; i < ARRAYSIZE(BootDrivers); i++) {
+		if (BootDrivers[i].MatchString &&
+		    SmMatchMultiSz(Id, BootDrivers[i].MatchString)) {
+		    Driver = i;
+		    break;
+		}
 	    }
 	}
     }
@@ -314,10 +343,18 @@ static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
     InsertTailList(&SmKnownDeviceList, &InstalledDevice->Link);
 
     PCSTR ClassGuid = NULL;
-    LONG Index = SmFindDriver(InstancePath, &ClassGuid);
+    PWSTR HardwareIDs = NULL;
+    ULONG HardwareIDsSize = 0;
+    PWSTR CompatibleIDs = NULL;
+    ULONG CompatibleIDsSize = 0;
+    LONG Index = SmFindDriver(InstancePath, &ClassGuid,
+			      &HardwareIDs, &HardwareIDsSize,
+			      &CompatibleIDs, &CompatibleIDsSize);
+    NTSTATUS Status;
     if (Index < 0) {
 	DPRINT("No matching driver found for %ws\n", InstancePath);
-	return STATUS_UNSUCCESSFUL;
+	Status = STATUS_UNSUCCESSFUL;
+	goto out;
     }
     DPRINT("Found driver %s for %ws\n", BootDrivers[Index].ServiceName, InstancePath);
 
@@ -330,7 +367,8 @@ static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
     while (EnumKeyPath[--InstanceId] != '\\') {}
     if (InstanceId <= 0) {
 	assert(FALSE);
-	return STATUS_INTERNAL_ERROR;
+	Status = STATUS_INTERNAL_ERROR;
+	goto out;
     }
     EnumKeyPath[InstanceId] = '\0';
     LONG DeviceId = strlen(EnumKeyPath);
@@ -338,7 +376,8 @@ static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
     while (EnumKeyPath[--DeviceId] != '\\') {}
     if (DeviceId <= 0) {
 	assert(FALSE);
-	return STATUS_INTERNAL_ERROR;
+	Status = STATUS_INTERNAL_ERROR;
+	goto out;
     }
     EnumKeyPath[DeviceId] = '\0';
 
@@ -359,9 +398,28 @@ static NTSTATUS SmInstallDevice(IN PWCHAR InstancePath)
 	RET_ERR(SmSetRegKeyValue(EnumKey, "LoadIntoBusDriver", REG_DWORD,
 				 &Data, sizeof(ULONG)));
     }
+    if (HardwareIDs) {
+	assert(HardwareIDsSize);
+	RET_ERR(SmSetRegKeyValueW(EnumKey, REGSTR_VAL_HARDWAREID, REG_MULTI_SZ,
+				  HardwareIDs, HardwareIDsSize));
+    }
+    if (CompatibleIDs) {
+	assert(CompatibleIDsSize);
+	RET_ERR(SmSetRegKeyValueW(EnumKey, REGSTR_VAL_COMPATIBLEIDS, REG_MULTI_SZ,
+				  CompatibleIDs, CompatibleIDsSize));
+    }
 
     InstalledDevice->Installed = TRUE;
-    return STATUS_SUCCESS;
+    Status = STATUS_SUCCESS;
+out:
+    if (HardwareIDs) {
+	SmFreePool(HardwareIDs);
+    }
+    if (CompatibleIDs) {
+	SmFreePool(CompatibleIDs);
+    }
+
+    return Status;
 }
 
 static NTSTATUS SmInitPnp()

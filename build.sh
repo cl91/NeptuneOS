@@ -77,7 +77,7 @@ echo "####################################################"
 cd "$(dirname "$0")"
 RTLIB=$(echo ${PWD}/compiler-rt/libclang_rt.builtins-${RTLIB_ARCH}.a)
 
-mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers/linux/{build,install},posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
 
 cd $BUILDDIR
 PE_INC=$(echo ${PWD}/pe_inc)
@@ -316,6 +316,26 @@ cmake ../../../posix/psxss \
       -G Ninja
 ninja || build_failed
 
+# Build the LINkable Userspace eXtension (or "LINUX", yes, really. Bite me
+# if you will.) drivers
+cd ../../drivers/linux
+echo
+echo "---- Building linkable userspace extension drivers ----"
+echo
+LNX_BUILD="$PWD/build"
+LNX_INSTALL="$PWD/install"
+LNX_SRCDIR=../../../drivers/linux
+LNX_MAKEOPTS="ARCH=ntos LLVM=1 CLANG_TARGET_FLAGS=${ELF_TRIPLE}"
+cp $LNX_SRCDIR/arch/ntos/configs/defconfig $LNX_BUILD/.config
+if [[ $BUILD_TYPE != "Release" ]]; then
+   cat $LNX_SRCDIR/arch/ntos/configs/defconfig.debug >> $LNX_BUILD/.config
+fi
+make -C $LNX_SRCDIR O=$LNX_BUILD $LNX_MAKEOPTS INSTALL_MOD_PATH=$LNX_INSTALL \
+     -j$(nproc) olddefconfig all compile_commands.json modules_install || build_failed
+mv $LNX_BUILD/vmlinux $LNX_BUILD/lnxdrv.elf || build_failed
+LNX_VERSION="$(make -s -C $LNX_SRCDIR O=$LNX_BUILD $LNX_MAKEOPTS kernelrelease)"
+LNX_MODDIR="$LNX_INSTALL/lib/modules/$LNX_VERSION"
+
 # Build initcpio
 echo
 echo "---- Building INITCPIO ----"
@@ -324,12 +344,20 @@ cd ../../initcpio
 PE_COPY_LIST='ntdll/ntdll.dll wdm/wdm.dll'
 BASE_COPY_LIST='smss/smss.exe ntcmd/ntcmd.exe'
 DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys base/pnp/pnp.sys
+base/mem/mem.sys base/pvpanic/pvpanic.sys
 bus/acpi/acpi.sys bus/pci/pci.sys input/kbdclass/kbdclass.sys
 storage/class/classpnp/classpnp.sys storage/class/disk/disk.sys
 storage/partmgr/partmgr.sys storage/mountmgr/mountmgr.sys
 storage/port/storport/storport.sys storage/miniport/storahci/storahci.sys
-storage/miniport/stornvme/stornvme.sys filesystems/fatfs/fatfs.sys'
-X86_DRIVER_COPY_LIST='input/i8042prt/i8042prt.sys storage/fdc/fdc.sys'
+storage/miniport/stornvme/stornvme.sys filesystems/fatfs/fatfs.sys
+usb/usbhci/usbhci.sys net/ethernet/ethernet.sys video/videoprt/videoprt.sys
+lib/lnxdrv/lnxdrv.sys linux/build/lnxdrv.elf'
+FW_COPY_LIST='radeon/CAICOS_* radeon/BTC_rlc.bin amdgpu/oland*
+amdgpu/polaris* amdgpu/si58_mc.bin'
+if [[ "${ARCH}" == "i386" || "${ARCH}" == "amd64" ]]; then
+    DRIVER_COPY_LIST+=' input/i8042prt/i8042prt.sys storage/fdc/fdc.sys'
+fi
+LNXDRV_COPY_LIST='modules.alias modules.dep'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed
 done
@@ -339,17 +367,28 @@ done
 for i in ${DRIVER_COPY_LIST}; do
     cp ../drivers/$i . || build_failed
 done
-if [[ "${ARCH}" == "i386" || "${ARCH}" == "amd64" ]]; then
-    for i in ${X86_DRIVER_COPY_LIST}; do
-	cp ../drivers/$i . || build_failed
+for i in ${LNXDRV_COPY_LIST}; do
+    cp $LNX_MODDIR/$i . || build_failed
+done
+for i in $(find $LNX_MODDIR -name "*.ko"); do
+    cp $i . || build_failed
+done
+for i in ${FW_COPY_LIST}; do
+    for j in $(ls ../../drivers/linux-firmware/$i); do
+	cp $j . || build_failed
     done
-fi
+done
+# HACKHACK: We move the amdgpu PCI ID entries to the front of modules.alias file
+# so it will be matched before radeon
+grep 'd0000.*amdgpu' $LNX_MODDIR/modules.alias > modules.alias
+grep -v 'd0000.*amdgpu' $LNX_MODDIR/modules.alias >> modules.alias
+strip --strip-debug lnxdrv.elf *.ko
 { for i in ${PE_COPY_LIST}; do echo $(basename $i); done } > image-list
 { for i in ${BASE_COPY_LIST}; do echo $(basename $i); done } >> image-list
 { for i in ${DRIVER_COPY_LIST}; do echo $(basename $i); done } >> image-list
-if [[ "${ARCH}" == "i386" || "${ARCH}" == "amd64" ]]; then
-    { for i in ${X86_DRIVER_COPY_LIST}; do echo $(basename $i); done } >> image-list
-fi
+{ for i in ${LNXDRV_COPY_LIST}; do echo $(basename $i); done } >> image-list
+{ for i in $(find $LNX_MODDIR -name "*.ko"); do echo $(basename $i); done } >> image-list
+{ for i in ${FW_COPY_LIST}; do for j in $(ls ../../drivers/linux-firmware/$i); do echo $(basename $j); done; done } >> image-list
 cpio -H newc -o < image-list > initcpio || build_failed
 llvm-objcopy -I binary -O ${OUTPUT_TARGET} \
 	--rename-section .data=initcpio,CONTENTS,ALLOC,LOAD,READONLY,DATA \
@@ -437,9 +476,10 @@ fi
 echo
 echo "---- Merge compile_commands.json ----"
 echo
+cd ..
 if [[ $(which jq) ]]; then
-    jq -s add ../*/compile_commands.json ../*/*/compile_commands.json > ../compile_commands.json
-    rm ../*/compile_commands.json ../*/*/*.json
+    jq -s add */compile_commands.json */*/compile_commands.json */*/*/compile_commands.json > compile_commands.json
+    rm */compile_commands.json */*/compile_commands.json */*/*/compile_commands.json
     echo "Done."
 else
     echo "You'll need to install jq (https://jqlang.github.io/jq)."

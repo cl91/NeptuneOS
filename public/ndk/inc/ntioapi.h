@@ -1527,7 +1527,8 @@ typedef enum _DEVICE_REGISTRY_PROPERTY {
     DevicePropertyResourceRequirements,
     DevicePropertyAllocatedResources,
     DevicePropertyContainerID,
-    DevicePropertyInstancePath
+    DevicePropertyInstancePath,
+    DevicePropertyInstancePathAnsi
 } DEVICE_REGISTRY_PROPERTY;
 
 #endif	/* defined(_NTOSKRNL_) || defined(_NTDDK_) */
