@@ -89,7 +89,7 @@ have all been tested to work.
 
 ## Building and running
 
-You will need to build under Linux (seL4 doesn't build under any other operating system).
+You will need to build under Linux (macOS can potentially work, but I have not tested it).
 You will need the following Python dependencies, and probably more.
 ```
 jinja2
