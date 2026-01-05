@@ -104,8 +104,10 @@ is a native cross compiler that can generate both ELF and PE targets. GCC is not
 supported but in theory can be made to work. You will need both an ELF toolchain
 and a PE toolchain (and probably a ton of patience) if you want to make GCC work.
 You also need the `windmc` which is the PE message resource compiler from `mingw`.
-Have a look at `build.sh` for the build script. The preferred clang version is 15
-but recent versions should all work. You also need the `cpio` utility for building
+Have a look at `build.sh` for the build script. I use Arch Linux (btw) so the
+toolchain versions that have been tested to work are whichever versions Arch Linux
+happened to have at the time I ran `pacman -Syu`, but from experience most recent
+versions of clang/LLVM should all work. You also need the `cpio` utility for building
 the initcpio. Finally, for the boot floppy and boot iso you will need the following
 tools: `syslinux` (for boot floppy), `grub` and `xorriso` (for boot iso), and
 `mtools` (for both).
