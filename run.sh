@@ -36,6 +36,8 @@ else
     QEMU="qemu-system-x86_64  -cpu IvyBridge,+fsgsbase,-pdpe1gb -machine q35"
 fi
 
+QEMU+=" -vga virtio -device pvpanic-pci -action panic=pause"
+
 declare -a ARGS
 for var in "$@"; do
     # Ignore known bad arguments

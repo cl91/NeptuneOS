@@ -2925,7 +2925,6 @@ HAL_PANEL_ORIENTATION HalpVgaGetPanelOrientation(ULONG Width, ULONG Height)
     return PANEL_ORIENTATION_DEFAULT;
 }
 
-
 FORCEINLINE ULONG HalpGetFrameBufferSize(IN PHAL_FRAMEBUFFER_INFO Info)
 {
     return Info->Pitch * Info->Height;
@@ -2992,7 +2991,6 @@ static VOID HalpVgaBlitCharEx(IN PHAL_FRAMEBUFFER FrameBuffer,
 	    }
 	}
     }
-
 }
 
 static VOID HalpVgaBlitChar(IN PHAL_FRAMEBUFFER FrameBuffer,
@@ -3020,9 +3018,45 @@ static VOID HalpVgaScrollLine(IN PHAL_FRAMEBUFFER FrameBuffer)
     }
 }
 
+typedef struct _HAL_FRAMEBUFFER_DAMAGE {
+    ULONG StartWidth;
+    ULONG StartHeight;
+    ULONG EndWidth;
+    ULONG EndHeight;
+} HAL_FRAMEBUFFER_DAMAGE, *PHAL_FRAMEBUFFER_DAMAGE;
+
+static VOID HalpNotifyFrameBufferDamage(IN PHAL_FRAMEBUFFER FrameBuffer,
+					IN OPTIONAL PHAL_FRAMEBUFFER_DAMAGE DamageInfo)
+{
+    if (!FrameBuffer->DriverObject) {
+	return;
+    }
+    IO_PACKET_SERVER_MESSAGE SrvMsg = {
+	.Type = IoSrvMsgFrameBufferDamaged,
+	.FrameBufferDamaged = {
+	    .PhyBase = FrameBuffer->Info.PhysicalAddress,
+	    .StartWidth = DamageInfo ? DamageInfo->StartWidth : 0,
+	    .StartHeight = DamageInfo ? DamageInfo->StartHeight : 0,
+	    .EndWidth = DamageInfo ? DamageInfo->EndWidth : 0,
+	    .EndHeight = DamageInfo ? DamageInfo->EndHeight : 0
+	}
+    };
+    /* We ignore error here as system is likely is very low memory state if
+     * we can't even allocate an IO_PACKET. */
+    IoQueueServerMessage(FrameBuffer->DriverObject, &SrvMsg);
+}
+
 static VOID HalpDisplayString(IN PHAL_FRAMEBUFFER FrameBuffer,
 			      IN PCSTR String)
 {
+    if (!String || !*String) {
+	return;
+    }
+    /* We won't bother accurately computing the damaged box and will just report
+     * damages for the entire rows. */
+    ULONG DamagedRowStart = FrameBuffer->CursorPositionRow;
+    ULONG DamagedRowEnd = FrameBuffer->CursorPositionRow;
+    BOOLEAN Scrolled = FALSE;
     while (*String != 0) {
 	UCHAR Chr = *String;
 	if (isprint(Chr)) {
@@ -3035,12 +3069,14 @@ static VOID HalpDisplayString(IN PHAL_FRAMEBUFFER FrameBuffer,
 	} else if (Chr == '\n') {
 	    if (FrameBuffer->CursorPositionColumn < FrameBuffer->CursorMaxColumns) {
 		FrameBuffer->CursorPositionRow++;
+		DamagedRowEnd = FrameBuffer->CursorPositionRow;
 	    }
 	    FrameBuffer->CursorPositionColumn = 0;
 	} else if (Chr == '\b') {
 	    if (FrameBuffer->CursorPositionColumn == 0) {
 		FrameBuffer->CursorPositionRow--;
 		FrameBuffer->CursorPositionColumn = FrameBuffer->CursorMaxColumns - 1;
+		DamagedRowEnd = FrameBuffer->CursorPositionRow;
 	    } else {
 		FrameBuffer->CursorPositionColumn--;
 	    }
@@ -3050,16 +3086,33 @@ static VOID HalpDisplayString(IN PHAL_FRAMEBUFFER FrameBuffer,
 	if (FrameBuffer->CursorPositionColumn >= FrameBuffer->CursorMaxColumns) {
 	    FrameBuffer->CursorPositionRow++;
 	    FrameBuffer->CursorPositionColumn = 0;
+	    DamagedRowEnd = FrameBuffer->CursorPositionRow;
 	}
 	assert(FrameBuffer->CursorPositionRow <= FrameBuffer->CursorMaxRows);
 	if (FrameBuffer->CursorPositionRow >= FrameBuffer->CursorMaxRows) {
 	    FrameBuffer->CursorPositionRow--;
 	    HalpVgaScrollLine(FrameBuffer);
+	    Scrolled = TRUE;
 	}
     }
     assert(FrameBuffer->CursorPositionColumn < FrameBuffer->CursorMaxColumns);
     assert(FrameBuffer->CursorPositionRow < FrameBuffer->CursorMaxRows);
+    if (Scrolled) {
+	HalpNotifyFrameBufferDamage(FrameBuffer, NULL);
+    } else if (FrameBuffer->DriverObject) {
+	assert(FrameBuffer->VgaFont);
+	HAL_FRAMEBUFFER_DAMAGE DamageInfo = {
+	    .StartWidth = 0,
+	    .StartHeight = min(DamagedRowStart, DamagedRowEnd) * FrameBuffer->VgaFont->Height,
+	    .EndWidth = FrameBuffer->Info.Width,
+	    .EndHeight = (max(DamagedRowStart, DamagedRowEnd) + 1) * FrameBuffer->VgaFont->Height
+	};
+	HalpNotifyFrameBufferDamage(FrameBuffer, &DamageInfo);
+    }
 }
+
+static ULONG HalpConsoleLogLength;
+static CHAR HalpConsoleLogBuffer[8192];
 
 VOID HalDisplayString(PCSTR String)
 {
@@ -3067,26 +3120,8 @@ VOID HalDisplayString(PCSTR String)
     if (!HalpVgaInitialized) {
 	return;
     }
-    ULONG Length = strlen(String);
-    PKUSER_SHARED_DATA Data = PsGetUserSharedData();
-    if (Data) {
-	if (Data->BugcheckMsgLength + Length < sizeof(Data->BugcheckMsg)) {
-	    memcpy(Data->BugcheckMsg + Data->BugcheckMsgLength, String, Length);
-	    Data->BugcheckMsgLength += Length;
-	} else if (Length < sizeof(Data->BugcheckMsg)) {
-	    ULONG RemainingLength = sizeof(Data->BugcheckMsg) - Length;
-	    memcpy(Data->BugcheckMsg,
-		   Data->BugcheckMsg + Data->BugcheckMsgLength - RemainingLength,
-		   RemainingLength);
-	    memcpy(Data->BugcheckMsg + RemainingLength, String, Length);
-	    Data->BugcheckMsgLength = sizeof(Data->BugcheckMsg);
-	} else {
-	    /* In this case we truncate the head of the message. */
-	    memcpy(Data->BugcheckMsg, String + Length - sizeof(Data->BugcheckMsg),
-		   sizeof(Data->BugcheckMsg));
-	    Data->BugcheckMsgLength = sizeof(Data->BugcheckMsg);
-	}
-    }
+    RtlAppendStringBuffer(String, &HalpConsoleLogLength, HalpConsoleLogBuffer,
+			  sizeof(HalpConsoleLogBuffer) - 1);
     LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
 	HalpDisplayString(FrameBuffer, String);
     }
@@ -3113,6 +3148,7 @@ static inline VOID HalpVgaClearScreen(IN PHAL_FRAMEBUFFER FrameBuffer)
 	Pixel[GreenIndex] = FRAMEBUFFER_BACKGROUND_COLOR_G;
 	Pixel[RedIndex] = FRAMEBUFFER_BACKGROUND_COLOR_R;
     }
+    HalpNotifyFrameBufferDamage(FrameBuffer, NULL);
 }
 
 #if defined(_M_IX86) || defined(_M_AMD64)
@@ -3131,10 +3167,14 @@ static inline NTSTATUS HalpInitVgaIoPort()
 #endif
 
 static NTSTATUS HalpCreateFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Info,
+				      IN ULONG Offset,
 				      IN UCHAR BlueIndex,
 				      IN UCHAR GreenIndex,
 				      IN UCHAR RedIndex,
-				      IN BOOLEAN FixOrientation)
+				      IN BOOLEAN FixOrientation,
+				      IN OPTIONAL PULONG_PTR PfnDb,
+				      IN OPTIONAL ULONG PfnCount,
+				      IN OPTIONAL PIO_DRIVER_OBJECT DriverObject)
 {
     HAL_PANEL_ORIENTATION PanelOrientation = PANEL_ORIENTATION_DEFAULT;
     if (FixOrientation) {
@@ -3159,21 +3199,29 @@ static NTSTATUS HalpCreateFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Info,
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
     ULONG FrameBufferSize = HalpGetFrameBufferSize(Info);
-    NTSTATUS Status = MmMapIoSpace(FRAMEBUFFER_VADDR_START,
-				   FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE,
-				   FrameBufferSize, Info->PhysicalAddress, MmWriteCombined,
-				   FALSE, &FrameBuffer->VirtualBase);
+    NTSTATUS Status = PfnDb ?
+	MmMapPhysicalMemory(FRAMEBUFFER_VADDR_START,
+			    FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE, 0,
+			    PfnDb, PfnCount, FALSE, &FrameBuffer->VirtualBase) :
+	MmMapIoSpace(FRAMEBUFFER_VADDR_START,
+		     FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE,
+		     FrameBufferSize, Info->PhysicalAddress, MmWriteCombined,
+		     FALSE, &FrameBuffer->VirtualBase);
     if (!NT_SUCCESS(Status)) {
 	/* Try the dynamic virtual region if there isn't enough space in the reserved
 	 * framebuffer mapping space. */
-	Status = MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, FrameBufferSize,
-			      Info->PhysicalAddress, MmWriteCombined, FALSE,
-			      &FrameBuffer->VirtualBase);
+	Status = PfnDb ?
+	    MmMapPhysicalMemory(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, 0,
+				PfnDb, PfnCount, FALSE, &FrameBuffer->VirtualBase) :
+	    MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, FrameBufferSize,
+			 Info->PhysicalAddress, MmWriteCombined, FALSE,
+			 &FrameBuffer->VirtualBase);
 	if (!NT_SUCCESS(Status)) {
 	    ExFreePoolWithTag(FrameBuffer, NTOS_HAL_TAG);
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
     }
+    FrameBuffer->VirtualBase = FrameBuffer->VirtualBase + Offset;
     InsertTailList(&HalpFrameBuffers, &FrameBuffer->Link);
     FrameBuffer->VgaFont = VgaFont;
     FrameBuffer->CursorMaxColumns = CursorMaxColumns;
@@ -3185,7 +3233,24 @@ static NTSTATUS HalpCreateFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Info,
     FrameBuffer->GreenIndex = GreenIndex;
     FrameBuffer->RedIndex = RedIndex;
     HalpVgaClearScreen(FrameBuffer);
+    HalpDisplayString(FrameBuffer, HalpConsoleLogBuffer);
+    if (DriverObject) {
+	ObReferenceObjectByPointer(DriverObject);
+	InsertTailList(&DriverObject->FrameBufferList, &FrameBuffer->DriverLink);
+	FrameBuffer->DriverObject = DriverObject;
+    }
+    HalpNotifyFrameBufferDamage(FrameBuffer, NULL);
     return STATUS_SUCCESS;
+}
+
+static VOID HalpDeleteFrameBuffer(IN PHAL_FRAMEBUFFER FrameBuffer)
+{
+    if (FrameBuffer->DriverObject) {
+	RemoveEntryList(&FrameBuffer->DriverLink);
+    }
+    RemoveEntryList(&FrameBuffer->Link);
+    MmUnmapIoSpace(FrameBuffer->VirtualBase);
+    ExFreePoolWithTag(FrameBuffer, NTOS_HAL_TAG);
 }
 
 NTSTATUS HalpInitVga()
@@ -3195,10 +3260,11 @@ NTSTATUS HalpInitVga()
 	HalpBootFrameBufferInfo.BitsPerPixel && HalpBootFrameBufferInfo.Pitch &&
 	HalpBootFrameBufferInfo.Width && HalpBootFrameBufferInfo.Height &&
 	HalpBootFrameBufferInfo.Type == MULTIBOOT_FRAMEBUFFER_TYPE_RGB) {
-	if (NT_SUCCESS(HalpCreateFrameBuffer(&HalpBootFrameBufferInfo,
+	if (NT_SUCCESS(HalpCreateFrameBuffer(&HalpBootFrameBufferInfo, 0,
 					     HalpBootFrameBufferBlueIndex,
 					     HalpBootFrameBufferGreenIndex,
-					     HalpBootFrameBufferRedIndex, TRUE))) {
+					     HalpBootFrameBufferRedIndex,
+					     TRUE, NULL, 0, NULL))) {
 	    HalpVgaInitialized = TRUE;
 	    return STATUS_SUCCESS;
 	}
@@ -3210,8 +3276,11 @@ NTSTATUS HalpInitVga()
     ULONG ConsoleBufferSize = VGA_MODE_COLUMNS * VGA_MODE_ROWS * sizeof(UCHAR);
     ULONG Size = sizeof(HAL_FRAMEBUFFER) + ConsoleBufferSize;
     PHAL_FRAMEBUFFER FrameBuffer = ExAllocatePoolWithTag(Size, NTOS_HAL_TAG);
-    RET_ERR_EX(MmMapIoSpace(FRAMEBUFFER_VADDR_START, 0, PAGE_SIZE,
-			    VGA_VIDEO_PAGE_PADDR, MmWriteCombined, FALSE,
+    /* We will map at the end of the reserved virtual address window for framebuffers
+     * so when the real GPU driver is initialized, its framebuffer will be mapped at
+     * the beginning of the framebuffer virtual window. */
+    RET_ERR_EX(MmMapIoSpace(FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE - PAGE_SIZE, 0,
+			    PAGE_SIZE, VGA_VIDEO_PAGE_PADDR, MmWriteCombined, FALSE,
 			    &FrameBuffer->VirtualBase),
 	       ExFreePoolWithTag(FrameBuffer, NTOS_HAL_TAG));
     InsertTailList(&HalpFrameBuffers, &FrameBuffer->Link);
@@ -3256,4 +3325,78 @@ ULONG HalGetConsoleMaxRows()
 	return FrameBuffer->CursorMaxRows;
     }
     return 0;
+}
+
+NTSTATUS WdmHalRegisterFrameBuffer(IN ASYNC_STATE State,
+				   IN PTHREAD Thread,
+				   IN PULONG_PTR PfnDb,
+				   IN ULONG PfnCount,
+				   IN ULONG Offset,
+				   IN ULONG Width,
+				   IN ULONG Height,
+				   IN ULONG Pitch,
+				   IN UCHAR BitsPerPixel,
+				   IN UCHAR BlueIndex,
+				   IN UCHAR GreenIndex,
+				   IN UCHAR RedIndex,
+				   IN BOOLEAN NeedFlush)
+{
+    assert(Thread);
+    assert(Thread->Process);
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+    assert(DriverObject);
+    if (!PfnDb || !PfnCount) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
+	if (FrameBuffer->TextMode) {
+	    continue;
+	}
+	if (MDL_PFN_PAGE_ADDRESS(PfnDb[0]) == FrameBuffer->Info.PhysicalAddress) {
+	    if (Width * Height == FrameBuffer->Info.Width * FrameBuffer->Info.Height &&
+		Pitch == FrameBuffer->Info.Pitch &&
+		BitsPerPixel == FrameBuffer->Info.BitsPerPixel) {
+		FrameBuffer->BlueIndex = BlueIndex;
+		FrameBuffer->GreenIndex = GreenIndex;
+		FrameBuffer->RedIndex = RedIndex;
+		return STATUS_SUCCESS;
+	    } else {
+		HalpDeleteFrameBuffer(FrameBuffer);
+	    }
+	}
+    }
+    HAL_FRAMEBUFFER_INFO Info = {
+	.PhysicalAddress = MDL_PFN_PAGE_ADDRESS(PfnDb[0]),
+	.Pitch = Pitch,
+	.Width = Width,
+	.Height = Height,
+	.BitsPerPixel = BitsPerPixel,
+	.Type = MULTIBOOT_FRAMEBUFFER_TYPE_RGB
+    };
+    RET_ERR(HalpCreateFrameBuffer(&Info, Offset, BlueIndex, GreenIndex, RedIndex,
+				  FALSE, PfnDb, PfnCount,
+				  NeedFlush ? DriverObject : NULL));
+    LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
+	if (FrameBuffer->TextMode) {
+	    HalpDeleteFrameBuffer(FrameBuffer);
+	}
+    }
+    DbgTrace("Registered framebuffer at physical base %p, pitch 0x%x, "
+	     "width %d, height %d, bits per pixel %d, bgr = (%d %d %d)\n",
+	     (PVOID)(ULONG_PTR)Info.PhysicalAddress, Info.Pitch, Info.Width,
+	     Info.Height, Info.BitsPerPixel, BlueIndex, GreenIndex, RedIndex);
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmHalUnregisterFrameBuffer(IN ASYNC_STATE State,
+				     IN PTHREAD Thread,
+				     IN MWORD PhysicalBase)
+{
+    LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
+	if (FrameBuffer->Info.PhysicalAddress == PhysicalBase) {
+	    HalpDeleteFrameBuffer(FrameBuffer);
+	    return STATUS_SUCCESS;
+	}
+    }
+    return STATUS_NOT_FOUND;
 }

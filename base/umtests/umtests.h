@@ -9,6 +9,8 @@
 NTSTATUS TestNullDriver();
 VOID TestBeepDriver(IN ULONG Freq,
 		    IN ULONG Duration);
+VOID TestMemDriver();
+VOID TestEthernetDriver();
 
 /* diskbench.c */
 NTSTATUS DiskBench(IN PCSTR VolumePath,

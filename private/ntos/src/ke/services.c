@@ -487,6 +487,16 @@ static inline VOID KiServiceUnmapBuffer4(IN BOOLEAN Mapped,
     KI_GET_5TH_ARG(__VA_ARGS__, KiServiceUnmapBuffer4,	\
 		   KiServiceUnmapBuffer3)(__VA_ARGS__)
 
+static inline NTSTATUS KiServiceMapPfnDb(IN PTHREAD Thread,
+					 OUT BOOLEAN *Mapped,
+					 OUT PULONG_PTR *ServerAddress,
+					 IN MWORD ClientAddress,
+					 IN MWORD PfnCount)
+{
+    return KiServiceMapBuffer(Thread, Mapped, (PPVOID)ServerAddress,
+			      ClientAddress, PfnCount * sizeof(ULONG_PTR));
+}
+
 static inline NTSTATUS KiServiceMapPnpControlBuffer(IN PTHREAD Thread,
 						    OUT BOOLEAN *Mapped,
 						    OUT PVOID *ServerAddress,
@@ -697,6 +707,16 @@ err:
     KiServiceUnmapBuffer3(*Mapped, Buffer, BufferLength);
     *ServerAddress = NULL;
     return STATUS_INVALID_PARAMETER;
+}
+
+static inline NTSTATUS KiServiceMapDirObjInfoBuffer(IN PTHREAD Thread,
+						    OUT BOOLEAN *Mapped,
+						    OUT PCHAR *ServerAddress,
+						    IN MWORD ClientAddress,
+						    IN MWORD BufferLength)
+{
+    return KiServiceMapBuffer5(Thread, Mapped, (PPVOID)ServerAddress,
+			       ClientAddress, BufferLength);
 }
 
 static inline NTSTATUS KiServiceMapPnpEventBuffer(IN PTHREAD Thread,

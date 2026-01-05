@@ -2247,6 +2247,15 @@ static VOID IopHandleForceDismountServerMessage(PIO_PACKET SrvMsg)
     assert(FALSE);
 }
 
+static VOID IopHandleFrameBufferDamagedServerMessage(PIO_PACKET SrvMsg)
+{
+    IopHandleFrameBufferDamage(SrvMsg->ServerMsg.FrameBufferDamaged.PhyBase,
+			       SrvMsg->ServerMsg.FrameBufferDamaged.StartWidth,
+			       SrvMsg->ServerMsg.FrameBufferDamaged.StartHeight,
+			       SrvMsg->ServerMsg.FrameBufferDamaged.EndWidth,
+			       SrvMsg->ServerMsg.FrameBufferDamaged.EndHeight);
+}
+
 static VOID IopDispatchFcnExecEnvFinalizer(PIOP_EXEC_ENV Env, NTSTATUS Status)
 {
     assert(Status != STATUS_ASYNC_PENDING);
@@ -2309,6 +2318,8 @@ static VOID IopProcessSignaledObjectList()
 	}
 	/* If the object is a synchronization event, reset the event to non-signaled state. */
 	if (Object->Type == SynchronizationEvent) {
+	    /* If we did wake up a coroutine above, reset the event. Otherwise, the event
+	     * remains in a signaled state. */
 	    if (HasEnvToWakeUp) {
 		RemoveEntryList(&Object->QueueListEntry);
 		Object->Signaled = FALSE;
@@ -2367,9 +2378,9 @@ static VOID IopExecuteCoroutines()
 	    Teb->Wdm.CoroutineStackHigh = Teb->Wdm.CoroutineStackLow = NULL;
 	} else {
 	    /* We are resuming a coroutine suspended due to KeWaitForSingleObject. */
-	    DbgTrace("Resuming coroutine stack top %p. Saved SP %p\n",
-		     Env->CoroutineStackTop,
-		     KiGetCoroutineSavedSP(Env->CoroutineStackTop));
+	    DbgTrace("Resuming coroutine stack top %p (entrypoint %p finalizer %p). "
+		     "Saved SP %p\n", Env->CoroutineStackTop, Env->EntryPoint,
+		     Env->Finalizer, KiGetCoroutineSavedSP(Env->CoroutineStackTop));
 	    PUCHAR Stack = Env->CoroutineStackTop;
 	    PTEB Teb = NtCurrentTeb();
 	    Teb->Wdm.CoroutineStackHigh = Stack;
@@ -2393,17 +2404,24 @@ static VOID IopExecuteCoroutines()
 	    if (Env->Finalizer) {
 		Env->Finalizer(Env, Status);
 	    }
-	    /* Make sure we (or the driver author) did not accidentally leave a KEVENT
+	    /* Make sure we (or the driver authors) did not accidentally leave a KEVENT
 	     * that was allocated on the coroutine stack in the signaled object list. */
-#if DBG
 	    IopAcquireDpcMutex();
 	    LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
-		assert(!((ULONG_PTR)Object < (ULONG_PTR)Env->CoroutineStackTop &&
-			 (ULONG_PTR)Object >= (ULONG_PTR)Env->CoroutineStackTop -
-			 DRIVER_COROUTINE_STACK_COMMIT));
+		if ((ULONG_PTR)Object < (ULONG_PTR)Env->CoroutineStackTop &&
+		    (ULONG_PTR)Object >= ((ULONG_PTR)Env->CoroutineStackTop -
+					  DRIVER_COROUTINE_STACK_COMMIT)) {
+#if DBG
+		    DbgTrace("ERROR: Object %p allocated on the coroutine stack %p of "
+			     "exec env %p remains in a set state when the coroutine is "
+			     "released.\n", Object, Env->CoroutineStackTop, Env);
+		    assert(FALSE);
+#else
+		    KiCancelWaitableObject(Object, FALSE);
+#endif
+		}
 	    }
 	    IopReleaseDpcMutex();
-#endif
 	    ExFreePool(Env);
 	}
     }
@@ -2509,6 +2527,8 @@ VOID IopProcessIoPackets(VOID)
 		IopHandleCloseDeviceServerMessage(SrvMsg);
 	    } else if (SrvMsg->ServerMsg.Type == IoSrvMsgForceDismount) {
 		IopHandleForceDismountServerMessage(SrvMsg);
+	    } else if (SrvMsg->ServerMsg.Type == IoSrvMsgFrameBufferDamaged) {
+		IopHandleFrameBufferDamagedServerMessage(SrvMsg);
 	    } else {
 		DbgPrint("Invalid server message type %d\n", SrvMsg->ServerMsg.Type);
 		assert(FALSE);

@@ -2081,7 +2081,7 @@ NTAPI NTSYSAPI ULONG RtlExtendHeap(IN HANDLE Heap,
 
 NTAPI NTSYSAPI BOOLEAN RtlFreeHeap(IN HANDLE HeapHandle,
 				   IN OPTIONAL ULONG Flags,
-				   IN PVOID P);
+				   IN PCVOID P);
 
 NTAPI NTSYSAPI ULONG RtlGetProcessHeaps(IN ULONG HeapCount,
 					OUT HANDLE *HeapArray);
@@ -2149,7 +2149,7 @@ NTAPI NTSYSAPI BOOLEAN RtlSetUserFlagsHeap(IN PVOID HeapHandle,
 
 NTAPI NTSYSAPI BOOLEAN RtlValidateHeap(IN HANDLE Heap,
 				       IN ULONG Flags,
-				       IN OPTIONAL PVOID P);
+				       IN OPTIONAL PCVOID P);
 
 NTAPI NTSYSAPI NTSTATUS RtlWalkHeap(IN HANDLE HeapHandle,
 				    IN PVOID HeapEntry);

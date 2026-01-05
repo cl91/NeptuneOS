@@ -79,29 +79,70 @@ static NTSTATUS IopCreateDriverObject(IN PUNICODE_STRING RegistryPath,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopInitDriverObject(IN PUNICODE_STRING RegistryPath)
+static VOID IopFreeDriverObject(IN PDRIVER_OBJECT DriverObject)
 {
-    InitializeListHead(&IopDriverList);
-    InitializeListHead(&PiNotifyDeviceInterfaceList);
-    InitializeListHead(&PiNotifyHwProfileList);
-    InitializeListHead(&PiNotifyTargetDeviceList);
+    RemoveEntryList(&DriverObject->ListEntry);
+    IopFreePool(DriverObject);
+}
 
+static NTSTATUS IopInitDriverObject(PUNICODE_STRING RegistryPath,
+				    PVOID ImageBaseAddress)
+{
     PDRIVER_OBJECT DriverObject = NULL;
-    NTSTATUS Status = IopCreateDriverObject(RegistryPath,
-					    NtCurrentPeb()->ImageBaseAddress,
-					    &DriverObject);
+    NTSTATUS Status = IopCreateDriverObject(RegistryPath, ImageBaseAddress, &DriverObject);
     if (!NT_SUCCESS(Status)) {
 	return Status;
     }
 
     Status = IopCallDriverEntry(DriverObject);
     if (!NT_SUCCESS(Status)) {
+	IopFreeDriverObject(DriverObject);
 	return Status;
     }
 
     IopCallReinitRoutine(DriverObject);
+    return STATUS_SUCCESS;
+}
 
-    return Status;
+NTSTATUS IopDriverInitialize(IN PUNICODE_STRING RegistryPath)
+{
+    InitializeListHead(&IopDriverList);
+    InitializeListHead(&PiNotifyDeviceInterfaceList);
+    InitializeListHead(&PiNotifyHwProfileList);
+    InitializeListHead(&PiNotifyTargetDeviceList);
+
+    ReverseLoopOverList(Entry, &NtCurrentPeb()->LdrData->InLoadOrderModuleList,
+			LDR_DATA_TABLE_ENTRY, InLoadOrderLinks) {
+	if (Entry->DllBase == NtCurrentPeb()->ImageBaseAddress) {
+	    continue;
+	}
+	UNICODE_STRING Suffix = RTL_CONSTANT_STRING(L".sys");
+	if (Entry->BaseDllName.Length < Suffix.Length) {
+	    continue;
+	}
+	USHORT Offset = (Entry->BaseDllName.Length - Suffix.Length) / sizeof(WCHAR);
+	UNICODE_STRING Tail = {
+	    .Buffer = Entry->BaseDllName.Buffer + Offset,
+	    .Length = Suffix.Length,
+	    .MaximumLength  = Suffix.Length
+	};
+	if (!RtlEqualUnicodeString(&Tail, &Suffix, TRUE)) {
+	    continue;
+	}
+	ULONG ServiceBufSize = sizeof(SERVICE_KEY_NAME) + Offset * sizeof(WCHAR);
+	IopAllocatePool(DriverService, WCHAR, ServiceBufSize);
+	memcpy(DriverService, SERVICE_KEY_NAME, sizeof(SERVICE_KEY_NAME));
+	memcpy(DriverService + sizeof(SERVICE_KEY_NAME) / sizeof(WCHAR) - 1,
+	       Entry->BaseDllName.Buffer, Offset * sizeof(WCHAR));
+	UNICODE_STRING ServicePath = {
+	    .Buffer = DriverService,
+	    .Length = ServiceBufSize - sizeof(WCHAR),
+	    .MaximumLength = ServiceBufSize
+	};
+	RET_ERR(IopInitDriverObject(&ServicePath, Entry->DllBase));
+    }
+
+    return IopInitDriverObject(RegistryPath, NtCurrentPeb()->ImageBaseAddress);
 }
 
 PDRIVER_OBJECT IopLocateDriverObject(IN PCSTR BaseName)
@@ -136,7 +177,7 @@ NTSTATUS IopLoadDriver(IN PCSTR BaseName)
 	return STATUS_SUCCESS;
     }
 
-    ULONG ServiceBufSize = sizeof(SERVICE_KEY_NAME) + strlen(BaseName) * sizeof(WCHAR) - sizeof(WCHAR);
+    ULONG ServiceBufSize = sizeof(SERVICE_KEY_NAME) + strlen(BaseName) * sizeof(WCHAR);
     IopAllocatePool(DriverService, WCHAR, ServiceBufSize);
     memcpy(DriverService, SERVICE_KEY_NAME, sizeof(SERVICE_KEY_NAME));
     PWCHAR BaseNameU = &DriverService[sizeof(SERVICE_KEY_NAME) / sizeof(WCHAR) - 1];
@@ -149,7 +190,6 @@ NTSTATUS IopLoadDriver(IN PCSTR BaseName)
 	.Length = sizeof(SERVICE_KEY_NAME) - sizeof(WCHAR) + BaseNameLength,
 	.MaximumLength = ServiceBufSize
     };
-    PDRIVER_OBJECT DriverObject = NULL;
     HANDLE KeyHandle = NULL;
     PKEY_VALUE_PARTIAL_INFORMATION PartialInfo = NULL;
     NTSTATUS Status;
@@ -169,19 +209,13 @@ NTSTATUS IopLoadDriver(IN PCSTR BaseName)
 	.MaximumLength = PartialInfo->DataLength
     };
     IF_ERR_GOTO(out, Status, LdrLoadDll(NULL, NULL, &ImagePath, &BaseAddress));
-    Status = IopCreateDriverObject(&DriverServiceKey, BaseAddress, &DriverObject);
+    Status = IopInitDriverObject(&DriverServiceKey, BaseAddress);
     if (!NT_SUCCESS(Status)) {
 	LdrUnloadDll(BaseAddress);
-	goto out;
-    }
-    Status = IopCallDriverEntry(DriverObject);
-    if (NT_SUCCESS(Status)) {
-	IopCallReinitRoutine(DriverObject);
-	Status = STATUS_SUCCESS;
     }
 
 out:
-    if (!NT_SUCCESS(Status) && !DriverObject) {
+    if (!NT_SUCCESS(Status)) {
 	IopFreePool(DriverService);
     }
     if (KeyHandle) {
@@ -489,4 +523,42 @@ NTAPI VOID MmUnmapIoSpace(IN PVOID BaseAddress,
 {
     PAGED_CODE();
     WdmUnmapIoSpace(BaseAddress, NumberOfBytes);
+}
+
+NTAPI NTSTATUS HalRegisterFrameBuffer(IN PULONG_PTR PfnDb,
+				      IN ULONG PfnCount,
+				      IN ULONG Offset,
+				      IN ULONG Width,
+				      IN ULONG Height,
+				      IN ULONG Pitch,
+				      IN UCHAR BitsPerPixel,
+				      IN UCHAR BlueIndex,
+				      IN UCHAR GreenIndex,
+				      IN UCHAR RedIndex,
+				      IN BOOLEAN NeedFlush)
+{
+    return WdmHalRegisterFrameBuffer(PfnDb, PfnCount, Offset, Width, Height, Pitch,
+				     BitsPerPixel, BlueIndex, GreenIndex, RedIndex, NeedFlush);
+}
+
+NTAPI NTSTATUS HalUnregisterFrameBuffer(IN ULONG_PTR PhysicalBase)
+{
+    return WdmHalUnregisterFrameBuffer(PhysicalBase);
+}
+
+static PHAL_FRAMEBUFFER_DAMAGE_HANDLER HalpFrameBufferDamageHandler;
+NTAPI VOID HalRegisterFrameBufferDamageHandler(IN PHAL_FRAMEBUFFER_DAMAGE_HANDLER Func)
+{
+    HalpFrameBufferDamageHandler = Func;
+}
+
+VOID IopHandleFrameBufferDamage(IN ULONG_PTR PhyBase,
+				IN ULONG StartWidth,
+				IN ULONG StartHeight,
+				IN ULONG EndWidth,
+				IN ULONG EndHeight)
+{
+    if (HalpFrameBufferDamageHandler) {
+	HalpFrameBufferDamageHandler(PhyBase, StartWidth, StartHeight, EndWidth, EndHeight);
+    }
 }

@@ -345,7 +345,7 @@ PVOID RtlpDebugReAllocateHeap(HANDLE HeapPtr,
 			      ULONG Flags,
 			      PVOID Ptr,
 			      SIZE_T Size);
-BOOLEAN RtlpDebugFreeHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr);
+BOOLEAN RtlpDebugFreeHeap(HANDLE HeapPtr, ULONG Flags, PCVOID Ptr);
 BOOLEAN RtlpDebugGetUserInfoHeap(PVOID HeapHandle,
 				 ULONG Flags,
 				 PVOID BaseAddress,
@@ -375,7 +375,7 @@ PVOID RtlpPageHeapAllocate(IN PVOID HeapPtr,
 			   IN SIZE_T Size);
 BOOLEAN RtlpPageHeapFree(HANDLE HeapPtr,
 			 ULONG Flags,
-			 PVOID Ptr);
+			 PCVOID Ptr);
 PVOID RtlpPageHeapReAllocate(HANDLE HeapPtr,
 			     ULONG Flags,
 			     PVOID Ptr,
@@ -398,7 +398,7 @@ BOOLEAN RtlpPageHeapSetUserFlags(PVOID HeapHandle,
 				 ULONG UserFlagsSet);
 BOOLEAN RtlpDebugPageHeapValidate(PVOID HeapPtr,
 				  ULONG Flags,
-				  PVOID Block);
+				  PCVOID Block);
 SIZE_T RtlpPageHeapSize(HANDLE HeapPtr,
 			ULONG Flags,
 			PVOID Ptr);

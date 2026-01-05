@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "QEMU Pvpanic Device Driver"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "pvpanic"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "pvpanic.sys"
+#include <version.rc>

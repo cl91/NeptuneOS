@@ -48,6 +48,21 @@ NTAPI VOID IoReleaseMutex(IN PIO_MUTEX Mutex)
     }
 }
 
+VOID IoDbgPrintMsg(IN PCSTR String)
+{
+#if DBG
+    for (PCSTR p = RtlpDbgTraceModuleName; *p; p++) {
+	seL4_DebugPutChar(*p);
+    }
+    seL4_DebugPutChar(':');
+    seL4_DebugPutChar(' ');
+    while (*String) {
+	seL4_DebugPutChar(*String);
+	String++;
+    }
+#endif
+}
+
 NTAPI VOID ObReferenceObject(IN PVOID Obj)
 {
     POBJECT_HEADER Header = Obj;
@@ -88,6 +103,13 @@ NTAPI VOID MmFreeContiguousMemorySpecifyCache(IN PVOID BaseAddress,
 					      IN MEMORY_CACHING_TYPE CacheType)
 {
     WdmHalFreeDmaBuffer(BaseAddress, NumberOfBytes, CacheType);
+}
+
+NTAPI NTSTATUS MmMapPhysicalMemory(IN PULONG_PTR PfnDb,
+				   IN ULONG PfnCount,
+				   OUT PVOID *VirtBase)
+{
+    return WdmMapPhysicalMemory(PfnDb, PfnCount, VirtBase);
 }
 
 /*
@@ -177,7 +199,7 @@ static PVOID IopAllocateDmaPool(IN MEMORY_CACHING_TYPE CacheType,
     return RtlAllocateHeap(DmaPool->Heap, HEAP_ZERO_MEMORY, Size);
 }
 
-static PDMA_POOL IopPtrToDmaPool(IN PVOID Ptr)
+static PDMA_POOL IopPtrToDmaPool(IN PCVOID Ptr)
 {
     LoopOverList(DmaPool, &IopDmaPoolList, DMA_POOL, Link) {
 	if ((ULONG_PTR)Ptr >= (ULONG_PTR)DmaPool->VirtualAddress &&
@@ -201,7 +223,7 @@ NTAPI PVOID ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
 }
 
-NTAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
+NTAPI VOID ExFreePoolWithTag(IN PCVOID Pointer,
 			     IN ULONG Tag)
 {
     PDMA_POOL DmaPool = IopPtrToDmaPool(Pointer);
@@ -212,7 +234,8 @@ NTAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
 }
 
 static PHYSICAL_ADDRESS MiGetPhysicalAddress(IN PVOID Address,
-					     OUT OPTIONAL SIZE_T *MappedLength)
+					     OUT OPTIONAL SIZE_T *MappedLength,
+					     OUT OPTIONAL MEMORY_CACHING_TYPE *CacheType)
 {
     PHYSICAL_ADDRESS PhyAddr = {};
     PDMA_POOL DmaPool = IopPtrToDmaPool(Address);
@@ -224,13 +247,16 @@ static PHYSICAL_ADDRESS MiGetPhysicalAddress(IN PVOID Address,
 	if (MappedLength) {
 	    *MappedLength = DmaPool->Size - Offset;
 	}
+	if (CacheType) {
+	    *CacheType = DmaPool->CacheType;
+	}
     }
     return PhyAddr;
 }
 
 NTAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID Address)
 {
-    return MiGetPhysicalAddress(Address, NULL);
+    return MiGetPhysicalAddress(Address, NULL, NULL);
 }
 
 NTAPI PVOID MmGetVirtualForPhysical(IN PHYSICAL_ADDRESS PhysicalAddress)
@@ -288,7 +314,9 @@ NTAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,
     ULONG OldPageCount = MDL_PFN_PAGE_COUNT(SourceMdl->PfnEntries[PfnIndex]);
     assert(OldPageCount > PagesToSkip);
     ULONG NewPageCount = OldPageCount - PagesToSkip;
-    ULONG_PTR NewPfnEntry = (NewPfn << PageShift) | (NewPageCount << MDL_PFN_ATTR_BITS) |
+    assert(NewPageCount);
+    assert(NewPageCount <= (1UL << MDL_PFN_PAGE_COUNT_BITS));
+    ULONG_PTR NewPfnEntry = (NewPfn << PageShift) | ((NewPageCount - 1) << MDL_PFN_ATTR_BITS) |
 	(SourceMdl->PfnEntries[PfnIndex] & MDL_PFN_ATTR_MASK);
     ULONG PfnCount = 0;
     MiGetMdlPhysicalAddress(SourceMdl, VirtualAddress + Length - 1, &PfnCount);
@@ -327,7 +355,8 @@ NTAPI PMDL IoAllocateMdl(IN PVOID VirtualAddress,
 			 IN ULONG Length)
 {
     SIZE_T MappedLength = 0;
-    ULONG64 PhyAddr = MiGetPhysicalAddress(VirtualAddress, &MappedLength).QuadPart;
+    MEMORY_CACHING_TYPE CacheType;
+    ULONG64 PhyAddr = MiGetPhysicalAddress(VirtualAddress, &MappedLength, &CacheType).QuadPart;
     if (Length > MappedLength) {
 	assert(FALSE);
 	return NULL;
@@ -343,8 +372,9 @@ NTAPI PMDL IoAllocateMdl(IN PVOID VirtualAddress,
 	>> MDL_PFN_PAGE_COUNT_BITS;
     ULONG_PTR PfnDb[PfnEntryCount] = {};
     for (ULONG i = 0; i < PfnEntryCount; i++) {
-	ULONG MappedPages = min(PageCount, (1ULL << MDL_PFN_PAGE_COUNT_BITS) - 1);
-	PfnDb[i] = AlignedAddress | (MappedPages << MDL_PFN_ATTR_BITS);
+	assert(PageCount);
+	ULONG MappedPages = min(PageCount, 1ULL << MDL_PFN_PAGE_COUNT_BITS);
+	PfnDb[i] = MDL_FORM_PFN(AlignedAddress, MappedPages, CacheType, FALSE);
 	AlignedAddress += MappedPages << PAGE_SHIFT;
 	assert(PageCount >= MappedPages);
 	PageCount -= MappedPages;
@@ -734,11 +764,11 @@ NTSTATUS IoReadPciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
  * of a PCI device stack.
  */
 NTSTATUS IoWritePciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
-			       IN PVOID Buffer,
+			       IN PCVOID Buffer,
 			       IN ULONG Offset,
 			       IN OUT ULONG *Length)
 {
-    return IopReadWritePciConfigSpace(DeviceObject, TRUE, Buffer, Offset, Length);
+    return IopReadWritePciConfigSpace(DeviceObject, TRUE, (PVOID)Buffer, Offset, Length);
 }
 
 /*

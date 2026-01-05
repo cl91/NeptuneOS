@@ -1,0 +1,1 @@
+@ stdcall LnxInitializeDriver(ptr ptr)

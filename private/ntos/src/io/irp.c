@@ -428,7 +428,8 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	if (!Irp->InputBufferPfn) {
 	    assert(!Irp->InputBufferPfnCount);
 	    if (!MmGeneratePageFrameDatabase(NULL, RequestorVSpace, InputBuffer,
-					     InputBufferLength, &Irp->InputBufferPfnCount)) {
+					     InputBufferLength, MmCached,
+					     &Irp->InputBufferPfnCount)) {
 		assert(FALSE);
 		return STATUS_INVALID_USER_BUFFER;
 	    }
@@ -436,7 +437,7 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	    IopAllocateArray(PfnDb, MWORD, Irp->InputBufferPfnCount);
 	    Irp->InputBufferPfn = (MWORD)PfnDb;
 	    MmGeneratePageFrameDatabase((PULONG_PTR)PfnDb, RequestorVSpace,
-					InputBuffer, InputBufferLength, NULL);
+					InputBuffer, InputBufferLength, MmCached, NULL);
 	    DbgTrace("Generated PFN database for input buffer %p, db %p count %d\n",
 		     (PVOID)InputBuffer, PfnDb, Irp->InputBufferPfnCount);
 	}
@@ -454,7 +455,8 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	if (!Irp->OutputBufferPfn) {
 	    assert(!Irp->OutputBufferPfnCount);
 	    if (!MmGeneratePageFrameDatabase(NULL, RequestorVSpace, OutputBuffer,
-					     OutputBufferLength, &Irp->OutputBufferPfnCount)) {
+					     OutputBufferLength, MmCached,
+					     &Irp->OutputBufferPfnCount)) {
 		assert(FALSE);
 		return STATUS_INVALID_USER_BUFFER;
 	    }
@@ -462,7 +464,7 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	    IopAllocateArray(PfnDb, MWORD, Irp->OutputBufferPfnCount);
 	    Irp->OutputBufferPfn = (MWORD)PfnDb;
 	    MmGeneratePageFrameDatabase((PULONG_PTR)PfnDb, RequestorVSpace,
-					OutputBuffer, OutputBufferLength, NULL);
+					OutputBuffer, OutputBufferLength, MmCached, NULL);
 	    DbgTrace("Generated PFN database for output buffer %p, db %p count %d\n",
 		     (PVOID)OutputBuffer, PfnDb, Irp->OutputBufferPfnCount);
 	}
@@ -562,6 +564,16 @@ VOID IopQueueIoPacketToDriver(IN PIO_DRIVER_OBJECT DriverObject,
     if (!DriverObject->PendingDriverLink.Blink) {
 	InsertTailList(&IopPendingDriverList, &DriverObject->PendingDriverLink);
     }
+}
+
+NTSTATUS IoQueueServerMessage(IN PIO_DRIVER_OBJECT DriverObject,
+			      IN PIO_PACKET_SERVER_MESSAGE SrvMsg)
+{
+    PIO_PACKET IoPacket = NULL;
+    RET_ERR(IopAllocateIoPacket(IoPacketTypeServerMessage, sizeof(IO_PACKET), &IoPacket));
+    RtlCopyMemory(&IoPacket->ServerMsg, SrvMsg, sizeof(IO_PACKET_SERVER_MESSAGE));
+    IopQueueIoPacketToDriver(DriverObject, IoPacket);
+    return STATUS_SUCCESS;
 }
 
 static VOID IopQueueIoPacketEx(IN PPENDING_IRP PendingIrp,

@@ -575,6 +575,22 @@
     <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
   </svc>
 
+  <svc name="NtOpenDirectoryObject">
+    <parameter annotation="out" type="ptr::HANDLE" name="DirectoryHandle" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+  </svc>
+
+  <svc name="NtQueryDirectoryObject">
+    <parameter annotation="in" type="HANDLE" name="DirectoryObjectHandle" />
+    <parameter annotation="out" type="buf::DirectoryObjectInformation" name="DirObjInfo" />
+    <parameter annotation="in" type="bufsize::ULONG" name="BufferLength" />
+    <parameter annotation="in" type="BOOLEAN" name="ReturnSingleEntry" />
+    <parameter annotation="in" type="BOOLEAN" name="RestartScan" />
+    <parameter annotation="in out" type="ptr::ULONG" name="ObjectIndex" />
+    <parameter annotation="out opt" type="bufsize::ULONG" name="ReturnLength" />
+  </svc>
+
   <svc name="NtCreateSymbolicLinkObject">
     <parameter annotation="out" type="ptr::HANDLE" name="SymbolicLinkHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />

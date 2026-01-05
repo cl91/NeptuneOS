@@ -225,7 +225,7 @@ typedef enum _IO_ALLOCATION_ACTION {
 
 typedef ULONG NODE_REQUIREMENT;
 
-/* Valid values for NOTE_REQUIREMENT */
+/* Valid values for NODE_REQUIREMENT */
 #define MM_DONT_ZERO_ALLOCATION                  0x00000001
 #define MM_ALLOCATE_FROM_LOCAL_NODE_ONLY         0x00000002
 #define MM_ALLOCATE_FULLY_REQUIRED               0x00000004
@@ -798,6 +798,10 @@ NTAPI NTSYSAPI VOID MmFreeContiguousMemorySpecifyCache(IN PVOID BaseAddress,
 						       IN SIZE_T NumberOfBytes,
 						       IN MEMORY_CACHING_TYPE CacheType);
 
+NTAPI NTSYSAPI NTSTATUS MmMapPhysicalMemory(IN PULONG_PTR PfnDb,
+					    IN ULONG PfnCount,
+					    OUT PVOID *VirtBase);
+
 NTAPI NTSYSAPI PHYSICAL_ADDRESS MmGetPhysicalAddress(IN PVOID Address);
 
 NTAPI NTSYSAPI PVOID MmGetVirtualForPhysical(IN PHYSICAL_ADDRESS PhysicalAddress);
@@ -808,10 +812,30 @@ NTAPI NTSYSAPI PVOID MmGetVirtualForPhysical(IN PHYSICAL_ADDRESS PhysicalAddress
 NTAPI NTSYSAPI BOOLEAN HalMakeBeep(IN ULONG Frequency);
 
 /*
- * Returns the physical address and the length of the ACPI RSDT/XSDT
+ * Registers the framebuffer with the NT Executive
  */
-NTSTATUS HalAcpiGetRsdt(OUT ULONG64 *Address,
-			OUT ULONG *Length);
+NTAPI NTSYSAPI NTSTATUS HalRegisterFrameBuffer(IN PULONG_PTR PfnDb,
+					       IN ULONG PfnCount,
+					       IN ULONG Offset,
+					       IN ULONG Width,
+					       IN ULONG Height,
+					       IN ULONG Pitch,
+					       IN UCHAR BitsPerPixel,
+					       IN UCHAR BlueIndex,
+					       IN UCHAR GreenIndex,
+					       IN UCHAR RedIndex,
+					       IN BOOLEAN NeedFlush);
+
+NTAPI NTSYSAPI NTSTATUS HalUnregisterFrameBuffer(IN ULONG_PTR PhysicalBase);
+
+typedef NTAPI VOID (HAL_FRAMEBUFFER_DAMAGE_HANDLER)(IN ULONG_PTR PhyBase,
+						    IN ULONG StartWidth,
+						    IN ULONG StartHeight,
+						    IN ULONG EndWidth,
+						    IN ULONG EndHeight);
+typedef HAL_FRAMEBUFFER_DAMAGE_HANDLER *PHAL_FRAMEBUFFER_DAMAGE_HANDLER;
+
+NTAPI NTSYSAPI VOID HalRegisterFrameBufferDamageHandler(IN PHAL_FRAMEBUFFER_DAMAGE_HANDLER Func);
 
 /*
  * Disk partition related routines

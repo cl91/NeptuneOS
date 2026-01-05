@@ -193,7 +193,8 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     assert(!(Flags & MEM_COMMIT_ON_DEMAND) || (Flags & MEM_RESERVE_OWNED_MEMORY));
 #endif
 
-    if (Flags & (MEM_RESERVE_BITMAP_MANAGED | MEM_RESERVE_IMAGE_MAP)) {
+    if (Flags & (MEM_RESERVE_BITMAP_MANAGED | MEM_RESERVE_IMAGE_MAP
+		 | MEM_RESERVE_PHYSICAL_MAPPING)) {
 	LowZeroBits = max(LowZeroBits, PAGE_LOG2SIZE);
     } else {
 	LowZeroBits = max(LowZeroBits, MM_MINIMUM_LOW_ZERO_BITS);
@@ -757,6 +758,7 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 				    IN PVIRT_ADDR_SPACE VSpace,
 				    IN MWORD Buffer,
 				    IN MWORD BufferLength,
+				    IN MEMORY_CACHING_TYPE CacheType,
 				    OUT OPTIONAL ULONG *pPfnCount)
 {
     if (pPfnCount) {
@@ -795,7 +797,7 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 	    PrevPageType = Page->Type;
 	}
 	if (!PageCount || (PhyAddrEnd == PhyAddr && Page->Type == PrevPageType &&
-			   PageCount < ((1UL << MDL_PFN_PAGE_COUNT_BITS) - 1))) {
+			   PageCount < (1UL << MDL_PFN_PAGE_COUNT_BITS))) {
 	    /* Page is physically contiguous with previous page (and page count is
 	     * not larger than what can be stored in one PFN entry). In this case
 	     * we simply increase the page count in the current PFN. */
@@ -810,10 +812,8 @@ BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 	    assert(PhyAddrStart);
 	    assert(PhyAddrEnd);
 	    if (PfnDb) {
-		if (MiPagingTypeIsLargePage(PrevPageType)) {
-		    PhyAddrStart |= MDL_PFN_ATTR_LARGE_PAGE;
-		}
-		PfnDb[PfnCount] = PhyAddrStart | (PageCount << MDL_PFN_ATTR_BITS);
+		PfnDb[PfnCount] = MDL_FORM_PFN(PhyAddrStart, PageCount, CacheType,
+					       MiPagingTypeIsLargePage(PrevPageType));
 	    }
 	    PfnCount++;
 	    if (Exit) {
@@ -1423,6 +1423,8 @@ FORCEINLINE PAGING_ATTRIBUTES MiGetPagingAttributesFromCacheType(MEMORY_CACHING_
 	MmApplyNoCacheAttribute(&Attributes);
     } else if (CacheType == MmWriteCombined) {
 	MmApplyWriteCombineAttribute(&Attributes);
+    } else if (CacheType == MmWriteThrough) {
+	MmApplyWriteThroughAttribute(&Attributes);
     }
     return Attributes;
 }
@@ -1453,8 +1455,7 @@ NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
 retry:
     RET_ERR(MmReserveVirtualMemoryEx(VSpace, WindowStart, WindowEnd, WindowSize,
 				     LowZeroBits, 0, Flags, &Vad));
-    Vad->PhysicalSectionView.PhysicalBase = PhyAddr;
-    Vad->PhysicalSectionView.CacheType = CacheType;
+    Vad->PhysicalSectionView.SectionOffset = 0;
 
     PAGING_ATTRIBUTES Attributes = MiGetPagingAttributesFromCacheType(CacheType);
     MWORD VirtAddr = Vad->AvlNode.Key;
@@ -1480,6 +1481,49 @@ retry:
     if (pVad) {
 	*pVad = Vad;
     }
+    return STATUS_SUCCESS;
+}
+
+NTSTATUS MmMapPhysicalMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+			       IN MWORD WindowStart,
+			       IN MWORD WindowEnd,
+			       IN ULONG LowZeroBits,
+			       IN PULONG_PTR PfnDb,
+			       IN ULONG PfnCount,
+			       IN BOOLEAN ReadOnly,
+			       OUT MWORD *VirtBase)
+{
+    *VirtBase = 0;
+    if (!PfnCount) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    MWORD WindowSize = 0;
+    for (ULONG i = 0; i < PfnCount; i++) {
+	WindowSize += MDL_PFN_WINDOW_SIZE(PfnDb[i]);
+    }
+    PMMVAD Vad = NULL;
+    ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING;
+    if (PfnDb[0] & MDL_PFN_ATTR_LARGE_PAGE) {
+	Flags |= MEM_RESERVE_LARGE_PAGES;
+    }
+    RET_ERR(MmReserveVirtualMemoryEx(VSpace, WindowStart, WindowEnd, WindowSize,
+				     LowZeroBits, 0, Flags, &Vad));
+    Vad->PhysicalSectionView.SectionOffset = 0;
+    MWORD VirtAddr = Vad->AvlNode.Key;
+    PAGING_RIGHTS PagingRights = ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
+    for (ULONG i = 0; i < PfnCount; i++) {
+	MWORD PhyAddr = MDL_PFN_PAGE_ADDRESS(PfnDb[i]);
+	MWORD WindowSize = MDL_PFN_WINDOW_SIZE(PfnDb[i]);
+	BOOLEAN UseLargePage = (PfnDb[i] & MDL_PFN_ATTR_LARGE_PAGE) &&
+	    IS_LARGE_PAGE_ALIGNED(VirtAddr);
+	RET_ERR_EX(MiMapIoMemory(VSpace, PhyAddr, VirtAddr, WindowSize, PagingRights,
+				 MiGetPagingAttributesFromCacheType(MmGetPfnCacheType(PfnDb[i])),
+				 UseLargePage),
+		   MmDeleteVad(Vad));
+	VirtAddr += WindowSize;
+    }
+    *VirtBase = Vad->AvlNode.Key;
+    assert(VirtAddr - *VirtBase == WindowSize);
     return STATUS_SUCCESS;
 }
 
@@ -1539,7 +1583,6 @@ NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     assert(VirtAddr == Vad->AvlNode.Key);
     assert(Length == Vad->WindowSize);
     assert(Vad->Flags.PhysicalMapping);
-    assert(CacheType == Vad->PhysicalSectionView.CacheType);
 #endif
     MmUnmapIoSpaceEx(VSpace, VirtAddr);
     return STATUS_SUCCESS;
@@ -1871,6 +1914,20 @@ NTSTATUS WdmUnmapIoSpace(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS WdmMapPhysicalMemory(IN ASYNC_STATE AsyncState,
+			      IN PTHREAD Thread,
+			      IN PULONG_PTR PfnDb,
+			      IN ULONG PfnCount,
+			      OUT PVOID *VirtualAddress)
+{
+    assert(Thread);
+    assert(Thread->Process);
+    assert(IoGetDriverObjectFromProcess(Thread->Process));
+    MmMapPhysicalMemoryEx(&Thread->Process->VSpace, USER_IMAGE_REGION_START, USER_ADDRESS_END,
+			0, PfnDb, PfnCount, FALSE, (MWORD *)VirtualAddress);
+    return STATUS_SUCCESS;
+}
+
 VOID MmDbgDumpVad(PMMVAD Vad)
 {
 #ifdef MMDBG
@@ -1899,10 +1956,10 @@ VOID MmDbgDumpVad(PMMVAD Vad)
 	MmDbgPrint("    subsection = %p\n", Vad->ImageSectionView.SubSection);
     }
     if (Vad->Flags.FileMap) {
-	MmDbgPrint("    section offset = %p\n", (PVOID) Vad->DataSectionView.SectionOffset);
+	MmDbgPrint("    section offset = %p\n", (PVOID)Vad->DataSectionView.SectionOffset);
     }
     if (Vad->Flags.PhysicalMapping) {
-	MmDbgPrint("    physical base = %p\n", (PVOID) Vad->PhysicalSectionView.PhysicalBase);
+	MmDbgPrint("    section offset = %p\n", (PVOID)Vad->PhysicalSectionView.SectionOffset);
     }
     if (Vad->Flags.MirroredMemory) {
 	MmDbgPrint("    master vspace = %p\n", Vad->MirroredMemory.Master);

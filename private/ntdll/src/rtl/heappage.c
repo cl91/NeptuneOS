@@ -182,12 +182,12 @@ BOOLEAN RtlpDphIsNormalFreeHeapBlock(PVOID Block,
 
 VOID RtlpDphReportCorruptedBlock(PDPH_HEAP_ROOT DphRoot,
 				 ULONG Reserved,
-				 PVOID Block,
+				 PCVOID Block,
 				 ULONG ValidationInfo);
 
 BOOLEAN RtlpDphNormalHeapValidate(PDPH_HEAP_ROOT DphRoot,
 				  ULONG Flags,
-				  PVOID BaseAddress);
+				  PCVOID BaseAddress);
 
 VOID RtlpDphRaiseException(NTSTATUS Status)
 {
@@ -898,7 +898,7 @@ PDPH_HEAP_BLOCK RtlpDphFindAvailableMemory(PDPH_HEAP_ROOT DphRoot,
 }
 
 PDPH_HEAP_BLOCK RtlpDphFindBusyMemory(PDPH_HEAP_ROOT DphRoot,
-				      PVOID pUserMem)
+				      PCVOID pUserMem)
 {
     PDPH_HEAP_BLOCK Node;
     PVOID Ptr;
@@ -1241,7 +1241,7 @@ VOID RtlpDphVerifyIntegrity(PDPH_HEAP_ROOT DphRoot)
 
 VOID RtlpDphReportCorruptedBlock(PDPH_HEAP_ROOT DphRoot,
 				 ULONG Reserved,
-				 PVOID Block,
+				 PCVOID Block,
 				 ULONG ValidationInfo)
 {
     //RtlpDphGetBlockSizeFromCorruptedBlock();
@@ -1286,7 +1286,7 @@ VOID RtlpDphReportCorruptedBlock(PDPH_HEAP_ROOT DphRoot,
 }
 
 BOOLEAN RtlpDphIsPageHeapBlock(PDPH_HEAP_ROOT DphRoot,
-			       PVOID Block,
+			       PCVOID Block,
 			       PULONG ValidationInformation,
 			       BOOLEAN CheckFillers)
 {
@@ -1770,7 +1770,7 @@ PVOID RtlpPageHeapAllocate(IN PVOID HeapPtr,
     return BusyNode->pUserAllocation;
 }
 
-BOOLEAN RtlpPageHeapFree(HANDLE HeapPtr, ULONG Flags, PVOID Ptr)
+BOOLEAN RtlpPageHeapFree(HANDLE HeapPtr, ULONG Flags, PCVOID Ptr)
 {
     PDPH_HEAP_ROOT DphRoot;
     PDPH_HEAP_BLOCK Node;
@@ -2180,7 +2180,7 @@ SIZE_T RtlpPageHeapSize(HANDLE HeapHandle, ULONG Flags, PVOID BaseAddress)
 
 BOOLEAN RtlpDebugPageHeapValidate(PVOID HeapHandle,
 				  ULONG Flags,
-				  PVOID BaseAddress)
+				  PCVOID BaseAddress)
 {
     PDPH_HEAP_ROOT DphRoot;
     PDPH_HEAP_BLOCK Node = NULL;
@@ -2222,7 +2222,7 @@ BOOLEAN RtlpDebugPageHeapValidate(PVOID HeapHandle,
 
 BOOLEAN RtlpDphNormalHeapValidate(PDPH_HEAP_ROOT DphRoot,
 				  ULONG Flags,
-				  PVOID BaseAddress)
+				  PCVOID BaseAddress)
 {
     PDPH_BLOCK_INFORMATION BlockInfo =
 	(PDPH_BLOCK_INFORMATION) BaseAddress - 1;

@@ -167,9 +167,9 @@ VOID IopDbgDumpWorkItem(IN PIO_WORKITEM WorkItem)
 {
     DbgTrace("Dumping workitem %p\n", WorkItem);
     if (WorkItem != NULL) {
-	DbgPrint("    Device object %p(%p) WorkerRoutine %p ExtendedRoutine %s\n",
+	DbgPrint("    Device object %p(%p) WorkerRoutine %p Context %p ExtendedRoutine %s\n",
 		 WorkItem->DeviceObject, (PVOID)IopGetDeviceHandle(WorkItem->DeviceObject),
-		 WorkItem->WorkerRoutine,
+		 WorkItem->WorkerRoutine, WorkItem->Context,
 		 WorkItem->ExtendedRoutine ? "TRUE" : "FALSE");
     } else {
 	DbgPrint("    (nil)\n");

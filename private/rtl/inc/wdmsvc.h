@@ -13,10 +13,10 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
  * both the NT Executive server address space and in client driver process) using
  * the following scheme:
  *
- *  |----------|------------------|---------------------------------|----------|
- *  |   16KB   |       16KB       |            16KB                 |   16KB   |
- *  | UNMAPPED | IO PACKET BUFFER | IO PACKET BUFFER (MAPPED AGAIN) | UNMAPPED |
- *  |----------|------------------|---------------------------------|----------|
+ *  |----------|------------------|-----------------------|----------|
+ *  |   16KB   |       16KB       |         16KB          |   16KB   |
+ *  | UNMAPPED | IO PACKET BUFFER | SAME IO PACKET BUFFER | UNMAPPED |
+ *  |----------|------------------|-----------------------|----------|
  *
  * The same IO packet buffer is mapped twice so the ring buffer marked by the head
  * and tail pointer is always contiguous in memory. The unmapped region is used
@@ -69,38 +69,67 @@ C_ASSERT(sizeof(IO_PACKET_BUFFER_POINTERS) == 2 * SYSTEM_CACHE_ALIGNMENT_SIZE);
 #define IS_VIEW_ALIGNED(p)	(((MWORD)(p)) == VIEW_ALIGN(p))
 #define IS_VIEW_ALIGNED64(p)	(((ULONG64)(p)) == VIEW_ALIGN64(p))
 
-/*
- * Defines the structure of the page frame database following an MDL
- *
- * ULONG_PTR PfnEntry;
- * |==============================================================|
- * | STARTING PHYSICAL PAGE FRAME NUMBER | PAGE COUNT | ATTR BITS |
- * |--------------------------------------------------------------|
- * | 32/63 .......................... 12 | 11 ..... 2 |  1 ... 0  |
- * |==============================================================|
- *
- * If bit 0 is set, all pages frames in this pfn entry are large pages
- * (second lowest level of page size offered by the architecture).
- * Otherwise they are all pages with the lowest level of page size.
- */
-#define MDL_PFN_ATTR_BITS	(2)
-#define MDL_PFN_PAGE_COUNT_BITS	(10)
 #define MDL_PFN_ATTR_MASK	((1ULL << MDL_PFN_ATTR_BITS) - 1)
 #define MDL_PFN_PAGE_COUNT_MASK	((1ULL << MDL_PFN_PAGE_COUNT_BITS) - 1)
-#define MDL_PFN_ATTR_LARGE_PAGE	(0x1ULL)
 
 #define MDL_PFN_PAGE_SIZE(Pfn)						\
     (((Pfn) & MDL_PFN_ATTR_LARGE_PAGE) ? LARGE_PAGE_SIZE : PAGE_SIZE)
 #define MDL_PFN_PAGE_LOG2SIZE(Pfn)					\
     (((Pfn) & MDL_PFN_ATTR_LARGE_PAGE) ? LARGE_PAGE_LOG2SIZE : PAGE_LOG2SIZE)
-#define MDL_PFN_PAGE_ADDRESS(Pfn)		\
-    (((Pfn) >> PAGE_SHIFT) << PAGE_SHIFT)
-#define MDL_PFN_PAGE_COUNT(Pfn)					\
-    (((Pfn) >> MDL_PFN_ATTR_BITS) & MDL_PFN_PAGE_COUNT_MASK)
+#define MDL_PFN_PAGE_COUNT(Pfn)						\
+    ((((Pfn) >> MDL_PFN_ATTR_BITS) & MDL_PFN_PAGE_COUNT_MASK) + 1)
+#define MDL_PFN_WINDOW_SIZE(Pfn)					\
+    (MDL_PFN_PAGE_SIZE(Pfn) * MDL_PFN_PAGE_COUNT(Pfn))
+#define MDL_PFN_PAGE_ADDRESS(Pfn)	(((Pfn) >> PAGE_SHIFT) << PAGE_SHIFT)
+#define MDL_PFN_CACHE_ATTR(Pfn)		(((Pfn) >> 1) & 3)
+#define MDL_PFN_APPLY_CACHED_ATTR(Pfn)				\
+    (((Pfn) & ~(3ULL << 1)) | (MDL_PFN_ATTR_CACHED << 1))
+#define MDL_PFN_APPLY_WC_ATTR(Pfn)				\
+    (((Pfn) & ~(3ULL << 1)) | (MDL_PFN_ATTR_WC << 1))
+#define MDL_PFN_APPLY_WT_ATTR(Pfn)				\
+    (((Pfn) & ~(3ULL << 1)) | (MDL_PFN_ATTR_WT << 1))
+#define MDL_PFN_APPLY_UNCACHED_ATTR(Pfn)			\
+    (((Pfn) & ~(3ULL << 1)) | (MDL_PFN_ATTR_UNCACHED << 1))
+#define MDL_PFN_APPLY_CACHE_ATTR(Pfn, Attr)	\
+    (((Pfn) & ~(3ULL << 1)) | ((Attr) << 1))
 
 #if (MDL_PFN_ATTR_BITS + MDL_PFN_PAGE_COUNT_BITS) > PAGE_LOG2SIZE
 #error "Invalid encoding for MDL page frame database"
 #endif
+
+FORCEINLINE ULONG_PTR MmCacheTypeToPfnAttr(IN MEMORY_CACHING_TYPE CacheType)
+{
+    switch (CacheType) {
+    case MmCached:
+	return MDL_PFN_ATTR_CACHED;
+    case MmWriteCombined:
+	return MDL_PFN_ATTR_WC;
+    case MmWriteThrough:
+	return MDL_PFN_ATTR_WT;
+    default:
+	return MDL_PFN_ATTR_UNCACHED;
+    }
+}
+
+FORCEINLINE MEMORY_CACHING_TYPE MmGetPfnCacheType(IN ULONG_PTR Pfn)
+{
+    switch (MDL_PFN_CACHE_ATTR(Pfn)) {
+    case MDL_PFN_ATTR_CACHED:
+	return MmCached;
+    case MDL_PFN_ATTR_WC:
+	return MmWriteCombined;
+    case MDL_PFN_ATTR_WT:
+	return MmWriteThrough;
+    default:
+	return MmNonCached;
+    }
+}
+
+#define MDL_FORM_PFN(Addr, NumPages, CacheType, LargePage)		\
+    (MDL_PFN_APPLY_CACHE_ATTR((Addr) & ~((ULONG_PTR)PAGE_SIZE - 1) |	\
+			      (((NumPages) - 1) << MDL_PFN_ATTR_BITS),	\
+			      MmCacheTypeToPfnAttr(CacheType)) |	\
+     ((LargePage) ? 1 : 0))
 
 /*
  * This is our custom IRP major function which shall never be seen by client drivers
@@ -429,7 +458,8 @@ typedef enum _IO_SERVER_MESSAGE_TYPE {
     IoSrvMsgCacheFlushed,
     IoSrvMsgCloseFile,
     IoSrvMsgCloseDevice,
-    IoSrvMsgForceDismount
+    IoSrvMsgForceDismount,
+    IoSrvMsgFrameBufferDamaged
 } IO_SERVER_MESSAGE_TYPE;
 
 /*
@@ -457,6 +487,13 @@ typedef struct _IO_PACKET_SERVER_MESSAGE {
 	struct {
 	    GLOBAL_HANDLE VolumeDevice;
 	} ForceDismount;
+	struct {
+	    ULONG_PTR PhyBase;
+	    ULONG StartWidth;
+	    ULONG StartHeight;
+	    ULONG EndWidth;
+	    ULONG EndHeight;
+	} FrameBufferDamaged;
     };
 } IO_PACKET_SERVER_MESSAGE, *PIO_PACKET_SERVER_MESSAGE;
 
@@ -886,6 +923,14 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	case IoSrvMsgForceDismount:
 	    DbgPrint("    SERVER-MSG FORCE-DISMOUNT VolumeDevice %p\n",
 		     (PVOID)IoPacket->ServerMsg.ForceDismount.VolumeDevice);
+	    break;
+	case IoSrvMsgFrameBufferDamaged:
+	    DbgPrint("    SERVER-MSG FRAME-BUFFER-DAMAGED PhyBase %p (%d %d) -- (%d %d)\n",
+		     (PVOID)IoPacket->ServerMsg.FrameBufferDamaged.PhyBase,
+		     IoPacket->ServerMsg.FrameBufferDamaged.StartWidth,
+		     IoPacket->ServerMsg.FrameBufferDamaged.StartHeight,
+		     IoPacket->ServerMsg.FrameBufferDamaged.EndWidth,
+		     IoPacket->ServerMsg.FrameBufferDamaged.EndHeight);
 	    break;
 	default:
 	    DbgPrint("    INVALID SERVER MESSAGE TYPE %d\n", IoPacket->ServerMsg.Type);
