@@ -42,17 +42,6 @@
 #define SEC_GLOBAL		(0x20000000UL)
 #define SEC_LARGE_PAGES		(0x80000000UL)
 
-typedef enum _MEMORY_CACHING_TYPE {
-    MmNonCached = FALSE,
-    MmCached = TRUE,
-    MmFrameBufferCached = 2,
-    MmWriteCombined = MmFrameBufferCached,
-    MmHardwareCoherentCached,
-    MmNonCachedUnordered,
-    MmUSWCCached,
-    MmMaximumCacheType
-} MEMORY_CACHING_TYPE;
-
 /*
  * Memory Information Classes for NtQueryVirtualMemory
  */
@@ -158,6 +147,77 @@ typedef enum _SECTION_INHERIT {
     (((ULONG_PTR)(x))&(~(PAGE_SIZE-1)))
 #define PAGE_ROUND_UP(x)					\
     ((((ULONG_PTR)(x)) + PAGE_SIZE-1) & (~(PAGE_SIZE-1)))
+
+/*
+ * The following definitions are available to the NT Executive and
+ * driver processes only.
+ */
+#if defined(_NTOSKRNL_) || defined(_NTDDK_)
+
+typedef enum _MEMORY_CACHING_TYPE {
+    MmNonCached = FALSE,
+    MmCached = TRUE,
+    MmFrameBufferCached = 2,
+    MmWriteCombined = MmFrameBufferCached,
+    MmHardwareCoherentCached,
+    MmNonCachedUnordered,
+    MmUSWCCached,
+    MmWriteThrough,
+    MmMaximumCacheType
+} MEMORY_CACHING_TYPE;
+
+/*
+ * Memory Descriptor List (MDL)
+ *
+ * An MDL describes a virtually contiguous (but not necessarily physically
+ * contiguous) buffer in a driver process.
+ */
+typedef struct _MDL {
+    struct _MDL *Next;
+    PVOID MappedSystemVa; /* Virtual address of the start of the buffer */
+    ULONG Flags;
+    ULONG ByteOffset;	/* Page offset to the start of the buffer */
+    ULONG ByteCount;	/* Number of bytes of this buffer */
+    ULONG PfnCount;	/* Number of entries in the PFN database */
+    ULONG_PTR PfnEntries[];	/* PFN database (see below) */
+} MDL, *PMDL;
+
+/*
+ * Structure of the page frame database following an MDL:
+ *
+ * ULONG_PTR PfnEntry;
+ * |==============================================================|
+ * | STARTING PHYSICAL PAGE FRAME NUMBER | PAGE COUNT | ATTR BITS |
+ * |--------------------------------------------------------------|
+ * | 31/63 .......................... 12 | 11 ..... 3 |  2  1  0  |
+ * |==============================================================|
+ *                                                       ^  ^  ^
+ *                                                       |__|  |
+ *                                           Cache attributes  Page size
+ * If bit 0 is set, all pages frames in this pfn entry are large pages
+ * (second lowest level of page size offered by the architecture).
+ * Otherwise they are all pages with the lowest level of page size.
+ *
+ * Bit 1 and 2 encode the caching attributes:
+ *   0 0 --- Cached
+ *   0 1 --- Write Combine
+ *   1 0 --- Write Through
+ *   1 1 --- Uncached
+ *
+ * The page count bits encode the number of pages for this PFN entry.
+ * Note since the number of pages always start from one, an all-zero
+ * page count bits represent one page, and 0xff represent 256 pages.
+ * In other words, the number of pages is the page count bits plus one.
+ */
+#define MDL_PFN_ATTR_BITS	(3)
+#define MDL_PFN_PAGE_COUNT_BITS	(9)
+#define MDL_PFN_ATTR_LARGE_PAGE	(0x1ULL)
+#define MDL_PFN_ATTR_CACHED	(0)
+#define MDL_PFN_ATTR_WC		(1)
+#define MDL_PFN_ATTR_WT		(2)
+#define MDL_PFN_ATTR_UNCACHED	(3)
+
+#endif	/* defined(_NTOSKRNL_) || defined(_NTDDK_) */
 
 #ifndef _NTOSKRNL_
 

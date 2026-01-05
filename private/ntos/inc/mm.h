@@ -386,10 +386,11 @@ typedef struct _MMVAD {
 	    struct _SUBSECTION *SubSection;
 	} ImageSectionView;
 	struct {
-	    MWORD PhysicalBase;	/* Base of the physical address window
-				 * to map, page aligned */
-	    MEMORY_CACHING_TYPE CacheType; /* Cache type of the page mappings. */
-	} PhysicalSectionView;	/* Physical section is neither owned
+	    MWORD SectionOffset; /* Offset within the SECTION object, 4K aligned.
+				  * Zero if no SECTION object is associated (this
+				  * can happen when the VAD is mapped using
+				  * MmMapIoSpace or MmMapVirtualMemory). */
+	} PhysicalSectionView;	/* Note that physical section is neither owned
 				 * nor mirrored memory */
 	struct {
 	    union {
@@ -403,6 +404,7 @@ typedef struct _MMVAD {
 					      * into this VSpace */
 	    MWORD StartAddr; /* Starting virtual address in the master vspace */
 	    LIST_ENTRY ViewerLink;	/* List entry for master VSpace's ViewerList */
+	    MEMORY_CACHING_TYPE CacheType; /* Mapping attributes of the viewer */
 	} MirroredMemory;
     };
 } MMVAD, *PMMVAD;
@@ -470,6 +472,11 @@ FORCEINLINE VOID MmApplyWriteCombineAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
     *Attr = seL4_X86_WriteCombining;
 }
 
+FORCEINLINE VOID MmApplyWriteThroughAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
+{
+    *Attr = seL4_X86_WriteThrough;
+}
+
 typedef seL4_X86_Page_GetAddress_t seL4_Page_GetAddress_t;
 #define seL4_Page_GetAddress seL4_X86_Page_GetAddress
 #define seL4_Page_Map seL4_X86_Page_Map
@@ -513,7 +520,12 @@ FORCEINLINE VOID MmApplyNoCacheAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
 
 FORCEINLINE VOID MmApplyWriteCombineAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
 {
-    /* ARM64 doesn't seem to have a paging attribute for write combining memory. */
+    *Attr &= ~seL4_ARM_PageCacheable;
+}
+
+FORCEINLINE VOID MmApplyWriteThroughAttribute(IN OUT PAGING_ATTRIBUTES *Attr)
+{
+    *Attr |= seL4_ARM_PageCacheable;
 }
 
 typedef seL4_ARM_Page_GetAddress_t seL4_Page_GetAddress_t;
@@ -950,6 +962,14 @@ NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
 			OUT OPTIONAL PMMVAD *pVad);
 VOID MmUnmapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
 		      IN MWORD VirtAddr);
+NTSTATUS MmMapPhysicalMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
+			       IN MWORD WindowStart,
+			       IN MWORD WindowEnd,
+			       IN ULONG LowZeroBits,
+			       IN PULONG_PTR PfnDb,
+			       IN ULONG PfnCount,
+			       IN BOOLEAN ReadOnly,
+			       OUT MWORD *VirtBase);
 NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN MWORD Length,
 					      IN MWORD HighestPhyAddr,
@@ -966,16 +986,21 @@ NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
 PPAGING_STRUCTURE MmQueryPageEx(IN PVIRT_ADDR_SPACE VSpace,
 				IN MWORD VirtAddr,
 				IN BOOLEAN LargePage);
+ULONG_PTR MmGetPhysicalAddress(IN PVIRT_ADDR_SPACE VSpace,
+			       IN MWORD VirtBase);
 BOOLEAN MmGeneratePageFrameDatabase(IN OPTIONAL PULONG_PTR PfnDb,
 				    IN PVIRT_ADDR_SPACE VSpace,
 				    IN MWORD Buffer,
 				    IN MWORD BufferLength,
+				    IN MEMORY_CACHING_TYPE CacheType,
 				    OUT OPTIONAL ULONG *pPfnCount);
 VOID MmRegisterMirroredVad(IN PMMVAD Viewer,
-			   IN PMMVAD MasterVad);
+			   IN PMMVAD MasterVad,
+			   IN MEMORY_CACHING_TYPE CacheType);
 VOID MmRegisterMirroredMemory(IN PMMVAD Viewer,
 			      IN PVIRT_ADDR_SPACE Master,
-			      IN MWORD StartAddr);
+			      IN MWORD StartAddr,
+			      IN MEMORY_CACHING_TYPE CacheType);
 VOID MmDeleteVad(IN PMMVAD Vad);
 NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			   IN MWORD BufferStart,
@@ -984,7 +1009,8 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			   IN MWORD TargetVaddrStart,
 			   IN MWORD TargetVaddrEnd,
 			   OUT MWORD *TargetStartAddr,
-			   IN ULONG Flags);
+			   IN ULONG Flags,
+			   IN MEMORY_CACHING_TYPE CacheType);
 VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
 		   IN MWORD MappedRegionStart);
 NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
@@ -1025,11 +1051,16 @@ FORCEINLINE VOID MmUnmapWindow(IN MWORD StartAddr,
     MmUnmapWindowEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
 }
 
-
 FORCEINLINE PPAGING_STRUCTURE MmQueryPage(IN MWORD VirtAddr)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmQueryPageEx(&MiNtosVaddrSpace, VirtAddr, FALSE);
+}
+
+FORCEINLINE PPAGING_STRUCTURE MmQueryPageOrLargePage(IN MWORD VirtAddr)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    return MmQueryPageEx(&MiNtosVaddrSpace, VirtAddr, TRUE);
 }
 
 FORCEINLINE NTSTATUS MmMapIoSpace(IN MWORD WindowStart,
@@ -1051,6 +1082,19 @@ FORCEINLINE VOID MmUnmapIoSpace(IN MWORD VirtAddr)
     MmUnmapIoSpaceEx(&MiNtosVaddrSpace, VirtAddr);
 }
 
+FORCEINLINE NTSTATUS MmMapPhysicalMemory(IN MWORD WindowStart,
+					 IN MWORD WindowEnd,
+					 IN ULONG LowZeroBits,
+					 IN PULONG_PTR PfnDb,
+					 IN ULONG PfnCount,
+					 IN BOOLEAN ReadOnly,
+					 OUT MWORD *VirtBase)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    return MmMapPhysicalMemoryEx(&MiNtosVaddrSpace, WindowStart, WindowEnd,
+				 LowZeroBits, PfnDb, PfnCount, ReadOnly, VirtBase);
+}
+
 /* Flags that can be passed to MmMapUserBufferEx */
 #define MM_MAP_USER_BUFFER_READ_ONLY	(1)
 #define MM_MAP_USER_BUFFER_RESERVE_ONLY	(2)
@@ -1063,15 +1107,25 @@ FORCEINLINE VOID MmUnmapIoSpace(IN MWORD VirtAddr)
  * is returned. The buffer address and buffer length do not need to
  * be page-aligned.
  */
+FORCEINLINE NTSTATUS MmMapUserBufferSpecifyCache(IN PVIRT_ADDR_SPACE VSpace,
+						 IN MWORD BufferStart,
+						 IN MWORD BufferLength,
+						 IN MEMORY_CACHING_TYPE CacheType,
+						 OUT PVOID *TargetStartAddr)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
+			     &MiNtosVaddrSpace, EX_DYN_VSPACE_START,
+			     EX_DYN_VSPACE_END, (MWORD *)TargetStartAddr, 0, CacheType);
+}
+
 FORCEINLINE NTSTATUS MmMapUserBuffer(IN PVIRT_ADDR_SPACE VSpace,
 				     IN MWORD BufferStart,
 				     IN MWORD BufferLength,
 				     OUT PVOID *TargetStartAddr)
 {
-    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
-			     &MiNtosVaddrSpace, EX_DYN_VSPACE_START,
-			     EX_DYN_VSPACE_END, (MWORD *)TargetStartAddr, 0);
+    return MmMapUserBufferSpecifyCache(VSpace, BufferStart, BufferLength,
+				       MmCached, TargetStartAddr);
 }
 
 /*
@@ -1089,7 +1143,7 @@ FORCEINLINE NTSTATUS MmMapUserBufferRO(IN PVIRT_ADDR_SPACE VSpace,
     return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
 			     &MiNtosVaddrSpace, EX_DYN_VSPACE_START,
 			     EX_DYN_VSPACE_END, (MWORD *)TargetStartAddr,
-			     MM_MAP_USER_BUFFER_READ_ONLY);
+			     MM_MAP_USER_BUFFER_READ_ONLY, MmCached);
 }
 
 /*

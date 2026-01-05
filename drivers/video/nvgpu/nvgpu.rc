@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "nVidia GPU Driver"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "nvgpu"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "nvgpu.sys"
+#include <version.rc>

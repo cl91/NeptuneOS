@@ -170,9 +170,14 @@ VOID IopDeleteDeviceObject(IN PDEVICE_OBJECT DeviceObject);
 VOID HalpInitDma(VOID);
 
 /* driver.c */
-NTSTATUS IopInitDriverObject(IN PUNICODE_STRING RegistryPath);
+NTSTATUS IopDriverInitialize(IN PUNICODE_STRING RegistryPath);
 PDRIVER_OBJECT IopLocateDriverObject(IN PCSTR BaseName);
 NTSTATUS IopLoadDriver(IN PCSTR BaseName);
+VOID IopHandleFrameBufferDamage(IN PVOID VirtBase,
+				IN ULONG StartWidth,
+				IN ULONG StartHeight,
+				IN ULONG EndWidth,
+				IN ULONG EndHeight);
 
 /* event.c */
 BOOLEAN KiSignalWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,

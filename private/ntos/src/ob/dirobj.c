@@ -159,7 +159,7 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
 	return STATUS_OBJECT_NAME_INVALID;
     }
     POBJECT_DIRECTORY DirObj = Object;
-    if (OpenContext->Type == OPEN_CONTEXT_DEVICE_OPEN) {
+    if (OpenContext && OpenContext->Type == OPEN_CONTEXT_DEVICE_OPEN) {
 	/* If we are opening an object directory as a file, look for the file
 	 * object with name ".". This is so in the very early stage of the boot
 	 * ntdll can open a file handle to the boot modules directory. */
@@ -168,8 +168,14 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
 	ObReferenceObjectByPointer(*pOpenedInstance);
 	*pRemainingPath = SubPath;
     } else {
-	/* TODO: Implement NtOpenObjectDirectory */
-	UNIMPLEMENTED;
+	/* At this point the subpath should be fully parsed, so return error
+	 * if we have any trailing characters. */
+	if (SubPath[0]) {
+	    return STATUS_OBJECT_TYPE_MISMATCH;
+	}
+	ObReferenceObjectByPointer(DirObj);
+	*pOpenedInstance = DirObj;
+	*pRemainingPath = SubPath;
     }
     return STATUS_SUCCESS;
 }
@@ -178,7 +184,7 @@ static NTSTATUS ObpDirectoryObjectCloseProc(IN ASYNC_STATE State,
 					    IN PTHREAD Thread,
 					    IN POBJECT Object)
 {
-    /* TODO: Implement NtOpenObjectDirectory */
+    /* Do nothing */
     return STATUS_SUCCESS;
 }
 
@@ -452,5 +458,110 @@ out:
 	ObRemoveObject(DirObj);
 	ObDereferenceObject(DirObj);
     }
+    return Status;
+}
+
+NTSTATUS NtOpenDirectoryObject(IN ASYNC_STATE State,
+                               IN PTHREAD Thread,
+                               OUT HANDLE *DirectoryHandle,
+                               IN ACCESS_MASK DesiredAccess,
+                               IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    NTSTATUS Status = STATUS_NTOS_BUG;
+
+    ASYNC_BEGIN(State);
+    AWAIT_EX(Status, ObOpenObjectByName, State, _, Thread,
+	     ObjectAttributes, OBJECT_TYPE_DIRECTORY, DesiredAccess,
+	     NULL, DirectoryHandle);
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS NtQueryDirectoryObject(IN ASYNC_STATE AsyncState,
+                                IN PTHREAD Thread,
+                                IN HANDLE DirectoryHandle,
+                                OUT PCHAR DirectoryInfo,
+                                IN ULONG BufferLength,
+                                IN BOOLEAN ReturnSingleEntry,
+                                IN BOOLEAN RestartScan,
+                                IN OUT PULONG ObjectIndex,
+                                OUT OPTIONAL ULONG *ReturnLength)
+{
+    POBJECT_DIRECTORY Directory = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, DirectoryHandle,
+				      OBJECT_TYPE_DIRECTORY,
+				      (PVOID *)&Directory));
+
+    /* We always need a '\0' even if there is no object under this directory. */
+    NTSTATUS Status = STATUS_SUCCESS;
+    if (BufferLength < 1) {
+	Status = STATUS_BUFFER_TOO_SMALL;
+	goto out;
+    }
+
+    ULONG TotalLength = 0;
+    ULONG CurrentEntry = 0;
+    ULONG SkipEntries = RestartScan ? 0 : *ObjectIndex;
+
+    Status = STATUS_NO_MORE_ENTRIES;
+    for (ULONG Hash = 0; Hash < OBP_DIROBJ_HASH_BUCKETS; Hash++) {
+	LoopOverList(Entry, &Directory->HashBuckets[Hash],
+		     OBJECT_DIRECTORY_ENTRY, ChainLink) {
+	    /* Start from the specified entry index */
+	    if (CurrentEntry++ < SkipEntries) {
+		continue;
+	    }
+
+	    /* Calculate the length for this entry. */
+	    ULONG NameLength = strlen(Entry->ObjectName) + 1;
+	    PCSTR TypeName = OBJECT_TO_OBJECT_HEADER(Entry->Object)->Type->Name;
+	    ULONG TypeLength = strlen(TypeName) + 1;
+	    ULONG Length = NameLength + TypeLength;
+
+	    /* Make sure this entry won't overflow */
+	    if (TotalLength + Length + 1 > BufferLength) {
+		/* Check if the caller wanted only an entry */
+		if (ReturnSingleEntry) {
+		    /* Then we'll fail and ask for more buffer */
+		    TotalLength += Length + 1;
+		    Status = STATUS_BUFFER_TOO_SMALL;
+		} else {
+		    /* Otherwise, we'll say we're done for now */
+		    Status = STATUS_MORE_ENTRIES;
+		}
+
+		/* Decrease the entry since we didn't process */
+		CurrentEntry--;
+		goto done;
+	    }
+
+	    /* Now fill in the buffer */
+	    RtlCopyMemory(DirectoryInfo, Entry->ObjectName, NameLength);
+	    DirectoryInfo += NameLength;
+	    RtlCopyMemory(DirectoryInfo, TypeName, TypeLength);
+	    DirectoryInfo += TypeLength;
+	    Status = STATUS_SUCCESS;
+	    TotalLength += Length;
+
+	    /* If the caller only wanted an entry, bail out */
+	    if (ReturnSingleEntry)
+		goto done;
+	}
+    }
+
+done:
+    /* Write the trailing '\0' to terminate the MULTI_SZ string */
+    if (NT_SUCCESS(Status)) {
+	TotalLength++;
+	*DirectoryInfo = '\0';
+    }
+    *ObjectIndex = CurrentEntry;
+out:
+    if (Directory) {
+	ObDereferenceObject(Directory);
+    }
+    if (ReturnLength)
+	*ReturnLength = TotalLength;
     return Status;
 }

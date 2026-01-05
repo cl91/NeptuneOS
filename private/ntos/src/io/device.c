@@ -205,7 +205,9 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	});
 
     /* If the device object is exclusive, make sure no one else has opened it. */
-    assert(!Device->Exclusive || IsListEmpty(&Device->OpenFileList));
+    if (Device->Exclusive && !IsListEmpty(&Device->OpenFileList)) {
+	ASYNC_RETURN(State, STATUS_FILE_LOCK_CONFLICT);
+    }
 
     /* If the device object is from the underlying storage driver of a mounted volume,
      * we send open IRPs to its file system volume device object instead. */

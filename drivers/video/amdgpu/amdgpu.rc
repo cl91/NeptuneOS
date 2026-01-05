@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "AMD GPU Driver"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "amdgpu"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "amdgpu.sys"
+#include <version.rc>

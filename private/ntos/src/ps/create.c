@@ -290,7 +290,7 @@ static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
 							   USER_ADDRESS_END, ReserveSize,
 							   0, 0, Flags, &ClientVad));
 	DeleteClientVad = TRUE;
-	MmRegisterMirroredMemory(ClientVad, &MiNtosVaddrSpace, ReserveSize);
+	MmRegisterMirroredMemory(ClientVad, &MiNtosVaddrSpace, ReserveSize, MmCached);
 	ClientAddr = ClientVad->AvlNode.Key;
     }
     assert(ClientVad != NULL);
@@ -687,7 +687,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 				     &ClientSharedDataVad));
     assert(ClientSharedDataVad != NULL);
     assert(ClientSharedDataVad->AvlNode.Key == KUSER_SHARED_DATA_CLIENT_ADDR);
-    MmRegisterMirroredVad(ClientSharedDataVad, PspUserSharedDataVad);
+    MmRegisterMirroredVad(ClientSharedDataVad, PspUserSharedDataVad, MmCached);
     RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
 				    sizeof(KUSER_SHARED_DATA)));
 

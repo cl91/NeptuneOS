@@ -68,6 +68,11 @@ NTSTATUS SmSetRegKeyValue(IN HANDLE KeyHandle,
 			  IN ULONG Type,
 			  IN PVOID Data,
 			  IN ULONG DataSize);
+NTSTATUS SmSetRegKeyValueW(IN HANDLE KeyHandle,
+			   IN PWSTR ValueName,
+			   IN ULONG Type,
+			   IN PVOID Data,
+			   IN ULONG DataSize);
 NTSTATUS SmInitRegistry();
 
 /* hw.c */

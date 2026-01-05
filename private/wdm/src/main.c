@@ -72,7 +72,7 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     HalpInitDma();
     CiInitialzeCacheManager();
 
-    NTSTATUS Status = IopInitDriverObject(RegistryPath);
+    NTSTATUS Status = IopDriverInitialize(RegistryPath);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

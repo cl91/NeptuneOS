@@ -321,6 +321,14 @@ static NTSTATUS LdrpRegisterElfModule(IN PVOID BaseAddress,
 	return STATUS_INVALID_PARAMETER;
     }
 
+    /* Make sure we do not have a module with the same base address */
+    LoopOverList(Entry, &NtCurrentPeb()->LdrData->InMemoryOrderModuleList,
+		 LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks) {
+	if (Entry->DllBase == BaseAddress) {
+	    return STATUS_ALREADY_REGISTERED;
+	}
+    }
+
     PLDR_DATA_TABLE_ENTRY Entry = RtlAllocateHeap(LdrpHeap,
 						  HEAP_ZERO_MEMORY,
 						  sizeof(LDR_DATA_TABLE_ENTRY));

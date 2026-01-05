@@ -5,8 +5,6 @@ set(CMAKE_SHARED_LIBRARY_SUFFIX ".dll")
 add_compile_options(
     -Wall
     -nostdinc
-    -fno-pic
-    -fno-pie
     -Wno-incompatible-library-redeclaration
     -fasync-exceptions
     --target=${TRIPLE}

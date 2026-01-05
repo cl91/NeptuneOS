@@ -1337,6 +1337,18 @@ typedef struct _PCI_CARD_DESCRIPTOR {
 #include <poppack.h>
 
 /*
+ * Device private data types passed in the IO resource descriptor.
+ * Function drivers of PCI devices can use the PciBarIndex data to
+ * obtain the BAR index of the preceding IO resource.
+ */
+typedef enum _PCI_DEVICE_PRIVATE_TYPE {
+    PciInvalidDevicePrivateType,
+    PciLockResource, /* Used by the PCI bus driver only. Function drivers should
+		      * ignore this type. */
+    PciBarIndex	/* Specifies the corresponding BAR index of the previous resource */
+} PCI_DEVICE_PRIVATE_TYPE;
+
+/*
  * Helper functions to read or write the PCI config space
  */
 NTSTATUS IoReadPciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
@@ -1344,6 +1356,6 @@ NTSTATUS IoReadPciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
 			      IN ULONG Offset,
 			      IN OUT ULONG *Length);
 NTSTATUS IoWritePciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
-			       IN PVOID Buffer,
+			       IN PCVOID Buffer,
 			       IN ULONG Offset,
 			       IN OUT ULONG *Length);

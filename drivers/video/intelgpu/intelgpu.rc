@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Intel GPU Driver"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "intelgpu"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "intelgpu.sys"
+#include <version.rc>

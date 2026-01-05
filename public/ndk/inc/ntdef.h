@@ -123,7 +123,7 @@ typedef uint16_t UINT16, *PUINT16;
 typedef int INT;
 typedef unsigned int UINT;
 
-typedef int32_t LONG,*PLONG;
+typedef int32_t LONG, *PLONG;
 typedef uint32_t ULONG, *PULONG, CLONG, *PCLONG, UINT32, *PUINT32, DWORD, *LPDWORD;
 
 typedef uint64_t ULONGLONG, *PULONGLONG;

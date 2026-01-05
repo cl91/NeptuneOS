@@ -40,6 +40,36 @@ static inline PCHAR RtlDuplicateStringEx(IN PCSTR String,
     return Buf;
 }
 
+/*
+ * Append the string to the end of the given buffer. The valid data length is
+ * given by the DataLength parameter which will be updated to the new data length.
+ * Note the date length does NOT include the trailing NUL, and this routine does
+ * NOT write the trailing NUL to the string buffer.
+ */
+VOID RtlAppendStringBuffer(IN PCSTR String,
+			   IN OUT ULONG *DataLength,
+			   OUT PCHAR Buffer,
+			   IN ULONG BufferLength)
+{
+    ULONG Length = strlen(String);
+    if (*DataLength + Length <= BufferLength) {
+	memcpy(Buffer + *DataLength, String, Length);
+	*DataLength += Length;
+    } else if (Length < BufferLength) {
+	ULONG RemainingLength = BufferLength - Length;
+	memmove(Buffer,
+		Buffer + *DataLength - RemainingLength,
+		RemainingLength);
+	memcpy(Buffer + RemainingLength, String, Length);
+	*DataLength = BufferLength;
+    } else {
+	/* In this case we truncate the head of the message. */
+	memcpy(Buffer, String + Length - BufferLength,
+	       BufferLength);
+	*DataLength = BufferLength;
+    }
+}
+
 static inline ULONG RtlNumberOfSetBits(ULONG Integer)
 {
     return __builtin_popcount(Integer);

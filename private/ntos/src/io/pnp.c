@@ -2571,9 +2571,10 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 	break;
 
     case DevicePropertyInstancePath:
+    case DevicePropertyInstancePathAnsi:
 	snprintf(Buffer, sizeof(Buffer), "%s\\%s",
 		 DeviceNode->DeviceId, DeviceNode->InstanceId);
-	UnicodeOutput = TRUE;
+	UnicodeOutput = DeviceProperty == DevicePropertyInstancePath;
 	Data = Buffer;
 	ResultLength = strlen(Buffer) + 1;
 	break;

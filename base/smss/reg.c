@@ -37,6 +37,22 @@ NTSTATUS SmSetRegKeyValue(IN HANDLE KeyHandle,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS SmSetRegKeyValueW(IN HANDLE KeyHandle,
+			   IN PWSTR ValueName,
+			   IN ULONG Type,
+			   IN PVOID Data,
+			   IN ULONG DataSize)
+{
+    UNICODE_STRING ValueNameU;
+    RtlInitUnicodeString(&ValueNameU, ValueName);
+    RET_ERR_EX(NtSetValueKey(KeyHandle, &ValueNameU, 0, Type, Data, DataSize),
+	       DbgTrace("Failed to write registry value %ws for key handle %p\n",
+			ValueName, KeyHandle));
+    DbgTrace("Successfully wrote registry value %ws for key handle %p\n",
+	     ValueName, KeyHandle);
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS SmInitRegistry()
 {
     RET_ERR(SmCreateRegistryKey(SYSTEM_HIVE_PATH, FALSE, NULL));

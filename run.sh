@@ -1,7 +1,8 @@
 ARCH=i386
-OVMFARCH=ia32
+OVMFARCH=x64
 BUILD_TYPE=Debug
-BOOT_TYPE=floppy
+BOOT_TYPE=iso
+UEFI_BOOT=0
 
 for var in "$@"; do
     if [ "${var,,}" == 'release' ]; then
@@ -17,11 +18,14 @@ for var in "$@"; do
     if [ "${var,,}" == 'direct' ]; then
         BOOT_TYPE=direct
     fi
+    if [ "${var,,}" == 'floppy' ]; then
+        BOOT_TYPE=floppy
+    fi
     if [ "${var,,}" == 'iso' ]; then
         BOOT_TYPE=iso
     fi
     if [ "${var,,}" == 'uefi' ]; then
-        BOOT_TYPE=uefi
+        UEFI_BOOT=1
     fi
 done
 
@@ -35,6 +39,8 @@ if [[ ARCH == "i386" ]]; then
 else
     QEMU="qemu-system-x86_64  -cpu IvyBridge,+fsgsbase,-pdpe1gb -machine q35"
 fi
+
+QEMU+=" -vga virtio -device pvpanic-pci -action panic=pause"
 
 declare -a ARGS
 for var in "$@"; do
@@ -57,6 +63,9 @@ for var in "$@"; do
     if [ "${var,,}" == 'direct' ]; then
         continue
     fi
+    if [ "${var,,}" == 'floppy' ]; then
+        continue
+    fi
     if [ "${var,,}" == 'iso' ]; then
         continue
     fi
@@ -67,11 +76,17 @@ for var in "$@"; do
 done
 
 if [[ $BOOT_TYPE == "direct" ]]; then
-    $QEMU -m size=400M -serial stdio -kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos "${ARGS[@]}"
+    BOOTMEDIA="-kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos"
+elif [[ $BOOT_TYPE == "floppy" ]]; then
+    BOOTMEDIA="-fda $BUILDDIR/floppy.img"
 elif [[ $BOOT_TYPE == "iso" ]]; then
-    $QEMU -m size=400M -serial stdio -cdrom $BUILDDIR/boot.iso "${ARGS[@]}"
-elif [[ $BOOT_TYPE == "uefi" ]]; then
-    $QEMU -m size=400M -serial stdio -cdrom $BUILDDIR/boot.iso -bios /usr/share/ovmf/$OVMFARCH/OVMF.4m.fd "${ARGS[@]}"
-else
-    $QEMU -m size=400M -serial stdio -fda $BUILDDIR/floppy.img "${ARGS[@]}"
+    BOOTMEDIA="-cdrom $BUILDDIR/boot.iso"
 fi
+
+if (( $UEFI_BOOT )); then
+    BIOS="-bios /usr/share/ovmf/$OVMFARCH/OVMF.4m.fd"
+else
+    BIOS=""
+fi
+
+$QEMU -m size=400M -serial stdio $BOOTMEDIA $BIOS "${ARGS[@]}"

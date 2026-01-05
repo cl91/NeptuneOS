@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Basic Unix Memory Pseudo-device (/dev/zero, etc)"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "mem"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "mem.sys"
+#include <version.rc>

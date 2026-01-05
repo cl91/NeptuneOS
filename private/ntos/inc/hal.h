@@ -4,6 +4,7 @@
 #include <services.h>
 #include <printf.h>
 #include <ke.h>
+#include <io.h>
 #include <wmidata.h>
 
 #include <pshpack1.h>
@@ -38,7 +39,10 @@ typedef enum _HAL_PANEL_ORIENTATION {
 
 typedef struct _HAL_FRAMEBUFFER {
     LIST_ENTRY Link;
+    LIST_ENTRY DriverLink;
+    PIO_DRIVER_OBJECT DriverObject;
     MWORD VirtualBase;
+    PVOID DriverVirtBase;
     PHAL_VGA_FONT VgaFont;
     ULONG CursorPositionColumn;
     ULONG CursorPositionRow;
@@ -51,6 +55,7 @@ typedef struct _HAL_FRAMEBUFFER {
     UCHAR GreenIndex;
     UCHAR RedIndex;
     BOOLEAN TextMode;
+    BOOLEAN NeedFlush;
     UCHAR ConsoleBuffer[];
 } HAL_FRAMEBUFFER, *PHAL_FRAMEBUFFER;
 

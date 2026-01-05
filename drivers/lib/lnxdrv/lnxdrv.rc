@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Linkable Userspace Extension Driver"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "lnxdrv"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "lnxdrv.sys"
+#include <version.rc>

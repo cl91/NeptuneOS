@@ -468,6 +468,90 @@ static VOID IopFreeMarshaledObjectInformation(IN PVOID Data,
     KiFreeHeap((PVOID)DataArg.Word);
 }
 
+static NTSTATUS IopMarshalDirObjInfo(IN PVOID Buffer,
+				     IN ULONG BufferLength,
+				     OUT SERVICE_ARGUMENT *DataArg,
+				     OUT SERVICE_ARGUMENT *DataSizeArg,
+				     IN BOOLEAN InParam,
+				     OUT ULONG *MsgBufOffset)
+{
+    assert(MsgBufOffset != NULL);
+    assert(*MsgBufOffset < SVC_MSGBUF_SIZE);
+    if (*MsgBufOffset >= SVC_MSGBUF_SIZE) {
+	return STATUS_INTERNAL_ERROR;
+    }
+    if (!Buffer) {
+	return STATUS_INVALID_PARAMETER_2;
+    }
+    if (KiPtrInSvcMsgBuf(Buffer)) {
+	return STATUS_INVALID_USER_BUFFER;
+    }
+    PVOID DestBuffer = KiAllocateHeap(BufferLength);
+    if (DestBuffer == NULL) {
+	return STATUS_NO_MEMORY;
+    }
+    DataArg->Word = (MWORD)DestBuffer;
+    DataSizeArg->Word = BufferLength;
+    return STATUS_SUCCESS;
+}
+
+static VOID IopFreeMarshaledDirObjInfo(IN PVOID Data,
+				       IN SERVICE_ARGUMENT DataArg,
+				       IN SERVICE_ARGUMENT DataSizeArg)
+{
+    assert(!KiPtrInSvcMsgBuf((PVOID)DataArg.Word));
+    KiFreeHeap((PVOID)DataArg.Word);
+}
+
+static NTSTATUS IopUnmarshalDirObjInfo(IN POBJECT_DIRECTORY_INFORMATION ClientBuffer,
+				       IN SERVICE_ARGUMENT BufferArg,
+				       IN NTSTATUS Status,
+				       IN MWORD ClientBufferLength,
+				       IN OUT ULONG *BufferSize)
+{
+    if (Status == STATUS_BUFFER_TOO_SMALL || Status == STATUS_BUFFER_OVERFLOW) {
+	return Status;
+    }
+    assert(*BufferSize <= ClientBufferLength);
+    PCSTR Name = (PVOID)BufferArg.Word;
+    /* Cound the number of NUL-terminated strings in the buffer returned by the server. */
+    ULONG Count = 0;
+    while (*Name) {
+	Count++;
+	Name += strlen(Name) + 1;
+    }
+    Name = (PVOID)BufferArg.Word;
+    ULONG SizeNeeded = 0;
+    /* *BufferSize is the total size of the UTF-8 string plus the trailing '\0' */
+    RtlUTF8ToUnicodeN(NULL, ULONG_MAX, &SizeNeeded, Name, *BufferSize - 1);
+    SizeNeeded += sizeof(OBJECT_DIRECTORY_INFORMATION) * Count / 2;
+    *BufferSize = SizeNeeded;
+    if (ClientBufferLength < sizeof(OBJECT_DIRECTORY_INFORMATION) * Count / 2) {
+	return STATUS_BUFFER_TOO_SMALL;
+    }
+    PWCHAR StringBuffer = (PVOID)(ClientBuffer + Count / 2);
+    Count = 0;
+    while (*Name) {
+	PUNICODE_STRING UnicodeName;
+	if (Count & 1) {
+	    UnicodeName = &ClientBuffer[Count / 2].TypeName;
+	} else {
+	    UnicodeName = &ClientBuffer[Count / 2].Name;
+	}
+	UnicodeName->Buffer = StringBuffer;
+	ULONG BytesWritten = 0;
+	ULONG NameLength = strlen(Name);
+	RtlUTF8ToUnicodeN(StringBuffer, ULONG_MAX, &BytesWritten, Name, NameLength);
+	UnicodeName->Length = BytesWritten;
+	UnicodeName->MaximumLength = BytesWritten + sizeof(WCHAR);
+	StringBuffer += BytesWritten / sizeof(WCHAR);
+	*StringBuffer++ = L'\0';
+	Name += NameLength + 1;
+	Count++;
+    }
+    return STATUS_SUCCESS;
+}
+
 #define IOP_MARSHAL_PNP_CONTROL_DATA_EX(ClientType, ServerType,		\
 					Field, DeviceInstanceBuffer,	\
 					DeviceInstanceLength,		\

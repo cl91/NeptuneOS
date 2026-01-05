@@ -66,6 +66,7 @@ typedef struct _IO_DRIVER_OBJECT {
     LIST_ENTRY CloseDeviceMsgList;   /* List of CLOSE_DEVICE_MESSAGE */
     LIST_ENTRY InterruptServiceList; /* List of INTERRUPT_SERVICE */
     LIST_ENTRY PlugPlayNotificationList; /* List of PLUG_PLAY_NOTIFICATION */
+    LIST_ENTRY FrameBufferList;		 /* List of registered HAL_FRAMEBUFFER */
     LIST_ENTRY BugcheckNotificationLink; /* List link for IoBugcheckNotificationList */
     LIST_ENTRY SignalGroupLink;		 /* List link for IOP_DRIVER_SIGNAL_GROUP */
     LIST_ENTRY PendingDriverLink;	 /* List link for IopPendingDriverList */
@@ -333,6 +334,8 @@ NTSTATUS IoInitSystemPhase1();
 /* irp.c */
 VOID IoReceiveIoPacketsFromDrivers(IN MWORD Bitmask);
 VOID IoSubmitIoPacketsToDrivers(VOID);
+NTSTATUS IoQueueServerMessage(IN PIO_DRIVER_OBJECT DriverObject,
+			      IN PIO_PACKET_SERVER_MESSAGE SrvMsg);
 
 /* pnp.c */
 NTSTATUS IoMaskInterruptVector(IN ULONG Vector);

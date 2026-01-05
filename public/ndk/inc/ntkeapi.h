@@ -181,7 +181,7 @@ typedef struct _KUSER_SHARED_DATA {
     LCID DefaultLocale;
     ULONG BugcheckMsgLength;
     CHAR BugcheckMsg[512];
-    CHAR NullByte;
+    CHAR NulByte;
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
 #include <poppack.h>
 

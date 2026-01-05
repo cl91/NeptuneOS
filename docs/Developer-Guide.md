@@ -26,47 +26,48 @@ Explain why complete, line-for-line driver source code compatibility is a non-go
 
 ## Source Directory Organization
 
-| Directory                 | Description                     |
-|---------------------------|---------------------------------|
-| sel4                      | seL4 kernel                     |
-| public                    | Public headers                  |
-| public/crt/inc            | C Runtime Library headers       |
-| public/ndk/inc            | NT Client public headers        |
-| public/ddk/inc            | Device driver public headers    |
-| public/posix/inc          | POSIX subsystem public headers  |
-| public/sdk/inc            | Win32 public headers            |
-| private                   | seL4 root task and stub dlls    |
-| private/ntos              | NT Executive (root task)        |
-| private/ntdll             | Native API stub dll             |
-| private/ntpsx             | Native API stub lib for POSIX   |
-| private/wdm               | Device driver interface dll     |
-| base                      | Base native NT clients          |
-| base/smss                 | Session Manager Subsystem       |
-| base/ntcmd                | Native Command Prompt           |
-| base/umtests              | Native API test suite           |
-| drivers                   | Device drivers                  |
-| drivers/base              | Base device drivers             |
-| drivers/base/pnp          | PNP root enumerator             |
-| drivers/bus               | Bus drivers                     |
-| drivers/bus/acpi          | ACPI bus drivers                |
-| drivers/bus/pci           | PCI bus drivers                 |
-| drivers/filesystems       | File system drivers             |
-| drivers/filesystems/fatfs | FAT file system driver          |
-| drivers/input             | Input device drivers            |
-| drivers/input/kbdclass    | Keyboard class driver           |
-| drivers/input/i8042prt    | i8042 port driver               |
-| drivers/storage           | Storage device drivers          |
-| drivers/storage/class     | Storage class drivers           |
-| drivers/storage/port      | Storage port drivers            |
-| drivers/storage/miniport  | Storage miniport drivers        |
-| drivers/storage/fdc       | Floppy controller driver        |
-| drivers/storage/partmgr   | Partition manager driver        |
-| drivers/storage/mountmgr  | Mountpoint manager driver       |
-| posix                     | POSIX Subsystem                 |
-| win32                     | Win32 Subsystem (native exes)   |
-| shell                     | Win32 applications (win32 exes) |
-| tools                     | Build tools                     |
-| tools/elfloader           | ELF loader for ARM64 systems    |
+| Directory                 | Description                          |
+|---------------------------|--------------------------------------|
+| sel4                      | seL4 kernel                          |
+| public                    | Public headers                       |
+| public/crt/inc            | C Runtime Library headers            |
+| public/ndk/inc            | NT Client public headers             |
+| public/ddk/inc            | Device driver public headers         |
+| public/posix/inc          | POSIX subsystem public headers       |
+| public/sdk/inc            | Win32 public headers                 |
+| private                   | seL4 root task and stub dlls         |
+| private/ntos              | NT Executive (root task)             |
+| private/ntdll             | Native API stub dll                  |
+| private/ntpsx             | Native API stub lib for POSIX        |
+| private/wdm               | Device driver interface dll          |
+| base                      | Base native NT clients               |
+| base/smss                 | Session Manager Subsystem            |
+| base/ntcmd                | Native Command Prompt                |
+| base/umtests              | Native API test suite                |
+| drivers                   | Device drivers                       |
+| drivers/base              | Base device drivers                  |
+| drivers/base/pnp          | PNP root enumerator                  |
+| drivers/bus               | Bus drivers                          |
+| drivers/bus/acpi          | ACPI bus drivers                     |
+| drivers/bus/pci           | PCI bus drivers                      |
+| drivers/filesystems       | File system drivers                  |
+| drivers/filesystems/fatfs | FAT file system driver               |
+| drivers/input             | Input device drivers                 |
+| drivers/input/kbdclass    | Keyboard class driver                |
+| drivers/input/i8042prt    | i8042 port driver                    |
+| drivers/storage           | Storage device drivers               |
+| drivers/storage/class     | Storage class drivers                |
+| drivers/storage/port      | Storage port drivers                 |
+| drivers/storage/miniport  | Storage miniport drivers             |
+| drivers/storage/fdc       | Floppy controller driver             |
+| drivers/storage/partmgr   | Partition manager driver             |
+| drivers/storage/mountmgr  | Mountpoint manager driver            |
+| drivers/linux             | Linkable userspace extension drivers |
+| posix                     | POSIX Subsystem                      |
+| win32                     | Win32 Subsystem (native exes)        |
+| shell                     | Win32 applications (win32 exes)      |
+| tools                     | Build tools                          |
+| tools/elfloader           | ELF loader for ARM64 systems         |
 
 All code that makes seL4 calls directly and refers to seL4 headers should go under `private`.
 No code outside `private` can make any seL4 system calls directly or include any seL4 headers.

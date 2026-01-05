@@ -65,6 +65,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Driver->CloseDeviceMsgList);
     InitializeListHead(&Driver->InterruptServiceList);
     InitializeListHead(&Driver->PlugPlayNotificationList);
+    InitializeListHead(&Driver->FrameBufferList);
     KeInitializeEvent(&Driver->InitializationDoneEvent, NotificationEvent);
     IopAssignSignalGroupForDriver(Driver);
 
@@ -267,6 +268,15 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     /* Purge the cache space and flush the dirty data into the shared cache maps. */
     if (Driver->CacheSpace) {
 	CcUninitializeCacheSpace(Driver->CacheSpace);
+    }
+
+    /* At this point the framebuffer list should be empty. If it is not, we unlink
+     * the framebuffer from the driver object so HAL will not try to send messages
+     * to the driver. */
+    assert(IsListEmpty(&Driver->FrameBufferList));
+    LoopOverList(FrameBuffer, &Driver->FrameBufferList, HAL_FRAMEBUFFER, DriverLink) {
+	FrameBuffer->DriverObject = NULL;
+	RemoveEntryList(&FrameBuffer->DriverLink);
     }
 
 #if defined(_M_IX86) || defined(_M_AMD64)
@@ -508,6 +518,21 @@ NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 	     KEDBG_PROCESS_TO_FILENAME(IoDriverObjectToProcess(DriverObject)));
 
     IoUnlinkDriverFromServiceLoop(DriverObject);
+
+    /* Note we do not delete the registered framebuffers here, but rather only unlink
+     * the driver object from them. In the case of a normal driver unload the driver
+     * object will explicitly unregister its framebuffer objects so at this point this
+     * list should be empty. In the case of a driver crash, or if the driver forgot to
+     * unregister the framebuffer, the framebuffers are usually still functional, so we
+     * continue using them so we can get something displayed on screen, but we will unlink
+     * the framebuffer object from the driver object so HAL will not try to send messages
+     * to the driver. */
+    LoopOverList(FrameBuffer, &DriverObject->FrameBufferList, HAL_FRAMEBUFFER, DriverLink) {
+	ObDereferenceObject(FrameBuffer->DriverObject);
+	FrameBuffer->DriverObject = NULL;
+	RemoveEntryList(&FrameBuffer->DriverLink);
+    }
+    assert(IsListEmpty(&DriverObject->FrameBufferList));
 
     if (NormalExit) {
 	assert(FALSE);

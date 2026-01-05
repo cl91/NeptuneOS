@@ -1,0 +1,5 @@
+add_subdirectory(videoprt)
+add_subdirectory(intelgpu)
+add_subdirectory(amdgpu)
+add_subdirectory(nvgpu)
+add_subdirectory(virtio_gpu)

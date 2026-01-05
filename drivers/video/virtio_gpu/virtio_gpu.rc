@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Virtio GPU Driver"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "virtio_gpu"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "virtio_gpu.sys"
+#include <version.rc>

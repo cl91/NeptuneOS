@@ -103,6 +103,18 @@ NTAPI NTSYSAPI NTSTATUS NtCreateDirectoryObject(OUT PHANDLE DirectoryHandle,
 						IN ACCESS_MASK DesiredAccess,
 						IN POBJECT_ATTRIBUTES ObjectAttributes);
 
+NTAPI NTSYSAPI NTSTATUS NtOpenDirectoryObject(OUT PHANDLE DirectoryHandle,
+					      IN ACCESS_MASK DesiredAccess,
+					      IN POBJECT_ATTRIBUTES ObjectAttributes);
+
+NTAPI NTSYSAPI NTSTATUS  NtQueryDirectoryObject(IN HANDLE DirectoryHandle,
+						OUT OPTIONAL POBJECT_DIRECTORY_INFORMATION Buffer,
+						IN ULONG Length,
+						IN BOOLEAN ReturnSingleEntry,
+						IN BOOLEAN RestartScan,
+						IN OUT PULONG Context,
+						OUT OPTIONAL PULONG ReturnLength);
+
 NTAPI NTSYSAPI NTSTATUS NtCreateSymbolicLinkObject(OUT PHANDLE SymbolicLinkHandle,
 						   IN ACCESS_MASK DesiredAccess,
 						   IN POBJECT_ATTRIBUTES ObjectAttributes,

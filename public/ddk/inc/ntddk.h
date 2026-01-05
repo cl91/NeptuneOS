@@ -21,6 +21,8 @@ FORCEINLINE BOOLEAN IoThreadIsAtPassiveLevel()
 /* This macro asserts that we are at PASSIVE_LEVEL. */
 #define PAGED_CODE() assert(IoThreadIsAtPassiveLevel())
 
+VOID IoDbgPrintMsg(IN PCSTR String);
+
 /*
  * Returned by IO completion routines to indicate that the system
  * should continue to execute the higher-level completion routines.
@@ -172,7 +174,7 @@ NTAPI NTSYSAPI PVOID ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
 					   IN SIZE_T Size,
 					   IN ULONG Tag);
 
-NTAPI NTSYSAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
+NTAPI NTSYSAPI VOID ExFreePoolWithTag(IN PCVOID Pointer,
 				      IN ULONG Tag);
 
 FORCEINLINE NTAPI PVOID ExAllocatePool(IN POOL_TYPE PoolType,
@@ -181,7 +183,7 @@ FORCEINLINE NTAPI PVOID ExAllocatePool(IN POOL_TYPE PoolType,
     return ExAllocatePoolWithTag(PoolType, Size, 0);
 }
 
-FORCEINLINE NTAPI VOID ExFreePool(IN PVOID Pointer)
+FORCEINLINE NTAPI VOID ExFreePool(IN PCVOID Pointer)
 {
     ExFreePoolWithTag(Pointer, 0);
 }
@@ -476,22 +478,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _DEVICE_OBJECT {
     } Private;		 /* Drivers shall not access this struct directly */
 } DEVICE_OBJECT, *PDEVICE_OBJECT;
 
-/*
- * Memory Descriptor List (MDL)
- *
- * An MDL describes a virtually contiguous (but not necessarily physically
- * contiguous) I/O buffer.
- */
-typedef struct _MDL {
-    struct _MDL *Next;
-    PVOID MappedSystemVa; /* Virtual address of the start of the buffer */
-    ULONG Flags;
-    ULONG ByteOffset;	/* Page offset to the start of the buffer */
-    ULONG ByteCount;	/* Number of bytes of this buffer */
-    ULONG PfnCount;	/* Number of entries in PfnEntries */
-    ULONG_PTR PfnEntries[];
-} MDL, *PMDL;
-
 typedef VOID (NTAPI DRIVER_CANCEL)(IN OUT struct _DEVICE_OBJECT *DeviceObject,
 				   IN OUT struct _IRP *Irp);
 typedef DRIVER_CANCEL *PDRIVER_CANCEL;
@@ -596,7 +582,7 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
      * Since we do not need the other "things" this can simply be
      * a struct. To port Windows/ReactOS drivers to NeptuneOS
      * simply change Tail.Overlay to Tail */
-    struct {
+    struct DECLSPEC_ALIGN(16) {
 	union {
 	    /* Used by the driver to queue the IRP to the device
 	     * queue. This is optional. The driver can also use
@@ -612,9 +598,6 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 	    LIST_ENTRY ListEntry;
 	    SLIST_ENTRY SListEntry;
 	};
-	/* The following member is used by the network packet filter
-	 * to queue IRP to an I/O completion queue. */
-	ULONG PacketType;
     } Tail;
 } IRP, *PIRP;
 
@@ -1259,7 +1242,7 @@ FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl)
  * requestor's process address space. The only use for this is to obtain an offset
  * into the IO buffer for the CurrentVa parameter of IoMapTransfer. Since Neptune OS
  * uses separate address spaces for drivers, we will simply return the system address
- * if the MDL (ie. where the buffer is mapped into the driver process. Note if you
+ * of the MDL (ie. where the buffer is mapped into the driver process. Note if you
  * do not specify DO_MAP_IO_BUFFER, this virtual address range will only be reserved
  * and not mapped.) */
 FORCEINLINE NTAPI PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
@@ -1724,7 +1707,7 @@ NTAPI NTSYSAPI NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
 typedef PVOID (NTAPI *PALLOCATE_FUNCTION)(IN POOL_TYPE PoolType,
 					  IN SIZE_T NumberOfBytes,
 					  IN ULONG Tag);
-typedef VOID (NTAPI *PFREE_FUNCTION)(IN PVOID Buffer);
+typedef VOID (NTAPI *PFREE_FUNCTION)(IN PCVOID Buffer);
 
 typedef struct LOOKASIDE_ALIGN _LOOKASIDE_LIST {
     SLIST_HEADER ListHead;

@@ -254,7 +254,7 @@ PVOID RtlpDebugReAllocateHeap(HANDLE HeapPtr,
     return Result;
 }
 
-BOOLEAN RtlpDebugFreeHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr)
+BOOLEAN RtlpDebugFreeHeap(HANDLE HeapPtr, ULONG Flags, PCVOID Ptr)
 {
     PHEAP Heap = (PHEAP) HeapPtr;
     BOOLEAN HeapLocked = FALSE;

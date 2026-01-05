@@ -1,3 +1,5 @@
 add_subdirectory(null)
 add_subdirectory(beep)
+add_subdirectory(mem)
+add_subdirectory(pvpanic)
 add_subdirectory(pnp)
