@@ -57,7 +57,7 @@ static DRIVER_DISPATCH FatBuildRequest;
  *           RegistryPath = path to our configuration entries
  * RETURNS: Success or failure
  */
-NTSTATUS NTAPI DriverEntry(IN PDRIVER_OBJECT DriverObject,
+NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
 			   IN PUNICODE_STRING RegistryPath)
 {
     PDEVICE_OBJECT DeviceObject;

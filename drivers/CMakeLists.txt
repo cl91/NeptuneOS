@@ -9,8 +9,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/../tools/cmake/mc.cmake)
 add_compile_options(
     -Wall
     -nostdinc
-    -fno-pic
-    -fno-pie
     -Wno-incompatible-library-redeclaration
     -Wno-gnu-variable-sized-type-not-at-end
     -fasync-exceptions
@@ -53,3 +51,4 @@ add_subdirectory(bus)
 add_subdirectory(input)
 add_subdirectory(storage)
 add_subdirectory(filesystems)
+add_subdirectory(net)

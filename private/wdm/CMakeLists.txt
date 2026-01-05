@@ -12,8 +12,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../tools/cmake/spec2def.cmake)
 add_compile_options(
     -Wall
     -nostdinc
-    -fno-pic
-    -fno-pie
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
     -fasync-exceptions

@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Ethernet Driver (PE)"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "ethernet"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "ethernet.sys"
+#include <version.rc>

@@ -40,6 +40,12 @@ static DRIVER_SERVICE_PARAMETER StorNvmeParameters[] = {
     { "BusType", REG_DWORD, sizeof(ULONG), &StorNvmeBusType }
 };
 
+static CHAR EthernetDriverExtensionPath[] = "\\??\\BootModules\\eth.xdrv";
+static DRIVER_SERVICE_PARAMETER EthernetParameters[] = {
+    { "DriverExtensionImage", REG_SZ,
+      sizeof(EthernetDriverExtensionPath), EthernetDriverExtensionPath }
+};
+
 /* For now these are hard-coded, Eventually we want to move this to a
  * registry file (boot configuration database). */
 static struct {
@@ -66,7 +72,8 @@ static struct {
       ARRAYSIZE(StorNvmeParameters), StorNvmeParameters },
     { "disk", L"GenDisk\0", 0, NULL, TRUE },
     { "partmgr", L"STORAGE\\Volume\0", 0, NULL, TRUE },
-    { "mountmgr" }
+    { "mountmgr" },
+    { "ethernet", NULL, ARRAYSIZE(EthernetParameters), EthernetParameters }
 };
 
 static struct {
@@ -463,5 +470,6 @@ NTSTATUS SmInitHardwareDatabase()
     RET_ERR(SmInitBootDriverConfigs());
     RET_ERR(SmInitPnp());
     RET_ERR(SmLoadDriver("fatfs"));
+    RET_ERR(SmLoadDriver("ethernet"));
     return STATUS_SUCCESS;
 }

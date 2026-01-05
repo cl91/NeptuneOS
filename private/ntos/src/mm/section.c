@@ -610,7 +610,6 @@ static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
     ULONG Attributes = Ctx->Attributes;
     BOOLEAN PhysicalMapping = Ctx->PhysicalMapping;
 
-    AvlInitializeNode(&Section->BasedSectionNode, 0);
     InitializeListHead(&Section->VadList);
     Section->Attributes = Attributes;
 
@@ -1200,8 +1199,9 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
 
     if (SectionInformationClass == SectionBasicInformation) {
 	PSECTION_BASIC_INFORMATION Info = (PSECTION_BASIC_INFORMATION)SectionInformationBuffer;
-	if (Section->Flags.Based) {
-	    Info->BaseAddress = (PVOID) Section->BasedSectionNode.Key;
+	if (Section->Flags.Image) {
+	    assert(Section->ImageSectionObject);
+	    Info->BaseAddress = (PVOID)Section->ImageSectionObject->ImageBase;
 	} else {
 	    Info->BaseAddress = 0;
 	}
@@ -1312,9 +1312,8 @@ VOID MmDbgDumpSection(PSECTION Section)
     if (Section == NULL) {
 	MmDbgPrint("    (nil)\n");
     }
-    MmDbgPrint("    Flags: %s%s%s%s%s%s\n",
+    MmDbgPrint("    Flags: %s%s%s%s%s\n",
 	     Section->Flags.Image ? " image" : "",
-	     Section->Flags.Based ? " based" : "",
 	     Section->Flags.File ? " file" : "",
 	     Section->Flags.PhysicalMemory ? " physical-memory" : "",
 	     Section->Flags.Reserve ? " reserve" : "",

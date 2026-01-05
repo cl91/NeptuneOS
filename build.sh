@@ -77,7 +77,7 @@ echo "####################################################"
 cd "$(dirname "$0")"
 RTLIB=$(echo ${PWD}/compiler-rt/libclang_rt.builtins-${RTLIB_ARCH}.a)
 
-mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers/linux,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
 
 cd $BUILDDIR
 PE_INC=$(echo ${PWD}/pe_inc)
@@ -316,6 +316,28 @@ cmake ../../../posix/psxss \
       -G Ninja
 ninja || build_failed
 
+# Build the linkable userspace extension (or "LINUX", yes, really. Bite me
+# if you will.) drivers
+cd ../../drivers/linux
+echo
+echo "---- Building linkable userspace extension drivers ----"
+echo
+LNX_BUILD="$PWD/build"
+LNX_SRCDIR=../../../drivers/linux
+LNX_MAKEOPTS="ARCH=ntos CC=clang LD=ld.lld CLANG_TARGET_FLAGS=${ELF_TRIPLE}"
+make -C $LNX_SRCDIR O=$LNX_BUILD $LNX_MAKEOPTS \
+     -j$(nproc) defconfig all compile_commands.json || build_failed
+cmake ../../../drivers/linux/arch/ntos/lnxdrv \
+      -DTRIPLE=${ELF_TRIPLE} \
+      -DNTOS_SRC_ROOT=$PWD/../../.. \
+      -DLNX_BUILD_DIR=$LNX_BUILD \
+      -DCMAKE_TOOLCHAIN_FILE=../../../../../${TOOLCHAIN}-elf.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -G Ninja
+ninja || build_failed
+
 # Build initcpio
 echo
 echo "---- Building INITCPIO ----"
@@ -328,7 +350,8 @@ bus/acpi/acpi.sys bus/pci/pci.sys input/kbdclass/kbdclass.sys
 storage/class/classpnp/classpnp.sys storage/class/disk/disk.sys
 storage/partmgr/partmgr.sys storage/mountmgr/mountmgr.sys
 storage/port/storport/storport.sys storage/miniport/storahci/storahci.sys
-storage/miniport/stornvme/stornvme.sys filesystems/fatfs/fatfs.sys'
+storage/miniport/stornvme/stornvme.sys filesystems/fatfs/fatfs.sys
+net/ethernet/ethernet.sys linux/eth.xdrv'
 X86_DRIVER_COPY_LIST='input/i8042prt/i8042prt.sys storage/fdc/fdc.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed
@@ -437,9 +460,10 @@ fi
 echo
 echo "---- Merge compile_commands.json ----"
 echo
+cd ..
 if [[ $(which jq) ]]; then
-    jq -s add ../*/compile_commands.json ../*/*/compile_commands.json > ../compile_commands.json
-    rm ../*/compile_commands.json ../*/*/*.json
+    jq -s add */compile_commands.json */*/compile_commands.json */*/*/compile_commands.json > compile_commands.json
+    rm */compile_commands.json */*/*.json */*/*/compile_commands.json
     echo "Done."
 else
     echo "You'll need to install jq (https://jqlang.github.io/jq)."
