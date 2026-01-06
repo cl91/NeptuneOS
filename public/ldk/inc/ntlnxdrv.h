@@ -9,29 +9,32 @@ Module Name:
 Abstract:
 
     This header file defines the interfaces shared between the PE sub-component of
-    a linkable and extendable driver (lnxdrv) and its ELF sub-component. A lnxdrv
-    (a name deliberately chosen that evokes the name of "Linux driver") contains
-    two portions: a PE part which is a standard Neptune OS driver that speaks the
-    standard Neptune OS driver interface, and an ELF part which is an ELF executable
-    that is loaded into the process of the PE driver object and communicates with
-    the PE driver object through a standard interface, defined in this header. The
-    term "linkable" refers to the fact that we we are implementing is essentially a
-    form of runtime linking of an ELF object with a PE object. When the ELF object
-    is loaded into the process of the PE driver object, the PE code supplies the
-    entry point of the ELF executable with an "import table", containing function
-    pointers that the ELF object can call. The ELF entry point in turn returns an
-    "export table" containing function pointers for the PE object. Due to the ABI
-    differences between PE and ELF, the PE and ELF function pointers must be marked
-    with the appropriate ABI attributes (MS_ABI and ELF_ABI), so the compiler can
-    use the correct calling conventions when calling these function pointers (this
-    is effectively what Microsoft calls "thunking", a technique used, for instance,
-    to call 16-bit routines from 32-bit code). All callback routines must also be
-    appropriately marked with an ABI attribute.
+    a linkable extension driver (lnxdrv) and its ELF sub-component. A lnxdrv (a name
+    deliberately chosen that evokes the connotation of a "Linux driver") contains
+    two portions: a PE portion that is a standard NT driver speaking the standard
+    NT driver interface, and an ELF half that is an ELF executable loaded into the
+    process of the PE driver object and communicating with the PE driver object
+    through a standard interface, defined in this header. The term "linkable" refers
+    to the fact that what we are implementing is effectively a form of runtime
+    linking of an ELF object with a PE object. When the ELF object is loaded into
+    the process of the PE driver object, the PE code supplies the entry point of
+    the ELF executable with an "import table", containing function pointers that
+    the ELF object can call. The ELF entry point in turn returns an "export table"
+    containing function pointers for the PE object to call. Due to ABI differences
+    between PE and ELF, the function pointers in the import and export tables must
+    be marked with an appropriate ABI attribute (MS_ABI or ELF_ABI), so the compiler
+    can use the correct calling conventions when calling these function pointers
+    (this is essentially the same technique that Microsoft calls "thunking", which
+    is used, for instance, in the Win16 subsystem of NT to call 32-bit routines
+    from 16-bit code). Likewise, all callback routines that cross the PE/ELF border
+    must also be appropriately marked with an ABI attribute.
 
 Revision History:
 
     2026-01-05  File created
 */
+
+#pragma once
 
 #include <ntdef.h>
 #include <ntstatus.h>
@@ -47,10 +50,13 @@ Revision History:
 #endif
 
 typedef struct _LNX_DRV_IMPORT_TABLE {
+    MS_ABI VOID (*Imp0)(VOID);
 } LNX_DRV_IMPORT_TABLE, *PLNX_DRV_IMPORT_TABLE;
 
 typedef struct _LNX_DRV_EXPORT_TABLE {
+    ELF_ABI VOID (*Exp0)(VOID);
 } LNX_DRV_EXPORT_TABLE, *PLNX_DRV_EXPORT_TABLE;
 
 typedef ELF_ABI NTSTATUS (LNX_DRV_ENTRY_POINT)(IN PLNX_DRV_IMPORT_TABLE ImportTable,
 					       OUT PLNX_DRV_EXPORT_TABLE *ExportTable);
+typedef LNX_DRV_ENTRY_POINT *PLNX_DRV_ENTRY_POINT;
