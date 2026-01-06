@@ -321,10 +321,13 @@ cd ../../drivers/linux
 echo
 echo "---- Building linkable userspace extension drivers ----"
 echo
+make -C ../../../drivers/linux/tools/lkl
+cp ../../../drivers/linux/tools/lkl/liblkl.a lkl-ntos.a
 cmake ../../../drivers/linux \
       -DTRIPLE=${ELF_TRIPLE} \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-elf.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DNTOS_LKL_PATH=${PWD}/lkl-ntos.a \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
