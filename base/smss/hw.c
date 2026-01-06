@@ -40,7 +40,7 @@ static DRIVER_SERVICE_PARAMETER StorNvmeParameters[] = {
     { "BusType", REG_DWORD, sizeof(ULONG), &StorNvmeBusType }
 };
 
-static CHAR EthernetDriverExtensionPath[] = "\\??\\A:\\eth.xdrv";
+static CHAR EthernetDriverExtensionPath[] = "\\??\\BootModules\\eth.xdrv";
 static DRIVER_SERVICE_PARAMETER EthernetParameters[] = {
     { "DriverExtensionImage", REG_SZ,
       sizeof(EthernetDriverExtensionPath), EthernetDriverExtensionPath }

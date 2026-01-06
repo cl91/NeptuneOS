@@ -50,6 +50,7 @@ Revision History:
 #endif
 
 typedef struct _LNX_DRV_IMPORT_TABLE {
+    MS_ABI VOID (*DbgPrint)(IN PCSTR Format, ...);
     MS_ABI VOID (*Imp0)(VOID);
 } LNX_DRV_IMPORT_TABLE, *PLNX_DRV_IMPORT_TABLE;
 

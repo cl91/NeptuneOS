@@ -10,8 +10,6 @@ list(APPEND CMAKE_MODULE_PATH
 add_compile_options(
     -Wall
     -nostdinc
-    -fno-pic
-    -fno-pie
     -Wno-incompatible-library-redeclaration
     --target=${TRIPLE}
     -DGIT_HEAD_SHA_SHORT=\"${GIT_HEAD_SHA_SHORT}\"

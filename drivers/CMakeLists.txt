@@ -9,8 +9,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/../tools/cmake/mc.cmake)
 add_compile_options(
     -Wall
     -nostdinc
-    -fno-pic
-    -fno-pie
     -Wno-incompatible-library-redeclaration
     -Wno-gnu-variable-sized-type-not-at-end
     -fasync-exceptions

@@ -77,7 +77,7 @@ echo "####################################################"
 cd "$(dirname "$0")"
 RTLIB=$(echo ${PWD}/compiler-rt/libclang_rt.builtins-${RTLIB_ARCH}.a)
 
-mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers/linux,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
 
 cd $BUILDDIR
 PE_INC=$(echo ${PWD}/pe_inc)
@@ -316,6 +316,20 @@ cmake ../../../posix/psxss \
       -G Ninja
 ninja || build_failed
 
+# Build the linkable userspace extension drivers
+cd ../../drivers/linux
+echo
+echo "---- Building linkable userspace extension drivers ----"
+echo
+cmake ../../../drivers/linux \
+      -DTRIPLE=${ELF_TRIPLE} \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-elf.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -G Ninja
+ninja || build_failed
+
 # Build initcpio
 echo
 echo "---- Building INITCPIO ----"
@@ -329,7 +343,7 @@ storage/class/classpnp/classpnp.sys storage/class/disk/disk.sys
 storage/partmgr/partmgr.sys storage/mountmgr/mountmgr.sys
 storage/port/storport/storport.sys storage/miniport/storahci/storahci.sys
 storage/miniport/stornvme/stornvme.sys filesystems/fatfs/fatfs.sys
-net/ethernet/ethernet.sys'
+net/ethernet/ethernet.sys linux/eth.xdrv'
 X86_DRIVER_COPY_LIST='input/i8042prt/i8042prt.sys storage/fdc/fdc.sys'
 for i in ${PE_COPY_LIST}; do
     cp ../$i . || build_failed

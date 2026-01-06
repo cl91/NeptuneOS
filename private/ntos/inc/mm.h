@@ -688,7 +688,6 @@ typedef enum _MM_MEM_PRESSURE {
 typedef union _MMSECTION_FLAGS {
     struct {
 	ULONG Image : 1;
-	ULONG Based : 1;
 	ULONG File : 1;
 	ULONG PhysicalMemory : 1;
 	ULONG Reserve : 1;
@@ -698,7 +697,6 @@ typedef union _MMSECTION_FLAGS {
 } MMSECTION_FLAGS;
 
 typedef struct _SECTION {
-    AVL_NODE BasedSectionNode; /* All SEC_BASED Sections are organized in an AVL tree */
     union {
 	struct _IMAGE_SECTION_OBJECT *ImageSectionObject;
 	struct _DATA_SECTION_OBJECT *DataSectionObject;

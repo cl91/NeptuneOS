@@ -8,12 +8,21 @@ typedef struct _LNX_DRIVER_EXTENSION {
     PLNX_DRV_EXPORT_TABLE ExportTable;
 } LNX_DRIVER_EXTENSION, *PLNX_DRIVER_EXTENSION;
 
+static VOID LnxDbgPrint(IN PCSTR Format, ...)
+{
+    va_list ArgList;
+    va_start(ArgList, Format);
+    vDbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_INFO_LEVEL, Format, ArgList);
+    va_end(ArgList);
+}
+
 static VOID Impl0()
 {
     NtDisplayStringA("Hello from lnxdrv import\n");
 }
 
 static LNX_DRV_IMPORT_TABLE LnxDrvImportTable = {
+    .DbgPrint = LnxDbgPrint,
     .Imp0 = Impl0
 };
 
@@ -123,7 +132,13 @@ NTSTATUS LnxInitializeDriver(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
 
-    /* Query image base address */
+    /* Query image base address and transfer address */
+    SECTION_BASIC_INFORMATION SectionInfo;
+    Status = NtQuerySection(SectionHandle, SectionBasicInformation, &SectionInfo,
+			    sizeof(SectionInfo), NULL);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
     SECTION_IMAGE_INFORMATION ImageInfo;
     Status = NtQuerySection(SectionHandle, SectionImageInformation, &ImageInfo,
 			    sizeof(ImageInfo), NULL);
@@ -131,7 +146,7 @@ NTSTATUS LnxInitializeDriver(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
 
-    /* Map into system address space */
+    /* Map into driver address space */
     PVOID ImageBase = NULL;
     SIZE_T ViewSize = 0;
     Status = NtMapViewOfSection(SectionHandle, NtCurrentProcess(), &ImageBase, 0, 0, NULL,
@@ -142,22 +157,22 @@ NTSTATUS LnxInitializeDriver(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
 
-    /* Locate PE entry point */
-    PLNX_DRV_ENTRY_POINT ExtensionEntry = ImageInfo.TransferAddress;
-
-    if (ExtensionEntry == NULL) {
-	NtUnmapViewOfSection(NtCurrentProcess(), ImageBase);
-	NtClose(SectionHandle);
-	return STATUS_INVALID_IMAGE_FORMAT;
+    if (ImageBase != SectionInfo.BaseAddress) {
+	DPRINT("Error: image %wZ cannot be loaded at preferred base %p (got image base %p)\n",
+	       &ImagePath, SectionInfo.BaseAddress, ImageBase);
+	return STATUS_IMAGE_NOT_AT_BASE;
     }
+
+    /* Locate PE entry point */
+    PLNX_DRV_ENTRY_POINT EntryPoint = ImageInfo.TransferAddress;
 
     DriverExtension->SectionHandle = SectionHandle;
     DriverExtension->ImageBase = ImageBase;
     DriverExtension->ViewSize = ViewSize;
-    DriverExtension->EntryPoint = ExtensionEntry;
+    DriverExtension->EntryPoint = EntryPoint;
 
     /* Call extension entry */
-    Status = ExtensionEntry(&LnxDrvImportTable, &DriverExtension->ExportTable);
+    Status = EntryPoint(&LnxDrvImportTable, &DriverExtension->ExportTable);
 
     if (!NT_SUCCESS(Status)) {
 	NtUnmapViewOfSection(NtCurrentProcess(), ImageBase);
