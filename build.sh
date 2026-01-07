@@ -322,6 +322,7 @@ echo
 echo "---- Building linkable userspace extension drivers ----"
 echo
 make -C ../../../drivers/linux/tools/lkl -j$(nproc) || build_failed
+make -C ../../../drivers/linux ARCH=lkl -j$(nproc) compile_commands.json
 cmake ../../../drivers/linux/tools/lkl/ntos \
       -DTRIPLE=${ELF_TRIPLE} \
       -DNTOS_SRC_ROOT=../../../../../ \
@@ -331,7 +332,6 @@ cmake ../../../drivers/linux/tools/lkl/ntos \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
 ninja || build_failed
-make -C ../../../drivers/linux ARCH=lkl compile_commands.json
 
 # Build initcpio
 echo
