@@ -316,7 +316,8 @@ cmake ../../../posix/psxss \
       -G Ninja
 ninja || build_failed
 
-# Build the linkable userspace extension (LINUX) drivers
+# Build the linkable userspace extension (or LINUX, yes, really. Bite me
+# if you will.) drivers
 cd ../../drivers/linux
 echo
 echo "---- Building linkable userspace extension drivers ----"
