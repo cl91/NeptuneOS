@@ -331,6 +331,7 @@ cmake ../../../drivers/linux/tools/lkl/ntos \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
 ninja || build_failed
+make -C ../../../drivers/linux ARCH=lkl compile_commands.json
 
 # Build initcpio
 echo
@@ -455,7 +456,7 @@ echo
 echo "---- Merge compile_commands.json ----"
 echo
 if [[ $(which jq) ]]; then
-    jq -s add ../*/compile_commands.json ../*/*/compile_commands.json > ../compile_commands.json
+    jq -s add ../*/compile_commands.json ../*/*/compile_commands.json ../../drivers/linux/compile_commands.json > ../compile_commands.json
     rm ../*/compile_commands.json ../*/*/*.json
     echo "Done."
 else

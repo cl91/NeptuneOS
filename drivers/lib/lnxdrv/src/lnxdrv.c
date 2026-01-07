@@ -26,6 +26,18 @@ static LNX_DRV_IMPORT_TABLE LnxDrvImportTable = {
     .Imp0 = Impl0
 };
 
+static NTAPI NTSTATUS LnxDrvAddDevice(IN struct _DRIVER_OBJECT *DriverObject,
+				      IN PDEVICE_OBJECT PhysicalDeviceObject)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTAPI NTSTATUS LnxDrvDispatchCreate(IN PDEVICE_OBJECT DeviceObject,
+					   IN PIRP Irp)
+{
+    return STATUS_NOT_IMPLEMENTED;
+}
+
 NTSTATUS LnxInitializeDriver(IN PDRIVER_OBJECT DriverObject,
 			     IN PUNICODE_STRING RegistryPath)
 {
@@ -181,6 +193,8 @@ NTSTATUS LnxInitializeDriver(IN PDRIVER_OBJECT DriverObject,
 	return Status;
     }
 
+    DriverObject->AddDevice = LnxDrvAddDevice;
+    DriverObject->MajorFunction[IRP_MJ_CREATE] = LnxDrvDispatchCreate;
     return STATUS_SUCCESS;
 }
 
