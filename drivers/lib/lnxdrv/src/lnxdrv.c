@@ -5,7 +5,7 @@ typedef struct _LNX_DRIVER_EXTENSION {
     PVOID ImageBase;
     SIZE_T ViewSize;
     PLNX_DRV_ENTRY_POINT EntryPoint;
-    PLNX_DRV_EXPORT_TABLE ExportTable;
+    LNX_DRV_EXPORT_TABLE ExportTable;
 } LNX_DRIVER_EXTENSION, *PLNX_DRIVER_EXTENSION;
 
 static VOID LnxDbgPrint(IN PCSTR Format, ...)
@@ -206,6 +206,5 @@ PLNX_DRV_EXPORT_TABLE LnxDrvGetExportTable(IN PDRIVER_OBJECT DriverObject)
 	assert(FALSE);
 	return NULL;
     }
-    assert(DriverExtension->ExportTable);
-    return DriverExtension->ExportTable;
+    return &DriverExtension->ExportTable;
 }
