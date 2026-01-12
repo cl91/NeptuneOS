@@ -13,6 +13,20 @@
     ExAllocatePoolEx(Var, Type, sizeof(Type) * (Size), NTOS_MM_TAG, OnError)
 #define MiFreePool(Var) ExFreePoolWithTag(Var, NTOS_MM_TAG)
 
+/* Information needed to initialize the Memory Management subcomponent,
+ * including the Executive Pool */
+typedef struct _MI_INIT_INFO {
+    MWORD InitUntypedCap;
+    MWORD InitUntypedPhyAddr;
+    LONG InitUntypedLog2Size;
+    MWORD RootCNodeFreeCapStart;
+    MWORD UserImageStartVirtAddr;
+    MWORD UserImageFrameCapStart;
+    MWORD NumUserImageFrames;
+    MWORD UserPagingStructureCapStart;
+    MWORD NumUserPagingStructureCaps;
+} MI_INIT_INFO, *PMI_INIT_INFO;
+
 static inline ULONG ModPow2(IN ULONG Address, IN ULONG Alignment)
 {
     assert(IsPow2(Alignment));
@@ -161,6 +175,7 @@ typedef struct _SECTION_OBJ_CREATE_CONTEXT {
 extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
 extern PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
 extern CNODE MiNtosCNode;
+extern MI_INIT_INFO MiInitInfo;
 
 /* cap.c */
 VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node);

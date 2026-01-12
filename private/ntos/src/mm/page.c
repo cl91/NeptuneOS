@@ -595,7 +595,9 @@ MWORD MiGetPhysicalAddress(IN PPAGING_STRUCTURE Page)
 	Parent = Parent->Parent;
     }
     if (!Parent) {
-	assert(FALSE);
+	assert(Page->TreeNode.Cap >= MiInitInfo.UserImageFrameCapStart &&
+	       Page->TreeNode.Cap < MiInitInfo.UserImageFrameCapStart +
+	       MiInitInfo.NumUserImageFrames);
 	return 0;
     }
     return TREE_NODE_TO_UNTYPED(Parent)->AvlNode.Key;

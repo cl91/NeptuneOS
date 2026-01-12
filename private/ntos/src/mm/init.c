@@ -7,21 +7,8 @@ MWORD MmHighestPhysicalPage;
 VIRT_ADDR_SPACE MiNtosVaddrSpace;
 PHY_MEM_DESCRIPTOR MiPhyMemDescriptor;
 CNODE MiNtosCNode;
+MI_INIT_INFO MiInitInfo;
 static MWORD MiNtosCNodeUsedMap[(1 << ROOT_CNODE_LOG2SIZE) / MWORD_BITS] PAGE_ALIGNED_DATA;
-
-/* Information needed to initialize the Memory Management subcomponent,
- * including the Executive Pool */
-typedef struct _MI_INIT_INFO {
-    MWORD InitUntypedCap;
-    MWORD InitUntypedPhyAddr;
-    LONG InitUntypedLog2Size;
-    MWORD RootCNodeFreeCapStart;
-    MWORD UserImageStartVirtAddr;
-    MWORD UserImageFrameCapStart;
-    MWORD NumUserImageFrames;
-    MWORD UserPagingStructureCapStart;
-    MWORD NumUserPagingStructureCaps;
-} MI_INIT_INFO, *PMI_INIT_INFO;
 
 static NTSTATUS MiInitRetypeIntoLargePage(IN MWORD Untyped,
 					  IN MWORD PageCap)
@@ -322,19 +309,16 @@ NTSTATUS MmInitSystemPhase0(seL4_BootInfo *bootinfo)
 	return STATUS_NO_MEMORY;
     }
 
-    MI_INIT_INFO InitInfo =
-	{
-	 .InitUntypedCap = InitUntyped,
-	 .InitUntypedPhyAddr = InitUntypedPhyAddr,
-	 .InitUntypedLog2Size = Log2Size,
-	 .RootCNodeFreeCapStart = bootinfo->empty.start,
-	 .UserImageStartVirtAddr = (MWORD)(&_text_start[0]),
-	 .UserImageFrameCapStart = bootinfo->userImageFrames.start,
-	 .NumUserImageFrames = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start,
-	 .UserPagingStructureCapStart = bootinfo->userImagePaging.start,
-	 .NumUserPagingStructureCaps = bootinfo->userImagePaging.end - bootinfo->userImagePaging.start
-	};
-    RET_ERR(MiInitializeRootTask(&InitInfo));
+    MiInitInfo.InitUntypedCap = InitUntyped;
+    MiInitInfo.InitUntypedPhyAddr = InitUntypedPhyAddr;
+    MiInitInfo.InitUntypedLog2Size = Log2Size;
+    MiInitInfo.RootCNodeFreeCapStart = bootinfo->empty.start;
+    MiInitInfo.UserImageStartVirtAddr = (MWORD)(&_text_start[0]);
+    MiInitInfo.UserImageFrameCapStart = bootinfo->userImageFrames.start;
+    MiInitInfo.NumUserImageFrames = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start;
+    MiInitInfo.UserPagingStructureCapStart = bootinfo->userImagePaging.start;
+    MiInitInfo.NumUserPagingStructureCaps = bootinfo->userImagePaging.end - bootinfo->userImagePaging.start;
+    RET_ERR(MiInitializeRootTask(&MiInitInfo));
 
     LoopOverUntyped(cap, desc, bootinfo) {
 	/* For device memory we need to skip all device memories smaller than
