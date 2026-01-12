@@ -174,6 +174,7 @@ NTSTATUS MiVSpaceInsertPagingStructure(IN PVIRT_ADDR_SPACE VSpace,
     while (Super->Type != MiPagingSuperStructureType(Paging->Type)) {
 	Super = MiPagingFindSubstructure(Super, Paging->AvlNode.Key);
 	if (Super == NULL) {
+	    assert(FALSE);
 	    return STATUS_NTOS_BUG;
 	}
     }

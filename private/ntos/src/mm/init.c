@@ -176,34 +176,19 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMI_INIT_INFO InitInfo)
 
 /*
  * Add the initial root task user image paging structures to the virtual address
- * space descriptor of the root task.
- *
- * For amd64, the first paging structure cap is the PDPT cap, and the rest are
- * page table caps.
- *
- * Fox i386, the paging structure caps are page table caps.
+ * space descriptor of the root task. The start of the page table caps (second-to-lowest
+ * level of paging structure) for the root task image is supplied.
  */
-static NTSTATUS MiInitAddUserImagePaging(IN PMI_INIT_INFO InitInfo)
+static NTSTATUS MiInitAddUserImagePaging(IN PMI_INIT_INFO InitInfo,
+					 IN MWORD PageTableCapStart)
 {
-    MWORD PageTableCapStart = InitInfo->UserPagingStructureCapStart;
-
-#ifdef _M_AMD64
-    PPAGING_STRUCTURE PDPT = NULL;
-    RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PDPT, NULL, PageTableCapStart++,
-					InitInfo->UserImageStartVirtAddr, &PDPT));
-    assert(PDPT != NULL);
-    RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PDPT));
-    PPAGING_STRUCTURE PD = NULL;
-    RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PAGE_DIRECTORY, NULL,
-					PageTableCapStart++,
-					InitInfo->UserImageStartVirtAddr, &PD));
-    assert(PD != NULL);
-    RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PD));
-#endif
-
+    assert(PageTableCapStart >= InitInfo->UserPagingStructureCapStart);
+    assert(PageTableCapStart < InitInfo->NumUserPagingStructureCaps +
+	   InitInfo->UserPagingStructureCapStart);
     /* Insert all the page tables used to map the root task user image */
     MWORD StartPTNum = InitInfo->UserImageStartVirtAddr >> PAGE_TABLE_WINDOW_LOG2SIZE;
-    MWORD EndPTNum = StartPTNum + InitInfo->NumUserPagingStructureCaps;
+    MWORD EndPTNum = StartPTNum + InitInfo->NumUserPagingStructureCaps +
+	InitInfo->UserPagingStructureCapStart - PageTableCapStart;
     for (MWORD PTNum = StartPTNum; PTNum < EndPTNum; PTNum++) {
 	PPAGING_STRUCTURE PageTable = NULL;
 	RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PAGE_TABLE, NULL,
@@ -232,11 +217,27 @@ static NTSTATUS MiInitAddUserImagePaging(IN PMI_INIT_INFO InitInfo)
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS MiRegisterRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
+				      IN MWORD Cap,
+				      IN MWORD PhyAddr,
+				      IN LONG Log2Size,
+				      IN BOOLEAN IsDevice)
+{
+    MiAllocatePool(Untyped, UNTYPED);
+    MiInitializeUntyped(Untyped, &MiNtosCNode, NULL, Cap, PhyAddr, Log2Size, IsDevice);
+    RET_ERR_EX(MiInsertRootUntyped(PhyMem, Untyped), MiFreePool(Untyped));
+    if (!IsDevice) {
+	MiInsertFreeUntyped(PhyMem, Untyped);
+    }
+    return STATUS_SUCCESS;
+}
+
 /*
  * Map the initial ExPool heap and build the book-keeping data structures
  * for the root task.
  */
-static NTSTATUS MiInitializeRootTask(IN PMI_INIT_INFO InitInfo)
+static NTSTATUS MiInitializeRootTask(IN PMI_INIT_INFO InitInfo,
+				     IN seL4_BootInfo *BootInfo)
 {
     /* Map initial pages for ExPool */
     MWORD FreeCapStart = 0;
@@ -262,8 +263,21 @@ static NTSTATUS MiInitializeRootTask(IN PMI_INIT_INFO InitInfo)
 				TRUE, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT);
     MiInitializeVSpace(&MiNtosVaddrSpace, RootPagingStructure);
 
-    /* Add the paging structures for the root task image. */
-    RET_ERR(MiInitAddUserImagePaging(InitInfo));
+    /* On 64-bit systems, add the higher level paging structures for the root task image. */
+    MWORD PageTableCapStart = InitInfo->UserPagingStructureCapStart;
+#ifdef _WIN64
+    PPAGING_STRUCTURE PDPT = NULL;
+    RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PDPT, NULL, PageTableCapStart++,
+					InitInfo->UserImageStartVirtAddr, &PDPT));
+    assert(PDPT != NULL);
+    RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PDPT));
+    PPAGING_STRUCTURE PD = NULL;
+    RET_ERR(MiInitCreatePagingStructure(PAGING_TYPE_PAGE_DIRECTORY, NULL,
+					PageTableCapStart++,
+					InitInfo->UserImageStartVirtAddr, &PD));
+    assert(PD != NULL);
+    RET_ERR(MiVSpaceInsertPagingStructure(&MiNtosVaddrSpace, PD));
+#endif
 
     /* Register the initial root untyped used for mapping the initial ExPool heap.
      * Add all the intermediate untyped caps built during mapping of initial heap,
@@ -271,25 +285,26 @@ static NTSTATUS MiInitializeRootTask(IN PMI_INIT_INFO InitInfo)
     MiInitializePhyMemDescriptor(&MiPhyMemDescriptor);
     RET_ERR(MiInitAddUntypedAndLargePage(InitInfo));
 
-    return STATUS_SUCCESS;
-}
-
-static NTSTATUS MiRegisterRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
-				      IN MWORD Cap,
-				      IN MWORD PhyAddr,
-				      IN LONG Log2Size,
-				      IN BOOLEAN IsDevice)
-{
-    MiAllocatePool(Untyped, UNTYPED);
-    MiInitializeUntyped(Untyped, &MiNtosCNode, NULL, Cap, PhyAddr, Log2Size, IsDevice);
-    RET_ERR_EX(MiInsertRootUntyped(PhyMem, Untyped), MiFreePool(Untyped));
-    if (!IsDevice) {
-	MiInsertFreeUntyped(PhyMem, Untyped);
+    /* Register the root untyped caps */
+    LoopOverUntyped(Cap, Desc, BootInfo) {
+	/* For device memory we need to skip all device memories smaller than
+	 * one page since we map device memories as pages */
+	if (Desc->isDevice && Desc->sizeBits < PAGE_LOG2SIZE) {
+	    continue;
+	}
+	if (Cap != InitInfo->InitUntypedCap) {
+	    RET_ERR(MiRegisterRootUntyped(&MiPhyMemDescriptor, Cap, Desc->paddr,
+					  Desc->sizeBits, Desc->isDevice));
+	}
     }
+
+    /* Add the paging structures for the root task image. */
+    RET_ERR(MiInitAddUserImagePaging(InitInfo, PageTableCapStart));
+
     return STATUS_SUCCESS;
 }
 
-NTSTATUS MmInitSystemPhase0(seL4_BootInfo *bootinfo)
+NTSTATUS MmInitSystemPhase0(seL4_BootInfo *BootInfo)
 {
     extern char _text_start[];
     MWORD InitUntyped = 0;
@@ -297,12 +312,12 @@ NTSTATUS MmInitSystemPhase0(seL4_BootInfo *bootinfo)
     LONG Log2Size = 128;
 
     /* Find the smallest untyped that is at least one large page sized. */
-    LoopOverUntyped(cap, desc, bootinfo) {
-	if (!desc->isDevice && desc->sizeBits >= LARGE_PAGE_LOG2SIZE
-	    && desc->sizeBits < Log2Size) {
-	    InitUntyped = cap;
-	    InitUntypedPhyAddr = desc->paddr;
-	    Log2Size = desc->sizeBits;
+    LoopOverUntyped(Cap, Desc, BootInfo) {
+	if (!Desc->isDevice && Desc->sizeBits >= LARGE_PAGE_LOG2SIZE
+	    && Desc->sizeBits < Log2Size) {
+	    InitUntyped = Cap;
+	    InitUntypedPhyAddr = Desc->paddr;
+	    Log2Size = Desc->sizeBits;
 	}
     }
     if (InitUntyped == 0) {
@@ -312,25 +327,13 @@ NTSTATUS MmInitSystemPhase0(seL4_BootInfo *bootinfo)
     MiInitInfo.InitUntypedCap = InitUntyped;
     MiInitInfo.InitUntypedPhyAddr = InitUntypedPhyAddr;
     MiInitInfo.InitUntypedLog2Size = Log2Size;
-    MiInitInfo.RootCNodeFreeCapStart = bootinfo->empty.start;
+    MiInitInfo.RootCNodeFreeCapStart = BootInfo->empty.start;
     MiInitInfo.UserImageStartVirtAddr = (MWORD)(&_text_start[0]);
-    MiInitInfo.UserImageFrameCapStart = bootinfo->userImageFrames.start;
-    MiInitInfo.NumUserImageFrames = bootinfo->userImageFrames.end - bootinfo->userImageFrames.start;
-    MiInitInfo.UserPagingStructureCapStart = bootinfo->userImagePaging.start;
-    MiInitInfo.NumUserPagingStructureCaps = bootinfo->userImagePaging.end - bootinfo->userImagePaging.start;
-    RET_ERR(MiInitializeRootTask(&MiInitInfo));
-
-    LoopOverUntyped(cap, desc, bootinfo) {
-	/* For device memory we need to skip all device memories smaller than
-	 * one page since we map device memories as pages */
-	if (desc->isDevice && desc->sizeBits < PAGE_LOG2SIZE) {
-	    continue;
-	}
-	if (cap != InitUntyped) {
-	    RET_ERR(MiRegisterRootUntyped(&MiPhyMemDescriptor, cap, desc->paddr,
-					  desc->sizeBits, desc->isDevice));
-	}
-    }
+    MiInitInfo.UserImageFrameCapStart = BootInfo->userImageFrames.start;
+    MiInitInfo.NumUserImageFrames = BootInfo->userImageFrames.end - BootInfo->userImageFrames.start;
+    MiInitInfo.UserPagingStructureCapStart = BootInfo->userImagePaging.start;
+    MiInitInfo.NumUserPagingStructureCaps = BootInfo->userImagePaging.end - BootInfo->userImagePaging.start;
+    RET_ERR(MiInitializeRootTask(&MiInitInfo, BootInfo));
 
     return STATUS_SUCCESS;
 }
