@@ -56,7 +56,7 @@ Revision History:
 typedef VOID ELF_ABI (*LNX_DRV_THREAD_ENTRY)(PVOID);
 
 typedef struct _LNX_DRV_IMPORT_TABLE {
-    VOID (MS_ABI *DbgPrint)(IN PCSTR Format, ...);
+    VOID (MS_ABI *DbgPrint)(IN PCSTR Format, IN va_list ArgList);
     PVOID (MS_ABI *AllocateMemory)(IN SIZE_T Size);
     VOID (MS_ABI *FreeMemory)(IN PVOID Ptr);
     HANDLE (MS_ABI *CreateMutex)();
@@ -67,7 +67,8 @@ typedef struct _LNX_DRV_IMPORT_TABLE {
 } LNX_DRV_IMPORT_TABLE, *PLNX_DRV_IMPORT_TABLE;
 
 typedef struct _LNX_DRV_EXPORT_TABLE {
-    VOID (ELF_ABI *Exp0)(VOID);
+    VOID (ELF_ABI *QueryDriverInfo)(VOID);
+    VOID (ELF_ABI *QueryDeviceInfo)(VOID);
 } LNX_DRV_EXPORT_TABLE, *PLNX_DRV_EXPORT_TABLE;
 
 typedef NTSTATUS (ELF_ABI LNX_DRV_ENTRY_POINT)(IN PLNX_DRV_IMPORT_TABLE ImportTable,

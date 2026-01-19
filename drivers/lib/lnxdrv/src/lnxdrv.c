@@ -8,12 +8,9 @@ typedef struct _LNX_DRIVER_EXTENSION {
     LNX_DRV_EXPORT_TABLE ExportTable;
 } LNX_DRIVER_EXTENSION, *PLNX_DRIVER_EXTENSION;
 
-static VOID LnxDbgPrint(IN PCSTR Format, ...)
+static VOID LnxDbgPrint(IN PCSTR Format, IN va_list ArgList)
 {
-    va_list ArgList;
-    va_start(ArgList, Format);
     vDbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_INFO_LEVEL, Format, ArgList);
-    va_end(ArgList);
 }
 
 static PVOID LnxAllocateMemory(IN SIZE_T Size)
@@ -225,6 +222,8 @@ NTSTATUS LnxInitializeDriver(IN PDRIVER_OBJECT DriverObject,
 	RtlZeroMemory(DriverExtension, sizeof(*DriverExtension));
 	return Status;
     }
+
+    DriverExtension->ExportTable.QueryDriverInfo();
 
     DriverObject->AddDevice = LnxDrvAddDevice;
     DriverObject->MajorFunction[IRP_MJ_CREATE] = LnxDrvDispatchCreate;
