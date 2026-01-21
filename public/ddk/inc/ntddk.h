@@ -175,7 +175,7 @@ NTAPI NTSYSAPI PVOID ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
 					   IN SIZE_T Size,
 					   IN ULONG Tag);
 
-NTAPI NTSYSAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
+NTAPI NTSYSAPI VOID ExFreePoolWithTag(IN PCVOID Pointer,
 				      IN ULONG Tag);
 
 FORCEINLINE NTAPI PVOID ExAllocatePool(IN POOL_TYPE PoolType,
@@ -184,7 +184,7 @@ FORCEINLINE NTAPI PVOID ExAllocatePool(IN POOL_TYPE PoolType,
     return ExAllocatePoolWithTag(PoolType, Size, 0);
 }
 
-FORCEINLINE NTAPI VOID ExFreePool(IN PVOID Pointer)
+FORCEINLINE NTAPI VOID ExFreePool(IN PCVOID Pointer)
 {
     ExFreePoolWithTag(Pointer, 0);
 }
@@ -1695,7 +1695,7 @@ NTAPI NTSYSAPI NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
 typedef PVOID (NTAPI *PALLOCATE_FUNCTION)(IN POOL_TYPE PoolType,
 					  IN SIZE_T NumberOfBytes,
 					  IN ULONG Tag);
-typedef VOID (NTAPI *PFREE_FUNCTION)(IN PVOID Buffer);
+typedef VOID (NTAPI *PFREE_FUNCTION)(IN PCVOID Buffer);
 
 typedef struct LOOKASIDE_ALIGN _LOOKASIDE_LIST {
     SLIST_HEADER ListHead;

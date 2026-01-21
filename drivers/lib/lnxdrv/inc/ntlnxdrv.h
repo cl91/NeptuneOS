@@ -58,7 +58,7 @@ typedef VOID ELF_ABI (*LNX_DRV_THREAD_ENTRY)(PVOID);
 typedef struct _LNX_DRV_IMPORT_TABLE {
     VOID (MS_ABI *DbgPrint)(IN PCSTR Format, IN va_list ArgList);
     PVOID (MS_ABI *AllocateMemory)(IN SIZE_T Size);
-    VOID (MS_ABI *FreeMemory)(IN PVOID Ptr);
+    VOID (MS_ABI *FreeMemory)(IN PCVOID Ptr);
     HANDLE (MS_ABI *CreateMutex)();
     VOID (MS_ABI *ReleaseMutex)(IN HANDLE Handle);
     VOID (MS_ABI *WaitForSingleObject)(IN HANDLE ObjectHandle);

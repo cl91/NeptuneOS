@@ -18,7 +18,7 @@ static PVOID LnxAllocateMemory(IN SIZE_T Size)
     return ExAllocatePool(NonPagedPool, Size);
 }
 
-static VOID LnxFreeMemory(IN PVOID Ptr)
+static VOID LnxFreeMemory(IN PCVOID Ptr)
 {
     ExFreePool(Ptr);
 }

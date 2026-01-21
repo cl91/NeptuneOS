@@ -2325,7 +2325,7 @@ NTAPI PVOID RtlAllocateHeap(IN PVOID HeapPtr,
  */
 BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 		    ULONG Flags,	/* [in] Heap freeing flags */
-		    PVOID Ptr)	/* [in] Address of memory to free */
+		    PCVOID Ptr)	/* [in] Address of memory to free */
 {
     PHEAP Heap;
     PHEAP_ENTRY HeapEntry;
@@ -3670,7 +3670,7 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
  *
  * @implemented
  */
-BOOLEAN RtlValidateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Block)
+BOOLEAN RtlValidateHeap(HANDLE HeapPtr, ULONG Flags, PCVOID Block)
 {
     PHEAP Heap = (PHEAP) HeapPtr;
     BOOLEAN HeapLocked = FALSE;

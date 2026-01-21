@@ -156,7 +156,7 @@ NTAPI PVOID ExAllocatePoolWithTag(IN POOL_TYPE PoolType,
     return RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, Size);
 }
 
-NTAPI VOID ExFreePoolWithTag(IN PVOID Pointer,
+NTAPI VOID ExFreePoolWithTag(IN PCVOID Pointer,
 			     IN ULONG Tag)
 {
     PDMA_POOL DmaPool = IopPtrToDmaPool(Pointer);
