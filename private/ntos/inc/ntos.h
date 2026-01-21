@@ -1,6 +1,6 @@
 #pragma once
 
-/* Uncomment this to turn on debugging outputs specific to Ob */
+/* Uncomment this to enable debugging outputs specific to Ob */
 /* #define OBDBG */
 
 /* Uncomment this to enable debugging outputs specific to Mm */
