@@ -77,7 +77,7 @@ echo "####################################################"
 cd "$(dirname "$0")"
 RTLIB=$(echo ${PWD}/compiler-rt/libclang_rt.builtins-${RTLIB_ARCH}.a)
 
-mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers/linux,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers/linux/build,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
 
 cd $BUILDDIR
 PE_INC=$(echo ${PWD}/pe_inc)
@@ -324,9 +324,13 @@ echo "---- Building linkable userspace extension drivers ----"
 echo
 LNX_BUILD="$PWD/build"
 LNX_SRCDIR=../../../drivers/linux
-LNX_MAKEOPTS="ARCH=ntos CC=clang LD=ld.lld CLANG_TARGET_FLAGS=${ELF_TRIPLE}"
+LNX_MAKEOPTS="ARCH=ntos LLVM=1 CLANG_TARGET_FLAGS=${ELF_TRIPLE}"
+cp $LNX_SRCDIR/arch/ntos/configs/defconfig $LNX_BUILD/.config
+if [[ $BUILD_TYPE != "Release" ]]; then
+   cat $LNX_SRCDIR/arch/ntos/configs/defconfig.debug >> $LNX_BUILD/.config
+fi
 make -C $LNX_SRCDIR O=$LNX_BUILD $LNX_MAKEOPTS \
-     -j$(nproc) defconfig all compile_commands.json || build_failed
+     -j$(nproc) olddefconfig all compile_commands.json || build_failed
 cmake ../../../drivers/linux/arch/ntos/lnxdrv \
       -DTRIPLE=${ELF_TRIPLE} \
       -DNTOS_SRC_ROOT=$PWD/../../.. \

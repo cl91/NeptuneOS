@@ -3,15 +3,15 @@
 
 LIST_ENTRY IopDmaPoolList;
 
-#if DBG
 VOID IoDbgPrintMsg(IN PCSTR String)
 {
+#if DBG
     while (*String) {
 	seL4_DebugPutChar(*String);
 	String++;
     }
-}
 #endif
+}
 
 NTAPI VOID ObReferenceObject(IN PVOID Obj)
 {
