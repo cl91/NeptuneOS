@@ -24,6 +24,13 @@ FORCEINLINE VOID PAGED_CODE()
     assert(IoThreadIsAtPassiveLevel());
 }
 
+#if DBG
+VOID IoDbgPrintMsg(IN PCSTR String);
+#else
+FORCEINLINE VOID IoDbgPrintMsg(IN PCHAR String) {}
+#endif
+
+
 /*
  * Returned by IO completion routines to indicate that the system
  * should continue to execute the higher-level completion routines.

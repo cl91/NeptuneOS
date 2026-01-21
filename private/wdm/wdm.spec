@@ -60,6 +60,7 @@
 @ stdcall IoUnregisterShutdownNotification(ptr)
 @ stdcall IoAllocateErrorLogEntry(ptr long)
 @ stdcall IoWriteErrorLogEntry(ptr)
+@ stdcall IoDbgPrintMsg(str)
 @ stdcall IoEnablePort(long long)
 @ stdcall IoWMIRegistrationControl(ptr long)
 @ stdcall IoWMIDeviceObjectToProviderId(ptr)

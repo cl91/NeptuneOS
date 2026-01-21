@@ -8,9 +8,9 @@ typedef struct _LNX_DRIVER_EXTENSION {
     LNX_DRV_EXPORT_TABLE ExportTable;
 } LNX_DRIVER_EXTENSION, *PLNX_DRIVER_EXTENSION;
 
-static VOID LnxDbgPrint(IN PCSTR Format, IN va_list ArgList)
+static VOID LnxDbgPrint(IN PCSTR String)
 {
-    vDbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_INFO_LEVEL, Format, ArgList);
+    IoDbgPrintMsg(String);
 }
 
 static PVOID LnxAllocateMemory(IN SIZE_T Size)

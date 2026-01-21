@@ -3,6 +3,16 @@
 
 LIST_ENTRY IopDmaPoolList;
 
+#if DBG
+VOID IoDbgPrintMsg(IN PCSTR String)
+{
+    while (*String) {
+	seL4_DebugPutChar(*String);
+	String++;
+    }
+}
+#endif
+
 NTAPI VOID ObReferenceObject(IN PVOID Obj)
 {
     POBJECT_HEADER Header = Obj;
@@ -132,7 +142,7 @@ static PVOID IopAllocateDmaPool(IN MEMORY_CACHING_TYPE CacheType,
     return RtlAllocateHeap(DmaPool->Heap, HEAP_ZERO_MEMORY, Size);
 }
 
-static PDMA_POOL IopPtrToDmaPool(IN PVOID Ptr)
+static PDMA_POOL IopPtrToDmaPool(IN PCVOID Ptr)
 {
     LoopOverList(DmaPool, &IopDmaPoolList, DMA_POOL, Link) {
 	if ((ULONG_PTR)Ptr >= (ULONG_PTR)DmaPool->VirtualAddress &&
