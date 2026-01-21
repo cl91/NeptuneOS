@@ -10,7 +10,11 @@ typedef struct _LNX_DRIVER_EXTENSION {
 
 static VOID LnxDbgPrint(IN PCSTR String)
 {
+#if DBG
     IoDbgPrintMsg(String);
+#else
+    NtDisplayStringA(String);
+#endif
 }
 
 static PVOID LnxAllocateMemory(IN SIZE_T Size)
