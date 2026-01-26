@@ -27,11 +27,19 @@ static VOID LnxFreeMemory(IN PCVOID Ptr)
     ExFreePool(Ptr);
 }
 
-static HANDLE LnxCreateMutex()
+static VOID LnxSetEvent(IN PVOID Event)
 {
-    PKEVENT Event = ExAllocatePool(NonPagedPool, sizeof(KEVENT));
-    KeInitializeEvent(Event, SynchronizationEvent, FALSE);
-    return Event;
+    KeSetEvent(Event);
+}
+
+static VOID LnxWaitForSingleObject(IN PVOID Event, IN BOOLEAN Alertable)
+{
+    KeWaitForSingleObject(Event, Executive, KernelMode, Alertable, NULL);
+}
+
+static VOID __attribute((noreturn)) LnxRaiseStatus(IN NTSTATUS Status)
+{
+    RtlRaiseStatus(Status);
 }
 
 static NTAPI VOID LnxThreadWorkerRoutine(IN PDEVICE_OBJECT DevObj,
@@ -56,8 +64,9 @@ static LNX_DRV_IMPORT_TABLE LnxDrvImportTable = {
     .DbgPrint = LnxDbgPrint,
     .AllocateMemory = LnxAllocateMemory,
     .FreeMemory = LnxFreeMemory,
-    .CreateMutex = LnxCreateMutex,
-    .CreateThread = LnxCreateThread
+    .SetEvent = LnxSetEvent,
+    .WaitForSingleObject = LnxWaitForSingleObject,
+    .RaiseStatus = LnxRaiseStatus
 };
 
 static NTAPI NTSTATUS LnxDrvAddDevice(IN struct _DRIVER_OBJECT *DriverObject,

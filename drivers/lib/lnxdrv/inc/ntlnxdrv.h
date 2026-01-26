@@ -59,11 +59,9 @@ typedef struct _LNX_DRV_IMPORT_TABLE {
     VOID (MS_ABI *DbgPrint)(IN PCSTR String);
     PVOID (MS_ABI *AllocateMemory)(IN SIZE_T Size);
     VOID (MS_ABI *FreeMemory)(IN PCVOID Ptr);
-    HANDLE (MS_ABI *CreateMutex)();
-    VOID (MS_ABI *ReleaseMutex)(IN HANDLE Handle);
-    VOID (MS_ABI *WaitForSingleObject)(IN HANDLE ObjectHandle);
-    HANDLE (MS_ABI *CreateThread)(IN LNX_DRV_THREAD_ENTRY Entry, PVOID Arg);
-    VOID (MS_ABI *TerminateThread)(IN HANDLE Handle);
+    VOID (MS_ABI *SetEvent)(IN PVOID Event);
+    VOID (MS_ABI *WaitForSingleObject)(IN HANDLE Event, IN BOOLEAN Alertable);
+    VOID (MS_ABI __attribute((noreturn)) *RaiseStatus)(IN NTSTATUS Status);
 } LNX_DRV_IMPORT_TABLE, *PLNX_DRV_IMPORT_TABLE;
 
 typedef struct _LNX_DRV_EXPORT_TABLE {
