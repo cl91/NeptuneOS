@@ -53,14 +53,22 @@ Revision History:
 #define ELF_ABI
 #endif
 
-typedef VOID ELF_ABI (*LNX_DRV_THREAD_ENTRY)(PVOID);
+typedef VOID (ELF_ABI *PLNX_WORKITEM_CALLBACK)(PVOID Context);
 
 typedef struct _LNX_DRV_IMPORT_TABLE {
     VOID (MS_ABI *DbgPrint)(IN PCSTR String);
     PVOID (MS_ABI *AllocateMemory)(IN SIZE_T Size);
     VOID (MS_ABI *FreeMemory)(IN PCVOID Ptr);
+    VOID *(MS_ABI *AllocateEvent)(IN BOOLEAN WaitAll);
+    VOID (MS_ABI *FreeEvent)(IN PVOID Event);
     VOID (MS_ABI *SetEvent)(IN PVOID Event);
+    VOID (MS_ABI *ClearEvent)(IN PVOID Event);
     VOID (MS_ABI *WaitForSingleObject)(IN HANDLE Event, IN BOOLEAN Alertable);
+    VOID *(MS_ABI *AllocateWorkItem)();
+    VOID (MS_ABI *FreeWorkItem)(IN PVOID IoWorkItem);
+    VOID (MS_ABI *QueueWorkItem)(IN PVOID IoWorkItem,
+				 IN PLNX_WORKITEM_CALLBACK Callback,
+				 IN PVOID Context);
     VOID (MS_ABI __attribute((noreturn)) *RaiseStatus)(IN NTSTATUS Status);
 } LNX_DRV_IMPORT_TABLE, *PLNX_DRV_IMPORT_TABLE;
 

@@ -27,9 +27,30 @@ static VOID LnxFreeMemory(IN PCVOID Ptr)
     ExFreePool(Ptr);
 }
 
+static VOID *LnxAllocateEvent(IN BOOLEAN WaitAll)
+{
+    PKEVENT Event = ExAllocatePool(NonPagedPool, sizeof(KEVENT));
+    if (!Event) {
+	return NULL;
+    }
+    KeInitializeEvent(Event, WaitAll ? SynchronizationEvent : NotificationEvent, FALSE);
+    return Event;
+}
+
+static VOID LnxFreeEvent(IN PVOID Event)
+{
+    KeClearEvent(Event);
+    ExFreePool(Event);
+}
+
 static VOID LnxSetEvent(IN PVOID Event)
 {
     KeSetEvent(Event);
+}
+
+static VOID LnxClearEvent(IN PVOID Event)
+{
+    KeClearEvent(Event);
 }
 
 static VOID LnxWaitForSingleObject(IN PVOID Event, IN BOOLEAN Alertable)
@@ -37,35 +58,63 @@ static VOID LnxWaitForSingleObject(IN PVOID Event, IN BOOLEAN Alertable)
     KeWaitForSingleObject(Event, Executive, KernelMode, Alertable, NULL);
 }
 
-static VOID __attribute((noreturn)) LnxRaiseStatus(IN NTSTATUS Status)
-{
-    RtlRaiseStatus(Status);
-}
+typedef struct _LNX_WORKITEM {
+    IO_WORKITEM WorkItem;
+    PLNX_WORKITEM_CALLBACK Callback;
+    PVOID Context;
+} LNX_WORKITEM, *PLNX_WORKITEM;
 
-static NTAPI VOID LnxThreadWorkerRoutine(IN PDEVICE_OBJECT DevObj,
-					 IN PVOID Arg)
+static VOID *LnxAllocateWorkItem()
 {
-    LNX_DRV_THREAD_ENTRY Entry = (PVOID)DevObj;
-    Entry(Arg);
-}
-
-static HANDLE LnxCreateThread(IN LNX_DRV_THREAD_ENTRY Entry, PVOID Arg)
-{
-    PIO_WORKITEM WorkItem = IoAllocateWorkItem((PVOID)Entry);
+    PLNX_WORKITEM WorkItem = ExAllocatePool(NonPagedPool, sizeof(LNX_WORKITEM));
     if (!WorkItem) {
 	return NULL;
     }
-    IoQueueWorkItem(WorkItem, LnxThreadWorkerRoutine,
-		    DelayedWorkQueue, Arg);
+    IoInitializeWorkItem(NULL, &WorkItem->WorkItem);
     return WorkItem;
+}
+
+static VOID LnxFreeWorkItem(IN PVOID WorkItem)
+{
+    ExFreePool(WorkItem);
+}
+
+static NTAPI VOID LnxWorkItemCallback(IN OPTIONAL PDEVICE_OBJECT DeviceObject,
+				      IN PVOID Context)
+{
+    PLNX_WORKITEM WorkItem = Context;
+    assert(WorkItem);
+    assert(WorkItem->Callback);
+    WorkItem->Callback(WorkItem->Context);
+}
+
+static VOID LnxQueueWorkItem(IN PVOID Handle,
+			     IN PLNX_WORKITEM_CALLBACK Callback,
+			     IN PVOID Context)
+{
+    PLNX_WORKITEM WorkItem = Handle;
+    WorkItem->Callback = Callback;
+    WorkItem->Context = Context;
+    IoQueueWorkItem(&WorkItem->WorkItem, LnxWorkItemCallback, DelayedWorkQueue, WorkItem);
+}
+
+static VOID __attribute((noreturn)) LnxRaiseStatus(IN NTSTATUS Status)
+{
+    RtlRaiseStatus(Status);
 }
 
 static LNX_DRV_IMPORT_TABLE LnxDrvImportTable = {
     .DbgPrint = LnxDbgPrint,
     .AllocateMemory = LnxAllocateMemory,
     .FreeMemory = LnxFreeMemory,
+    .AllocateEvent = LnxAllocateEvent,
+    .FreeEvent = LnxFreeEvent,
     .SetEvent = LnxSetEvent,
+    .ClearEvent = LnxClearEvent,
     .WaitForSingleObject = LnxWaitForSingleObject,
+    .AllocateWorkItem = LnxAllocateWorkItem,
+    .FreeWorkItem = LnxFreeWorkItem,
+    .QueueWorkItem = LnxQueueWorkItem,
     .RaiseStatus = LnxRaiseStatus
 };
 
