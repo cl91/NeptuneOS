@@ -5,6 +5,24 @@ LIST_ENTRY IopPendingTimerList;
 
 ULONG KiStallScaleFactor;
 
+#if defined(_M_IX86) || defined(_M_AMD64)
+/* Use the ordered version of rdtsc to get an accurate time stamp counter. */
+FORCEINLINE ULONG64 KiReadTimeStampCounter() {
+    ULONG Unused;
+    return __rdtscp(&Unused);
+}
+#elif defined(_M_ARM64)
+/* Read the CNTVCT cpu system register which provides a consistent value of
+ * the virtual system counter across the system. */
+FORCEINLINE ULONG64 KiReadTimeStampCounter() {
+    ULONG64 VirtualTimerCounter;
+    asm volatile ("mrs %0, cntvct_el0; " : "=r"(VirtualTimerCounter));
+    return VirtualTimerCounter;
+}
+#else
+#error "Unsupported architecture"
+#endif
+
 static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer,
 				  IN EVENT_TYPE EventType,
 				  IN BOOLEAN OneTime)
@@ -243,13 +261,13 @@ NTAPI ULONG KeQueryTimeIncrement()
 NTAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds)
 {
     /* Get the initial time */
-    ULONG64 StartTime = __rdtsc();
+    ULONG64 StartTime = KiReadTimeStampCounter();
 
     /* Calculate the ending time */
     ULONG64 EndTime = StartTime + KiStallScaleFactor * MicroSeconds;
 
     /* Loop until time is elapsed */
-    while (__rdtsc() < EndTime);
+    while (KiReadTimeStampCounter() < EndTime);
 }
 
 /**

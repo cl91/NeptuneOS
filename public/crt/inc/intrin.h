@@ -264,6 +264,12 @@ static inline long long InterlockedDecrement64(volatile long long *lpAddend)
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 
+static __inline__ unsigned long long __attribute__((__always_inline__, __nodebug__))
+__rdtscp(unsigned int *aux)
+{
+    return __builtin_ia32_rdtscp(aux);
+}
+
 /*
  * Yields processor time
  */
@@ -577,14 +583,6 @@ static inline unsigned char BitScanReverse64(unsigned long long *const Index,
 {
     *Index = 63 - __builtin_clz(Mask);
     return Mask ? 1 : 0;
-}
-
-/* Read the CNTVCT cpu system register which provides a consistent value of
- * the virtual system counter across the system */
-static inline unsigned long long __rdtsc() {
-    unsigned long long cntvct;
-    asm volatile ("mrs %0, cntvct_el0; " : "=r"(cntvct));
-    return cntvct;
 }
 
 #else
