@@ -1152,10 +1152,10 @@ FORCEINLINE PAGING_ATTRIBUTES MiGetPagingAttributesFromCacheType(MEMORY_CACHING_
 }
 
 /*
- * Allocate physically contiguous memory of given size. The physical memory
- * allocated is always aligned on the smallest power of two that is at least
- * the given size. In other words, let n be the smallest n such that
- * 2^n >= Length, then the returned physical address is always aligned by 2^n.
+ * Allocate physically contiguous memory of given size. Memory allocated is
+ * always aligned on the smallest power of two that is at least the given size.
+ * In other words, let n be the smallest n such that 2^n >= Length, then both
+ * the returned physical address and virtual address are always aligned by 2^n.
  */
 NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN MWORD Length,
@@ -1165,16 +1165,16 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      OUT MWORD *PhyAddr)
 {
     Length = PAGE_ALIGN_UP(Length);
-    ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_LARGE_PAGES;
-    PMMVAD Vad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
-				     USER_ADDRESS_END, Length, 0, 0, Flags, &Vad));
-    assert(Vad != NULL);
-    PUNTYPED Untyped = NULL;
     ULONG Log2Size = 0;
     while ((1ULL << Log2Size) < Length) {
 	Log2Size++;
     }
+    ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_LARGE_PAGES;
+    PMMVAD Vad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
+				     USER_ADDRESS_END, Length, Log2Size, 0, Flags, &Vad));
+    assert(Vad != NULL);
+    PUNTYPED Untyped = NULL;
     RET_ERR_EX(MmRequestUntypedEx(Log2Size, HighestPhyAddr, &Untyped),
 	       MmDeleteVad(Vad));
     assert(Vad->Flags.PhysicalMapping);
