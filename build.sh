@@ -1,4 +1,7 @@
+#!/bin/bash
+
 # Default architecture and build type
+
 ARCH=i386
 DEFAULT_PLATFORM=pc99
 BUILD_TYPE=Debug

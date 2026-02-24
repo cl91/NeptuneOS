@@ -441,9 +441,6 @@ typedef struct _IO_PNP_CONTROL_QUERY_IDS_DATA {
     IN OUT CHAR DeviceInstance[]; /* Output buffer follows device instance */
 } IO_PNP_CONTROL_QUERY_IDS_DATA, *PIO_PNP_CONTROL_QUERY_IDS_DATA;
 
-/*
- * Server-side data structure for PLUGPLAY_EVENT_BLOCK
- */
 typedef struct _IO_PNP_EVENT_BLOCK {
     GUID EventGuid;
     PLUGPLAY_EVENT_CATEGORY EventCategory;
@@ -454,12 +451,15 @@ typedef struct _IO_PNP_EVENT_BLOCK {
 	    CHAR SymbolicLinkName[];
 	} DeviceClass;
 	struct {
+	    ULONG Dummy;  // Добавлено фиктивное поле
 	    CHAR DeviceIds[];
 	} TargetDevice;
 	struct {
+	    ULONG Dummy;  // Добавлено фиктивное поле
 	    CHAR DeviceId[];
 	} InstallDevice;
 	struct {
+	    ULONG Dummy;  // Добавлено фиктивное поле
 	    CHAR DeviceIds[];
 	} CustomNotification; /* Used for IoReportTargetDeviceChange */
 	struct {

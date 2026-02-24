@@ -1,0 +1,23 @@
+name: Build Docker Image
+
+on:
+  push:
+    branches: [ master ]  # можно заменить на нужные ветки
+  pull_request:
+    branches: [ master ]  # опционально
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Change to build directory and build Docker image
+      run: |
+        cd build
+        docker build -t neptune-builder .
+      
+    - name: Optional - Show built images
+      run: docker images | grep neptune-builder

@@ -1,3 +1,4 @@
+
 # Neptune OS: a Windows NT personality for the seL4 microkernel
 
 Neptune OS is a Windows NT personality for the seL4 microkernel. It implements what
@@ -117,6 +118,26 @@ The tested setup is the `lsp-mode` package on `emacs` with `clangd` as the langu
 server. The `build.sh` script will generate the `compile_commands.json` file for
 `clangd`. You will need to install [jq](https://jqlang.github.io/jq/) for this
 purpose.
+
+### Docker Build
+
+For a containerized build environment, it is recommended to use Docker. First, navigate to the build directory and build the Docker image:
+
+```bash
+cd build
+docker build -t neptune-builder .
+```
+
+To build with specific architecture and build type parameters:
+
+```bash
+docker build \
+  --build-arg ARCH=arm64 \
+  --build-arg BUILD_TYPE=debug \
+  -t neptune-builder .
+```
+
+### Local Build
 
 Clone the project first (make sure you use `git clone --recurse-submodules` since
 we include the seL4 kernel as a submodule) and then run
