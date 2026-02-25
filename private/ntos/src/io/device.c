@@ -638,6 +638,10 @@ NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
     assert(DeviceHandle != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
 
+    if (DeviceName && DeviceName[0] != OBJ_NAME_PATH_SEPARATOR) {
+	return STATUS_OBJECT_PATH_INVALID;
+    }
+
     PIO_DEVICE_OBJECT DeviceObject = NULL;
     DEVICE_OBJ_CREATE_CONTEXT CreaCtx = {
 	.DriverObject = Thread->Process->DriverObject,
