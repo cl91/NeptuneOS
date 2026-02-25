@@ -438,7 +438,7 @@ static NTSTATUS AcpiCreateRegistryTable(HANDLE ParentKeyHandle,
 	}
 	KeyHandle = SubKeyHandle;
 
-	_snwprintf(OemRevision, sizeof(OemRevision), L"%08X",
+	_snwprintf(OemRevision, ARRAYSIZE(OemRevision), L"%08X",
 		   OutTable->OemRevision);
 	RtlInitUnicodeString(&HardwareKeyName, OemRevision);
 	InitializeObjectAttributes(&ObjectAttributes, &HardwareKeyName,

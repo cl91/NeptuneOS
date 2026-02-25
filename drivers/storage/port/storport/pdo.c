@@ -683,7 +683,7 @@ static VOID StorPdoGetDeviceId(IN PPDO_DEVICE_EXTENSION DevExt,
 			  sizeof(DevExt->InquiryBuffer->ProductId), '\0');
     StorSanitizeInquiryId(DevExt->InquiryBuffer->ProductRevisionLevel, ProductRevisionLevel,
 			  sizeof(DevExt->InquiryBuffer->ProductRevisionLevel), '\0');
-    _snwprintf(Id, QUERY_ID_BUFSIZE,
+    _snwprintf(Id, QUERY_ID_BUFSIZE / sizeof(WCHAR),
 	       L"SCSI\\%hs&Ven_%hs&Prod_%hs&Rev_%hs",
 	       StorGetDeviceTypeString(DevExt->InquiryBuffer->DeviceType),
 	       VendorId,
@@ -694,7 +694,7 @@ static VOID StorPdoGetDeviceId(IN PPDO_DEVICE_EXTENSION DevExt,
 static VOID StorPdoGetInstanceId(IN PPDO_DEVICE_EXTENSION DevExt,
 				 OUT PWSTR Id)
 {
-    _snwprintf(Id, QUERY_ID_BUFSIZE, L"%x%x%x",
+    _snwprintf(Id, QUERY_ID_BUFSIZE / sizeof(WCHAR), L"%x%x%x",
 	       DevExt->Bus, DevExt->Target, DevExt->Lun);
 }
 
@@ -720,7 +720,7 @@ static VOID StorPdoGetHardwareIds(IN PPDO_DEVICE_EXTENSION DevExt,
      * Example: SCSI\DiskQEMU____HARDDISK________2.5+
      */
     ULONG RemainingSize = QUERY_ID_BUFSIZE - 1;
-    ULONG WcharsWritten = _snwprintf(Id, RemainingSize,
+    ULONG WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 				     L"SCSI\\%hs%hs%hs%hs",
 				     DeviceType,
 				     VendorId,
@@ -738,7 +738,7 @@ static VOID StorPdoGetHardwareIds(IN PPDO_DEVICE_EXTENSION DevExt,
      *
      * Example: SCSI\DiskQEMU____HARDDISK________
      */
-    WcharsWritten = _snwprintf(Id, RemainingSize,
+    WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 			       L"SCSI\\%hs%hs%hs",
 			       DeviceType,
 			       VendorId,
@@ -755,7 +755,7 @@ static VOID StorPdoGetHardwareIds(IN PPDO_DEVICE_EXTENSION DevExt,
      *
      * Example: SCSI\DiskQEMU____
      */
-    WcharsWritten = _snwprintf(Id, RemainingSize,
+    WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 			       L"SCSI\\%hs%hs",
 			       DeviceType,
 			       VendorId) + 1;
@@ -771,7 +771,7 @@ static VOID StorPdoGetHardwareIds(IN PPDO_DEVICE_EXTENSION DevExt,
      *
      * Example: SCSI\QEMU____HARDDISK________2
      */
-    WcharsWritten = _snwprintf(Id, RemainingSize,
+    WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 			       L"SCSI\\%hs%hs%hc",
 			       VendorId,
 			       ProductId,
@@ -788,7 +788,7 @@ static VOID StorPdoGetHardwareIds(IN PPDO_DEVICE_EXTENSION DevExt,
      *
      * Example: QEMU____HARDDISK________2
      */
-    WcharsWritten = _snwprintf(Id, RemainingSize,
+    WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 			       L"%hs%hs%hc",
 			       VendorId,
 			       ProductId,
@@ -805,7 +805,7 @@ static VOID StorPdoGetHardwareIds(IN PPDO_DEVICE_EXTENSION DevExt,
      *
      * Example: GenDisk
      */
-    WcharsWritten = _snwprintf(Id, RemainingSize,
+    WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 			       L"%hs",
 			       GenericName) + 1;
     Id += WcharsWritten;
@@ -857,7 +857,7 @@ static VOID StorPdoGetCompatibleIds(IN PPDO_DEVICE_EXTENSION DevExt,
      * SCSI\<DEVICE>
      */
     ULONG RemainingSize = QUERY_ID_BUFSIZE - 1;
-    ULONG WcharsWritten = _snwprintf(Id, RemainingSize,
+    ULONG WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 				     L"SCSI\\%hs",
 				     DeviceType) + 1;
     Id += WcharsWritten;
@@ -872,7 +872,7 @@ static VOID StorPdoGetCompatibleIds(IN PPDO_DEVICE_EXTENSION DevExt,
      *
      * Example: SCSI\Sata
      */
-    WcharsWritten = _snwprintf(Id, RemainingSize,
+    WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 			       L"SCSI\\%hs",
 			       StorGetStorageBusTypeString(DevExt)) + 1;
     Id += WcharsWritten;
@@ -887,7 +887,7 @@ static VOID StorPdoGetCompatibleIds(IN PPDO_DEVICE_EXTENSION DevExt,
      *
      * Example: SCSI\Sata
      */
-    WcharsWritten = _snwprintf(Id, RemainingSize,
+    WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 			       L"SCSI\\%hs%hs",
 			       StorGetStorageBusTypeString(DevExt),
 			       DeviceType) + 1;
@@ -901,7 +901,7 @@ static VOID StorPdoGetCompatibleIds(IN PPDO_DEVICE_EXTENSION DevExt,
     /*
      * SCSI\RAW
      */
-    WcharsWritten = _snwprintf(Id, RemainingSize,
+    WcharsWritten = _snwprintf(Id, RemainingSize / sizeof(WCHAR),
 			       L"SCSI\\RAW") + 1;
     Id += WcharsWritten;
 

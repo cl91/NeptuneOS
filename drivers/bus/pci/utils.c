@@ -513,7 +513,7 @@ NTSTATUS PciSaveBiosConfig(IN PPCI_PDO_EXTENSION DeviceExtension,
 	return Status;
 
     /* Create the key value based on the device and function number */
-    _snwprintf(Buffer, sizeof(Buffer), L"DEV_%02x&FUN_%02x",
+    _snwprintf(Buffer, ARRAYSIZE(Buffer), L"DEV_%02x&FUN_%02x",
 	       DeviceExtension->Slot.Bits.DeviceNumber,
 	       DeviceExtension->Slot.Bits.FunctionNumber);
     RtlInitUnicodeString(&KeyValue, Buffer);

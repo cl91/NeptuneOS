@@ -365,7 +365,8 @@ static NTSTATUS PnpPopulateProcessorDatabase(IN PSYSTEM_BASIC_INFORMATION BasicI
     for (ULONG i = 0; i < BasicInfo->NumberOfProcessors; i++) {
 	/* Open the CPU hardware description key */
 	WCHAR Buffer[256];
-	_snwprintf(Buffer, sizeof(Buffer), L"%ws\\System\\CentralProcessor\\%d",
+	_snwprintf(Buffer, ARRAYSIZE(Buffer),
+		   L"%ws\\System\\CentralProcessor\\%d",
 		   HARDWARE_DESCRIPTION_KEY, i);
 	UNICODE_STRING KeyName;
 	RtlInitUnicodeString(&KeyName, Buffer);

@@ -463,7 +463,7 @@ NTSTATUS PciPdoCreate(IN PPCI_FDO_EXTENSION DeviceExtension,
 
     /* Create the standard PCI device name for a PDO */
     WCHAR DeviceName[32];
-    _snwprintf(DeviceName, sizeof(DeviceName), L"\\Device\\NTPNP_PCI%04d", SequenceNumber);
+    _snwprintf(DeviceName, ARRAYSIZE(DeviceName), L"\\Device\\NTPNP_PCI%04d", SequenceNumber);
     UNICODE_STRING DeviceString;
     RtlInitUnicodeString(&DeviceString, DeviceName);
 

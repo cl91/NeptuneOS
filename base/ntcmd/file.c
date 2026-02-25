@@ -647,7 +647,7 @@ NTSTATUS FlushBuffers(IN PCSTR Drive)
 {
     HANDLE Volume = NULL;
     WCHAR Buffer[16];
-    _snwprintf(Buffer, sizeof(Buffer)/sizeof(WCHAR), L"%s:", Drive);
+    _snwprintf(Buffer, ARRAYSIZE(Buffer), L"%s:", Drive);
     NTSTATUS Status = OpenFile(&Volume, Buffer, FALSE, FALSE);
     if (!NT_SUCCESS(Status)) {
 	return Status;
@@ -665,7 +665,7 @@ NTSTATUS DismountVolume(IN PCSTR Drive)
     RtlSetCurrentDirectory_U(&UnicodeString);
     HANDLE Volume = NULL;
     WCHAR Buffer[16];
-    _snwprintf(Buffer, sizeof(Buffer)/sizeof(WCHAR), L"%s:", Drive);
+    _snwprintf(Buffer, ARRAYSIZE(Buffer), L"%s:", Drive);
     NTSTATUS Status = OpenFile(&Volume, Buffer, FALSE, FALSE);
     if (!NT_SUCCESS(Status)) {
 	return Status;
