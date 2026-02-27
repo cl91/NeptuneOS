@@ -276,6 +276,10 @@ static NTSTATUS IopMarshalIoBuffers(OUT PIRP Irp,
 	 * the buffer is embedded in the IRP. Note this can only apply to input
 	 * buffer and not output buffer. */
 	if ((MWORD)Buffer < PAGE_SIZE) {
+	    /* We don't yet do this (whether the IRP comes from the Executive or
+	     * a driver process), so this path cannot be triggered. When we do
+	     * implement this, remove this assertion below. */
+	    assert(FALSE);
 	    assert((MWORD)Buffer == IoPacket->Request.InputBuffer);
 	    assert(BufferLength == IoPacket->Request.InputBufferLength);
 	    assert(BufferLength < IRP_DATA_BUFFER_SIZE);
@@ -2537,7 +2541,7 @@ reply:
 		Ok = IopPopulateIoCompleteMessageFromLocalIrp(DestIrp, Irp,
 							      RemainingBufferSize);
 	    } else if (Irp->Flags & IRP_DEALLOCATE_BUFFER) {
-		/* For locally generated IRPS, we need to deallocate the system buffer
+		/* For locally generated IRPs, we need to deallocate the system buffer
 		 * if previously allocated. */
 		Irp->Flags &= ~IRP_DEALLOCATE_BUFFER;
 		assert(Irp->SystemBuffer);

@@ -175,9 +175,9 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
     ULONG Flags;
     IO_DEVICE_OBJECT_PTR Device;
     IO_FILE_OBJECT_PTR File;
-    MWORD InputBuffer; /* If InputBufferLength is less than IRP_DATA_BUFFER_SIZE,
-			* this is the offset of input data embedded in this IRP.
-			* In this case InputBuffer will be smaller than PAGE_SIZE.
+    MWORD InputBuffer; /* If InputBuffer is less than PAGE_SIZE, it is the offset
+			* to the input data embedded in this IRP. In this case the
+			* InputBufferLength will be less than IRP_DATA_BUFFER_SIZE.
 			* Otherwise it is a pointer to the input data buffer in
 			* the address space of (1) when creating a new IRP, the
 			* original requestor or (2) when the IRP is queued on a
@@ -189,12 +189,14 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 			* words, READ IRP will read from the device and write to
 			* the OutputBuffer and WRITE IRP will read from the
 			* InputBuffer and write to the device. */
-    MWORD OutputBuffer;	/* See InputBuffer. This is used by IRP_MJ_READ and
-			 * IOCTL IRPs. Note if the OutputBuffer is less than
-			 * IRP_DATA_BUFFER_SIZE, when the IRP is queued on a
-			 * driver object this field is zero, and the driver
-			 * will store the output data in the ResponseData
-			 * member of IO_COMPLETED_MESSAGE, defined below. */
+    MWORD OutputBuffer;	/* Note OutputBuffer can be zero despite the IRP having
+			 * a non-zero OutputBufferLength. This can happen in
+			 * the following two cases: (1) the target device is
+			 * a mounted volume and the IRP comes from the cache
+			 * manager, which will take care of mapping the output
+			 * buffer later, and (2) the driver has stored the output
+			 * data in the ResponseData member of IO_COMPLETED_MESSAGE,
+			 * defined below. */
     ULONG InputBufferLength;
     ULONG OutputBufferLength;
     ULONG InputBufferPfnCount;

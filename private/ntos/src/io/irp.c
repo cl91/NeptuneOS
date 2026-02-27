@@ -338,35 +338,29 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* If the data are embedded in the IRP, for DIRECT_IO we need to allocate a
-     * server-side page, copy the input data there, and pass this page to the
-     * driver. However since this is a rare case (DIRECT_IO typically requires
-     * full pages or at least full sectors), at this point we do not bother to
-     * implement this and simply return error in this case. */
+    /* For DIRECT_IO you cannot embed the input data in the IRP. */
     if ((InputIoType & DirectIo) && (InputBuffer && InputBuffer < PAGE_SIZE)) {
-	assert(FALSE);
-	return STATUS_INVALID_PARAMETER;
-    }
-
-    /* For DIRECT_IO, the input buffer length must be large enough (see above).
-     * We already check this in NTDLL but this check is needed here for (malicious)
-     * clients that circumvent the normal system service interfaces in NTDLL. */
-    if ((InputIoType & DirectIo) &&
-	(InputBufferLength && InputBufferLength < IRP_DATA_BUFFER_SIZE)) {
 	assert(FALSE);
 	return STATUS_INVALID_PARAMETER;
     }
 
     /* If the requestor specified a NULL OutputBuffer with a non-zero
      * OutputBufferLength and the target device is not a mounted file system,
-     * it wants the driver to embed the data in the IRP, in which case the
-     * data size cannot be too large. In the case of a mounted file system,
-     * a READ IRP with a NULL OutputBuffer comes from the cache manager which
-     * will take care of mapping the cache pages later */
-    if (!OutputBuffer && !((DeviceObject->Vcb && Irp->MajorFunction == IRP_MJ_READ) ||
-			   OutputBufferLength < IRP_DATA_BUFFER_SIZE)) {
-	assert(FALSE);
-	return STATUS_INVALID_PARAMETER;
+     * it wants the driver to embed the data in the IRP, in which case the IO
+     * transfer type cannot be DIRECT_IO, and the data size cannot be too large.
+     * In the case of a mounted file system, a READ IRP with a NULL OutputBuffer
+     * comes from the cache manager which will take care of mapping the output
+     * buffer later. */
+    if (!OutputBuffer && OutputBufferLength &&
+	!(DeviceObject->Vcb && Irp->MajorFunction == IRP_MJ_READ)) {
+	if (OutputBufferLength >= IRP_DATA_BUFFER_SIZE) {
+	    assert(FALSE);
+	    return STATUS_INVALID_PARAMETER;
+	}
+	if (OutputIoType & DirectIo) {
+	    assert(FALSE);
+	    return STATUS_INVALID_PARAMETER;
+	}
     }
 
     /* If the OutputBuffer is not NULL, it is always interpreted as a pointer
@@ -381,7 +375,6 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
     /* Generate the PFN database if input IO type is direct IO */
     if (Irp->InputBuffer && (InputIoType & DirectIo)) {
 	assert(Irp->InputBuffer >= PAGE_SIZE);
-	assert(Irp->InputBufferLength >= IRP_DATA_BUFFER_SIZE);
 	if (!Irp->InputBufferPfn) {
 	    assert(!Irp->InputBufferPfnCount);
 	    if (!MmGeneratePageFrameDatabase(NULL, RequestorVSpace, InputBuffer,
@@ -408,7 +401,6 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
     /* Generate the PFN database if output IO type is direct IO */
     if (Irp->OutputBuffer && (OutputIoType & DirectIo)) {
 	assert(Irp->OutputBuffer >= PAGE_SIZE);
-	assert(Irp->OutputBufferLength >= IRP_DATA_BUFFER_SIZE);
 	if (!Irp->OutputBufferPfn) {
 	    assert(!Irp->OutputBufferPfnCount);
 	    if (!MmGeneratePageFrameDatabase(NULL, RequestorVSpace, OutputBuffer,

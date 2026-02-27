@@ -90,12 +90,14 @@ typedef seL4_Word MWORD;
 #endif
 
 /*
- * Maximum amount of data we can pass in the IRP itself. If user buffer
- * is equal to or greater than this size, we will directly map user buffer
- * into server or driver address space. This cannot exceed the service
- * message buffer size, and should be reasonably small (but not too small),
- * such that the overhead of mapping and unmapping exceeds the overhead of
- * copy.
+ * Maximum amount of data we can pass in the IRP itself. An IO requestor
+ * (either the Executive or a client driver process) can optionally embed
+ * the input data in the IRP if the data length is small enough. Note for
+ * device object with DIRECT_IO, you cannot do this as we need to generate
+ * PFN databases for IO buffers used in DIRECT_IO. This data length should
+ * be reasonably small such that the overhead of copying the data is less
+ * than the overhead of mapping and unmapping a memory page (which involves
+ * seL4 system calls, so around 500ns per mapping).
  */
 #define IRP_DATA_BUFFER_SIZE	(512)
 
