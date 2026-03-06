@@ -312,6 +312,9 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 	    BUS_QUERY_ID_TYPE IdType;
 	} QueryId;
 	struct {
+	    DEVICE_CAPABILITIES DeviceCaps;
+	} QueryCapabilities;
+	struct {
 	    ULONG ResourceListSize;
 	    ULONG TranslatedListSize;
 	    CHAR Data[]; /* The translated list always follows
@@ -456,6 +459,7 @@ typedef struct _IO_PACKET_CLIENT_MESSAGE {
 	    ULONG64 NewFileSize; /* File system driver only. */
 	    ULONG64 NewAllocationSize; /* File system driver only. */
 	    ULONG64 NewValidDataLength; /* File system driver only. */
+	    DEVICE_CAPABILITIES DeviceCaps; /* For IRP_MN_QUERY_CAPABILITIES PNP IRPs */
 	    BOOLEAN NotifyCompletion; /* TRUE if the client driver wants the server to
 				       * notify it after the IRP has been processed. */
 	    BOOLEAN OverrideVerify; /* TRUE if the forwarded IRP should be marked
@@ -761,6 +765,14 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 		break;
 	    case IRP_MN_QUERY_BUS_INFORMATION:
 		DbgPrint("    PNP  QUERY-BUS-INFORMATION\n");
+		break;
+	    case IRP_MN_QUERY_CAPABILITIES:
+		DbgPrint("    PNP  QUERY-CAPABILITIES");
+		for (ULONG i = 0; i < sizeof(DEVICE_CAPABILITIES); i++) {
+		    DbgPrint(" %02x",
+			     ((PUCHAR)&IoPacket->Request.QueryCapabilities.DeviceCaps)[i]);
+		}
+		DbgPrint("\n");
 		break;
 	    case IRP_MN_START_DEVICE:
 		DbgPrint("    PNP  START-DEVICE  ResourceListSize %d TranslatedListSize %d\n",

@@ -319,7 +319,7 @@ NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
     if (Status == STATUS_PENDING) {
         /* Wait for a response */
         KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-        Status = Irp->IoStatus.Status;
+        Status = IoStatusBlock.Status;
     }
 
     return Status;
@@ -974,7 +974,7 @@ static NTSTATUS PciGetDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
     if (Status == STATUS_PENDING) {
         /* Wait for a response */
         KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-        Status = Irp->IoStatus.Status;
+        Status = IoStatusBlock.Status;
     }
 
     /* Done, dereference the attached device and return the final result */
@@ -1240,7 +1240,10 @@ NTSTATUS PciQueryCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
     Status = PciQueryPowerCapabilities(PdoExtension, DeviceCapability);
 
     /* Dump the capabilities if it all worked, and return the status */
-    if (NT_SUCCESS(Status))
+    if (NT_SUCCESS(Status)) {
 	PciDebugDumpQueryCapabilities(DeviceCapability);
+    } else {
+	DPRINT("PciQueryCapabilities returning error 0x%x\n", Status);
+    }
     return Status;
 }

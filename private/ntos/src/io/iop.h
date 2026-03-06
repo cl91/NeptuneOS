@@ -349,8 +349,9 @@ typedef struct _DEVICE_NODE {
     PCSTR *LowerFilterNames;
     PCM_RESOURCE_LIST RawResources;
     PCM_RESOURCE_LIST TranslatedResources;
-    PNP_BUS_INFORMATION BusInformation;
-    ULONG SlotNumber;
+    PNP_BUS_INFORMATION BusInformation; /* Bus information reported in the resource
+					 * requirement list during resource assignment */
+    ULONG SlotNumber; /* Slot number reported in the resource requirment list */
     BOOLEAN LoadIntoBusDriver;
 } DEVICE_NODE, *PDEVICE_NODE;
 

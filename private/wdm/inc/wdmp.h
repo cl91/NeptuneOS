@@ -265,6 +265,10 @@ PHYSICAL_ADDRESS MiGetMdlPhysicalAddress(IN PMDL Mdl,
 SIZE_T MiGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
 					IN PVOID StartVa,
 					IN ULONG BoundAddrBits);
+NTSTATUS IopInitiatePnpIrp(IN PDEVICE_OBJECT DeviceObject,
+			   IN UCHAR MinorFunction,
+			   OUT PIO_STATUS_BLOCK IoStatusBlock,
+			   IN PIO_STACK_LOCATION Req);
 
 /* workitem.c */
 extern LIST_ENTRY IopWorkItemQueue;

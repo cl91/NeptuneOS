@@ -616,6 +616,36 @@ NTAPI BOOLEAN IoForwardIrpSynchronously(IN PDEVICE_OBJECT DeviceObject,
     return TRUE;
 }
 
+NTSTATUS IopInitiatePnpIrp(IN PDEVICE_OBJECT DeviceObject,
+			   IN UCHAR MinorFunction,
+			   OUT PIO_STATUS_BLOCK IoStatusBlock,
+			   IN PIO_STACK_LOCATION Req)
+{
+    PAGED_CODE();
+    KEVENT Event;
+    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
+    PIRP Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP,
+					    DeviceObject,
+					    NULL,
+					    0,
+					    NULL,
+					    &Event,
+					    IoStatusBlock);
+    if (Irp == NULL) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    PIO_STACK_LOCATION IoStack = IoGetNextIrpStackLocation(Irp);
+    IoStack->MinorFunction = MinorFunction;
+    RtlCopyMemory(&IoStack->Parameters, &Req->Parameters, sizeof(Req->Parameters));
+
+    NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
+    if (Status == STATUS_PENDING) {
+        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
+    }
+    Status = IoStatusBlock->Status;
+    return Status;
+}
+
 static NTSTATUS IopReadWritePciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
 					   IN BOOLEAN Write,
 					   IN OUT PVOID Buffer,
@@ -623,36 +653,17 @@ static NTSTATUS IopReadWritePciConfigSpace(IN PDEVICE_OBJECT DeviceObject,
 					   IN OUT ULONG *Length)
 {
     PAGED_CODE();
-    KEVENT Event;
-    KeInitializeEvent(&Event, SynchronizationEvent, FALSE);
-    IO_STATUS_BLOCK IoStatusBlock;
-    PIRP Irp = IoBuildSynchronousFsdRequest(IRP_MJ_PNP,
-					    DeviceObject,
-					    NULL,
-					    0,
-					    NULL,
-					    &Event,
-					    &IoStatusBlock);
-    if (Irp == NULL) {
-        return STATUS_INSUFFICIENT_RESOURCES;
-    }
-    PIO_STACK_LOCATION IoStack = IoGetNextIrpStackLocation(Irp);
-    if (Write) {
-        IoStack->MinorFunction = IRP_MN_WRITE_CONFIG;
-    } else {
-        IoStack->MinorFunction = IRP_MN_READ_CONFIG;
-    }
-    IoStack->Parameters.ReadWriteConfig.WhichSpace = PCI_WHICHSPACE_CONFIG;
-    IoStack->Parameters.ReadWriteConfig.Buffer = Buffer;
-    IoStack->Parameters.ReadWriteConfig.Offset = Offset;
-    IoStack->Parameters.ReadWriteConfig.Length = *Length;
+    IO_STACK_LOCATION IoStack = {};
+    IoStack.Parameters.ReadWriteConfig.WhichSpace = PCI_WHICHSPACE_CONFIG;
+    IoStack.Parameters.ReadWriteConfig.Buffer = Buffer;
+    IoStack.Parameters.ReadWriteConfig.Offset = Offset;
+    IoStack.Parameters.ReadWriteConfig.Length = *Length;
 
-    NTSTATUS Status = IoCallDriver(DeviceObject, Irp);
-    if (Status == STATUS_PENDING) {
-        KeWaitForSingleObject(&Event, Executive, KernelMode, FALSE, NULL);
-        Status = IoStatusBlock.Status;
-    }
-    *Length = Irp->IoStatus.Information;
+    IO_STATUS_BLOCK IoStatus = {};
+    NTSTATUS Status = IopInitiatePnpIrp(DeviceObject,
+					Write ? IRP_MN_WRITE_CONFIG : IRP_MN_READ_CONFIG,
+					&IoStatus, &IoStack);
+    *Length = IoStatus.Information;
     return Status;
 }
 

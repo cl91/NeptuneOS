@@ -1912,6 +1912,27 @@ out:
     return Status;
 }
 
+static NTSTATUS IopQueryDeviceCapabilities(IN PDEVICE_OBJECT DeviceObject,
+					   OUT PDEVICE_CAPABILITIES DeviceCaps)
+{
+    /* Set up the Header */
+    RtlZeroMemory(DeviceCaps, sizeof(DEVICE_CAPABILITIES));
+    DeviceCaps->Size = sizeof(DEVICE_CAPABILITIES);
+    DeviceCaps->Version = 1;
+    DeviceCaps->Address = -1;
+    DeviceCaps->UINumber = -1;
+
+    /* Set up the Stack */
+    IO_STACK_LOCATION Stack = {
+	.Parameters.DeviceCapabilities.Capabilities = DeviceCaps
+    };
+
+    /* Send the IRP */
+    IO_STATUS_BLOCK IoStatus;
+    return IopInitiatePnpIrp(DeviceObject, IRP_MN_QUERY_CAPABILITIES,
+			     &IoStatus, &Stack);
+}
+
 #define PIP_REGISTRY_DATA(x, y) ValueName = x; ValueType = y; break
 
 /*
@@ -1931,9 +1952,24 @@ NTAPI NTSTATUS IoGetDeviceProperty(IN PDEVICE_OBJECT DeviceObject,
     ULONG ValueType;
     ULONG KeyType = 0;
     switch (DeviceProperty) {
-	/* Registry-based properties */
+    /* For these we need to query the bus driver for the device property */
     case DevicePropertyUINumber:
-	PIP_REGISTRY_DATA(REGSTR_VAL_UI_NUMBER, REG_DWORD);
+    case DevicePropertyAddress:
+    {
+	if (BufferLength < sizeof(ULONG)) {
+	    return STATUS_BUFFER_TOO_SMALL;
+	}
+	DEVICE_CAPABILITIES DeviceCap = {};
+	NTSTATUS Status = IopQueryDeviceCapabilities(DeviceObject, &DeviceCap);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+	*ResultLength = sizeof(ULONG);
+	*((PULONG)PropertyBuffer) = DeviceProperty == DevicePropertyUINumber ?
+	    DeviceCap.UINumber : DeviceCap.Address;
+	return STATUS_SUCCESS;
+    }
+    /* Registry-based properties */
     case DevicePropertyLocationInformation:
 	PIP_REGISTRY_DATA(REGSTR_VAL_LOCATION_INFORMATION, REG_SZ);
     case DevicePropertyDeviceDescription:

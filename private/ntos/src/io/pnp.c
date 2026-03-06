@@ -2480,7 +2480,7 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 	return STATUS_INVALID_DEVICE_REQUEST;
     }
 
-    PVOID Data = NULL;
+    PCVOID Data = NULL;
     ULONG ResultLength = 0;
     BOOLEAN UnicodeOutput = FALSE;
     CHAR Buffer[512];
@@ -2493,15 +2493,19 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 	break;
 
     case DevicePropertyLegacyBusType:
-	UNIMPLEMENTED;
+	Data = &DeviceNode->BusInformation.LegacyBusType;
+	ResultLength = sizeof(INTERFACE_TYPE);
 	break;
 
     case DevicePropertyBusNumber:
-	UNIMPLEMENTED;
+	Data = &DeviceNode->BusInformation.BusNumber;
+	ResultLength = sizeof(ULONG);
 	break;
 
     case DevicePropertyEnumeratorName:
-	UNIMPLEMENTED;
+	UnicodeOutput = TRUE;
+	Data = DeviceNode->DeviceId;
+	ResultLength = strlen(Data) + 1;
 	break;
 
     case DevicePropertyBootConfigurationTranslated:
@@ -2524,8 +2528,6 @@ NTSTATUS WdmGetDeviceProperty(IN ASYNC_STATE AsyncState,
 	ResultLength = strlen(Buffer) + 1;
 	break;
 
-    case DevicePropertyAddress:
-	return STATUS_NOT_SUPPORTED;
     default:
 	return STATUS_INVALID_PARAMETER_2;
     }

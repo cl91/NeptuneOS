@@ -990,6 +990,11 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
     } else if (Irp->Request.MajorFunction == IRP_MJ_WRITE) {
 	Irp->Request.Write.ByteOffset = Msg->ClientMsg.ForwardIrp.NewOffset;
 	Irp->Request.InputBufferLength = NewLength;
+    } else if (Irp->Request.MajorFunction == IRP_MJ_PNP &&
+	       Irp->Request.MinorFunction == IRP_MN_QUERY_CAPABILITIES) {
+	/* For IRP_MN_QUERY_CAPABILITIES PNP IRPs, we need to pass the device
+	 * capabilities to the lower driver. */
+	Irp->Request.QueryCapabilities.DeviceCaps = Msg->ClientMsg.ForwardIrp.DeviceCaps;
     }
 
     /* Call the IO interception callback if the requestor has registered one. */

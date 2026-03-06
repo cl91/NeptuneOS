@@ -740,6 +740,16 @@ static NTSTATUS IopBuildLocalIrpFromServerIoPacket(IN PIO_PACKET Src,
 	    IoStack->Parameters.QueryId.IdType = Src->Request.QueryId.IdType;
 	    break;
 
+	case IRP_MN_QUERY_CAPABILITIES:
+	    IoStack->Parameters.DeviceCapabilities.Capabilities =
+		ExAllocatePool(NonPagedPool, sizeof(DEVICE_CAPABILITIES));
+	    if (!IoStack->Parameters.DeviceCapabilities.Capabilities) {
+		return STATUS_NO_MEMORY;
+	    }
+	    *IoStack->Parameters.DeviceCapabilities.Capabilities =
+		Src->Request.QueryCapabilities.DeviceCaps;
+	    break;
+
 	case IRP_MN_QUERY_RESOURCE_REQUIREMENTS:
 	case IRP_MN_QUERY_BUS_INFORMATION:
 	    /* No parameters to marshal. Do nothing. */
@@ -906,6 +916,17 @@ static VOID IopPopulateLocalIrpFromServerIoResponse(OUT PIRP Irp,
 	}
 	Relations->Count = Count;
 	Irp->IoStatus.Information = (ULONG_PTR)Relations;
+    } else if (Sp->MajorFunction == IRP_MJ_PNP &&
+	       Sp->MinorFunction == IRP_MN_QUERY_CAPABILITIES) {
+	if (!NT_SUCCESS(Irp->IoStatus.Status)) {
+	    return;
+	}
+	assert(Msg->ResponseDataSize == sizeof(DEVICE_CAPABILITIES));
+	if (Msg->ResponseDataSize >= sizeof(DEVICE_CAPABILITIES)) {
+	    PDEVICE_CAPABILITIES DeviceCaps = (PVOID)&Msg->ResponseData[0];
+	    assert(Sp->Parameters.DeviceCapabilities.Capabilities);
+	    *Sp->Parameters.DeviceCapabilities.Capabilities = *DeviceCaps;
+	}
     }
 }
 
@@ -1150,6 +1171,12 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 	    }
 	    break;
 
+	case IRP_MN_QUERY_CAPABILITIES:
+	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
+		Size += sizeof(DEVICE_CAPABILITIES);
+	    }
+	    break;
+
 	case IRP_MN_QUERY_ID:
 	    if (NT_SUCCESS(Irp->IoStatus.Status) && Irp->IoStatus.Information) {
 		Size += IopGetQueryIdResponseDataSize((PVOID)Irp->IoStatus.Information,
@@ -1255,6 +1282,21 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
 		Dest->ClientMsg.IoCompleted.ResponseDataSize = Relations->Count * sizeof(GLOBAL_HANDLE);
 		IopFreePool(Relations);
 		Irp->IoStatus.Information = 0;
+	    }
+	    break;
+
+	case IRP_MN_QUERY_CAPABILITIES:
+	    if (NT_SUCCESS(Irp->IoStatus.Status)) {
+		Dest->ClientMsg.IoCompleted.IoStatus = Irp->IoStatus;
+		Dest->ClientMsg.IoCompleted.ResponseDataSize = sizeof(DEVICE_CAPABILITIES);
+		RtlCopyMemory(Dest->ClientMsg.IoCompleted.ResponseData,
+			      IoSp->Parameters.DeviceCapabilities.Capabilities,
+			      sizeof(DEVICE_CAPABILITIES));
+		/* Note this does not apply for locally generate IRPs. The caller
+		 * (ie. whoever allocated the IRP) is responsible for deallocating
+		 * the DEVICE_CAPABILITIES structure it allocated, per MS docs. */
+		IopFreePool(IoSp->Parameters.DeviceCapabilities.Capabilities);
+		IoSp->Parameters.DeviceCapabilities.Capabilities = NULL;
 	    }
 	    break;
 
@@ -1392,6 +1434,10 @@ static BOOLEAN IopPopulateForwardIrpMessage(IN PIO_PACKET Dest,
     } else if (IoStack->MajorFunction == IRP_MJ_WRITE) {
 	Dest->ClientMsg.ForwardIrp.NewOffset = IoStack->Parameters.Write.ByteOffset;
 	Dest->ClientMsg.ForwardIrp.NewLength = IoStack->Parameters.Write.Length;
+    } else if (IoStack->MajorFunction == IRP_MJ_PNP &&
+	       IoStack->MinorFunction == IRP_MN_QUERY_CAPABILITIES) {
+	Dest->ClientMsg.ForwardIrp.DeviceCaps =
+	    *IoStack->Parameters.DeviceCapabilities.Capabilities;
     }
     PFSRTL_COMMON_FCB_HEADER Fcb = IoStack->FileObject ? IoStack->FileObject->FsContext : NULL;
     if (Fcb) {
@@ -1519,6 +1565,10 @@ static BOOLEAN IopPopulateIoRequestMessage(OUT PIO_PACKET Dest,
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
 	    Dest->Request.QueryDeviceRelations.Type =
 		IoStack->Parameters.QueryDeviceRelations.Type;
+	    break;
+	case IRP_MN_QUERY_CAPABILITIES:
+	    Dest->Request.QueryCapabilities.DeviceCaps =
+		*IoStack->Parameters.DeviceCapabilities.Capabilities;
 	    break;
 	default:
 	    assert(FALSE);
@@ -1865,6 +1915,10 @@ VOID IoDbgDumpIoStackLocation(IN PIO_STACK_LOCATION Stack)
 	case IRP_MN_QUERY_DEVICE_RELATIONS:
 	    DbgPrint("    PNP  QUERY-DEVICE-RELATIONS  Type %s\n",
 		     IopDbgDeviceRelationTypeStr(Stack->Parameters.QueryDeviceRelations.Type));
+	    break;
+	case IRP_MN_QUERY_CAPABILITIES:
+	    DbgPrint("    PNP  QUERY-CAPABILITIES  Capabilities %p\n",
+		     Stack->Parameters.DeviceCapabilities.Capabilities);
 	    break;
 	case IRP_MN_QUERY_ID:
 	    DbgPrint("    PNP  QUERY-ID  Type %s\n",
