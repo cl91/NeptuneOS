@@ -276,6 +276,7 @@ typedef struct _ASYNC_STATE {
 
 #define KEDBG_PROCESS_TO_FILENAME(Process)				\
     ({									\
+	assert(Process);						\
 	PSECTION Section = Process->ImageSection;			\
 	assert(Section);						\
 	assert(Section->Flags.Image);					\

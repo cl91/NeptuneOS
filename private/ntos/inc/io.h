@@ -23,9 +23,8 @@ struct _CC_CACHE_SPACE;
 typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverImagePath;
     PCSTR DriverRegistryPath;
-    LIST_ENTRY DriverLink;    /* Links all driver objects currently existing */
+    AVL_NODE Node;	      /* Key is object address of driver process */
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
-    struct _PROCESS *DriverProcess;
     struct _THREAD *MainEventLoopThread; /* Main event loop thread of the driver process */
     struct _THREAD *DpcThread;		 /* DPC thread of the driver process */
     NOTIFICATION DpcNotification;	 /* DPC notification cap (in the process shared CNode) */
@@ -290,11 +289,18 @@ FORCEINLINE NTSTATUS CcCopyWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
 }
 
 /* driver.c */
+PIO_DRIVER_OBJECT IoGetDriverObjectFromProcess(IN struct _PROCESS *Process);
 NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 			IN struct _THREAD *Thread,
 			IN PIO_DRIVER_OBJECT DriverObject,
 			IN BOOLEAN NormalExit,
 			IN NTSTATUS ExitStatus);
+
+FORCEINLINE struct _PROCESS *IoDriverObjectToProcess(IN PIO_DRIVER_OBJECT DriverObject)
+{
+    return (PVOID)(ULONG_PTR)DriverObject->Node.Key;
+}
+
 
 /* file.c */
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,

@@ -45,13 +45,6 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
     }
 #endif
 
-    /* If we are deleting the main event loop thread of a driver process,
-     * unlink us from the driver object. */
-    if (Thread->Process->DriverObject &&
-	Thread == Thread->Process->DriverObject->MainEventLoopThread) {
-	Thread->Process->DriverObject->MainEventLoopThread = NULL;
-    }
-
     /* Remove the thread from its PROCESS object's thread list */
     assert(Thread->ThreadListEntry.Flink != NULL);
     assert(Thread->ThreadListEntry.Blink != NULL);
@@ -122,9 +115,6 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     assert(IsListEmpty(&Process->ThreadList));
     KeDetachDispatcherObject(&Process->Header);
     ObDereferenceObject(Process->ImageSection);
-    if (Process->DriverObject) {
-	Process->DriverObject->DriverProcess = NULL;
-    }
     if (Process->DpcMutex.TreeNode.Cap) {
 	KeDestroyNotification(&Process->DpcMutex);
     }
@@ -173,6 +163,9 @@ static NTSTATUS PspSuspendThread(IN MWORD Cap)
     return STATUS_SUCCESS;
 }
 
+/*
+ * This routine dereferences the thread object created by PsCreateThread.
+ */
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,
 			   IN NTSTATUS ExitStatus)
 {
@@ -182,8 +175,8 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
     Thread->ExitStatus = ExitStatus;
     /* If the thread to terminate is the main event loop of a driver thread,
      * set the InitializationDone event to wake up the thread waiting on NtLoadDriver */
-    if (Thread->Process->DriverObject != NULL && Thread->InitialThread) {
-	PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+    if (DriverObject != NULL && Thread->InitialThread) {
 	KeSetEvent(&DriverObject->InitializationDoneEvent);
     }
     /* Suspend the thread. This is needed so the thread doesn't keep running
@@ -224,6 +217,9 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+/*
+ * This routine dereferences the process object created by PsCreateProcess.
+ */
 NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
 			    IN PTHREAD Thread,
 			    IN PPROCESS Process,
@@ -231,6 +227,7 @@ NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
 {
     ASYNC_BEGIN(State, Locals, {
 	    HANDLE HandleToClose;
+	    PIO_DRIVER_OBJECT DriverObject;
 	});
     DbgTrace("Terminating process %p (%s) with status 0x%08x\n",
 	     Process, KEDBG_PROCESS_TO_FILENAME(Process), ExitStatus);
@@ -239,16 +236,22 @@ NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
      * Note we do not do this before the driver is fully loaded since
      * IopLoadDriver takes care of properly dereferencing the driver object
      * if it fails to load. */
-    AWAIT_IF(Process->DriverObject && Process->DriverObject->DriverLoaded,
-	     IoUnloadDriver, State, Locals, Thread, Process->DriverObject,
-	     FALSE, ExitStatus);
-
-close:;
-    PAVL_NODE Node = AvlGetFirstNode(&Process->HandleTable.Tree);
-    if (!Node) {
-	goto out;
+    Locals.DriverObject = IoGetDriverObjectFromProcess(Process);
+    if (!Locals.DriverObject || !Locals.DriverObject->DriverLoaded) {
+	goto close;
     }
-    Locals.HandleToClose = (HANDLE)(ULONG_PTR)Node->Key;
+    AWAIT(IoUnloadDriver, State, Locals, Thread, Locals.DriverObject,
+	  FALSE, ExitStatus);
+    Locals.DriverObject = NULL;
+
+close:
+    {
+	PAVL_NODE Node = AvlGetFirstNode(&Process->HandleTable.Tree);
+	if (!Node) {
+	    goto out;
+	}
+	Locals.HandleToClose = (HANDLE)(ULONG_PTR)Node->Key;
+    }
     AWAIT(NtClose, State, Locals, Thread, Locals.HandleToClose);
     goto close;
 

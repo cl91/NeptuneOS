@@ -1,6 +1,7 @@
 #include "iop.h"
 
-LIST_ENTRY IopDriverList;
+/* Organizes all driver objects into an AVL tree with driver process address as key */
+AVL_TREE IopDriverObjectTree;
 LIST_ENTRY IopShutdownNotificationList;
 
 static NTSTATUS IopCreateFileType()
@@ -59,7 +60,7 @@ static NTSTATUS IopCreateDriverType()
 
 NTSTATUS IoInitSystemPhase0()
 {
-    InitializeListHead(&IopDriverList);
+    AvlInitializeTree(&IopDriverObjectTree);
     InitializeListHead(&IopShutdownNotificationList);
     InitializeListHead(&IopNtosPendingIrpList);
     RET_ERR(IopCreateFileType());

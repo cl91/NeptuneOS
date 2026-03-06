@@ -240,10 +240,10 @@ static VOID EiWriteDriverModuleInfo(IN POBJECT Object,
     if (ObObjectGetType(Object) == OBJECT_TYPE_DRIVER) {
 	PRTL_PROCESS_MODULE_INFORMATION Info = (*pInfo)++;
 	PIO_DRIVER_OBJECT DriverObject = Object;
-	Info->MappedBase = (PVOID)DriverObject->DriverProcess->InitInfo.ImageBase;
-	Info->ImageBase =
-	    (PVOID)DriverObject->DriverProcess->ImageSection->ImageSectionObject->ImageBase;
-	Info->ImageSize = DriverObject->DriverProcess->ImageSection->Size;
+	PPROCESS DriverProcess = IoDriverObjectToProcess(DriverObject);
+	Info->MappedBase = (PVOID)DriverProcess->InitInfo.ImageBase;
+	Info->ImageBase = (PVOID)DriverProcess->ImageSection->ImageSectionObject->ImageBase;
+	Info->ImageSize = DriverProcess->ImageSection->Size;
 	snprintf(Info->FullPathName, sizeof(Info->FullPathName),
 		 "%s", DriverObject->DriverImagePath);
     }

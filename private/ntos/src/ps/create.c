@@ -493,10 +493,10 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 			      INIT_INFO_IMAGE_NAME_SIZE, Fcb->FileName));
 	RET_ERR(PspCopyString(InitInfo->NtdllPath,
 			      INIT_INFO_NTDLL_PATH_SIZE, NTDLL_PATH));
-	if (Process->DriverObject) {
+	if (Ctx->DriverObject) {
 	    RET_ERR(PspCopyString(InitInfo->DriverInitInfo.ServicePath,
 				  INIT_INFO_SERVICE_PATH_SIZE,
-				  Process->DriverObject->DriverRegistryPath));
+				  Ctx->DriverObject->DriverRegistryPath));
 	}
     } else {
 	/* Populate the thread init info used by ntdll on process startup */
@@ -525,7 +525,6 @@ NTSTATUS PsMapDriverCoroutineStack(IN PPROCESS Process,
 				   OUT MWORD *pStackTop)
 {
     assert(Process != NULL);
-    assert(Process->DriverObject != NULL);
     assert(pStackTop != NULL);
 
     PMMVAD Vad = NULL;
@@ -604,7 +603,6 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     if (DriverObject != NULL) {
 	Process->InitInfo.DriverProcess = TRUE;
 	Process->InitInfo.DriverInitInfo.X86TscFreq = KeX86TscFreq;
-	Process->DriverObject = DriverObject;
     }
 
     /* Reserve and commit the loader private heap */
@@ -762,6 +760,7 @@ fail:
 NTSTATUS PsCreateThread(IN PPROCESS Process,
                         IN PCONTEXT ThreadContext,
                         IN PINITIAL_TEB InitialTeb,
+			IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
                         IN ULONG Flags,
 			OUT PTHREAD *pThread)
 {
@@ -784,6 +783,7 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	.Process = Process,
 	.Context = ThreadContext,
 	.InitialTeb = InitialTeb,
+	.DriverObject = DriverObject,
 	.CreateSuspended = !!(Flags & PS_CREATE_THREAD_SUSPENDED),
 	.IsrThread = !!(Flags & PS_CREATE_ISR_THREAD)
     };
@@ -831,7 +831,7 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
     PTHREAD CreatedThread = NULL;
     /* The newly created thread will increase the reference count of the process
      * object and decrease it when the thread exits or is terminated. */
-    RET_ERR(PsCreateThread(Process, ThreadContext, InitialTeb,
+    RET_ERR(PsCreateThread(Process, ThreadContext, InitialTeb, NULL,
 			   CreateSuspended ? PS_CREATE_THREAD_SUSPENDED : 0,
 			   &CreatedThread));
     /* The newly created thread object will have refcount 2. Although NT API semantics

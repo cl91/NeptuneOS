@@ -1512,7 +1512,7 @@ NTSTATUS WdmReserveIoMemoryWindow(IN ASYNC_STATE AsyncState,
 {
     assert(Thread);
     assert(Thread->Process);
-    assert(Thread->Process->DriverObject);
+    assert(IoGetDriverObjectFromProcess(Thread->Process));
     if (WindowBits < PAGE_LOG2SIZE) {
 	return STATUS_INVALID_PARAMETER;
     }
@@ -1541,7 +1541,7 @@ NTSTATUS WdmMapIoMemory(IN ASYNC_STATE AsyncState,
 {
     assert(Thread);
     assert(Thread->Process);
-    assert(Thread->Process->DriverObject);
+    assert(IoGetDriverObjectFromProcess(Thread->Process));
     PMMVAD Vad = MiVSpaceFindVadNode(&Thread->Process->VSpace, VirtAddr);
     if (!Vad) {
 	MmDbg("Invalid virtual address %p\n", (PVOID)VirtAddr);

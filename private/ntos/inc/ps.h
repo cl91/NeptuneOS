@@ -89,7 +89,6 @@ typedef struct _PROCESS {
     PEVENT_OBJECT ProcessHeapLockSemaphore;
     PEVENT_OBJECT LoaderHeapLockSemaphore;
     NTDLL_PROCESS_INIT_INFO InitInfo;
-    PIO_DRIVER_OBJECT DriverObject;
     NTSTATUS ExitStatus;	    /* Exit status of process */
     ULONG Cookie;
     NOTIFICATION DpcMutex;
@@ -172,6 +171,7 @@ PKUSER_SHARED_DATA PsGetUserSharedData();
 NTSTATUS PsCreateThread(IN PPROCESS Process,
                         IN PCONTEXT ThreadContext,
                         IN PINITIAL_TEB InitialTeb,
+			IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
                         IN ULONG Flags,
 			OUT PTHREAD *pThread);
 NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,

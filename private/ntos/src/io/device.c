@@ -479,7 +479,7 @@ VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
 		     IN BOOLEAN Force)
 {
     DbgTrace("%s device object %p (%s)\n", Force ? "Force removing" : "Removing",
-	     DevObj, KEDBG_PROCESS_TO_FILENAME(DevObj->DriverObject->DriverProcess));
+	     DevObj, IODBG_DRIVER_FILENAME(DevObj->DriverObject));
     /* Set the status of the device node of the PDO to DeviceNodeRemoved. */
     PDEVICE_NODE DevNode = IopGetDeviceNode(DevObj);
     if (DevNode) {
@@ -570,6 +570,14 @@ VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
     /* At this point the device object may still have more than one references.
      * Mark the device as removed so no more IRPs will be sent to it. */
     DevObj->Removed = TRUE;
+    /* If the driver that created the device object has crashed (ie. we are forcibly
+     * removing the device object), the driver will not be able to call WdmDeleteDevice,
+     * so manually dereference the device object here as if WdmDeleteDevice is called.
+     * This will trigger the deletion of the device object unless there are other
+     * outstanding references (eg. an open file handle) to the device object. */
+    if (Force) {
+	ObDereferenceObject(DevObj);
+    }
 }
 
 /*
@@ -634,7 +642,7 @@ NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
                          OUT GLOBAL_HANDLE *DeviceHandle)
 {
     assert(Thread != NULL);
-    assert(Thread->Process->DriverObject != NULL);
+    assert(IoGetDriverObjectFromProcess(Thread->Process) != NULL);
     assert(DeviceHandle != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
 
@@ -644,7 +652,7 @@ NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
 
     PIO_DEVICE_OBJECT DeviceObject = NULL;
     DEVICE_OBJ_CREATE_CONTEXT CreaCtx = {
-	.DriverObject = Thread->Process->DriverObject,
+	.DriverObject = IoGetDriverObjectFromProcess(Thread->Process),
 	.DeviceInfo = *DeviceInfo,
 	.Exclusive = Exclusive
     };
@@ -678,7 +686,7 @@ NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
 {
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT SrcDev = IopGetDeviceObject(SrcDevHandle, DriverObject);
     PIO_DEVICE_OBJECT TgtDev = IopGetDeviceObject(TgtDevHandle, NULL);
@@ -713,7 +721,7 @@ NTSTATUS WdmGetTopDeviceObject(IN ASYNC_STATE AsyncState,
 {
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     PIO_FILE_OBJECT FileObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, OpenFileHandle, OBJECT_TYPE_FILE,
@@ -747,7 +755,7 @@ NTSTATUS WdmGetDevice(IN ASYNC_STATE AsyncState,
 	return STATUS_INVALID_PARAMETER;
     }
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, NULL);
     if (!Device) {
@@ -780,7 +788,7 @@ NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
 {
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT DevObj = IopGetDeviceObject(GlobalHandle, DriverObject);
     if (!DevObj) {
@@ -801,6 +809,15 @@ NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
 	BOOLEAN Force = DevObj->Vcb && !DevObj->Vcb->Dismounted &&
 	    DevObj == DevObj->Vcb->StorageDevice;
 	assert(!Force);
+	if (Force) {
+	    /* IopRemoveDevice dereference the device object in the forced removal case
+	     * assuming the driver has crashed and is unable to call WdmDeleteDevice.
+	     * Since we are dealing with the case that the storage driver has incorrectly
+	     * called WdmDeleteDevice on a storage device (which is treated as if the
+	     * storage driver has crashed), increase the refcount here so DevObj is not
+	     * dereferenced twice. */
+	    ObpReferenceObject(DevObj);
+	}
 	IopRemoveDevice(DevObj, Force);
     } else {
 	/* Otherwise, we will remove the CLOSE_DEVICE_MESSAGE as the client has
@@ -836,7 +853,7 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
 	return STATUS_INVALID_PARAMETER;
     }
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
     if (!Device) {
@@ -858,7 +875,7 @@ NTSTATUS WdmRegisterShutdownNotification(IN ASYNC_STATE AsyncState,
 	return STATUS_INVALID_PARAMETER;
     }
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
     if (!Device) {
@@ -886,7 +903,7 @@ NTSTATUS WdmUnregisterShutdownNotification(IN ASYNC_STATE AsyncState,
 	return STATUS_INVALID_PARAMETER;
     }
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT Device = IopGetDeviceObject(DeviceHandle, DriverObject);
     if (!Device) {
@@ -944,7 +961,7 @@ VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DevObj,
     DbgPrint("  RefCount = %lld\n", OBJECT_TO_OBJECT_HEADER(DevObj)->RefCount);
     RtlDbgPrintIndentation(Indentation);
     DbgPrint("  DriverObject = %p (%s)\n", DevObj->DriverObject,
-	     DevObj->DriverObject ? KEDBG_PROCESS_TO_FILENAME(DevObj->DriverObject->DriverProcess) : "");
+	     DevObj->DriverObject ? IODBG_DRIVER_FILENAME(DevObj->DriverObject) : "");
     RtlDbgPrintIndentation(Indentation);
     DbgPrint("  DeviceType = %d\n", DevObj->DeviceInfo.DeviceType);
     RtlDbgPrintIndentation(Indentation);

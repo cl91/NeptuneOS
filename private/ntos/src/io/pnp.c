@@ -2557,7 +2557,7 @@ NTSTATUS WdmRegisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
 {
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     IopAllocatePool(Entry, PLUG_PLAY_NOTIFICATION);
     Entry->EventCategory = EventCategory;
@@ -2653,7 +2653,7 @@ NTSTATUS WdmUnregisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
 {
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     LoopOverList(Entry, &DriverObject->PlugPlayNotificationList,
 		 PLUG_PLAY_NOTIFICATION, DriverLink) {

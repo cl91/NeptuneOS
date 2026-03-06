@@ -393,12 +393,21 @@ typedef struct _PLUG_PLAY_NOTIFICATION {
 } PLUG_PLAY_NOTIFICATION, *PPLUG_PLAY_NOTIFICATION;
 
 /* init.c */
-extern LIST_ENTRY IopDriverList;
+extern AVL_TREE IopDriverObjectTree;
 extern LIST_ENTRY IopShutdownNotificationList;
 
 /* pnp.c */
 NTSTATUS IopInitPnpManager();
 VOID IopUnregisterPlugPlayNotification(IN PPLUG_PLAY_NOTIFICATION Notification);
+
+#define AVL_NODE_TO_DRIVER_OBJECT(AvlNode)				\
+    ((AvlNode) ? CONTAINING_RECORD((AvlNode), IO_DRIVER_OBJECT, Node) : NULL)
+
+#define LoopOverDrivers(DrvObj)						\
+    for (PIO_DRIVER_OBJECT DrvObj =					\
+	     AVL_NODE_TO_DRIVER_OBJECT(AvlGetFirstNode(&IopDriverObjectTree)); \
+	 DrvObj;							\
+	 DrvObj = AVL_NODE_TO_DRIVER_OBJECT(AvlGetNextNode(&DrvObj->Node)))
 
 /*
  * Returns the device object of the given device handle, optionally
@@ -425,7 +434,7 @@ FORCEINLINE PIO_DEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE DeviceHandle,
 	}
     } else {
 	/* Traverse the list of all driver objects, and check if there is a match */
-	LoopOverList(DrvObj, &IopDriverList, IO_DRIVER_OBJECT, DriverLink) {
+	LoopOverDrivers(DrvObj) {
 	    LoopOverList(DevObj, &DrvObj->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
 		if (DevObj == GLOBAL_HANDLE_TO_OBJECT(DeviceHandle)) {
 		    return DevObj;
@@ -618,10 +627,13 @@ PIO_DRIVER_OBJECT IopGetDriverObject(IN PCSTR DriverName);
 FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel(IN PTHREAD Thread)
 {
     assert(Thread->Process);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject);
     return DriverObject->DpcThread != Thread && !Thread->IsrThread;
 }
+
+#define IODBG_DRIVER_FILENAME(DriverObject)				\
+    KEDBG_PROCESS_TO_FILENAME(IoDriverObjectToProcess(DriverObject))
 
 /* cache.c */
 NTSTATUS CcInitializeCacheManager();

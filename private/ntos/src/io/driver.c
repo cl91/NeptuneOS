@@ -1,5 +1,11 @@
 #include "iop.h"
 
+PIO_DRIVER_OBJECT IoGetDriverObjectFromProcess(IN PPROCESS Process)
+{
+    return AVL_NODE_TO_DRIVER_OBJECT(AvlTreeFindNode(&IopDriverObjectTree,
+						     (ULONG_PTR)Process));
+}
+
 /*
  * Creation context for the driver object creation routine
  */
@@ -37,18 +43,22 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     PPROCESS Process = NULL;
     RET_ERR(PsCreateProcess(Ctx->ImageSection, Driver, &Process));
     assert(Process != NULL);
-    Driver->DriverProcess = Process;
+    PAVL_NODE Parent = AvlTreeFindNodeOrParent(&IopDriverObjectTree, (ULONG_PTR)Process);
+    if (Parent && Parent->Key == (ULONG_PTR)Process) {
+	assert(FALSE);
+	ObDereferenceObject(Process);
+	return STATUS_ALREADY_INITIALIZED;
+    }
+    Driver->Node.Key = (ULONG_PTR)Process;
+    AvlTreeInsertNode(&IopDriverObjectTree, Parent, &Driver->Node);
     ObpReferenceObject(Process);
 
     /* Get the init thread of driver process running */
     PTHREAD Thread = NULL;
-    RET_ERR(PsCreateThread(Process, NULL, NULL, 0, &Thread));
+    RET_ERR(PsCreateThread(Process, NULL, NULL, Driver, 0, &Thread));
     assert(Thread != NULL);
     Driver->MainEventLoopThread = Thread;
     ObpReferenceObject(Thread);
-
-    /* Add the driver to the list of all drivers */
-    InsertTailList(&IopDriverList, &Driver->DriverLink);
 
     return STATUS_SUCCESS;
 }
@@ -56,6 +66,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
     PIO_DRIVER_OBJECT Driver = Self;
+    DbgTrace("Deleting driver object %p (%s)\n", Driver, Driver->DriverImagePath);
 
     /* Since creating a device object increases the refcount of its driver
      * object, if we get here the device list should be empty. */
@@ -104,16 +115,10 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     if (Driver->MainEventLoopThread) {
 	ObDereferenceObject(Driver->MainEventLoopThread);
     }
-    if (Driver->DriverProcess) {
-	ObDereferenceObject(Driver->DriverProcess);
-	/* After dereferencing the DriverProcess might have become NULL.
-	 * This can happen if the driver process has crashed. In the case
-	 * it is not NULL, we set its DriverObject to NULL so the delete
-	 * routine of the PROCESS object will not try to access the driver
-	 * object being deleted. */
-	if (Driver->DriverProcess) {
-	    Driver->DriverProcess->DriverObject = NULL;
-	}
+    if (Driver->Node.Key) {
+	PPROCESS DriverProcess = (PVOID)(ULONG_PTR)Driver->Node.Key;
+	ObDereferenceObject(DriverProcess);
+	AvlTreeRemoveNode(&IopDriverObjectTree, &Driver->Node);
     }
     if (Driver->DriverImagePath) {
 	IopFreePool(Driver->DriverImagePath);
@@ -124,9 +129,12 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     /* TODO: Close IO ports, disconnect interrupts, uninit cache. */
     KeUninitializeEvent(&Driver->InitializationDoneEvent);
     KeUninitializeEvent(&Driver->IoPacketQueuedEvent);
-    RemoveEntryList(&Driver->DriverLink);
 }
 
+/*
+ * Create the driver object specified by the driver service path. If the driver
+ * object already exists, this routine does nothing.
+ */
 NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 		       IN PTHREAD Thread,
 		       IN PCSTR DriverServicePath)
@@ -316,6 +324,11 @@ PIO_DRIVER_OBJECT IopGetDriverObject(IN PCSTR DriverName)
     return DriverObject;
 }
 
+/*
+ * This routine dereferences the driver object that IopLoadDriver has created.
+ *
+ * At this point this routine is only called when the driver process has crashed.
+ */
 NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 			IN PTHREAD Thread,
 			IN PIO_DRIVER_OBJECT DriverObject,
@@ -326,7 +339,7 @@ NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
     ASYNC_BEGIN(State);
 
     DbgTrace("Unloading driver %p (%s)\n", DriverObject,
-	     KEDBG_PROCESS_TO_FILENAME(DriverObject->DriverProcess));
+	     KEDBG_PROCESS_TO_FILENAME(IoDriverObjectToProcess(DriverObject)));
 
     if (NormalExit) {
 	assert(FALSE);
@@ -410,7 +423,7 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
     assert(Count == 1 || Count == 2 || Count == 4);
     PPROCESS Process = Thread->Process;
     assert(Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Process);
     assert(DriverObject != NULL);
 
     IopAllocatePool(IoPort, X86_IOPORT);
@@ -436,7 +449,7 @@ NTSTATUS WdmDisableX86Port(IN ASYNC_STATE AsyncState,
     assert(Count == 1 || Count == 2 || Count == 4);
     PPROCESS Process = Thread->Process;
     assert(Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Process);
     assert(DriverObject != NULL);
 
     LoopOverList(IoPort, &DriverObject->IoPortList, X86_IOPORT, Link) {
@@ -467,9 +480,9 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 {
     PPROCESS DriverProcess = DriverThread->Process;
     assert(DriverProcess != NULL);
-    PIO_DRIVER_OBJECT DriverObject = DriverProcess->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(DriverProcess);
     assert(DriverObject != NULL);
-    assert(DriverObject->DriverProcess == DriverProcess);
+    assert(IoDriverObjectToProcess(DriverObject) == DriverProcess);
     assert(pSvc != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
     IopAllocatePool(Svc, INTERRUPT_SERVICE);
@@ -481,7 +494,7 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
     /* Create the driver ISR thread and copy its thread cap into the CSpace of the
      * calling thread, which will usually be the driver's main event loop thread. */
     IF_ERR_GOTO(err, Status,
-		PsCreateThread(DriverProcess, &Context, NULL,
+		PsCreateThread(DriverProcess, &Context, NULL, NULL,
 			       PS_CREATE_ISR_THREAD | PS_CREATE_THREAD_SUSPENDED,
 			       &Svc->IsrThread));
     assert(Svc->IsrThread != NULL);
@@ -566,13 +579,14 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
-    assert(Thread->Process->DriverObject != NULL);
-    assert(Thread == Thread->Process->DriverObject->MainEventLoopThread);
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+    assert(DriverObject != NULL);
+    assert(Thread == DriverObject->MainEventLoopThread);
     /* Check if the interrupt resource has been assigned by the PnP manager. */
     PNP_BUS_INFORMATION BusInfo = {};
     ULONG SlotNumber = 0;
     PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw = NULL;
-    if (!IopIsInterruptVectorAssigned(Thread->Process->DriverObject, Vector,
+    if (!IopIsInterruptVectorAssigned(DriverObject, Vector,
 				      &BusInfo, &SlotNumber, &Raw)) {
 	return STATUS_ACCESS_DENIED;
     }
@@ -603,7 +617,7 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     assert(Thread == DriverObject->MainEventLoopThread);
 
@@ -611,7 +625,7 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
     memset(&Context, 0, sizeof(CONTEXT));
     KeSetThreadContextFromEntryPoint(&Context, EntryPoint, NULL);
 
-    NTSTATUS Status = PsCreateThread(Thread->Process, &Context, NULL,
+    NTSTATUS Status = PsCreateThread(Thread->Process, &Context, NULL, NULL,
 				     PS_CREATE_THREAD_SUSPENDED,
 				     &DriverObject->DpcThread);
     if (!NT_SUCCESS(Status)) {
@@ -665,7 +679,7 @@ NTSTATUS WdmCreateTimer(IN ASYNC_STATE State,
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject);
     IopAllocatePool(IoTimer, IO_TIMER);
     IoTimer->DriverObject = DriverObject;
@@ -683,7 +697,7 @@ NTSTATUS WdmSetTimer(IN ASYNC_STATE State,
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject);
     LoopOverList(IoTimer, &DriverObject->IoTimerList, IO_TIMER, DriverLink) {
 	/* If driver has expired one-time timers, remove them */
@@ -705,8 +719,8 @@ NTSTATUS WdmCreateCoroutineStack(IN ASYNC_STATE State,
 				 OUT PVOID *pStackTop)
 {
     assert(Thread->Process != NULL);
-    assert(Thread->Process->DriverObject != NULL);
-    assert(Thread == Thread->Process->DriverObject->MainEventLoopThread);
+    assert(IoGetDriverObjectFromProcess(Thread->Process) != NULL);
+    assert(Thread == IoGetDriverObjectFromProcess(Thread->Process)->MainEventLoopThread);
     return PsMapDriverCoroutineStack(Thread->Process, (MWORD *)pStackTop);
 }
 
@@ -714,10 +728,11 @@ NTSTATUS WdmNotifyMainThread(IN ASYNC_STATE State,
 			     IN PTHREAD Thread)
 {
     assert(Thread->Process != NULL);
-    assert(Thread->Process->DriverObject != NULL);
-    assert(Thread != Thread->Process->DriverObject->MainEventLoopThread);
-    assert(Thread == Thread->Process->DriverObject->DpcThread);
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+    assert(DriverObject != NULL);
+    assert(Thread != DriverObject->MainEventLoopThread);
+    assert(Thread == DriverObject->DpcThread);
     /* Signal the driver to check for DPC queue and IO work item queue */
-    KeSetEvent(&Thread->Process->DriverObject->IoPacketQueuedEvent);
+    KeSetEvent(&DriverObject->IoPacketQueuedEvent);
     return STATUS_SUCCESS;
 }

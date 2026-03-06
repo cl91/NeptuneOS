@@ -201,7 +201,7 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
 			       IN GLOBAL_HANDLE DeviceHandle)
 {
     assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
     PIO_DEVICE_OBJECT FsctlDevObj = IopGetDeviceObject(DeviceHandle, DriverObject);
     if (!FsctlDevObj) {
@@ -235,8 +235,10 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
 
     /* Clear the UnrecognizedVolume flag of all device objects so client processes
      * can reattempt to mount them. */
-    LoopOverList(DrvObj, &IopDriverList, IO_DRIVER_OBJECT, DriverLink) {
+    LoopOverDrivers(DrvObj) {
+	DbgTrace("DrvObj %p (%s)\n", DrvObj, IODBG_DRIVER_FILENAME(DrvObj));
 	LoopOverList(DevObj, &DrvObj->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
+	    IopDbgDumpDeviceObject(DevObj, 2);
 	    DevObj->UnrecognizedVolume = FALSE;
 	}
     }

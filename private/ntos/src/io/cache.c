@@ -212,8 +212,8 @@ static NTSTATUS CiInitializeCacheSpace(IN PIO_DRIVER_OBJECT DriverObject,
     if (!CacheSpace) {
 	return STATUS_NO_MEMORY;
     }
-    assert(DriverObject->DriverProcess);
-    CacheSpace->AddrSpace = &DriverObject->DriverProcess->VSpace;
+    assert(IoDriverObjectToProcess(DriverObject));
+    CacheSpace->AddrSpace = &IoDriverObjectToProcess(DriverObject)->VSpace;
     *pCacheSpace = CacheSpace;
     return STATUS_SUCCESS;
 }

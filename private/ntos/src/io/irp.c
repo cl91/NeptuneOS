@@ -233,8 +233,8 @@ static NTSTATUS IopMapUserBuffer(IN PVIRT_ADDR_SPACE UserVSpace,
     assert(UserVSpace != NULL);
     DbgTrace("Mapping user buffer %p from vspace cap 0x%zx into driver %s\n",
 	     (PVOID)UserBufferStart, UserVSpace->VSpaceCap, Driver->DriverImagePath);
-    assert(Driver->DriverProcess != NULL);
-    PVIRT_ADDR_SPACE DriverVSpace = &Driver->DriverProcess->VSpace;
+    assert(IoDriverObjectToProcess(Driver) != NULL);
+    PVIRT_ADDR_SPACE DriverVSpace = &IoDriverObjectToProcess(Driver)->VSpace;
     assert(DriverVSpace != NULL);
     if (UserBufferStart != 0 && UserBufferLength != 0) {
 	RET_ERR(MmMapUserBufferEx(UserVSpace, UserBufferStart,
@@ -255,12 +255,12 @@ static VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
 			       IN MWORD DriverBuffer)
 {
     assert(Driver != NULL);
-    assert(Driver->DriverProcess != NULL);
+    assert(IoDriverObjectToProcess(Driver) != NULL);
     DbgTrace("Unmapping driver %s (VSpace cap 0x%zx) buffer %p\n",
-	     Driver->DriverImagePath, Driver->DriverProcess->VSpace.VSpaceCap,
+	     Driver->DriverImagePath, IoDriverObjectToProcess(Driver)->VSpace.VSpaceCap,
 	     (PVOID)DriverBuffer);
     if (DriverBuffer != 0) {
-	MmUnmapRegion(&Driver->DriverProcess->VSpace, DriverBuffer);
+	MmUnmapRegion(&IoDriverObjectToProcess(Driver)->VSpace, DriverBuffer);
     }
 }
 
@@ -298,7 +298,8 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	RequestorVSpace = &((PTHREAD)PendingIrp->Requestor)->Process->VSpace;
     } else {
 	assert(ObObjectIsType(PendingIrp->Requestor, OBJECT_TYPE_DRIVER));
-	RequestorVSpace = &((PIO_DRIVER_OBJECT)PendingIrp->Requestor)->DriverProcess->VSpace;
+	RequestorVSpace =
+	    &IoDriverObjectToProcess((PIO_DRIVER_OBJECT)PendingIrp->Requestor)->VSpace;
     }
     assert(RequestorVSpace != NULL);
 
@@ -1309,7 +1310,7 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 {
     assert(Thread != NULL);
     assert(pNumSrvMsgs != NULL);
-    PIO_DRIVER_OBJECT DriverObject = Thread->Process->DriverObject;
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     NTSTATUS Status = STATUS_NTOS_BUG;
     assert(DriverObject != NULL);
 
