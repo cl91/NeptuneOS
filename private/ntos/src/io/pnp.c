@@ -808,7 +808,6 @@ call:
 						      DriverObject,
 						      Locals.DriverName,
 						      &Locals.PendingIrp));
-    ObDereferenceObject(DriverObject);
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.PendingIrp->IoResponseStatus.Status;
@@ -829,7 +828,6 @@ call:
 						      FunctionDriver,
 						      Locals.DriverName,
 						      &Locals.PendingIrp));
-    ObDereferenceObject(FunctionDriver);
     AWAIT_EX(Status, KeWaitForSingleObject, AsyncState, Locals, Thread,
 	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Status = Locals.PendingIrp->IoResponseStatus.Status;

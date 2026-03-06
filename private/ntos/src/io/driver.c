@@ -321,6 +321,7 @@ PIO_DRIVER_OBJECT IopGetDriverObject(IN PCSTR DriverName)
 			    DriverObjectDirectory, FALSE,
 			    (POBJECT *)&DriverObject);
     ObDereferenceObject(DriverObjectDirectory);
+    ObDereferenceObject(DriverObject);
     return DriverObject;
 }
 
