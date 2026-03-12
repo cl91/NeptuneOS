@@ -1,8 +1,6 @@
 #include <wdmasm.h>
 
-#define COROUTINE_START_PROLOGUE			;\
-    /* KiCurrentCoroutineStackTop = StackTop (%rcx); */	;\
-    movq %rcx, KiCurrentCoroutineStackTop(%rip)		;\
+#define SAVE_REGS					\
     /* Save all callee-saved (non-volatile) registers */;\
     push %rbx						;\
     push %rsi						;\
@@ -12,6 +10,44 @@
     push %r13						;\
     push %r14						;\
     push %r15						;\
+    /* Save callee-saved XMM registers */		;\
+    sub $0xa0, %rsp					;\
+    movdqu %xmm6,  0x00(%rsp)				;\
+    movdqu %xmm7,  0x10(%rsp)				;\
+    movdqu %xmm8,  0x20(%rsp)				;\
+    movdqu %xmm9,  0x30(%rsp)				;\
+    movdqu %xmm10, 0x40(%rsp)				;\
+    movdqu %xmm11, 0x50(%rsp)				;\
+    movdqu %xmm12, 0x60(%rsp)				;\
+    movdqu %xmm13, 0x70(%rsp)				;\
+    movdqu %xmm14, 0x80(%rsp)				;\
+    movdqu %xmm15, 0x90(%rsp)
+
+#define RESTORE_REGS					\
+    movdqu 0x00(%rsp), %xmm6				;\
+    movdqu 0x10(%rsp), %xmm7				;\
+    movdqu 0x20(%rsp), %xmm8				;\
+    movdqu 0x30(%rsp), %xmm9				;\
+    movdqu 0x40(%rsp), %xmm10				;\
+    movdqu 0x50(%rsp), %xmm11				;\
+    movdqu 0x60(%rsp), %xmm12				;\
+    movdqu 0x70(%rsp), %xmm13				;\
+    movdqu 0x80(%rsp), %xmm14				;\
+    movdqu 0x90(%rsp), %xmm15				;\
+    add $0xA0, %rsp					;\
+    pop %r15						;\
+    pop %r14						;\
+    pop %r13						;\
+    pop %r12						;\
+    pop %rbp						;\
+    pop %rdi						;\
+    pop %rsi						;\
+    pop %rbx
+
+#define COROUTINE_START_PROLOGUE			;\
+    /* KiCurrentCoroutineStackTop = StackTop (%rcx); */	;\
+    movq %rcx, KiCurrentCoroutineStackTop(%rip)		;\
+    SAVE_REGS						;\
     /* Save the master thread stack pointer */		;\
     movq %rsp, -0x20(%rcx)				;\
     /* Save the address to KiExitCoroutine so		;\
@@ -53,14 +89,7 @@ KiStartCoroutine:
 KiExitCoroutine:
     /* Restore all callee-saved (non-clobbered) registers.
      * Note this is where KiYieldCoroutine jumps to */
-    pop %r15
-    pop %r14
-    pop %r13
-    pop %r12
-    pop %rbp
-    pop %rdi
-    pop %rsi
-    pop %rbx
+    RESTORE_REGS
     /* KiCurrentCoroutineStackTop = NULL; */
     movq $0, KiCurrentCoroutineStackTop(%rip)
     /* Pop %rip */
@@ -71,15 +100,7 @@ KiExitCoroutine:
  */
 .global KiYieldCoroutine
 KiYieldCoroutine:
-    /* Save all callee-saved (non-clobbered) registers */
-    push %rbx
-    push %rsi
-    push %rdi
-    push %rbp
-    push %r12
-    push %r13
-    push %r14
-    push %r15
+    SAVE_REGS
     /* Load the current coroutine stack top to %rcx */
     movq KiCurrentCoroutineStackTop(%rip), %rcx
     /* Save the current stack pointer */
@@ -104,13 +125,6 @@ KiResumeCoroutine:
     /* We are back to the coroutine stack now. Restore all the
      * callee-saved (non-clobbered) registers that KiYieldCoroutine
      * has saved */
-    pop %r15
-    pop %r14
-    pop %r13
-    pop %r12
-    pop %rbp
-    pop %rdi
-    pop %rsi
-    pop %rbx
+    RESTORE_REGS
     /* Return to whoever was calling KiYieldCoroutine */
     ret

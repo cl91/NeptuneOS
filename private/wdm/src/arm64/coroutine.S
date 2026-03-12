@@ -1,10 +1,7 @@
 #include <wdmasm.h>
 #include <arm64asm.h>
 
-#define COROUTINE_START_PROLOGUE			;\
-    /* KiCurrentCoroutineStackTop = StackTop (x0); */	;\
-    adr x3, KiCurrentCoroutineStackTop			;\
-    str x0, [x3]					;\
+#define SAVE_REGS					\
     /* Save all callee-saved (non-volatile) registers */;\
     stp x29, x30, [sp, -0x10]!				;\
     stp x27, x28, [sp, -0x10]!				;\
@@ -12,6 +9,29 @@
     stp x23, x24, [sp, -0x10]!				;\
     stp x21, x22, [sp, -0x10]!				;\
     stp x19, x20, [sp, -0x10]!				;\
+    /* NEON (double-precision) registers */		;\
+    stp d8, d9, [sp, #-16]!				;\
+    stp d10, d11, [sp, #-16]!				;\
+    stp d12, d13, [sp, #-16]!				;\
+    stp d14, d15, [sp, #-16]!
+
+#define RESTORE_REGS					\
+    ldp d14, d15, [sp], 0x10				;\
+    ldp d12, d13, [sp], 0x10				;\
+    ldp d10, d11, [sp], 0x10				;\
+    ldp d8, d9, [sp], 0x10				;\
+    ldp x19, x20, [sp], 0x10				;\
+    ldp x21, x22, [sp], 0x10				;\
+    ldp x23, x24, [sp], 0x10				;\
+    ldp x25, x26, [sp], 0x10				;\
+    ldp x27, x28, [sp], 0x10				;\
+    ldp x29, x30, [sp], 0x10
+
+#define COROUTINE_START_PROLOGUE			;\
+    /* KiCurrentCoroutineStackTop = StackTop (x0); */	;\
+    adr x3, KiCurrentCoroutineStackTop			;\
+    str x0, [x3]					;\
+    SAVE_REGS						;\
     /* Save the master thread stack pointer */		;\
     mov x3, sp						;\
     str x3, [x0, -0x20]					;\
@@ -43,12 +63,7 @@
 KiExitCoroutine:
     /* Restore all callee-saved (non-clobbered) registers.
      * Note this is where KiYieldCoroutine jumps to */
-    ldp x19, x20, [sp], 0x10
-    ldp x21, x22, [sp], 0x10
-    ldp x23, x24, [sp], 0x10
-    ldp x25, x26, [sp], 0x10
-    ldp x27, x28, [sp], 0x10
-    ldp x29, x30, [sp], 0x10
+    RESTORE_REGS
     /* KiCurrentCoroutineStackTop = NULL; */
     adr x3, KiCurrentCoroutineStackTop
     mov x1, xzr
@@ -62,12 +77,7 @@ KiExitCoroutine:
  */
 .PROC KiYieldCoroutine
     /* Save all callee-saved (non-clobbered) registers */
-    stp x29, x30, [sp, -0x10]!
-    stp x27, x28, [sp, -0x10]!
-    stp x25, x26, [sp, -0x10]!
-    stp x23, x24, [sp, -0x10]!
-    stp x21, x22, [sp, -0x10]!
-    stp x19, x20, [sp, -0x10]!
+    SAVE_REGS
     /* Load the current coroutine stack top to x1 */
     adr x1, KiCurrentCoroutineStackTop
     ldr x2, [x1]
@@ -98,12 +108,7 @@ KiExitCoroutine:
     /* We are back to the coroutine stack now. Restore all the
      * callee-saved (non-clobbered) registers that KiYieldCoroutine
      * has saved */
-    ldp x19, x20, [sp], 0x10
-    ldp x21, x22, [sp], 0x10
-    ldp x23, x24, [sp], 0x10
-    ldp x25, x26, [sp], 0x10
-    ldp x27, x28, [sp], 0x10
-    ldp x29, x30, [sp], 0x10
+    RESTORE_REGS
     /* Return to whoever was calling KiYieldCoroutine */
     ret
 .ENDP

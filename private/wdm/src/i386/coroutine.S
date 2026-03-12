@@ -1,13 +1,24 @@
 #include <wdmasm.h>
 
-#define COROUTINE_START_PROLOGUE			;\
-    /* KiCurrentCoroutineStackTop = StackTop (%ecx); */ ;\
-    mov %ecx, _KiCurrentCoroutineStackTop		;\
+/* On i386 all XMM registers are caller-saved (volatile),
+ * so we don't need to save them. */
+#define SAVE_REGS					\
     /* Save all callee-saved (non-volatile) registers */;\
     push %ebx						;\
     push %esi						;\
     push %edi						;\
-    push %ebp						;\
+    push %ebp
+
+#define RESTORE_REGS					\
+    pop %ebp						;\
+    pop %edi						;\
+    pop %esi						;\
+    pop %ebx
+
+#define COROUTINE_START_PROLOGUE			;\
+    /* KiCurrentCoroutineStackTop = StackTop (%ecx); */ ;\
+    mov %ecx, _KiCurrentCoroutineStackTop		;\
+    SAVE_REGS						;\
     /* Save the master thread stack pointer */		;\
     mov %esp, -0x10(%ecx)				;\
     /* Save the address to KiExitCoroutine so		;\
@@ -49,10 +60,7 @@ _KiStartCoroutine:
 KiExitCoroutine:
     /* Restore all callee-saved (non-clobbered) registers.
      * Note this is where KiCoroutineYield jumps to */
-    pop %ebp
-    pop %edi
-    pop %esi
-    pop %ebx
+    RESTORE_REGS
     /* KiCurrentCoroutineStackTop = NULL; */
     movl $0, _KiCurrentCoroutineStackTop
     /* Pop %eip. Note this code path is shared by KiStartCoroutine
@@ -67,10 +75,7 @@ KiExitCoroutine:
 .global _KiYieldCoroutine
 _KiYieldCoroutine:
     /* Save all callee-saved (non-clobbered) registers */
-    push %ebx
-    push %esi
-    push %edi
-    push %ebp
+    SAVE_REGS
     /* Load the current coroutine stack top to %ecx */
     movl _KiCurrentCoroutineStackTop, %ecx
     /* Save the current stack pointer */
@@ -95,9 +100,6 @@ _KiYieldCoroutine:
     /* We are back to the coroutine stack now. Restore all the
      * callee-saved (non-clobbered) registers that KiYieldCoroutine
      * has saved */
-    pop %ebp
-    pop %edi
-    pop %esi
-    pop %ebx
+    RESTORE_REGS
     /* Return to whoever was calling KiYieldCoroutine */
     ret
