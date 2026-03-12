@@ -590,7 +590,7 @@ static inline VOID IoDbgDumpIoPacket(IN PIO_PACKET IoPacket,
 	DbgPrint("CLIENT MESSAGE\n");
 	break;
     default:
-	DbgPrint("INVALID!!\n");
+	DbgPrint("INVALID!! (0x%x)\n", IoPacket->Type);
 	return;
     }
     if (IoPacket->Type == IoPacketTypeRequest) {
