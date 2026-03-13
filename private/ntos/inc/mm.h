@@ -723,8 +723,15 @@ struct _IO_FILE_OBJECT;
 typedef struct _IMAGE_SECTION_OBJECT {
     struct _IO_FILE_CONTROL_BLOCK *Fcb;
     struct _IO_FILE_OBJECT *ImageCacheFile;
-    LIST_ENTRY SubSectionList;
-    LIST_ENTRY SectionList; /* List of all SECTION objects that share this image section */
+    LIST_ENTRY SubSectionList;	/* List of all SUBSECTIONs of this SECTION. Note the terms
+				 * here may be confusing: an IMAGE_SECTION_OBJECT corresponds
+				 * to one whole PE image file. For each section of the PE
+				 * image file we create one SUBSECTION (plus one for the PE
+				 * image header). Note the PE image section is not the same
+				 * as the SECTION object, discussed below. */
+    LIST_ENTRY SectionList; /* List of all SECTION objects that share this image section.
+			     * Note this is the NT SECTION object, not the sections of the
+			     * PE image file. The latter corresponds to SUBSECTIONs.*/
     MWORD ImageBase;
     ULONG ImageCacheFileSize;
     SECTION_IMAGE_INFORMATION ImageInformation;
@@ -745,9 +752,10 @@ typedef struct _SUBSECTION {
     LIST_ENTRY Link; /* Link for the owning image section's SubSectionList */
     UCHAR Name[IMAGE_SIZEOF_SHORT_NAME+1]; /* Name of the PE section (.text, .data, etc) */
     ULONG SubSectionSize; /* Size of the subsection in memory, page aligned. */
-    ULONG FileOffset; /* Offset from the start of the file, file aligned */
-    ULONG RawDataSize;   /* Size of the subsection, file aligned */
-    ULONG SubSectionBase; /* Relative virtual address of the subsection, page aligned */
+    ULONG FileOffset; /* Offset from the start of the file. This member is always
+		       * file-aligned for PE images and page-aligned for ELF images. */
+    ULONG RawDataSize;   /* Size of the subsection, unaligned. */
+    ULONG SubSectionBase; /* Relative virtual address of the subsection, page aligned. */
     ULONG ImageCacheFileOffset;	/* Offset of this subsection within the image cache file. */
     ULONG Characteristics; /* Section characteristics in the PE image section table. */
 } SUBSECTION, *PSUBSECTION;
