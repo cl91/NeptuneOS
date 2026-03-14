@@ -233,7 +233,6 @@ NTSTATUS IopAllocateMdl(IN PVOID Buffer,
 			IN ULONG BufferLength,
 			IN PULONG_PTR PfnDb,
 			IN ULONG PfnCount,
-			IN BOOLEAN BufferMapped,
 			OUT PMDL *pMdl);
 VOID IopInitIrpProcessing();
 BOOLEAN IopProcessIoPackets(OUT ULONG *pNumResponses,

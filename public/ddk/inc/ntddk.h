@@ -1251,11 +1251,13 @@ FORCEINLINE NTAPI PVOID MmGetSystemAddressForMdlSafe(IN PMDL Mdl)
 /* On Windows this routine returns the virtual address for the IO buffer in original
  * requestor's process address space. The only use for this is to obtain an offset
  * into the IO buffer for the CurrentVa parameter of IoMapTransfer. Since Neptune OS
- * uses separate address spaces for drivers, we simply treat the original buffer as
- * if it is mapped at the very beginning of the virtual address space. */
+ * uses separate address spaces for drivers, we will simply return the system address
+ * if the MDL (ie. where the buffer is mapped into the driver process. Note if you
+ * do not specify DO_MAP_IO_BUFFER, this virtual address range will only be reserved
+ * and not mapped.) */
 FORCEINLINE NTAPI PVOID MmGetMdlVirtualAddress(IN PMDL Mdl)
 {
-    return (PVOID)(ULONG_PTR)Mdl->ByteOffset;
+    return MmGetSystemAddressForMdl(Mdl);
 }
 
 NTAPI NTSYSAPI PMDL IoBuildPartialMdl(IN PMDL SourceMdl,

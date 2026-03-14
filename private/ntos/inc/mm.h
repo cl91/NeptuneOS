@@ -926,7 +926,7 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			   IN MWORD TargetVaddrStart,
 			   IN MWORD TargetVaddrEnd,
 			   OUT MWORD *TargetStartAddr,
-			   IN BOOLEAN ReadOnly);
+			   IN ULONG Flags);
 VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE MappedVSpace,
 		   IN MWORD MappedRegionStart);
 NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
@@ -972,6 +972,10 @@ static inline PPAGING_STRUCTURE MmQueryPage(IN MWORD VirtAddr)
     return MmQueryPageEx(&MiNtosVaddrSpace, VirtAddr, FALSE);
 }
 
+/* Flags that can be passed to MmMapUserBufferEx */
+#define MM_MAP_USER_BUFFER_READ_ONLY	(1)
+#define MM_MAP_USER_BUFFER_RESERVE_ONLY	(2)
+
 /*
  * Maps the user buffer in the given virt addr space into the server
  * virt addr space, returning the starting virtual address of the
@@ -987,8 +991,7 @@ static inline NTSTATUS MmMapUserBuffer(IN PVIRT_ADDR_SPACE VSpace,
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
 			     &MiNtosVaddrSpace, EX_DYN_VSPACE_START,
-			     EX_DYN_VSPACE_END, (MWORD *)TargetStartAddr,
-			     FALSE);
+			     EX_DYN_VSPACE_END, (MWORD *)TargetStartAddr, 0);
 }
 
 /*
@@ -1006,7 +1009,7 @@ static inline NTSTATUS MmMapUserBufferRO(IN PVIRT_ADDR_SPACE VSpace,
     return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
 			     &MiNtosVaddrSpace, EX_DYN_VSPACE_START,
 			     EX_DYN_VSPACE_END, (MWORD *)TargetStartAddr,
-			     TRUE);
+			     MM_MAP_USER_BUFFER_READ_ONLY);
 }
 
 /*

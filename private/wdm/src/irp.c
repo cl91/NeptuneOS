@@ -233,15 +233,12 @@ NTSTATUS IopAllocateMdl(IN PVOID Buffer,
 			IN ULONG BufferLength,
 			IN PULONG_PTR PfnDb,
 			IN ULONG PfnCount,
-			IN BOOLEAN BufferMapped,
 			OUT PMDL *pMdl)
 {
     assert(PfnCount);
     ULONG MdlSize = sizeof(MDL) + PfnCount * sizeof(ULONG_PTR);
     IopAllocatePool(Mdl, MDL, MdlSize);
-    if (BufferMapped) {
-	Mdl->MappedSystemVa = Buffer;
-    }
+    Mdl->MappedSystemVa = Buffer;
     Mdl->ByteOffset = (ULONG_PTR)Buffer & (MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[0]) - 1);
     Mdl->ByteCount = BufferLength;
     Mdl->PfnCount = PfnCount;
@@ -269,8 +266,8 @@ static NTSTATUS IopMarshalIoBuffers(OUT PIRP Irp,
     ULONG64 DeviceFlags = IoStack->DeviceObject->Flags;
     if (DeviceFlags & DO_DIRECT_IO) {
 	RET_ERR(IopAllocateMdl(Buffer, BufferLength,
-			       (PULONG_PTR)((PUCHAR)IoPacket + PfnOffset), PfnCount,
-			       DeviceFlags & DO_MAP_IO_BUFFER, &Irp->MdlAddress));
+			       (PULONG_PTR)((PUCHAR)IoPacket + PfnOffset),
+			       PfnCount, &Irp->MdlAddress));
     } else {
 	/* For both BUFFERED_IO and NEITHER_IO, we need to allocate a buffer if
 	 * the buffer is embedded in the IRP. Note this can only apply to input
@@ -358,8 +355,8 @@ static NTSTATUS IopMarshalIoctlBuffers(OUT PIRP Irp,
 	PULONG_PTR PfnDb = (PULONG_PTR)((PUCHAR)Src + Src->Request.OutputBufferPfn);
 	ULONG PfnCount = Src->Request.OutputBufferPfnCount;
 	if (OutputBufferLength) {
-	    RET_ERR(IopAllocateMdl((PVOID)OutputBuffer, OutputBufferLength, PfnDb,
-				   PfnCount, TRUE, &Irp->MdlAddress));
+	    RET_ERR(IopAllocateMdl((PVOID)OutputBuffer, OutputBufferLength,
+				   PfnDb, PfnCount, &Irp->MdlAddress));
 	}
     }
     return STATUS_SUCCESS;

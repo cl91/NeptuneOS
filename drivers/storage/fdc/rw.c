@@ -645,10 +645,10 @@ VOID ReadWrite(PDRIVE_INFO DriveInfo, PIRP Irp)
      * context that you're running in is irrelevant, since it's only being used to
      * index into the MDL.
      *
-     * Note: On Neptune OS MmGetMdlVirtualAddress() always returns ByteOffset as if
-     * the original buffer was mapped at the very beginning of the virtual address
-     * space) and the MDL doesn't have the Process member (you aren't supposed to
-     * access it on Windows anyway).
+     * Note: On Neptune OS MmGetMdlVirtualAddress() always returns the system address
+     * of the MDL (ie. where the IO buffer is mapped in the driver address space), and
+     * the MDL doesn't have the Process member (you aren't supposed to access it on
+     * Windows anyway).
      */
 
     /* Get map registers for DMA */

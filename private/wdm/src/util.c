@@ -307,8 +307,7 @@ NTAPI PMDL IoAllocateMdl(IN PVOID VirtualAddress,
     assert(!PageCount);
     assert(AlignedAddress == AlignedEndAddress);
     PMDL Mdl = NULL;
-    if (!NT_SUCCESS(IopAllocateMdl(VirtualAddress, Length, PfnDb, PfnEntryCount,
-				   TRUE, &Mdl))) {
+    if (!NT_SUCCESS(IopAllocateMdl(VirtualAddress, Length, PfnDb, PfnEntryCount, &Mdl))) {
 	return NULL;
     }
     return Mdl;
@@ -337,6 +336,9 @@ NTAPI PVOID MmPageEntireDriver(IN PVOID Address)
  *        MDL to query
  * @param StartVa
  *        Starting virtual address of the buffer described by the MDL.
+ * @param PfnIndex
+ *        If specified, the corresponding (zero-based) index of the
+ *        PFN database entry will be returned in this parameter.
  *
  * @remarks
  *    Note that this function doesn't exist in Windows/ReactOS and is
@@ -346,24 +348,26 @@ PHYSICAL_ADDRESS MiGetMdlPhysicalAddress(IN PMDL Mdl,
 					 IN PVOID StartVa,
 					 OUT OPTIONAL PULONG PfnIndex)
 {
-    ULONG_PTR CurrentVa = 0;
-    PHYSICAL_ADDRESS PhyAddr = { .QuadPart = 0 };
     if (PfnIndex) {
 	*PfnIndex = ULONG_MAX;
     }
+    ULONG_PTR ByteOffset = (ULONG_PTR)StartVa -
+	(ULONG_PTR)MmGetMdlVirtualAddress(Mdl) + Mdl->ByteOffset;
+    PHYSICAL_ADDRESS PhyAddr = { .QuadPart = 0 };
+    ULONG_PTR CurrentByteOffset = 0;
     for (int i = 0; i < Mdl->PfnCount; i++) {
 	ULONG PageCount = MDL_PFN_PAGE_COUNT(Mdl->PfnEntries[i]);
 	SIZE_T PageSize = MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]);
-	ULONG_PTR NextVa = CurrentVa + PageCount * PageSize;
-	if (CurrentVa <= (ULONG_PTR)StartVa && (ULONG_PTR)StartVa < NextVa) {
+	ULONG_PTR NextByteOffset = CurrentByteOffset + PageCount * PageSize;
+	if (CurrentByteOffset <= ByteOffset && ByteOffset < NextByteOffset) {
 	    PhyAddr.QuadPart = MDL_PFN_PAGE_ADDRESS(Mdl->PfnEntries[i]) +
-		(ULONG_PTR)StartVa - CurrentVa;
+		ByteOffset - CurrentByteOffset;
 	    if (PfnIndex) {
 		*PfnIndex = i;
 	    }
 	    break;
 	}
-	CurrentVa = NextVa;
+	CurrentByteOffset = NextByteOffset;
     }
     assert(PhyAddr.QuadPart != 0);
     return PhyAddr;
@@ -394,13 +398,14 @@ SIZE_T MiGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
 					IN PVOID StartVa,
 					IN ULONG BoundAddrBits)
 {
-    ULONG_PTR CurrentVa = 0;
+    ULONG_PTR ByteOffset = (ULONG_PTR)StartVa -
+	(ULONG_PTR)MmGetMdlVirtualAddress(Mdl) + Mdl->ByteOffset;
+    ULONG_PTR CurrentByteOffset = 0;
     for (int i = 0; i < Mdl->PfnCount; i++) {
 	ULONG PageCount = MDL_PFN_PAGE_COUNT(Mdl->PfnEntries[i]);
 	SIZE_T PageSize = MDL_PFN_PAGE_SIZE(Mdl->PfnEntries[i]);
-	ULONG_PTR NextVa = CurrentVa + PageCount * PageSize;
-	if (CurrentVa <= (ULONG_PTR)StartVa && (ULONG_PTR)StartVa < NextVa) {
-	    ULONG ByteOffset = (ULONG_PTR)StartVa & (PageSize - 1);
+	ULONG_PTR NextByteOffset = CurrentByteOffset + PageCount * PageSize;
+	if (CurrentByteOffset <= ByteOffset && ByteOffset < NextByteOffset) {
 	    if (BoundAddrBits >= PAGE_SHIFT) {
 		BoundAddrBits -= PAGE_SHIFT;
 		ULONG_PTR Pfn = Mdl->PfnEntries[i] >> PAGE_SHIFT;
@@ -410,9 +415,9 @@ SIZE_T MiGetMdlPhysicallyContiguousSize(IN PMDL Mdl,
 		    return (PfnEnd - Pfn) * PAGE_SIZE - ByteOffset;
 		}
 	    }
-	    return PageCount * PageSize - ByteOffset;
+	    return NextByteOffset - ByteOffset;
 	}
-	CurrentVa = NextVa;
+	CurrentByteOffset = NextByteOffset;
     }
     assert(FALSE);
     return 0;

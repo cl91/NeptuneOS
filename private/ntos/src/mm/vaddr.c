@@ -963,6 +963,8 @@ VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
  * Search for a suitable address window in the specified region of the target
  * address space and map the source window into it (up to the specified commit
  * size), returning the resulting VAD in the target address space.
+ *
+ * If TargetCommitSize is zero, the region will be reserved but not committed.
  */
 static NTSTATUS MiMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
 				  IN MWORD SrcWindowStart,
@@ -987,9 +989,11 @@ static NTSTATUS MiMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
     assert(TargetVad->WindowSize == SrcWindowSize);
 
     MmRegisterMirroredMemory(TargetVad, SrcVSpace, SrcWindowStart);
-    RET_ERR_EX(MmCommitVirtualMemoryEx(TargetVSpace, TargetVad->AvlNode.Key,
-				       TargetCommitSize),
-	       MmDeleteVad(TargetVad));
+    if (TargetCommitSize) {
+	RET_ERR_EX(MmCommitVirtualMemoryEx(TargetVSpace, TargetVad->AvlNode.Key,
+					   TargetCommitSize),
+		   MmDeleteVad(TargetVad));
+    }
 
     *pTargetVad = TargetVad;
     return STATUS_SUCCESS;
@@ -1005,6 +1009,9 @@ static NTSTATUS MiMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
  *
  * If ReadOnly is FALSE, the user buffer must be writable by the user.
  * Otherwise STATUS_INVALID_PAGE_PROTECTION is returned.
+ *
+ * If ReserveOnly is TRUE, the target virtual address region will be
+ * reserved, but no pages will actually be committed.
  */
 NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			   IN MWORD BufferStart,
@@ -1013,13 +1020,15 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			   IN MWORD TargetVaddrStart,
 			   IN MWORD TargetVaddrEnd,
 			   OUT MWORD *TargetStartAddr,
-			   IN BOOLEAN ReadOnly)
+			   IN ULONG Flags)
 {
     assert(VSpace != NULL);
     assert(TargetVSpace != NULL);
     assert(TargetStartAddr != NULL);
     MWORD UserWindowStart = BufferStart;
     MWORD WindowSize = BufferLength;
+    BOOLEAN ReadOnly = !!(Flags & MM_MAP_USER_BUFFER_READ_ONLY);
+    BOOLEAN ReserveOnly = !!(Flags & MM_MAP_USER_BUFFER_RESERVE_ONLY);
     RET_ERR_EX(MiEnsureWindowMapped(VSpace, &UserWindowStart, &WindowSize, !ReadOnly),
 	       {
 		   MmDbg("User window not mapped [%p, %p)\n",
@@ -1032,7 +1041,7 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 			      TargetVSpace, TargetVaddrStart,
 			      TargetVaddrEnd,
 			      ReadOnly ? MEM_RESERVE_READ_ONLY : 0,
-			      WindowSize, &TargetBufferVad));
+			      ReserveOnly ? 0 : WindowSize, &TargetBufferVad));
     *TargetStartAddr = BufferStart - UserWindowStart + TargetBufferVad->AvlNode.Key;
     return STATUS_SUCCESS;
 }
@@ -1169,10 +1178,10 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     while ((1ULL << Log2Size) < Length) {
 	Log2Size++;
     }
-    ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_LARGE_PAGES;
     PMMVAD Vad = NULL;
     RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
-				     USER_ADDRESS_END, Length, Log2Size, 0, Flags, &Vad));
+				     USER_ADDRESS_END, Length, Log2Size, 0,
+				     MEM_RESERVE_PHYSICAL_MAPPING, &Vad));
     assert(Vad != NULL);
     PUNTYPED Untyped = NULL;
     RET_ERR_EX(MmRequestUntypedEx(Log2Size, HighestPhyAddr, &Untyped),

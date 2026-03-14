@@ -222,13 +222,16 @@ NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
  *
  * If ReadOnly is FALSE, the user IO buffer must be writable by the user.
  * Otherwise STATUS_INVALID_PAGE_PROTECTION is returned.
+ *
+ * If ReserveOnly is TRUE, virtual address region of the target address space
+ * will be reserved but will not be committed.
  */
 static NTSTATUS IopMapUserBuffer(IN PVIRT_ADDR_SPACE UserVSpace,
 				 IN PIO_DRIVER_OBJECT Driver,
 				 IN MWORD UserBufferStart,
 				 IN MWORD UserBufferLength,
 				 OUT MWORD *DriverBufferStart,
-				 IN BOOLEAN ReadOnly)
+				 IN ULONG Flags)
 {
     assert(UserVSpace != NULL);
     DbgTrace("Mapping user buffer %p from vspace cap 0x%zx into driver %s\n",
@@ -241,9 +244,9 @@ static NTSTATUS IopMapUserBuffer(IN PVIRT_ADDR_SPACE UserVSpace,
 				  UserBufferLength, DriverVSpace,
 				  USER_IMAGE_REGION_START,
 				  USER_ADDRESS_END,
-				  DriverBufferStart, ReadOnly));
-	DbgTrace("Mapped driver buffer for %s at %p\n",
-		 Driver->DriverImagePath, (PVOID)*DriverBufferStart);
+				  DriverBufferStart, Flags));
+	DbgTrace("Mapped driver buffer for %s at %p, flags 0x%x\n",
+		 Driver->DriverImagePath, (PVOID)*DriverBufferStart, Flags);
     }
     return STATUS_SUCCESS;
 }
@@ -266,7 +269,8 @@ static VOID IopUnmapUserBuffer(IN PIO_DRIVER_OBJECT Driver,
 
 typedef enum _IO_TRANSFER_TYPE {
     MappedIo = 1, /* If data size is small, embed data in the IRP. Otherwise map. */
-    DirectIo, /* Only send MDL. Do not map the buffer into driver address space */
+    DirectIo, /* Only send MDL and reserve the virtual address region in the driver
+	       * process for the IO buffer. Do not actually map the buffer. */
     MappedDirectIo /* Send MDL and map the buffer into driver address space.
 		    * Note this is equal to MappedIo | DirectIo. */
 } IO_TRANSFER_TYPE;
@@ -425,14 +429,18 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	Irp->Flags &= ~IOP_IRP_OUTPUT_DIRECT_IO;
     }
 
-    /* Map the input buffer if InputBuffer is not an offset and input IO type
-     * is mapped IO. */
+    /* If InputBuffer is not an offset, map the input buffer if input IO type
+     * is mapped IO. Otherwise, only reserve the virtual address range. */
     MWORD MappedInputBuffer = 0;
-    if (InputBuffer >= PAGE_SIZE && (InputIoType & MappedIo)) {
+    if (InputBuffer >= PAGE_SIZE) {
 	/* The input buffer must not already have been mapped. */
 	assert(!PendingIrp->InputBuffer);
+	ULONG Flags = MM_MAP_USER_BUFFER_READ_ONLY;
+	if (!(InputIoType & MappedIo)) {
+	    Flags |= MM_MAP_USER_BUFFER_RESERVE_ONLY;
+	}
 	RET_ERR(IopMapUserBuffer(RequestorVSpace, DriverObject, InputBuffer,
-				 InputBufferLength, &MappedInputBuffer, TRUE));
+				 InputBufferLength, &MappedInputBuffer, Flags));
 	assert(MappedInputBuffer != 0);
 	DbgTrace("Mapped input buffer %p into driver %s at %p\n", (PVOID)InputBuffer,
 		 DriverObject->DriverImagePath, (PVOID)MappedInputBuffer);
@@ -440,16 +448,20 @@ NTSTATUS IopMapIoBuffers(IN PPENDING_IRP PendingIrp)
 	PendingIrp->InputBuffer = InputBuffer;
     }
 
-    /* Map the output buffer if OutputBuffer is given and the output IO type
-     * is mapped IO. */
-    if (OutputBuffer && (OutputIoType & MappedIo)) {
+    /* If there is an output buffer, map it if the output IO type is mapped IO.
+     * Otherwise reserve the virtual address range only. */
+    if (OutputBuffer) {
 	assert(OutputBuffer >= PAGE_SIZE);
 	/* The output buffer must not already have been mapped. */
 	assert(!PendingIrp->OutputBuffer);
+	ULONG Flags = OutputIsReadOnly ? MM_MAP_USER_BUFFER_READ_ONLY : 0;
+	if (!(OutputIoType & MappedIo)) {
+	    Flags |= MM_MAP_USER_BUFFER_RESERVE_ONLY;
+	}
 	MWORD MappedOutputBuffer = 0;
 	RET_ERR_EX(IopMapUserBuffer(RequestorVSpace, DriverObject,
 				    OutputBuffer, OutputBufferLength,
-				    &MappedOutputBuffer, OutputIsReadOnly),
+				    &MappedOutputBuffer, Flags),
 		   if (MappedInputBuffer) {
 		       IopUnmapUserBuffer(DriverObject, MappedInputBuffer);
 		   });
