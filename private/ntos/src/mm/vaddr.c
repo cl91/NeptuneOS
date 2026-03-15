@@ -939,9 +939,12 @@ VOID MmDeleteVad(IN PMMVAD Vad)
     assert(MiVSpaceFindVadNode(Vad->VSpace, Vad->AvlNode.Key) == Vad);
     MiUncommitVad(Vad);
     AvlTreeRemoveNode(&Vad->VSpace->VadTree, &Vad->AvlNode);
-    if (Vad->SectionLink.Flink != NULL) {
+    if (Vad->Section) {
+	assert(Vad->SectionLink.Flink != NULL);
 	assert(Vad->SectionLink.Blink != NULL);
+	assert(ListHasEntry(&Vad->Section->VadList, &Vad->SectionLink));
 	RemoveEntryList(&Vad->SectionLink);
+	ObDereferenceObject(Vad->Section);
     }
     if (Vad->Flags.MirroredMemory) {
 	assert(Vad->MirroredMemory.ViewerLink.Flink != NULL);
@@ -1599,11 +1602,11 @@ VOID MmDbgDumpVad(PMMVAD Vad)
 	       Vad->Flags.PhysicalMapping ? " physical-mapping" : "",
 	       Vad->Flags.OwnedMemory ? " owned-memory" : "",
 	       Vad->Flags.MirroredMemory ? " mirrored-memory" : "");
+    MmDbgPrint("    section = %p\n", Vad->Section);
     if (Vad->Flags.ImageMap) {
 	MmDbgPrint("    subsection = %p\n", Vad->ImageSectionView.SubSection);
     }
     if (Vad->Flags.FileMap) {
-	MmDbgPrint("    section = %p\n", Vad->DataSectionView.Section);
 	MmDbgPrint("    section offset = %p\n", (PVOID) Vad->DataSectionView.SectionOffset);
     }
     if (Vad->Flags.PhysicalMapping) {

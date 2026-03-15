@@ -396,12 +396,12 @@ typedef struct _MMVAD {
     struct _VIRT_ADDR_SPACE *VSpace;
     MWORD WindowSize;		/* Rounded up to page boundary */
     MMVAD_FLAGS Flags;
-    LIST_ENTRY SectionLink;	/* List entry for SECTION.VadList.
+    struct _SECTION *Section;
+    LIST_ENTRY SectionLink;	/* List entry for Section->VadList.
 				 * If the VAD does not map a section
 				 * view, this is unused. */
     union {
 	struct {
-	    struct _SECTION *Section;
 	    MWORD SectionOffset; /* Rounded down to 4K page boundary */
 	} DataSectionView;
 	struct {
@@ -705,7 +705,7 @@ typedef struct _SECTION {
     };
     LIST_ENTRY Link;	/* For image sections and data sections, links all SECTION
 			 * objects that share the same IMAGE/DATA_SECTION_OBJECT. */
-    LIST_ENTRY VadList;	/* List of VADs that map a view of this section
+    LIST_ENTRY VadList;	/* List of VADs that map a view of this section.
 			 * For image section, this includes all subsections. */
     MMSECTION_FLAGS Flags;
     ULONG Attributes;

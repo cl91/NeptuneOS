@@ -708,7 +708,11 @@ static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
     PSECTION Section = (PSECTION)Self;
     MmDbg("Deleting section object %p\n", Section);
     MmDbgDumpSection(Section);
-    /* Unmap all the mapped view of this section */
+    /* There shouldn't be any mapped view of this section as we always increase
+     * the refcount of the section object when it is mapped. */
+    assert(IsListEmpty(&Section->VadList));
+    /* We will nonetheless delete the mapped views in order to keep the server
+     * data structure consistent. */
     LoopOverList(Vad, &Section->VadList, MMVAD, SectionLink) {
 	MmDeleteVad(Vad);
     }
@@ -716,10 +720,9 @@ static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
 	PIMAGE_SECTION_OBJECT ImageSectionObject = Section->ImageSectionObject;
 	assert(ListHasEntry(&ImageSectionObject->SectionList, &Section->Link));
 	RemoveEntryList(&Section->Link);
-	if (!IsListEmpty(&ImageSectionObject->SectionList)) {
-	    return;
+	if (IsListEmpty(&ImageSectionObject->SectionList)) {
+	    MiDeleteImageSectionObject(ImageSectionObject);
 	}
-	MiDeleteImageSectionObject(ImageSectionObject);
     } else if (Section->Flags.File) {
 	/* TODO! */
 	assert(FALSE);
@@ -913,7 +916,7 @@ static VOID MiDbgDumpImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSection);
 #endif
 
 static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
-					IN PLIST_ENTRY SectionVadList,
+					OUT PLIST_ENTRY VadList,
 					IN PIMAGE_SECTION_OBJECT ImageSection,
 					IN OUT OPTIONAL MWORD *pBaseAddress,
 					OUT OPTIONAL MWORD *pImageVirtualSize,
@@ -923,6 +926,10 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 {
     assert(VSpace != NULL);
     assert(ImageSection != NULL);
+    /* We create a list to keep track of all the VADs for the subsections,
+     * such that when mapping failed (say due to out of memory or cap slot)
+     * we can clean up correctly. */
+    InitializeListHead(VadList);
 
     if (ReserveFlags & ~(MEM_RESERVE_TOP_DOWN | MEM_RESERVE_LARGE_PAGES)) {
 	return STATUS_INVALID_PARAMETER;
@@ -964,11 +971,6 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
     }
 
     NTSTATUS Status = STATUS_NTOS_BUG;
-    /* We create a list to keep track of all the VADs for the subsections,
-     * such that when mapping failed (say due to out of memory or cap slot)
-     * we can clean up correctly. */
-    LIST_ENTRY VadList;
-    InitializeListHead(&VadList);
     /* For each subsection of the image section object, create a VAD that points
      * to the subsection, and commit the memory pages of that subsection. */
     LoopOverList(SubSection, &ImageSection->SubSectionList, SUBSECTION, Link) {
@@ -1005,11 +1007,8 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	    MmDeleteVad(Vad);
 	    goto err;
 	}
-	InsertTailList(&VadList, &Vad->SectionLink);
+	InsertTailList(VadList, &Vad->SectionLink);
     }
-
-    /* All subsections mapped successfully. Add the VADs to the vad list of the section */
-    AppendTailListHead(SectionVadList, &VadList);
 
     if (pBaseAddress != NULL) {
 	if (*pBaseAddress != 0) {
@@ -1024,7 +1023,8 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
     return STATUS_SUCCESS;
 
 err:
-    LoopOverList(Vad, &VadList, MMVAD, SectionLink) {
+    LoopOverList(Vad, VadList, MMVAD, SectionLink) {
+	RemoveEntryList(&Vad->SectionLink);
 	MmDeleteVad(Vad);
     }
     return Status;
@@ -1034,7 +1034,8 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
 					   IN MWORD PhysicalBase,
 					   IN MWORD VirtualBase,
 					   IN MWORD WindowSize,
-					   IN ULONG PageProtection)
+					   IN ULONG PageProtection,
+					   OUT OPTIONAL PMMVAD *pVad)
 {
     assert(VSpace != NULL);
     PMMVAD Vad = NULL;
@@ -1056,6 +1057,9 @@ static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
     RET_ERR_EX(MiMapIoMemory(Vad->VSpace, PhysicalBase, VirtualBase, WindowSize,
 			     MM_RIGHTS_RW, Attributes, UseLargePage, FALSE),
 	       MmDeleteVad(Vad));
+    if (pVad) {
+	*pVad = Vad;
+    }
     return STATUS_SUCCESS;
 }
 
@@ -1093,10 +1097,18 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	    return STATUS_INVALID_PARAMETER;
 	}
 	MWORD ImageVirtualSize;
-	RET_ERR(MiMapViewOfImageSection(VSpace, &Section->VadList,
+	LIST_ENTRY VadList;
+	RET_ERR(MiMapViewOfImageSection(VSpace, &VadList,
 					Section->ImageSectionObject,
 					BaseAddress, &ImageVirtualSize,	HighZeroBits,
 					ReserveFlags, AccessProtection));
+	/* All subsections mapped successfully. Link the VADs to the section */
+	LoopOverList(Vad, &VadList, MMVAD, SectionLink) {
+	    Vad->Section = Section;
+	    ObpReferenceObject(Section);
+	}
+	AppendTailListHead(&Section->VadList, &VadList);
+
 	if (ViewSize != NULL) {
 	    *ViewSize = ImageVirtualSize;
 	}
@@ -1105,8 +1117,13 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	if (!BaseAddress || !*BaseAddress || !SectionOffset || !ViewSize || !*ViewSize) {
 	    return STATUS_INVALID_PARAMETER;
 	}
-	return MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress,
-					  *ViewSize, AccessProtection);
+	PMMVAD Vad = NULL;
+	RET_ERR(MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress,
+					   *ViewSize, AccessProtection, &Vad));
+	ObpReferenceObject(Section);
+	Vad->Section = Section;
+	InsertTailList(&Section->VadList, &Vad->SectionLink);
+	return STATUS_SUCCESS;
     }
     UNIMPLEMENTED;
 }
@@ -1396,6 +1413,10 @@ VOID MmDbgDumpSection(PSECTION Section)
 	MiDbgDumpImageSectionObject(Section->ImageSectionObject);
     } else {
 	MiDbgDumpDataSectionObject(Section->DataSectionObject);
+    }
+    MmDbgPrint("    VADs:\n");
+    LoopOverList(Vad, &Section->VadList, MMVAD, SectionLink) {
+	MmDbgDumpVad(Vad);
     }
 #endif
 }
