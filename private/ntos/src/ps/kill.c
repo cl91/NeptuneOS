@@ -170,9 +170,15 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
 			   IN NTSTATUS ExitStatus)
 {
     assert(Thread->Process != NULL);
+    if (Thread->Terminated) {
+	DbgTrace("Thread %s already terminated (exit status 0x%08x)\n",
+		 Thread->DebugName, Thread->ExitStatus);
+	return STATUS_THREAD_IS_TERMINATING;
+    }
     DbgTrace("Terminating thread %s with status 0x%08x\n",
 	     Thread->DebugName, ExitStatus);
     Thread->ExitStatus = ExitStatus;
+    Thread->Terminated = TRUE;
     /* If the thread to terminate is the main event loop of a driver thread,
      * set the InitializationDone event to wake up the thread waiting on NtLoadDriver */
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -229,8 +235,14 @@ NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
 	    HANDLE HandleToClose;
 	    PIO_DRIVER_OBJECT DriverObject;
 	});
+    if (Process->Terminated) {
+	DbgTrace("Process %p (%s) already terminated (exit status 0x%08x)\n",
+		 Process, KEDBG_PROCESS_TO_FILENAME(Process), ExitStatus);
+	ASYNC_RETURN(State, STATUS_PROCESS_IS_TERMINATING);
+    }
     DbgTrace("Terminating process %p (%s) with status 0x%08x\n",
 	     Process, KEDBG_PROCESS_TO_FILENAME(Process), ExitStatus);
+    Process->Terminated = TRUE;
 
     /* If we are terminating a running driver process, unload the driver.
      * Note we do not do this before the driver is fully loaded since

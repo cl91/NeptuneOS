@@ -46,6 +46,7 @@ typedef struct _THREAD {
     THREAD_PRIORITY CurrentPriority;
     NTDLL_THREAD_INIT_INFO InitInfo;
     BOOLEAN InitialThread;
+    BOOLEAN Terminated;	/* TRUE if the thread has been terminated */
     BOOLEAN IsrThread; /* TRUE if the thread is an interrupt service thread of a driver */
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
     BOOLEAN Alertable; /* TRUE if we can deliver APC to the thread */
@@ -71,6 +72,7 @@ typedef struct _PROCESS {
     DISPATCHER_HEADER Header;
     BOOLEAN Initialized; /* FALSE when process is first created. TRUE once
 			  * the initial thread has been successfully created. */
+    BOOLEAN Terminated;		/* TRUE if a process is terminated. */
     LIST_ENTRY ThreadList;
     PCNODE SharedCNode;
     HANDLE_TABLE HandleTable;
