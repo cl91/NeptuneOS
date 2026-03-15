@@ -23,6 +23,18 @@
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
 LIST_ENTRY KiReadyThreadList;
 
+/* If the thread is in the ready list, remove it so the system service
+ * loop will not try to resume the thread. */
+VOID KeRemoveThreadFromReadyList(IN PTHREAD Thread)
+{
+    LoopOverList(Entry, &KiReadyThreadList, THREAD, ReadyListLink) {
+	if (Entry == Thread) {
+	    RemoveEntryList(&Thread->ReadyListLink);
+	    break;
+	}
+    }
+}
+
 NTSTATUS KeCreateEndpointEx(IN PIPC_ENDPOINT Endpoint,
 			    IN PCNODE CSpace)
 {

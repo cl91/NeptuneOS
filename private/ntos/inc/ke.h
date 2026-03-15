@@ -831,6 +831,7 @@ NTSTATUS KeEnableWdmServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableThreadFaultHandler(IN struct _THREAD *Thread);
 NTSTATUS KeEnableSystemThreadFaultHandler(IN struct _SYSTEM_THREAD *Thread);
 VOID KeDisableThreadServices(IN struct _THREAD *Thread);
+VOID KeRemoveThreadFromReadyList(IN struct _THREAD *Thread);
 NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
 			     IN PTHREAD_CONTEXT Context);
 NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,

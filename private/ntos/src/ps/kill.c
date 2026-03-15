@@ -87,13 +87,7 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
     KeDisableThreadServices(Thread);
 
     /* If we are in the ready list, remove us from it. */
-    extern LIST_ENTRY KiReadyThreadList;
-    LoopOverList(Entry, &KiReadyThreadList, THREAD, ReadyListLink) {
-	if (Entry == Thread) {
-	    RemoveEntryList(&Thread->ReadyListLink);
-	    break;
-	}
-    }
+    KeRemoveThreadFromReadyList(Thread);
 
     /* Delete the thread-private CNode. This will revoke all caps within it. */
     MmDeleteCNode(Thread->CSpace);
@@ -189,6 +183,7 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
      * when there are other objects referring to the thread (in which case
      * the dereference below does not yet delete the THREAD object). */
     RET_ERR(PspSuspendThread(Thread->TreeNode.Cap));
+    KeRemoveThreadFromReadyList(Thread);
     /* Dereference the THREAD object so the object manager will delete it
      * (if no one else is referring to it) */
     ObDereferenceObject(Thread);
