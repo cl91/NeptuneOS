@@ -214,6 +214,32 @@ NTSTATUS SmStartCommandPrompt()
 	return STATUS_UNSUCCESSFUL;
     }
 
+    Status = NtWaitForSingleObject(ProcessInfo.ProcessHandle, FALSE, NULL);
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to wait for termination of process %wZ (status 0x%08x).\n",
+		&ImagePath, Status);
+	return STATUS_SUCCESS;
+    }
+
+    PROCESS_BASIC_INFORMATION BasicInfo;
+    ULONG ReturnLength;
+
+    Status = NtQueryInformationProcess(ProcessInfo.ProcessHandle,
+				       ProcessBasicInformation,
+				       &BasicInfo,
+				       sizeof(BasicInfo),
+				       &ReturnLength);
+
+    if (!NT_SUCCESS(Status)) {
+	SmPrint("Failed to query basic information for process %wZ (status 0x%08x).\n",
+		&ImagePath, Status);
+	return STATUS_SUCCESS;
+    }
+
+    SmPrint("Process %wZ terminated with exit status 0x%08x.\n",
+	    &ImagePath, BasicInfo.ExitStatus);
+    NtClose(ProcessInfo.ThreadHandle);
+    NtClose(ProcessInfo.ProcessHandle);
     return STATUS_SUCCESS;
 }
 
@@ -247,9 +273,17 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     SmMountDrives();
     SmPrint("\n");
 
-    if (!NT_SUCCESS(SmStartCommandPrompt())) {
-	SmPrint("Failed to launch native command prompt. System halted.\n");
+    while (TRUE) {
+	NTSTATUS Status = SmStartCommandPrompt();
+	if (!NT_SUCCESS(Status)) {
+	    SmPrint("Failed to launch native command prompt (status 0x%08x). System halted.\n",
+		    Status);
+	    goto Loop;
+	} else {
+	    SmPrint("\n");
+	}
     }
 
+Loop:
     while (1);
 }
