@@ -933,8 +933,7 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 		       IN MWORD WindowSize,
 		       IN PAGING_RIGHTS Rights,
 		       IN PAGING_ATTRIBUTES Attributes,
-		       IN BOOLEAN LargePage,
-		       IN BOOLEAN IgnoreConflict)
+		       IN BOOLEAN LargePage)
 {
     assert(VSpace != NULL);
     assert(WindowSize != 0);
@@ -946,7 +945,7 @@ NTSTATUS MiMapIoMemory(IN PVIRT_ADDR_SPACE VSpace,
 	}
 	Status = MiMapIoPage(VSpace, PhyAddr + MappedSize, VirtAddr + MappedSize,
 			     Rights, Attributes, &LargePage);
-	if (!(NT_SUCCESS(Status) || (IgnoreConflict && Status == STATUS_ALREADY_COMMITTED))) {
+	if (!NT_SUCCESS(Status)) {
 	    goto err;
 	}
 	MappedSize += (LargePage ? LARGE_PAGE_SIZE : PAGE_SIZE);

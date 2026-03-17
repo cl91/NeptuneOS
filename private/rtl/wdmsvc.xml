@@ -127,15 +127,15 @@
     <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
   </svc>
 
-  <svc name="WdmReserveIoMemoryWindow">
+  <svc name="WdmMapIoSpace">
     <parameter annotation="in" type="ULONG64" name="PhysicalBase" />
-    <parameter annotation="in" type="ULONG" name="WindowBits" />
+    <parameter annotation="in" type="MWORD" name="WindowSize" />
     <parameter annotation="in" type="MEMORY_CACHING_TYPE" name="CacheType" />
-    <parameter annotation="out" type="ptr::PVOID" name="MappedAddress" />
+    <parameter annotation="out" type="ptr::PVOID" name="VirtualAddress" />
   </svc>
 
-  <svc name="WdmMapIoMemory">
-    <parameter annotation="in" type="MWORD" name="VirtualAddress" />
+  <svc name="WdmUnmapIoSpace">
+    <parameter annotation="in" type="PVOID" name="VirtualAddress" />
     <parameter annotation="in" type="MWORD" name="WindowSize" />
   </svc>
 

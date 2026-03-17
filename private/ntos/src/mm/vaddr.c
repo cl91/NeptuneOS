@@ -611,8 +611,8 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* VADs marked as physical mapping are mapped using MmMapViewOfSection and you cannot
-     * call MmCommitVirtualMemory on it. */
+    /* VADs marked as physical mapping are mapped using MmMapViewOfSection or
+     * MmMapIoSpace and you cannot call MmCommitVirtualMemory on it. */
     if (Vad->Flags.PhysicalMapping) {
 	MmDbg("Error: Call MmMapViewOfSection to commit physical mapping.\n");
 	MmDbgDumpVSpace(VSpace);
@@ -1075,18 +1075,6 @@ VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE VSpace,
     }
 }
 
-VOID MmUnmapPhysicalMemory(IN MWORD VirtAddr)
-{
-    PMMVAD Vad = MiVSpaceFindVadNode(&MiNtosVaddrSpace, VirtAddr);
-    if (!Vad) {
-	assert(FALSE);
-	return;
-    }
-    assert(MiVadNodeContainsAddr(Vad, VirtAddr));
-    assert(Vad->Flags.PhysicalMapping);
-    MmDeleteVad(Vad);
-}
-
 /*
  * Map the client page at the specified address into the hyperspace
  * so the server can access it. If the page is a large page, the large
@@ -1163,6 +1151,48 @@ FORCEINLINE PAGING_ATTRIBUTES MiGetPagingAttributesFromCacheType(MEMORY_CACHING_
     return Attributes;
 }
 
+NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
+			IN MWORD WindowStart,
+			IN MWORD WindowEnd,
+			IN MWORD WindowSize,
+			IN ULONG LowZeroBits,
+			IN MWORD PhyAddr,
+			IN MEMORY_CACHING_TYPE CacheType,
+			IN BOOLEAN ReadOnly,
+			OUT MWORD *pVirtAddr,
+			OUT OPTIONAL PMMVAD *pVad)
+{
+    assert(WindowSize);
+    MWORD PageOffset = PhyAddr - PAGE_ALIGN(PhyAddr);
+    PhyAddr = PAGE_ALIGN(PhyAddr);
+    WindowSize = PAGE_ALIGN_UP(WindowSize + PageOffset);
+    assert(IS_PAGE_ALIGNED(WindowStart));
+    assert(IS_PAGE_ALIGNED(WindowEnd));
+    PMMVAD Vad = NULL;
+    ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING;
+    if (ReadOnly) {
+	Flags |= MEM_RESERVE_READ_ONLY;
+    }
+    RET_ERR(MmReserveVirtualMemoryEx(VSpace, WindowStart, WindowEnd, WindowSize,
+				     LowZeroBits, 0, Flags, &Vad));
+    Vad->PhysicalSectionView.PhysicalBase = PhyAddr;
+    Vad->PhysicalSectionView.CacheType = CacheType;
+
+    PAGING_ATTRIBUTES Attributes = MiGetPagingAttributesFromCacheType(CacheType);
+    MWORD VirtAddr = Vad->AvlNode.Key;
+    PAGING_RIGHTS PagingRights = ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
+    BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhyAddr) &&
+	IS_LARGE_PAGE_ALIGNED(VirtAddr) && IS_LARGE_PAGE_ALIGNED(WindowSize);
+    RET_ERR_EX(MiMapIoMemory(VSpace, PhyAddr, VirtAddr, WindowSize, PagingRights,
+			     Attributes, UseLargePage),
+	       MmDeleteVad(Vad));
+    *pVirtAddr = VirtAddr + PageOffset;
+    if (pVad) {
+	*pVad = Vad;
+    }
+    return STATUS_SUCCESS;
+}
+
 /*
  * Allocate physically contiguous memory of given size. Memory allocated is
  * always aligned on the smallest power of two that is at least the given size.
@@ -1174,32 +1204,34 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN MWORD HighestPhyAddr,
 					      IN MEMORY_CACHING_TYPE CacheType,
 					      OUT MWORD *VirtAddr,
-					      OUT MWORD *PhyAddr)
+					      OUT MWORD *pPhyAddr)
 {
     Length = PAGE_ALIGN_UP(Length);
     ULONG Log2Size = 0;
     while ((1ULL << Log2Size) < Length) {
 	Log2Size++;
     }
-    PMMVAD Vad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(VSpace, USER_IMAGE_REGION_START,
-				     USER_ADDRESS_END, Length, Log2Size, 0,
-				     MEM_RESERVE_PHYSICAL_MAPPING, &Vad));
-    assert(Vad != NULL);
     PUNTYPED Untyped = NULL;
-    RET_ERR_EX(MmRequestUntypedEx(Log2Size, HighestPhyAddr, &Untyped),
-	       MmDeleteVad(Vad));
-    assert(Vad->Flags.PhysicalMapping);
-    Vad->PhysicalSectionView.PhysicalBase = Untyped->AvlNode.Key;
-    Vad->PhysicalSectionView.RootUntyped = Untyped;
-    RET_ERR_EX(MiMapIoMemory(VSpace, Untyped->AvlNode.Key, Vad->AvlNode.Key,
-			     Length, MM_RIGHTS_RW,
-			     MiGetPagingAttributesFromCacheType(CacheType),
-			     FALSE, FALSE),
-	       MmDeleteVad(Vad));
-    *VirtAddr = Vad->AvlNode.Key;
-    *PhyAddr = Untyped->AvlNode.Key;
+    RET_ERR(MmRequestUntypedEx(Log2Size, HighestPhyAddr, &Untyped));
+    MWORD PhyAddr = Untyped->AvlNode.Key;
+    RET_ERR_EX(MmMapIoSpaceEx(VSpace, USER_IMAGE_REGION_START, USER_ADDRESS_END, Length,
+			      Log2Size, PhyAddr, CacheType, FALSE, VirtAddr, NULL),
+	       MmReleaseUntyped(Untyped));
+    *pPhyAddr = PhyAddr;
     return STATUS_SUCCESS;
+}
+
+VOID MmUnmapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
+		      IN MWORD VirtAddr)
+{
+    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, VirtAddr);
+    if (!Vad) {
+	assert(FALSE);
+	return;
+    }
+    assert(MiVadNodeContainsAddr(Vad, VirtAddr));
+    assert(Vad->Flags.PhysicalMapping);
+    MmDeleteVad(Vad);
 }
 
 NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
@@ -1207,6 +1239,7 @@ NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					  IN MWORD Length,
 					  IN MEMORY_CACHING_TYPE CacheType)
 {
+#if DBG
     PMMVAD Vad = MiVSpaceFindVadNode(VSpace, VirtAddr);
     if (!Vad) {
 	MmDbg("Invalid base address %p\n", (PVOID)VirtAddr);
@@ -1217,7 +1250,8 @@ NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     assert(Length == Vad->WindowSize);
     assert(Vad->Flags.PhysicalMapping);
     assert(CacheType == Vad->PhysicalSectionView.CacheType);
-    MmDeleteVad(Vad);
+#endif
+    MmUnmapIoSpaceEx(VSpace, VirtAddr);
     return STATUS_SUCCESS;
 }
 
@@ -1515,71 +1549,31 @@ NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
     return STATUS_NOT_IMPLEMENTED;
 }
 
-NTSTATUS WdmReserveIoMemoryWindow(IN ASYNC_STATE AsyncState,
-                                  IN PTHREAD Thread,
-				  IN ULONG64 PhysicalBase,
-                                  IN ULONG WindowBits,
-                                  IN MEMORY_CACHING_TYPE CacheType,
-                                  OUT PVOID *MappedAddress)
+NTSTATUS WdmMapIoSpace(IN ASYNC_STATE AsyncState,
+		       IN PTHREAD Thread,
+		       IN ULONG64 PhyAddr,
+		       IN MWORD WindowSize,
+		       IN MEMORY_CACHING_TYPE CacheType,
+		       OUT PVOID *VirtAddr)
 {
     assert(Thread);
     assert(Thread->Process);
     assert(IoGetDriverObjectFromProcess(Thread->Process));
-    if (WindowBits < PAGE_LOG2SIZE) {
-	return STATUS_INVALID_PARAMETER;
-    }
-    if (ALIGN_DOWN_64(PhysicalBase, 1ULL << WindowBits) != PhysicalBase) {
-	return STATUS_INVALID_OFFSET_ALIGNMENT;
-    }
-    PMMVAD Vad = NULL;
-    NTSTATUS Status = MmReserveVirtualMemoryEx(&Thread->Process->VSpace,
-					       USER_IMAGE_REGION_START,
-					       USER_ADDRESS_END,
-					       1ULL << WindowBits, WindowBits, 0,
-					       MEM_RESERVE_PHYSICAL_MAPPING, &Vad);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
-    Vad->PhysicalSectionView.PhysicalBase = PhysicalBase;
-    Vad->PhysicalSectionView.CacheType = CacheType;
-    *MappedAddress = (PVOID)(MWORD)Vad->AvlNode.Key;
-    return STATUS_SUCCESS;
+    return MmMapIoSpaceEx(&Thread->Process->VSpace, USER_IMAGE_REGION_START,
+			  USER_ADDRESS_END, WindowSize, 0, PhyAddr,
+			  CacheType, FALSE, (MWORD *)VirtAddr, NULL);
 }
 
-NTSTATUS WdmMapIoMemory(IN ASYNC_STATE AsyncState,
-                        IN PTHREAD Thread,
-                        IN MWORD VirtAddr,
-                        IN MWORD WindowSize)
+NTSTATUS WdmUnmapIoSpace(IN ASYNC_STATE AsyncState,
+			 IN PTHREAD Thread,
+			 IN PVOID VirtualBase,
+			 IN MWORD WindowSize)
 {
     assert(Thread);
     assert(Thread->Process);
     assert(IoGetDriverObjectFromProcess(Thread->Process));
-    PMMVAD Vad = MiVSpaceFindVadNode(&Thread->Process->VSpace, VirtAddr);
-    if (!Vad) {
-	MmDbg("Invalid virtual address %p\n", (PVOID)VirtAddr);
-	return STATUS_INVALID_PARAMETER_1;
-    }
-    if (!Vad->Flags.PhysicalMapping) {
-	MmDbg("Virtual address %p is not reserved for physical mapping\n",
-	      (PVOID)VirtAddr);
-	return STATUS_INVALID_PARAMETER_1;
-    }
-    MWORD VirtBase = Vad->AvlNode.Key;
-    assert(VirtAddr >= VirtBase);
-    if (VirtAddr + WindowSize > VirtBase + Vad->WindowSize) {
-	MmDbg("Specified window [%p, %p) exceeds physical section view [0x%zx, 0x%zx)\n",
-	      (PVOID)VirtAddr, (PVOID)(VirtAddr + WindowSize),
-	      VirtBase, VirtBase + Vad->WindowSize);
-	return STATUS_INVALID_PARAMETER_2;
-    }
-    MWORD PhyBase = Vad->PhysicalSectionView.PhysicalBase;
-    MWORD PhyAddr = PhyBase + VirtAddr - VirtBase;
-    MEMORY_CACHING_TYPE CacheType = Vad->PhysicalSectionView.CacheType;
-    PAGING_ATTRIBUTES Attributes = MiGetPagingAttributesFromCacheType(CacheType);
-    BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhyBase) &&
-	IS_LARGE_PAGE_ALIGNED(VirtBase) && IS_LARGE_PAGE_ALIGNED(WindowSize);
-    return MiMapIoMemory(&Thread->Process->VSpace, PhyAddr, VirtAddr, WindowSize,
-			 MM_RIGHTS_RW, Attributes, UseLargePage, TRUE);
+    MmUnmapIoSpaceEx(&Thread->Process->VSpace, (MWORD)VirtualBase);
+    return STATUS_SUCCESS;
 }
 
 VOID MmDbgDumpVad(PMMVAD Vad)

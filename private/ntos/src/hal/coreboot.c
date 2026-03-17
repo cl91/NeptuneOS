@@ -79,11 +79,10 @@ static uint16_t HalpCbTableGetChecksum(PVOID Data, MWORD Size)
 
 static PCB_TABLE_HEADER HalpCbMapTable(IN ULONG64 PhyAddr)
 {
-    ULONG64 AlignedAddr = PAGE_ALIGN64(PhyAddr);
-    PCB_TABLE_HEADER Table = (PVOID)(MWORD)(PhyAddr - AlignedAddr + EX_DYN_VSPACE_START);
-    ULONG WindowSize = PAGE_ALIGN_UP64(PhyAddr + sizeof(CB_TABLE_HEADER)) - AlignedAddr;
-    if (!NT_SUCCESS(MmMapPhysicalMemory(AlignedAddr, EX_DYN_VSPACE_START,
-					WindowSize, PAGE_READONLY))) {
+    PCB_TABLE_HEADER Table = NULL;
+    if (!NT_SUCCESS(MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END,
+				 sizeof(CB_TABLE_HEADER), PhyAddr,
+				 MmCached, TRUE, (PVOID)&Table))) {
 	assert(FALSE);
 	return NULL;
     }
@@ -91,14 +90,14 @@ static PCB_TABLE_HEADER HalpCbMapTable(IN ULONG64 PhyAddr)
     if (memcmp(Table->Signature, "LBIO", sizeof(Table->Signature)) ||
 	!Table->HeaderBytes || HalpCbTableGetChecksum(Table, sizeof(*Table))) {
 	assert(FALSE);
-	MmUnmapPhysicalMemory((MWORD)Table);
+	MmUnmapIoSpace((MWORD)Table);
 	return NULL;
     }
     if (PhyAddr + Table->TableBytes > PAGE_ALIGN_UP64(PhyAddr + sizeof(*Table))) {
-	MmUnmapPhysicalMemory((MWORD)Table);
-	WindowSize = PAGE_ALIGN_UP64(PhyAddr + Table->TableBytes) - AlignedAddr;
-	if (!NT_SUCCESS(MmMapPhysicalMemory(AlignedAddr, EX_DYN_VSPACE_START,
-					    WindowSize, PAGE_READONLY))) {
+	MmUnmapIoSpace((MWORD)Table);
+	if (!NT_SUCCESS(MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END,
+				     Table->TableBytes, PhyAddr,
+				     MmCached, TRUE, (PVOID)&Table))) {
 	    assert(FALSE);
 	    return NULL;
 	}
@@ -158,7 +157,7 @@ NTSTATUS HalpInitCoreboot(VOID)
     }
 
 out:
-    MmUnmapPhysicalMemory((MWORD)LowMemory);
+    MmUnmapIoSpace((MWORD)LowMemory);
     if (!PhyAddr.QuadPart) {
 	return STATUS_SUCCESS;
     }
@@ -203,6 +202,6 @@ out:
     }
 
 done:
-    MmUnmapPhysicalMemory((MWORD)Table);
+    MmUnmapIoSpace((MWORD)Table);
     return STATUS_SUCCESS;
 }

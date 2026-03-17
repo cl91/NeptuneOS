@@ -131,9 +131,10 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 {
     for (ULONG i = 0; i < HalpNumHpetTables; i++) {
 	assert(!HalpHpetTable[i].SystemTimer);
-	MWORD VirtBase = EX_DYN_VSPACE_START;
-	NTSTATUS Status = MmMapPhysicalMemory(HalpHpetTable[i].BaseAddress,
-					      VirtBase, PAGE_SIZE, PAGE_READWRITE);
+	MWORD VirtBase = 0;
+	NTSTATUS Status = MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END,
+				       PAGE_SIZE, HalpHpetTable[i].BaseAddress,
+				       MmNonCached, FALSE, &VirtBase);
 	if (!NT_SUCCESS(Status)) {
 	    assert(FALSE);
 	    return Status;
@@ -194,7 +195,7 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 		DbgTrace("Failed to allocate an IRQ vector for HPET MSI\n");
 		/* Since we are called during system startup, something is seriously
 		 * wrong, so we exit the routine. */
-		MmUnmapPhysicalMemory(VirtBase);
+		MmUnmapIoSpace(VirtBase);
 		return Status;
 	    }
 	    assert(Vector != ULONG_MAX);
@@ -266,7 +267,7 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    Timer->Comparator = Period;
 	    /* Enable the main counter */
 	    *HalpHpetGetGeneralConfig(VirtBase) |= 1ULL << ENABLE_CNF;
-	    MmUnmapPhysicalMemory(VirtBase);
+	    MmUnmapIoSpace(VirtBase);
 	    HalpHpetTable[i].SystemTimer = TRUE;
 	    HalpHpetTable[i].ComparatorId = j;
 	    return STATUS_SUCCESS;
@@ -276,7 +277,7 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	    goto again;
 	}
     out:
-	MmUnmapPhysicalMemory(VirtBase);
+	MmUnmapIoSpace(VirtBase);
     }
     return STATUS_DEVICE_DOES_NOT_EXIST;
 }

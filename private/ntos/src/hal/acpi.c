@@ -136,11 +136,8 @@ static NTSTATUS HalpAcpiMapTable(IN ULONG64 PhyAddr,
 				 IN ULONG SignatureCount)
 {
     assert(Signatures);
-    ULONG64 AlignedAddr = PAGE_ALIGN64(PhyAddr);
-    *Table = (PVOID)(MWORD)(PhyAddr - AlignedAddr + EX_DYN_VSPACE_START);
-    ULONG WindowSize = PAGE_ALIGN_UP64(PhyAddr + sizeof(ACPI_TABLE_HEADER)) - AlignedAddr;
-    RET_ERR(MmMapPhysicalMemory(AlignedAddr, EX_DYN_VSPACE_START,
-				WindowSize, PAGE_READONLY));
+    RET_ERR(MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, sizeof(ACPI_TABLE_HEADER),
+			 PhyAddr, MmCached, TRUE, (PVOID)Table));
     /* Do not map the table if signature does not match any of the given signatures. */
     BOOLEAN Match = FALSE;
     for (ULONG i = 0; i < SignatureCount; i++) {
@@ -150,20 +147,19 @@ static NTSTATUS HalpAcpiMapTable(IN ULONG64 PhyAddr,
 	}
     }
     if (!Match) {
-	MmUnmapPhysicalMemory((MWORD)(*Table));
+	MmUnmapIoSpace((MWORD)*Table);
 	return STATUS_INVALID_SIGNATURE;
     }
     /* Reject the table if checksum fails */
     if (!HalpAcpiTableChecksumValid(*Table)) {
 	assert(FALSE);
-	MmUnmapPhysicalMemory((MWORD)(*Table));
+	MmUnmapIoSpace((MWORD)*Table);
 	return STATUS_DATA_CHECKSUM_ERROR;
     }
     if (PhyAddr + (*Table)->Length > PAGE_ALIGN_UP64(PhyAddr + sizeof(ACPI_TABLE_HEADER))) {
-	MmUnmapPhysicalMemory((MWORD)(*Table));
-	WindowSize = PAGE_ALIGN_UP64(PhyAddr + (*Table)->Length) - AlignedAddr;
-	RET_ERR(MmMapPhysicalMemory(AlignedAddr, EX_DYN_VSPACE_START,
-				    WindowSize, PAGE_READONLY));
+	MmUnmapIoSpace((MWORD)*Table);
+	RET_ERR(MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, (*Table)->Length,
+			     PhyAddr, MmCached, TRUE, (PVOID)Table));
     }
     return STATUS_SUCCESS;
 }
@@ -272,7 +268,7 @@ static VOID HalpAcpiRegisterTable(IN ULONG64 PhyAddr)
 	} else {
 	    assert(FALSE);
 	}
-	MmUnmapPhysicalMemory((MWORD)Table);
+	MmUnmapIoSpace((MWORD)Table);
     }
 }
 
@@ -298,7 +294,7 @@ NTSTATUS HalpInitAcpi(VOID)
 	    Tables[i] = TablePtrs[i];
 	}
     }
-    MmUnmapPhysicalMemory((MWORD)Xsdt);
+    MmUnmapIoSpace((MWORD)Xsdt);
     for (ULONG i = 0; i < PtrCount; i++) {
 	HalpAcpiRegisterTable(Tables[i]);
     }

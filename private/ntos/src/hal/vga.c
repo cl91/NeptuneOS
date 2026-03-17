@@ -3115,15 +3115,17 @@ static inline NTSTATUS HalpInitVgaIoPort()
 
 NTSTATUS HalpInitVga()
 {
+    MWORD VirtBase = 0;
     if (HalpHasFramebuffer) {
 	ULONG FrameBufferSize = HalpGetFrameBufferSize();
 	if (FrameBufferSize > FRAMEBUFFER_MAX_SIZE) {
 	    HalpHasFramebuffer = FALSE;
 	    goto TryVga;
 	}
-	RET_ERR(MmMapPhysicalMemory(HalpFramebuffer.PhysicalAddress,
-				    FRAMEBUFFER_VADDR_START, FrameBufferSize,
-				    PAGE_WRITECOMBINE));
+	RET_ERR(MmMapIoSpace(FRAMEBUFFER_VADDR_START, 0, FrameBufferSize,
+			     HalpFramebuffer.PhysicalAddress, MmWriteCombined,
+			     FALSE, &VirtBase));
+	assert(VirtBase == FRAMEBUFFER_VADDR_START);
 	HalpVgaPanelOrientation = HalpVgaGetPanelOrientation(HalpFramebuffer.Width,
 							     HalpFramebuffer.Height);
 	if (HalpFramebuffer.Width >= 1280 || HalpFramebuffer.Height >= 1280) {
@@ -3140,8 +3142,9 @@ NTSTATUS HalpInitVga()
     } else {
     TryVga:
 #if defined(_M_IX86) || defined(_M_AMD64)
-	RET_ERR(MmMapPhysicalMemory(VGA_VIDEO_PAGE_PADDR,
-				    FRAMEBUFFER_VADDR_START, PAGE_SIZE, 0));
+	RET_ERR(MmMapIoSpace(FRAMEBUFFER_VADDR_START, 0, PAGE_SIZE,
+			     VGA_VIDEO_PAGE_PADDR, MmWriteCombined, FALSE, &VirtBase));
+	assert(VirtBase == FRAMEBUFFER_VADDR_START);
 	RET_ERR(HalpInitVgaIoPort());
 	HalpVgaDisableCursor();
 	HalpVgaCursorMaxColumns = VGA_MODE_COLUMNS;

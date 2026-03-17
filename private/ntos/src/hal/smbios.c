@@ -119,15 +119,14 @@ VOID HalRegisterEfiSystemTablePointer(IN ULONG64 PhysAddr,
 PVOID HalpMapTable(IN PHYSICAL_ADDRESS PhyAddr,
 		   IN ULONG Size)
 {
-    ULONG64 AlignedAddr = PAGE_ALIGN64(PhyAddr.QuadPart);
-    ULONG WindowSize = PAGE_ALIGN_UP64(PhyAddr.QuadPart + Size) - AlignedAddr;
-    NTSTATUS Status = MmMapPhysicalMemory(AlignedAddr, EX_DYN_VSPACE_START,
-					  WindowSize, PAGE_READONLY);
+    MWORD VirtAddr = 0;
+    NTSTATUS Status = MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, Size,
+				   PhyAddr.QuadPart, MmCached, TRUE, &VirtAddr);
     if (!NT_SUCCESS(Status)) {
 	assert(FALSE);
 	return NULL;
     }
-    return (PVOID)(MWORD)(PhyAddr.QuadPart - AlignedAddr + EX_DYN_VSPACE_START);
+    return (PVOID)VirtAddr;
 }
 
 #define VALIDATE_SMBIOS_ENTRYPOINT(ExpectedAnchorString)	\
@@ -172,7 +171,7 @@ static BOOLEAN IsValidSmbios21EntryPoint(IN PSMBIOS21_ENTRY_POINT EntryPoint)
 	if (SystemTable->Hdr.Signature != EFI_SYSTEM_TABLE_SIGNATURE) {	\
 	    DbgTrace("Invalid EFI system table signature 0x%llx\n",	\
 		     SystemTable->Hdr.Signature);			\
-	    MmUnmapPhysicalMemory((MWORD)SystemTable);			\
+	    MmUnmapIoSpace((MWORD)SystemTable);				\
 	    return STATUS_NOT_FOUND;					\
 	}								\
 	DbgTrace("UEFI Firmware Revision %d.%d\n",			\
@@ -185,7 +184,7 @@ static BOOLEAN IsValidSmbios21EntryPoint(IN PSMBIOS21_ENTRY_POINT EntryPoint)
 	};								\
 	ULONG NumConfigTables = SystemTable->NumberOfTableEntries;	\
 	ULONG ConfigTablesSize = NumConfigTables * sizeof(CfgTableTy);	\
-	MmUnmapPhysicalMemory((MWORD)SystemTable);			\
+	MmUnmapIoSpace((MWORD)SystemTable);				\
 	if (!NumConfigTables) {						\
 	    return STATUS_NOT_FOUND;					\
 	}								\
@@ -205,7 +204,7 @@ static BOOLEAN IsValidSmbios21EntryPoint(IN PSMBIOS21_ENTRY_POINT EntryPoint)
 	    PHYSICAL_ADDRESS TablePhyAddr = {				\
 		.QuadPart = (MWORD)ConfigTables[i].VendorTable		\
 	    };								\
-	    MmUnmapPhysicalMemory((MWORD)ConfigTables);			\
+	    MmUnmapIoSpace((MWORD)ConfigTables);			\
 	    ULONG TableSize = IsSmbios ?				\
 		sizeof(SMBIOS21_ENTRY_POINT) : sizeof(SMBIOS30_ENTRY_POINT); \
 	    PVOID MappedTable = HalpMapTable(TablePhyAddr, TableSize);	\
@@ -260,7 +259,7 @@ static NTSTATUS HalpLegacyFindSmbiosTable(OUT PPVOID EntryPointStructure,
         /* Next 16-byte-aligned address */
 	WindowOffset += 16;
     }
-    MmUnmapPhysicalMemory((MWORD)SearchWindow);
+    MmUnmapIoSpace((MWORD)SearchWindow);
     return STATUS_NOT_FOUND;
 }
 
@@ -349,7 +348,7 @@ NTSTATUS HalpInitSmbios(VOID)
 								SMBiosData);
     DbgTrace("SMBIOS table at physical address 0x%llx length 0x%x type SMBIOS%s\n",
 	     TablePhyAddr.QuadPart, SmbiosTableSize, IsSmbios3 ? "3" : "21");
-    MmUnmapPhysicalMemory((MWORD)EntryPointStructure);
+    MmUnmapIoSpace((MWORD)EntryPointStructure);
     if (!TablePhyAddr.QuadPart || !SmbiosTableSize) {
 	assert(FALSE);
 	goto out;
@@ -364,7 +363,7 @@ NTSTATUS HalpInitSmbios(VOID)
 	goto out;
     }
     RtlCopyMemory(HalpRawSmbiosTables->SMBiosData, MappedTable, SmbiosTableSize);
-    MmUnmapPhysicalMemory((MWORD)MappedTable);
+    MmUnmapIoSpace((MWORD)MappedTable);
     HalpRawSmbiosTables->SmbiosMajorVersion = SmbiosMajorVersion;
     HalpRawSmbiosTables->SmbiosMinorVersion = SmbiosMinorVersion;
     HalpRawSmbiosTables->DmiRevision = DmiRevision;

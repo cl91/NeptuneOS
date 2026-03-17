@@ -1030,51 +1030,6 @@ err:
     return Status;
 }
 
-static NTSTATUS MiMapViewOfPhysicalSection(IN PVIRT_ADDR_SPACE VSpace,
-					   IN MWORD PhysicalBase,
-					   IN MWORD VirtualBase,
-					   IN MWORD WindowSize,
-					   IN ULONG PageProtection,
-					   OUT OPTIONAL PMMVAD *pVad)
-{
-    assert(VSpace != NULL);
-    PMMVAD Vad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(VSpace, VirtualBase, 0, WindowSize, 0,
-				     0, MEM_RESERVE_PHYSICAL_MAPPING, &Vad));
-    assert(Vad != NULL);
-    Vad->PhysicalSectionView.PhysicalBase = PhysicalBase;
-    if (Vad->PhysicalSectionView.RootUntyped) {
-	assert(!Vad->PhysicalSectionView.RootUntyped->IsDevice);
-    }
-    PAGING_ATTRIBUTES Attributes = MM_ATTRIBUTES_DEFAULT;
-    if (PageProtection & PAGE_NOCACHE) {
-	MmApplyNoCacheAttribute(&Attributes);
-    } else if (PageProtection & PAGE_WRITECOMBINE) {
-	MmApplyWriteCombineAttribute(&Attributes);
-    }
-    BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhysicalBase) &&
-	IS_LARGE_PAGE_ALIGNED(VirtualBase) && IS_LARGE_PAGE_ALIGNED(WindowSize);
-    RET_ERR_EX(MiMapIoMemory(Vad->VSpace, PhysicalBase, VirtualBase, WindowSize,
-			     MM_RIGHTS_RW, Attributes, UseLargePage, FALSE),
-	       MmDeleteVad(Vad));
-    if (pVad) {
-	*pVad = Vad;
-    }
-    return STATUS_SUCCESS;
-}
-
-/*
- * For MmUnmapPhysicalMemory, see vaddr.c
- */
-NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
-			     IN MWORD VirtualBase,
-			     IN MWORD WindowSize,
-			     IN ULONG PageProtection)
-{
-    return MmMapViewOfSection(&MiNtosVaddrSpace, MiPhysicalSection, &VirtualBase,
-			      &PhysicalBase, &WindowSize, 0, ViewUnmap, 0, PageProtection);
-}
-
 /*
  * Map a view of the given section onto the given virtual address space.
  *
@@ -1118,8 +1073,16 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	    return STATUS_INVALID_PARAMETER;
 	}
 	PMMVAD Vad = NULL;
-	RET_ERR(MiMapViewOfPhysicalSection(VSpace, *SectionOffset, *BaseAddress,
-					   *ViewSize, AccessProtection, &Vad));
+	MEMORY_CACHING_TYPE CacheType = MmCached;
+	if (AccessProtection & PAGE_NOCACHE) {
+	    CacheType = MmNonCached;
+	} else if (AccessProtection & PAGE_WRITECOMBINE) {
+	    CacheType = MmWriteCombined;
+	}
+	RET_ERR(MmMapIoSpaceEx(VSpace, *BaseAddress, 0, *ViewSize, 0,
+			       *SectionOffset, CacheType,
+			       !!(AccessProtection & PAGE_READONLY),
+			       BaseAddress, &Vad));
 	ObpReferenceObject(Section);
 	Vad->Section = Section;
 	InsertTailList(&Section->VadList, &Vad->SectionLink);

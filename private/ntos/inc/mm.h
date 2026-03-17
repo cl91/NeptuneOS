@@ -191,17 +191,17 @@ typedef struct _CAP_TREE_NODE {
     LIST_ENTRY SiblingLink;  /* Chains all siblings together. */
 } CAP_TREE_NODE, *PCAP_TREE_NODE;
 
-static inline BOOLEAN MmCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
+FORCEINLINE BOOLEAN MmCapTreeNodeHasChildren(IN PCAP_TREE_NODE Node)
 {
     return !IsListEmpty(&Node->ChildrenList);
 }
 
-static inline SIZE_T MmCapTreeNodeChildrenCount(IN PCAP_TREE_NODE Node)
+FORCEINLINE SIZE_T MmCapTreeNodeChildrenCount(IN PCAP_TREE_NODE Node)
 {
     return GetListLength(&Node->ChildrenList);
 }
 
-static inline SIZE_T MmCapTreeNodeSiblingCount(IN PCAP_TREE_NODE Node)
+FORCEINLINE SIZE_T MmCapTreeNodeSiblingCount(IN PCAP_TREE_NODE Node)
 {
     return GetListLength(&Node->SiblingLink);
 }
@@ -242,8 +242,8 @@ typedef struct _CNODE {
 C_ASSERT(PROCESS_SHARED_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
 C_ASSERT(THREAD_PRIVATE_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
 
-static inline VOID MiCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
-					  IN PCAP_TREE_NODE Parent)
+FORCEINLINE VOID MiCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
+					IN PCAP_TREE_NODE Parent)
 {
     assert(Self != NULL);
     assert(Self != Parent);
@@ -254,11 +254,11 @@ static inline VOID MiCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
     }
 }
 
-static inline VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
-					   IN CAP_TREE_NODE_TYPE Type,
-					   IN MWORD Cap,
-					   IN PCNODE CSpace,
-					   IN OPTIONAL PCAP_TREE_NODE Parent)
+FORCEINLINE VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
+					 IN CAP_TREE_NODE_TYPE Type,
+					 IN MWORD Cap,
+					 IN PCNODE CSpace,
+					 IN OPTIONAL PCAP_TREE_NODE Parent)
 {
     assert(Self != NULL);
     assert(Cap < (1ULL << CSpace->Log2Size));
@@ -274,7 +274,7 @@ static inline VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
  * Get the depth of the CPtr traversal needed for a capability in the given
  * CNode. This equals the radix of the CNode plus its number of guard bits.
  */
-static inline ULONG MmCNodeGetDepth(IN PCNODE CNode)
+FORCEINLINE ULONG MmCNodeGetDepth(IN PCNODE CNode)
 {
     seL4_CNode_CapData_t GuardData = { .words[0] = CNode->TreeNode.Badge };
     ULONG GuardBits = seL4_CNode_CapData_get_guardSize(GuardData);
@@ -286,7 +286,7 @@ static inline ULONG MmCNodeGetDepth(IN PCNODE CNode)
  * to the CNode into which it is inserted. This depth value is supplied to
  * the seL4 CNode manipulation routines such as seL4_CNode_Copy.
  */
-static inline ULONG MmCapTreeNodeGetDepth(IN PCAP_TREE_NODE Node)
+FORCEINLINE ULONG MmCapTreeNodeGetDepth(IN PCAP_TREE_NODE Node)
 {
     return MmCNodeGetDepth(Node->CNode);
 }
@@ -410,9 +410,6 @@ typedef struct _MMVAD {
 	struct {
 	    MWORD PhysicalBase;	/* Base of the physical address window
 				 * to map, page aligned */
-	    PUNTYPED RootUntyped; /* Root untyped from which the physical memory
-				   * of this VAD is allocated. This is only used
-				   * in the case of map register memory. */
 	    MEMORY_CACHING_TYPE CacheType; /* Cache type of the page mappings. */
 	} PhysicalSectionView;	/* Physical section is neither owned
 				 * nor mirrored memory */
@@ -611,13 +608,13 @@ typedef struct _PAGING_STRUCTURE {
 				   AvlNode) : NULL;	\
     })
 
-static inline BOOLEAN MmPagingRightsAreEqual(IN PAGING_RIGHTS Left,
-					     IN PAGING_RIGHTS Right)
+FORCEINLINE BOOLEAN MmPagingRightsAreEqual(IN PAGING_RIGHTS Left,
+					   IN PAGING_RIGHTS Right)
 {
     return memcmp(&Left, &Right, sizeof(PAGING_RIGHTS)) == 0;
 }
 
-static inline BOOLEAN MmPageIsWritable(IN PPAGING_STRUCTURE Page)
+FORCEINLINE BOOLEAN MmPageIsWritable(IN PPAGING_STRUCTURE Page)
 {
     return MmPagingRightsAreEqual(Page->Rights, MM_RIGHTS_RW);
 }
@@ -794,8 +791,8 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
 				   IN MWORD Badge);
 VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node);
 
-static inline NTSTATUS MmAllocateCap(IN PCNODE CNode,
-				     OUT MWORD *Cap)
+FORCEINLINE NTSTATUS MmAllocateCap(IN PCNODE CNode,
+				   OUT MWORD *Cap)
 {
     return MmAllocateCapRange(CNode, Cap, 1);
 }
@@ -810,8 +807,8 @@ NTSTATUS MmRetypeIntoObject(IN PUNTYPED Untyped,
 			    IN MWORD ObjBits,
 			    IN PCAP_TREE_NODE TreeNode);
 
-static inline NTSTATUS MmRequestUntyped(IN LONG Log2Size,
-					OUT PUNTYPED *pUntyped)
+FORCEINLINE NTSTATUS MmRequestUntyped(IN LONG Log2Size,
+				      OUT PUNTYPED *pUntyped)
 {
     return MmRequestUntypedEx(Log2Size, 0, pUntyped);
 }
@@ -834,10 +831,10 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 			     IN PAGING_RIGHTS NewRights,
 			     IN PAGING_ATTRIBUTES NewAttributes);
 
-static inline NTSTATUS MmCommitOwnedMemory(IN MWORD StartAddr,
-					   IN MWORD WindowSize,
-					   IN PAGING_RIGHTS Rights,
-					   IN BOOLEAN UseLargePages)
+FORCEINLINE NTSTATUS MmCommitOwnedMemory(IN MWORD StartAddr,
+					 IN MWORD WindowSize,
+					 IN PAGING_RIGHTS Rights,
+					 IN BOOLEAN UseLargePages)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmCommitOwnedMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize, Rights,
@@ -867,11 +864,6 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN SECTION_INHERIT InheritDisposition,
 			    IN ULONG ReserveFlags,
 			    IN ULONG AccessProtection);
-NTSTATUS MmMapPhysicalMemory(IN ULONG64 PhysicalBase,
-			     IN MWORD VirtualBase,
-			     IN MWORD WindowSize,
-			     IN ULONG PageProtection);
-VOID MmUnmapPhysicalMemory(IN MWORD VirtAddr);
 
 /* vaddr.c */
 NTSTATUS MmCreateVSpace(IN PVIRT_ADDR_SPACE Self);
@@ -892,6 +884,18 @@ VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 			       IN MWORD StartAddr,
 			       IN MWORD WindowSize);
 MWORD MmFindAndMarkUncommittedSubregion(IN PMMVAD Vad);
+NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
+			IN MWORD WindowStart,
+			IN MWORD WindowEnd,
+			IN MWORD WindowSize,
+			IN ULONG LowZeroBits,
+			IN MWORD PhyAddr,
+			IN MEMORY_CACHING_TYPE CacheType,
+			IN BOOLEAN ReadOnly,
+			OUT MWORD *pVirtAddr,
+			OUT OPTIONAL PMMVAD *pVad);
+VOID MmUnmapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
+		      IN MWORD VirtAddr);
 NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN MWORD Length,
 					      IN MWORD HighestPhyAddr,
@@ -939,37 +943,56 @@ struct _THREAD;
 BOOLEAN MmHandleThreadVmFault(IN struct _THREAD *Thread,
 			      IN MWORD Addr);
 
-static inline NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
-					      IN OPTIONAL MWORD EndAddr,
-					      IN MWORD WindowSize,
-					      IN ULONG LowZeroBits,
-					      IN MWORD Flags,
-					      OUT OPTIONAL PMMVAD *pVad)
+FORCEINLINE NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
+					    IN OPTIONAL MWORD EndAddr,
+					    IN MWORD WindowSize,
+					    IN ULONG LowZeroBits,
+					    IN MWORD Flags,
+					    OUT OPTIONAL PMMVAD *pVad)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmReserveVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, EndAddr,
 				    WindowSize, LowZeroBits, 0, Flags, pVad);
 }
 
-static inline NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,
-					     IN MWORD WindowSize)
+FORCEINLINE NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,
+					   IN MWORD WindowSize)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmCommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
 }
 
-static inline VOID MmUncommitVirtualMemory(IN MWORD StartAddr,
-					   IN MWORD WindowSize)
+FORCEINLINE VOID MmUncommitVirtualMemory(IN MWORD StartAddr,
+					 IN MWORD WindowSize)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     MmUncommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
 }
 
 
-static inline PPAGING_STRUCTURE MmQueryPage(IN MWORD VirtAddr)
+FORCEINLINE PPAGING_STRUCTURE MmQueryPage(IN MWORD VirtAddr)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmQueryPageEx(&MiNtosVaddrSpace, VirtAddr, FALSE);
+}
+
+FORCEINLINE NTSTATUS MmMapIoSpace(IN MWORD WindowStart,
+				  IN MWORD WindowEnd,
+				  IN MWORD WindowSize,
+				  IN MWORD PhyAddr,
+				  IN MEMORY_CACHING_TYPE CacheType,
+				  IN BOOLEAN ReadOnly,
+				  OUT MWORD *pVirtAddr)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    return MmMapIoSpaceEx(&MiNtosVaddrSpace, WindowStart, WindowEnd, WindowSize, 0,
+			  PhyAddr, CacheType, ReadOnly, pVirtAddr, NULL);
+}
+
+FORCEINLINE VOID MmUnmapIoSpace(IN MWORD VirtAddr)
+{
+    extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
+    MmUnmapIoSpaceEx(&MiNtosVaddrSpace, VirtAddr);
 }
 
 /* Flags that can be passed to MmMapUserBufferEx */
@@ -983,10 +1006,10 @@ static inline PPAGING_STRUCTURE MmQueryPage(IN MWORD VirtAddr)
  * writable by the user. Otherwise STATUS_INVALID_PAGE_PROTECTION
  * is returned.
  */
-static inline NTSTATUS MmMapUserBuffer(IN PVIRT_ADDR_SPACE VSpace,
-				       IN MWORD BufferStart,
-				       IN MWORD BufferLength,
-				       OUT PVOID *TargetStartAddr)
+FORCEINLINE NTSTATUS MmMapUserBuffer(IN PVIRT_ADDR_SPACE VSpace,
+				     IN MWORD BufferStart,
+				     IN MWORD BufferLength,
+				     OUT PVOID *TargetStartAddr)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
@@ -1000,10 +1023,10 @@ static inline NTSTATUS MmMapUserBuffer(IN PVIRT_ADDR_SPACE VSpace,
  * buffer in the server virt addr space. The pages will be mapped
  * read-only. User buffer is not required to be writable by the user.
  */
-static inline NTSTATUS MmMapUserBufferRO(IN PVIRT_ADDR_SPACE VSpace,
-					 IN MWORD BufferStart,
-					 IN MWORD BufferLength,
-					 OUT PVOID *TargetStartAddr)
+FORCEINLINE NTSTATUS MmMapUserBufferRO(IN PVIRT_ADDR_SPACE VSpace,
+				       IN MWORD BufferStart,
+				       IN MWORD BufferLength,
+				       OUT PVOID *TargetStartAddr)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmMapUserBufferEx(VSpace, BufferStart, BufferLength,
@@ -1017,7 +1040,7 @@ static inline NTSTATUS MmMapUserBufferRO(IN PVIRT_ADDR_SPACE VSpace,
  * This will look up the VAD corresponding to the window start and
  * delete the VAD.
  */
-static inline VOID MmUnmapServerRegion(IN MWORD WindowStart)
+FORCEINLINE VOID MmUnmapServerRegion(IN MWORD WindowStart)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmUnmapRegion(&MiNtosVaddrSpace, WindowStart);
@@ -1026,7 +1049,7 @@ static inline VOID MmUnmapServerRegion(IN MWORD WindowStart)
 /*
  * Unmaps the the user buffer mapped by MmMapUserBuffer.
  */
-static inline VOID MmUnmapUserBuffer(IN PVOID UserBuffer)
+FORCEINLINE VOID MmUnmapUserBuffer(IN PVOID UserBuffer)
 {
     return MmUnmapServerRegion((MWORD)UserBuffer);
 }
