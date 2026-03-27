@@ -23,7 +23,7 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     KeInitializeEvent(&Device->MountCompleted, NotificationEvent);
 
     Device->DriverObject = DriverObject;
-    ObpReferenceObject(DriverObject);
+    ObReferenceObjectByPointer(DriverObject);
     InsertTailList(&DriverObject->DeviceList, &Device->DeviceLink);
     Device->DeviceInfo = DeviceInfo;
     Device->Exclusive = Exclusive;
@@ -120,7 +120,7 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 	DevObj->Vcb->VolumeFile = FileObj;
 	/* Increase its refcount so the volume file object is never deleted until
 	 * the volume is unmounted. */
-	ObpReferenceObject(FileObj);
+	ObReferenceObjectByPointer(FileObj);
 	/* The volume file object should not have an FCB allocated. */
 	assert(!FileObj->Fcb);
 	/* We assign the volume FCB to it. */
@@ -616,7 +616,7 @@ NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject
     InsertTailList(&DriverObject->CloseDeviceMsgList, &CloseMsg->DriverLink);
     /* Increase the refcount of the device object, because we are handing it out to a
      * foreign driver. */
-    ObpReferenceObject(DeviceObject);
+    ObReferenceObjectByPointer(DeviceObject);
 out:
     *DeviceHandle = OBJECT_TO_GLOBAL_HANDLE(DeviceObject);
     return STATUS_SUCCESS;
@@ -816,7 +816,7 @@ NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
 	     * called WdmDeleteDevice on a storage device (which is treated as if the
 	     * storage driver has crashed), increase the refcount here so DevObj is not
 	     * dereferenced twice. */
-	    ObpReferenceObject(DevObj);
+	    ObReferenceObjectByPointer(DevObj);
 	}
 	IopRemoveDevice(DevObj, Force);
     } else {

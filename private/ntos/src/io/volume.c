@@ -119,7 +119,7 @@ next:
 
     /* Increase the refcount of the FSCTL device object, so it won't get deleted
      * if the file system driver crashed during the mount. */
-    ObpReferenceObject(Locals.CurrentFs->FsctlDevObj);
+    ObReferenceObjectByPointer(Locals.CurrentFs->FsctlDevObj);
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 

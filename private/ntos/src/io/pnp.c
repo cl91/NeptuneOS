@@ -1830,7 +1830,7 @@ static NTSTATUS PiControlPerformDeviceAction(IN ASYNC_STATE State,
      * device action below. Note for the root PnP device node the PDO may
      * be NULL if we are doing the very first PnP enumeration. */
     if (Locals.DeviceNode->PhyDevObj) {
-	ObpReferenceObject(Locals.DeviceNode->PhyDevObj);
+	ObReferenceObjectByPointer(Locals.DeviceNode->PhyDevObj);
 	Locals.Deref = TRUE;
     }
 
@@ -2606,7 +2606,7 @@ NTSTATUS WdmRegisterPlugPlayNotification(IN ASYNC_STATE AsyncState,
 	    return STATUS_INVALID_HANDLE;
 	}
 	Entry->DeviceObject = DeviceObject;
-	ObpReferenceObject(DeviceObject);
+	ObReferenceObjectByPointer(DeviceObject);
 	InsertTailList(&DeviceObject->DeviceChangeNotificationList,
 		       &Entry->ListLink);
 	break;

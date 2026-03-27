@@ -16,7 +16,7 @@ NTSTATUS CmpKeyObjectCreateProc(IN POBJECT Object,
     /* TODO: We will need to implement the on-disk permanent storage
      * of the registry. For now we will simply increase the refcount
      * so the key object in memory won't ever get deleted. */
-    ObpReferenceObject(Object);
+    ObReferenceObjectByPointer(Object);
     return STATUS_SUCCESS;
 }
 
@@ -206,7 +206,7 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
      * Simply return it. */
     if (*Path == '\0') {
 	*OpenedInstance = Self;
-	ObpReferenceObject(Self);
+	ObReferenceObjectByPointer(Self);
 	if (Context->Disposition != NULL) {
 	    *Context->Disposition = REG_OPENED_EXISTING_KEY;
 	}

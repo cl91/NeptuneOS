@@ -187,6 +187,7 @@ static NTSTATUS MiRetypeIntoPagingStructure(PPAGING_STRUCTURE Page)
     if (Page->TreeNode.Cap != 0) {
 	return STATUS_SUCCESS;
     }
+    assert(Page->TreeNode.Parent->Type == CAP_TREE_NODE_UNTYPED);
     PUNTYPED Untyped = (PUNTYPED) Page->TreeNode.Parent;
     assert(Untyped != NULL);
     return MmRetypeIntoObject(Untyped, Page->Type,
@@ -211,10 +212,12 @@ static NTSTATUS MiMapPagingStructure(PPAGING_STRUCTURE Page)
     ASSERT_ALIGNMENT(Page);
 
     if (Page->Mapped) {
+	assert(FALSE);
 	return STATUS_NTOS_BUG;
     }
 
     if (Page->SuperStructure == NULL) {
+	assert(FALSE);
 	return STATUS_NTOS_BUG;
     }
 
@@ -282,6 +285,7 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
     assert(Page != NULL);
 
     if (!Page->Mapped) {
+	assert(FALSE);
 	return STATUS_NTOS_BUG;
     }
 
@@ -289,7 +293,8 @@ static NTSTATUS MiUnmapPagingStructure(PPAGING_STRUCTURE Page)
     if (Page->Type == PAGING_TYPE_PAGE || Page->Type == PAGING_TYPE_LARGE_PAGE) {
 #ifdef MMDBG
 	seL4_Page_GetAddress_t Reply = seL4_Page_GetAddress(Page->TreeNode.Cap);
-	MmDbg("Unmapping %spage cap 0x%zx (paddr %p%s) from vspacecap 0x%zx originally at vaddr %p\n",
+	MmDbg("Unmapping %spage cap 0x%zx (paddr %p%s) from vspacecap 0x%zx "
+	      "originally at vaddr %p\n",
 	      (Page->Type == PAGING_TYPE_LARGE_PAGE) ? "large " : "",
 	      Page->TreeNode.Cap, (PVOID) Reply.paddr, (Reply.error == 0) ? "" : " ???",
 	      Page->VSpaceCap, (PVOID) Page->AvlNode.Key);
@@ -349,7 +354,12 @@ VOID MiDeletePage(IN PPAGING_STRUCTURE Page)
     assert(Page != NULL);
     /* Leaf-level paging structure should not have substructures */
     assert(Page->SubStructureTree.BalancedRoot == NULL);
-    MmDbg("Deleting page cap 0x%zx of vspace cap 0x%zx\n",
+    if (Page->Type == PAGING_TYPE_ROOT_PAGING_STRUCTURE) {
+	MmDbg("NOT deleting root paging structure %p cap 0x%zx of vspace cap 0x%zx\n", Page,
+	      Page->TreeNode.Cap, Page->VSpaceCap);
+	return;
+    }
+    MmDbg("Deleting page %p cap 0x%zx of vspace cap 0x%zx\n", Page,
 	  Page->TreeNode.Cap, Page->VSpaceCap);
     PPAGING_STRUCTURE ParentPaging = Page->SuperStructure;
     /* Remove the AVL node of the page from its AVL tree */
@@ -362,16 +372,15 @@ VOID MiDeletePage(IN PPAGING_STRUCTURE Page)
     /* Free the pool memory */
     MiFreePool(Page);
     if (ParentPaging != NULL &&
-	ParentPaging->Type != PAGING_TYPE_ROOT_PAGING_STRUCTURE &&
 	ParentPaging->SubStructureTree.BalancedRoot == NULL) {
 	MiDeletePage(ParentPaging);
     }
 }
 
 /*
- * Create a paging structure of the given type from the supplied untyped cap
- * and initialize the paging structure. The virtual address is rounded down
- * to the correct alignment.
+ * Create a paging structure of the given type, initialize the paging
+ * structure and link it to its untyped cap tree node. The virtual address
+ * is rounded down to the correct alignment.
  */
 NTSTATUS MiCreatePagingStructure(IN PAGING_STRUCTURE_TYPE Type,
 				 IN PUNTYPED Untyped,
@@ -415,13 +424,6 @@ static NTSTATUS MiCreateSharedPage(IN PPAGING_STRUCTURE OldPage,
 
     if (OldPage->TreeNode.Cap == 0) {
 	return STATUS_NTOS_BUG;
-    }
-
-    if (MmPagingRightsAreEqual(OldPage->Rights, MM_RIGHTS_RO) &&
-	MmPagingRightsAreEqual(NewRights, MM_RIGHTS_RW)) {
-	MmDbg("Warning: silently downgrading page rights\n");
-	MmDbgDumpPagingStructure(OldPage);
-	assert(FALSE);
     }
 
     MiAllocatePool(NewPage, PAGING_STRUCTURE);
@@ -745,7 +747,7 @@ err:
 	      (PVOID)StartAddr, (PVOID)CurVaddr);
 	/* Decommit the successfully committed area */
 	MWORD WindowSize = CurVaddr - StartAddr;
-	MiUncommitWindow(VSpace, &StartAddr, &WindowSize);
+	MiUnmapWindow(VSpace, &StartAddr, &WindowSize);
     }
     return Status;
 }
@@ -786,7 +788,8 @@ static NTSTATUS MiMapSharedPage(IN PVIRT_ADDR_SPACE OwnerVSpace,
 
 /*
  * Map an address window from the owner VSpace to the viewer VSpace,
- * possibly setting new access rights.
+ * possibly setting new access rights. If IgnoreExisting is TRUE,
+ * this routine will skip the region that has already been mapped.
  */
 NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 			     IN MWORD OwnerStartAddr,
@@ -794,7 +797,8 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 			     IN MWORD ViewerStartAddr,
 			     IN MWORD WindowSize,
 			     IN PAGING_RIGHTS NewRights,
-			     IN PAGING_ATTRIBUTES NewAttributes)
+			     IN PAGING_ATTRIBUTES NewAttributes,
+			     IN BOOLEAN IgnoreExisting)
 {
     assert(OwnerVSpace != NULL);
     assert(ViewerVSpace != NULL);
@@ -816,7 +820,8 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 	Status = MiMapSharedPage(OwnerVSpace, OwnerStartAddr + Offset,
 				 ViewerVSpace, ViewerStartAddr + Offset,
 				 NewRights, NewAttributes, &NewPage);
-	if (!NT_SUCCESS(Status)) {
+	if (!NT_SUCCESS(Status) &&
+	    !(IgnoreExisting && Status == STATUS_CONFLICTING_ADDRESSES)) {
 	    goto err;
 	}
 	assert(NewPage != NULL);
@@ -838,7 +843,7 @@ err:
 	      (PVOID)(ViewerStartAddr + WindowSize), ViewerVSpace->VSpaceCap,
 	      (PVOID)ViewerStartAddr, (PVOID)(ViewerStartAddr + Offset));
 	/* Decommit the successfully mapped area */
-	MiUncommitWindow(ViewerVSpace, &ViewerStartAddr, &Offset);
+	MiUnmapWindow(ViewerVSpace, &ViewerStartAddr, &Offset);
     }
     return Status;
 }
@@ -894,14 +899,6 @@ retry:
     PPAGING_STRUCTURE Page = NULL;
     PAGING_STRUCTURE_TYPE PageTy = *LargePage ? PAGING_TYPE_LARGE_PAGE : PAGING_TYPE_PAGE;
     if (!MmCapTreeNodeHasChildren(&Untyped->TreeNode)) {
-	/* TODO: If Rights != MM_RIGHTS_RW, first create a page cap with full rights,
-	 * and then derive the cap with less rights. This is to make sure that future
-	 * calls to MiMapIoPage with higher rights do not fail.
-	 *
-	 * Note that this is different from the case with owned memory. For owned
-	 * memory we don't do this because owners should have authority over how
-	 * its memory can be mapped by viewers. In other words if owner maps the page
-	 * as read-only, no viewer should be able to modify it. */
 	RET_ERR(MiCreatePagingStructure(PageTy, Untyped, NULL, VirtAddr,
 					VSpace->VSpaceCap, Rights, Attributes, &Page));
     } else if (MiCapTreeNodeGetFirstChild(&Untyped->TreeNode)->Type
@@ -960,7 +957,7 @@ err:
 	      VSpace->VSpaceCap, (PVOID)VirtAddr,
 	      (PVOID)(VirtAddr + MappedSize));
 	/* Decommit the successfully mapped area */
-	MiUncommitWindow(VSpace, &VirtAddr, &MappedSize);
+	MiUnmapWindow(VSpace, &VirtAddr, &MappedSize);
     }
     return Status;
 }

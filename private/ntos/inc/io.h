@@ -238,6 +238,10 @@ VOID CcUnpinData(IN PIO_FILE_CONTROL_BLOCK Fcb,
 VOID CcSetDirtyData(IN PIO_DRIVER_OBJECT DriverObject,
 		    IN MWORD ViewAddress,
 		    IN ULONG64 DirtyBits);
+VOID CcSetSharedMapDirtyBits(IN PIO_FILE_CONTROL_BLOCK Fcb,
+			     IN ULONG64 FileOffset,
+			     IN ULONG64 Length,
+			     IN BOOLEAN Set);
 VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
 		  IN OPTIONAL PIO_FILE_OBJECT FileObject,
 		  IN PCC_CACHE_FLUSHED_CALLBACK IopCacheFlushedCallback,
@@ -262,6 +266,8 @@ NTSTATUS CcCopyWriteEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 NTSTATUS CcZeroData(IN PIO_FILE_CONTROL_BLOCK Fcb,
 		    IN ULONG64 FileOffset,
 		    IN ULONG64 Length);
+VOID CcSetFileSize(IN PIO_FILE_CONTROL_BLOCK Fcb,
+		   IN ULONG64 NewFileSize);
 
 FORCEINLINE NTSTATUS CcMapData(IN PIO_FILE_CONTROL_BLOCK Fcb,
 			       IN ULONG64 FileOffset,

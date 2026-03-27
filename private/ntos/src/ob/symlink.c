@@ -31,10 +31,10 @@ static NTSTATUS ObpSymlinkObjectCreateProc(IN POBJECT Self,
 	return STATUS_NO_MEMORY;
     }
     if (Context->LinkTargetObject) {
-	ObpReferenceObject(Context->LinkTargetObject);
+	ObReferenceObjectByPointer(Context->LinkTargetObject);
 	Link->LinkTargetObject = Context->LinkTargetObject;
     } else {
-	ObpReferenceObject(ObpRootObjectDirectory);
+	ObReferenceObjectByPointer(ObpRootObjectDirectory);
 	Link->LinkTargetObject = ObpRootObjectDirectory;
     }
     return STATUS_SUCCESS;

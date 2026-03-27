@@ -118,14 +118,14 @@ NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
     File->CloseMsg = CloseMsg;
     File->DeviceObject = Ctx->DeviceObject;
     if (Ctx->MasterFileObject) {
-	ObpReferenceObject(Ctx->MasterFileObject);
+	ObReferenceObjectByPointer(Ctx->MasterFileObject);
 	assert(Ctx->MasterFileObject->Fcb);
 	assert(Ctx->MasterFileObject->Fcb->MasterFileObject == Ctx->MasterFileObject);
 	File->Fcb = Ctx->MasterFileObject->Fcb;
 	File->DeviceObject = Ctx->MasterFileObject->DeviceObject;
     }
     if (File->DeviceObject) {
-	ObpReferenceObject(File->DeviceObject);
+	ObReferenceObjectByPointer(File->DeviceObject);
     }
     File->ReadAccess = ReadAccessDesired(Ctx->DesiredAccess);
     File->WriteAccess = WriteAccessDesired(Ctx->DesiredAccess);

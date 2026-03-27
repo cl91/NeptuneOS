@@ -250,7 +250,7 @@ open:
 
     /* Increase the reference count of the object so it doesn't get deleted by another
      * client thread during the wait. */
-    ObpReferenceObject(Locals.Object);
+    ObReferenceObjectByPointer(Locals.Object);
 
     /* Call the open procedure, and wait asynchronously. */
     ObDbg("Invoking open routine for object %p with path %s\n",
@@ -326,7 +326,7 @@ done:
 	    /* We are returning a pointer to the object to another server component.
 	     * In this case we should increse the refcount because the caller is
 	     * expected to decrease it later. */
-	    ObpReferenceObject(Locals.Object);
+	    ObReferenceObjectByPointer(Locals.Object);
 	    *pHandle = Locals.Object;
 	}
     } else {

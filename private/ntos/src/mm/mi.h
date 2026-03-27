@@ -158,16 +158,6 @@ static inline VOID MiInitializeVadNode(IN PMMVAD Node,
     }
 
 /*
- * Creation context for the section object creation routine
- */
-typedef struct _SECTION_OBJ_CREATE_CONTEXT {
-    PIO_FILE_OBJECT FileObject;
-    ULONG PageProtection;
-    ULONG Attributes;
-    BOOLEAN PhysicalMapping;
-} SECTION_OBJ_CREATE_CONTEXT, *PSECTION_OBJ_CREATE_CONTEXT;
-
-/*
  * Forward declarations.
  */
 
@@ -348,6 +338,8 @@ static inline MWORD MiSanitizeAlignment(IN PAGING_STRUCTURE_TYPE Type,
 /* vaddr.c */
 VOID MiInitializeVSpace(IN PVIRT_ADDR_SPACE Self,
 			IN PPAGING_STRUCTURE RootPagingStructure);
-VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
-		      IN OUT MWORD *StartAddr,
-		      IN OUT MWORD *WindowSize);
+PMMVAD MiVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
+			   IN MWORD VirtAddr);
+VOID MiUnmapWindow(IN PVIRT_ADDR_SPACE VSpace,
+		   IN OUT MWORD *StartAddr,
+		   IN OUT MWORD *WindowSize);

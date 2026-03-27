@@ -503,18 +503,6 @@ static inline BOOLEAN ObPathHasSeparator(IN PCSTR Path)
     return FALSE;
 }
 
-/* This should only be called by the object manager */
-static inline void ObpReferenceObjectHeader(POBJECT_HEADER ObjectHeader)
-{
-    ObjectHeader->RefCount++;
-}
-
-/* This should only be called in the create routine of an object */
-static inline void ObpReferenceObject(POBJECT Object)
-{
-    ObpReferenceObjectHeader(OBJECT_TO_OBJECT_HEADER(Object));
-}
-
 /* init.c */
 NTSTATUS ObInitSystemPhase0();
 
@@ -555,6 +543,7 @@ FORCEINLINE NTSTATUS ObCreateDirectory(IN PCSTR DirectoryPath)
 }
 
 /* obref.c */
+VOID ObReferenceObjectByPointer(IN POBJECT Object);
 NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
 				 IN OBJECT_TYPE_ENUM Type,
 				 IN POBJECT RootDirectory,
@@ -610,7 +599,7 @@ FORCEINLINE VOID ObMakePermanentObject(IN POBJECT Object)
 {
     if (!ObObjectIsPermanent(Object)) {
 	ObSetPermanentFlag(Object);
-	ObpReferenceObject(Object);
+	ObReferenceObjectByPointer(Object);
     }
 }
 

@@ -27,17 +27,6 @@
 PSECTION MiPhysicalSection;
 
 /*
- * Note: we assume memset(ImageSection, 0, sizeof(IMAGE_SECTION_OBJECT)) has
- * been called before this routine is called.
- */
-static inline VOID MiInitializeImageSection(IN PIMAGE_SECTION_OBJECT ImageSection,
-					    IN PIO_FILE_OBJECT File)
-{
-    InitializeListHead(&ImageSection->SubSectionList);
-    InitializeListHead(&ImageSection->SectionList);
-}
-
-/*
  * Note: we assume memset(Subsection, 0, sizeof(SUBSECTION)) has been called
  * before this routine is called.
  */
@@ -333,6 +322,7 @@ static NTSTATUS MiParsePeImage(IN PIO_FILE_OBJECT FileObject,
 	MiInsertSubsectionOrdered(ImageSection, SubSectionsArray[i]);
     }
     ImageSection->ImageCacheFileSize = ImageCacheFileSize;
+    ImageSection->VirtualSize = SectionSize;
 
     MiFreePool(SubSectionsArray);
     *pSectionSize = SectionSize;
@@ -553,11 +543,11 @@ static VOID MiDeleteImageSectionObject(IN PIMAGE_SECTION_OBJECT ImageSectionObje
     MiFreePool(ImageSectionObject);
 }
 
-static VOID MiImageSectionPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
-					  IN ULONG64 FileOffset,
-					  IN ULONG64 Length,
-					  IN NTSTATUS Status,
-					  IN OUT PVOID Context)
+static VOID MiSectionPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
+				     IN ULONG64 FileOffset,
+				     IN ULONG64 Length,
+				     IN NTSTATUS Status,
+				     IN OUT PVOID Context)
 {
     PNTSTATUS pStatus = Context;
     *pStatus = Status;
@@ -571,9 +561,11 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
     assert(File->Fcb);
     assert(pImageSection);
     MiAllocatePool(ImageSection, IMAGE_SECTION_OBJECT);
-    MiInitializeImageSection(ImageSection, File);
+    InitializeListHead(&ImageSection->SubSectionList);
+    InitializeListHead(&ImageSection->SectionList);
 
     NTSTATUS Status;
+    PIO_FILE_OBJECT ImageCacheFile = NULL;
     if (NT_SUCCESS(MiParsePeImage(File, ImageSection, pSectionSize))) {
 	ImageSection->Type = PeImageSection;
     } else if (NT_SUCCESS(MiParseElfImage(File, ImageSection, pSectionSize))) {
@@ -597,6 +589,13 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 	if (VirtualEnd > Next->SubSectionBase) {
 	    SubSection->SubSectionSize = Next->SubSectionBase - SubSection->SubSectionBase;
 	    SubSection->RawDataSize = min(SubSection->RawDataSize, SubSection->SubSectionSize);
+	    /* Merge the section characteristics in case the former subsection has more
+	     * access rights than the latter. Note this applies to all the pages of the
+	     * latter subsection, whereas the ELF specs only says that the overlapping
+	     * pages inherit the page protections of both segments. Therefore userspace
+	     * loader is expected to restore the proper memory protection of the latter
+	     * subsection once loading is done. */
+	    Next->Characteristics |= SubSection->Characteristics;
 	}
 	if (!SubSection->SubSectionSize) {
 	    RemoveEntryList(&SubSection->Link);
@@ -606,7 +605,7 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
     /* Create the image cache file for the image section for the subsections that
      * cannot be directly mapped into memory (because file alignment and section
      * alignment differ). */
-    PIO_FILE_OBJECT ImageCacheFile = NULL;
+    BOOLEAN ImageCacheFilePinned = FALSE;
     if (ImageSection->ImageCacheFileSize) {
 	IF_ERR_GOTO(err, Status, IoCreateDevicelessFile(NULL, NULL,
 							ImageSection->ImageCacheFileSize,
@@ -614,10 +613,11 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 	assert(ImageCacheFile->Fcb);
 	IF_ERR_GOTO(err, Status, CcInitializeCacheMap(ImageCacheFile->Fcb, NULL, NULL));
 	CcPinDataEx(ImageCacheFile->Fcb, 0, ImageSection->ImageCacheFileSize, FALSE,
-		    MiImageSectionPinDataCallback, &Status);
+		    MiSectionPinDataCallback, &Status);
 	if (!NT_SUCCESS(Status)) {
 	    goto err;
 	}
+	ImageCacheFilePinned = TRUE;
     }
 
     /* Copy the subsections into the image cache file, if needed. */
@@ -644,7 +644,7 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 
     assert(File->Fcb);
     assert(File->Fcb->MasterFileObject);
-    ObpReferenceObject(File->Fcb->MasterFileObject);
+    ObReferenceObjectByPointer(File->Fcb->MasterFileObject);
     File->Fcb->ImageSectionObject = ImageSection;
     ImageSection->Fcb = File->Fcb;
     ImageSection->ImageCacheFile = ImageCacheFile;
@@ -655,47 +655,138 @@ err:
     if (ImageSection) {
 	MiDeleteImageSectionObject(ImageSection);
     }
+    if (ImageCacheFile) {
+	if (ImageCacheFilePinned) {
+	    CcUnpinData(ImageCacheFile->Fcb, 0, ImageCacheFile->Fcb->FileSize);
+	}
+	CcUninitializeCacheMap(ImageCacheFile->Fcb);
+	ObDereferenceObject(ImageCacheFile);
+    }
     return Status;
 }
+
+static NTSTATUS MiCreateDataFileMap(IN PIO_FILE_OBJECT File,
+				    OUT PDATA_SECTION_OBJECT *pDataSection)
+{
+    assert(File);
+    assert(File->Fcb);
+    assert(File->Fcb->MasterFileObject);
+    assert(pDataSection);
+    MiAllocatePool(DataSection, DATA_SECTION_OBJECT);
+    InitializeListHead(&DataSection->SectionList);
+    ObReferenceObjectByPointer(File->Fcb->MasterFileObject);
+    File->Fcb->DataSectionObject = DataSection;
+    DataSection->Fcb = File->Fcb;
+    *pDataSection = DataSection;
+    return STATUS_SUCCESS;
+}
+
+static VOID MiDeleteDataSectionObject(IN PDATA_SECTION_OBJECT DataSectionObject)
+{
+    PIO_FILE_CONTROL_BLOCK Fcb = DataSectionObject->Fcb;
+    if (Fcb) {
+	assert(Fcb->DataSectionObject == DataSectionObject);
+	Fcb->DataSectionObject = NULL;
+	if (Fcb->MasterFileObject) {
+	    ObDereferenceObject(Fcb->MasterFileObject);
+	}
+    }
+    MiFreePool(DataSectionObject);
+}
+
+/*
+ * Creation context for the section object creation routine
+ */
+typedef struct _SECTION_OBJ_CREATE_CONTEXT {
+    PIO_FILE_OBJECT FileObject;
+    SIZE_T MaximumSize;
+    ULONG PageProtection;
+    ULONG Attributes;
+    BOOLEAN PhysicalMapping;
+} SECTION_OBJ_CREATE_CONTEXT, *PSECTION_OBJ_CREATE_CONTEXT;
 
 static NTSTATUS MiSectionObjectCreateProc(IN POBJECT Object,
 					  IN PVOID CreaCtx)
 {
-    PSECTION Section = (PSECTION) Object;
+    PSECTION Section = (PSECTION)Object;
     PSECTION_OBJ_CREATE_CONTEXT Ctx = (PSECTION_OBJ_CREATE_CONTEXT)CreaCtx;
     PIO_FILE_OBJECT FileObject = Ctx->FileObject;
+    SIZE_T MaximumSize = ALIGN_UP_BY(Ctx->MaximumSize, PAGE_SIZE);
     ULONG Attributes = Ctx->Attributes;
+    ULONG PageProtection = Ctx->PageProtection;
     BOOLEAN PhysicalMapping = Ctx->PhysicalMapping;
 
-    AvlInitializeNode(&Section->BasedSectionNode, 0);
     InitializeListHead(&Section->VadList);
     Section->Attributes = Attributes;
+    Section->PageProtection = PageProtection;
 
     if (PhysicalMapping) {
 	Section->Flags.PhysicalMemory = 1;
-	/* Physical section is always committed immediately. */
-	Section->Flags.Reserve = 1;
-	Section->Flags.Commit = 1;
 	return STATUS_SUCCESS;
     }
 
-    /* Only image section is implemented for now */
+    /* If SEC_IMAGE is not specifed, create a data section. */
     if (!(Attributes & SEC_IMAGE)) {
-	UNIMPLEMENTED;
+	PDATA_SECTION_OBJECT DataSection = NULL;
+	PIO_FILE_OBJECT PageFileObject = NULL;
+	if (FileObject) {
+	    DataSection = FileObject->Fcb->DataSectionObject;
+	    if (MaximumSize > ALIGN_UP_BY(FileObject->Fcb->FileSize, PAGE_SIZE)) {
+		return STATUS_SECTION_TOO_BIG;
+	    }
+	    Section->Size = MaximumSize ? MaximumSize :
+		ALIGN_UP_BY(FileObject->Fcb->FileSize, PAGE_SIZE);
+	} else {
+	    if (!MaximumSize) {
+		return STATUS_INVALID_PARAMETER;
+	    }
+	    /* TODO: for read-only page-file mappings, do not commit memory here since we
+	     * can simply map the common zero-page rather than using new pages. NT semantics
+	     * forbid one from later changing it to writable, so we do not need to worry about
+	     * committing memory in this case. */
+	    RET_ERR(IoCreateDevicelessFile(NULL, NULL, MaximumSize, 0, &PageFileObject));
+	    if (Attributes & SEC_COMMIT) {
+		NTSTATUS Status = STATUS_NTOS_BUG;
+		CcPinDataEx(PageFileObject->Fcb, 0, MaximumSize, FALSE,
+			    MiSectionPinDataCallback, &Status);
+		if (!NT_SUCCESS(Status)) {
+		    ObDereferenceObject(PageFileObject);
+		    return Status;
+		}
+	    }
+	    Section->Flags.PageFile = 1;
+	    FileObject = PageFileObject;
+	    Section->Size = MaximumSize;
+	}
+	if (!DataSection) {
+	    NTSTATUS Status = MiCreateDataFileMap(FileObject, &DataSection);
+	    /* Note even in the success case we should deref the page file object,
+	     * because MiCreateDataFileMap increased its refcount. */
+	    if (PageFileObject) {
+		ObDereferenceObject(PageFileObject);
+	    }
+	    if (!NT_SUCCESS(Status)) {
+		return Status;
+	    }
+	}
+	assert(DataSection);
+	Section->Flags.File = 1;
+	Section->DataSectionObject = DataSection;
+	InsertTailList(&DataSection->SectionList, &Section->Link);
+	return STATUS_SUCCESS;
     }
 
     assert(FileObject->Fcb);
     PIMAGE_SECTION_OBJECT ImageSection = FileObject->Fcb->ImageSectionObject;
 
-    if (ImageSection == NULL) {
+    if (ImageSection) {
+	Section->Size = ImageSection->VirtualSize;
+    } else {
 	RET_ERR(MiCreateImageFileMap(FileObject, &ImageSection, &Section->Size));
 	assert(ImageSection != NULL);
     }
 
     Section->Flags.Image = 1;
-    /* Image sections are always committed immediately. */
-    Section->Flags.Reserve = 1;
-    Section->Flags.Commit = 1;
     Section->ImageSectionObject = ImageSection;
     InsertTailList(&ImageSection->SectionList, &Section->Link);
 
@@ -723,9 +814,13 @@ static VOID MiSectionObjectDeleteProc(IN POBJECT Self)
 	if (IsListEmpty(&ImageSectionObject->SectionList)) {
 	    MiDeleteImageSectionObject(ImageSectionObject);
 	}
-    } else if (Section->Flags.File) {
-	/* TODO! */
-	assert(FALSE);
+    } else if (Section->Flags.File && Section->DataSectionObject) {
+	PDATA_SECTION_OBJECT DataSectionObject = Section->DataSectionObject;
+	assert(ListHasEntry(&DataSectionObject->SectionList, &Section->Link));
+	RemoveEntryList(&Section->Link);
+	if (IsListEmpty(&DataSectionObject->SectionList)) {
+	    MiDeleteDataSectionObject(DataSectionObject);
+	}
     }
 }
 
@@ -770,7 +865,8 @@ NTSTATUS MmSectionInitialization()
  * MmCreateSection can inspect its image header. CcPinData takes an async context
  * because it may need to sleep, so we cannot pin it here.
  */
-NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
+NTSTATUS MmCreateSection(IN OPTIONAL PIO_FILE_OBJECT FileObject,
+			 IN SIZE_T MaximumSize,
 			 IN ULONG PageProtection,
 			 IN ULONG SectionAttributes,
 			 OUT PSECTION *SectionObject)
@@ -781,6 +877,7 @@ NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
     PSECTION Section = NULL;
     SECTION_OBJ_CREATE_CONTEXT CreaCtx = {
 	.FileObject = FileObject,
+	.MaximumSize = MaximumSize,
 	.PageProtection = PageProtection,
 	.Attributes = SectionAttributes
     };
@@ -793,7 +890,8 @@ NTSTATUS MmCreateSection(IN PIO_FILE_OBJECT FileObject,
 
 NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
 			   IN PTHREAD Thread,
-			   IN PIO_FILE_OBJECT FileObject,
+			   IN OPTIONAL PIO_FILE_OBJECT FileObject,
+			   IN SIZE_T MaximumSize,
 			   IN ULONG PageProtection,
 			   IN ULONG SectionAttributes,
 			   OUT PSECTION *pSectionObject)
@@ -817,7 +915,7 @@ NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
     }
 
     PSECTION SectionObject = NULL;
-    Status = MmCreateSection(FileObject, PageProtection,
+    Status = MmCreateSection(FileObject, MaximumSize, PageProtection,
 			     SectionAttributes, &SectionObject);
 
     /* If the section is a PE image section and the section creation failed,
@@ -903,7 +1001,8 @@ static NTSTATUS MiCommitImageVad(IN PMMVAD Vad)
 	} else {
 	    RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace, (MWORD)Buffer,
 					Vad->VSpace, Vad->AvlNode.Key + BytesMapped,
-					CommitmentSize, Rights, MM_ATTRIBUTES_DEFAULT));
+					CommitmentSize, Rights,
+					MM_ATTRIBUTES_DEFAULT, FALSE));
 	}
 	BytesMapped += CommitmentSize;
     }
@@ -921,8 +1020,7 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 					IN OUT OPTIONAL MWORD *pBaseAddress,
 					OUT OPTIONAL MWORD *pImageVirtualSize,
 					IN ULONG HighZeroBits,
-					IN ULONG ReserveFlags,
-					IN ULONG PageProtection)
+					IN ULONG ReserveFlags)
 {
     assert(VSpace != NULL);
     assert(ImageSection != NULL);
@@ -977,7 +1075,6 @@ static NTSTATUS MiMapViewOfImageSection(IN PVIRT_ADDR_SPACE VSpace,
 	PMMVAD Vad = NULL;
 	/* If the image needs relocation, we always map the image as read-write. */
 	BOOLEAN ReadOnly = (ImageSection->ImageBase == BaseAddress) &&
-	    !(PageProtection & PAGE_READWRITE) &&
 	    !(SubSection->Characteristics & IMAGE_SCN_MEM_WRITE);
 	MWORD Flags = MEM_RESERVE_IMAGE_MAP;
 	if (ReadOnly) {
@@ -1030,16 +1127,81 @@ err:
     return Status;
 }
 
+static NTSTATUS MiMapViewOfDataSection(IN PVIRT_ADDR_SPACE VSpace,
+				       IN PSECTION Section,
+				       IN OUT OPTIONAL MWORD *pBaseAddress,
+				       IN OUT OPTIONAL ULONG64 *pSectionOffset,
+				       IN OUT OPTIONAL MWORD *pViewSize,
+				       IN MWORD CommitSize,
+				       IN ULONG HighZeroBits,
+				       IN ULONG ReserveFlags,
+				       IN ULONG PageProtection)
+{
+    assert(VSpace != NULL);
+    assert(Section->Flags.File);
+    assert(Section->Size);
+    PDATA_SECTION_OBJECT DataSection = Section->DataSectionObject;
+    assert(DataSection != NULL);
+    assert(DataSection->Fcb);
+
+    if (ReserveFlags & ~(MEM_RESERVE_TOP_DOWN | MEM_RESERVE_LARGE_PAGES)) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    if (Section->Flags.PageFile && CommitSize) {
+	NTSTATUS Status = STATUS_SUCCESS;
+	CcPinDataEx(DataSection->Fcb, 0, CommitSize, FALSE,
+		    MiSectionPinDataCallback, &Status);
+	if (!NT_SUCCESS(Status)) {
+	    return Status;
+	}
+    }
+
+    ULONG64 SectionOffset = pSectionOffset ?
+	ALIGN_DOWN_BY(*pSectionOffset, 1ULL << MM_MINIMUM_LOW_ZERO_BITS) : 0;
+    if (SectionOffset >= Section->Size) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    SIZE_T ViewSize = pViewSize ? ALIGN_UP_BY(*pViewSize, PAGE_SIZE) : 0;
+    if (!ViewSize) {
+	ViewSize = Section->Size - SectionOffset;
+    }
+    MWORD BaseAddress = pBaseAddress ?
+	ALIGN_DOWN_BY(*pBaseAddress, 1ULL << MM_MINIMUM_LOW_ZERO_BITS) : 0;
+    PMMVAD Vad = NULL;
+    RET_ERR(MmReserveVirtualMemoryEx(VSpace,
+				     BaseAddress ? BaseAddress : USER_IMAGE_REGION_START,
+				     BaseAddress ? 0 : USER_ADDRESS_END,
+				     ViewSize, 0, HighZeroBits,
+				     ReserveFlags | MEM_RESERVE_FILE_MAP, &Vad));
+    assert(Vad->Flags.FileMap);
+    assert(Vad->WindowSize == ViewSize);
+    BaseAddress = Vad->AvlNode.Key;
+    Vad->Section = Section;
+    Vad->DataSectionView.SectionOffset = SectionOffset;
+    ObReferenceObjectByPointer(Section);
+    InsertTailList(&Section->VadList, &Vad->SectionLink);
+    if (pBaseAddress) {
+	*pBaseAddress = BaseAddress;
+    }
+    if (pSectionOffset) {
+	*pSectionOffset = SectionOffset;
+    }
+    if (pViewSize) {
+	*pViewSize = ViewSize;
+    }
+    return STATUS_SUCCESS;
+}
+
 /*
  * Map a view of the given section onto the given virtual address space.
- *
- * For now we commit the full view (CommitSize == ViewSize).
  */
 NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN PSECTION Section,
 			    IN OUT OPTIONAL MWORD *BaseAddress,
 			    IN OUT OPTIONAL ULONG64 *SectionOffset,
 			    IN OUT OPTIONAL MWORD *ViewSize,
+			    IN MWORD CommitSize,
 			    IN ULONG HighZeroBits,
 			    IN SECTION_INHERIT InheritDisposition,
 			    IN ULONG ReserveFlags,
@@ -1053,14 +1215,13 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	}
 	MWORD ImageVirtualSize;
 	LIST_ENTRY VadList;
-	RET_ERR(MiMapViewOfImageSection(VSpace, &VadList,
-					Section->ImageSectionObject,
+	RET_ERR(MiMapViewOfImageSection(VSpace, &VadList, Section->ImageSectionObject,
 					BaseAddress, &ImageVirtualSize,	HighZeroBits,
-					ReserveFlags, AccessProtection));
+					ReserveFlags));
 	/* All subsections mapped successfully. Link the VADs to the section */
 	LoopOverList(Vad, &VadList, MMVAD, SectionLink) {
 	    Vad->Section = Section;
-	    ObpReferenceObject(Section);
+	    ObReferenceObjectByPointer(Section);
 	}
 	AppendTailListHead(&Section->VadList, &VadList);
 
@@ -1068,6 +1229,10 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	    *ViewSize = ImageVirtualSize;
 	}
 	return STATUS_SUCCESS;
+    } else if (Section->Flags.File) {
+	return MiMapViewOfDataSection(VSpace, Section,
+				      BaseAddress, SectionOffset, ViewSize, CommitSize,
+				      HighZeroBits, ReserveFlags, AccessProtection);
     } else if (Section->Flags.PhysicalMemory) {
 	if (!BaseAddress || !*BaseAddress || !SectionOffset || !ViewSize || !*ViewSize) {
 	    return STATUS_INVALID_PARAMETER;
@@ -1083,12 +1248,38 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			       *SectionOffset, CacheType,
 			       !!(AccessProtection & PAGE_READONLY),
 			       BaseAddress, &Vad));
-	ObpReferenceObject(Section);
+	ObReferenceObjectByPointer(Section);
 	Vad->Section = Section;
 	InsertTailList(&Section->VadList, &Vad->SectionLink);
 	return STATUS_SUCCESS;
     }
-    UNIMPLEMENTED;
+    assert(FALSE);
+    KeBugCheckMsg("MmMapViewOfSection: Unreachable code reached.\n");
+    return STATUS_NTOS_BUG;
+}
+
+NTSTATUS MmUnmapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
+                              IN PVOID BaseAddress)
+{
+    PMMVAD Vad = MiVSpaceFindVadNode(VSpace, (MWORD)BaseAddress);
+    if (!Vad || !(Vad->Flags.FileMap || Vad->Flags.ImageMap || Vad->Flags.PhysicalMapping)) {
+	return STATUS_INVALID_ADDRESS;
+    }
+    PSECTION Section = Vad->Section;
+    if (Section->Flags.Image) {
+	/* Find all the subsections of the image section and delete all of them. */
+	PSUBSECTION SubSection = Vad->ImageSectionView.SubSection;
+	assert(SubSection);
+	assert(SubSection->ImageSection == Section->ImageSectionObject);
+	assert(Vad->AvlNode.Key >= SubSection->SubSectionBase);
+	MWORD ImageBase = Vad->AvlNode.Key - SubSection->SubSectionBase;
+	LoopOverList(Entry, &SubSection->ImageSection->SubSectionList, SUBSECTION, Link) {
+	    MmUnmapRegion(VSpace, ImageBase + Entry->SubSectionBase);
+	}
+    } else {
+	MmDeleteVad(Vad);
+    }
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS NtCreateSection(IN ASYNC_STATE State,
@@ -1118,7 +1309,8 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
     }
 
     AWAIT_EX(Status, MmCreateSectionEx, State, Locals, Thread, Locals.FileObject,
-	     SectionPageProtection, SectionAttributes, &Section);
+	     MaximumSize ? MaximumSize->QuadPart : 0, SectionPageProtection,
+	     SectionAttributes, &Section);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -1128,10 +1320,10 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
     if (!NT_SUCCESS(Status)) {
 	ObDereferenceObject(Section);
     }
-    /* Note here since NT semantics requires that section objects are always created
+    /* Note here since NT semantics requires that section objects be always created
      * as temporary objects by default, we decrease the refcount from two (one from
      * ObCreateObject, one from ObCreateHandle) to one so a subsequent NtClose will
-     * delete the section. */
+     * delete the section if no other reference to the section has been made. */
     ObMakeTemporaryObject(Section);
 
 out:
@@ -1168,7 +1360,7 @@ NTSTATUS NtMapViewOfSection(IN ASYNC_STATE AsyncState,
     }
 #endif
 
-    if (HighZeroBits > MM_MAXIMUM_ZERO_HIGH_BITS) {
+    if (HighZeroBits > MM_MAXIMUM_HIGH_ZERO_BITS) {
         return STATUS_INVALID_PARAMETER_4;
     }
 
@@ -1198,8 +1390,8 @@ NTSTATUS NtMapViewOfSection(IN ASYNC_STATE AsyncState,
 						       (POBJECT *)&Process));
     Status = MmMapViewOfSection(&Process->VSpace, Section, (MWORD *)BaseAddress,
 				(ULONG64 *)SectionOffset, (MWORD *)ViewSize,
-				HighZeroBits, InheritDisposition, ReserveFlags,
-				AccessProtection);
+				CommitSize, HighZeroBits, InheritDisposition,
+				ReserveFlags, AccessProtection);
 
 out:
     if (Section) {
@@ -1216,7 +1408,20 @@ NTSTATUS NtUnmapViewOfSection(IN ASYNC_STATE AsyncState,
                               IN HANDLE ProcessHandle,
                               IN PVOID BaseAddress)
 {
-    UNIMPLEMENTED;
+    PPROCESS Process = NULL;
+    NTSTATUS Status;
+
+    IF_ERR_GOTO(out, Status, ObReferenceObjectByHandle(Thread, ProcessHandle,
+						       OBJECT_TYPE_PROCESS,
+						       (POBJECT *)&Process));
+
+    Status = MmUnmapViewOfSection(&Process->VSpace, BaseAddress);
+
+out:
+    if (Process) {
+	ObDereferenceObject(Process);
+    }
+    return Status;
 }
 
 NTSTATUS NtQuerySection(IN ASYNC_STATE State,
@@ -1250,10 +1455,12 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
     RET_ERR(ObReferenceObjectByHandle(Thread, SectionHandle,
 				      OBJECT_TYPE_SECTION, (POBJECT *)&Section));
 
+    NTSTATUS Status = STATUS_SUCCESS;
     if (SectionInformationClass == SectionBasicInformation) {
 	PSECTION_BASIC_INFORMATION Info = (PSECTION_BASIC_INFORMATION)SectionInformationBuffer;
-	if (Section->Flags.Based) {
-	    Info->BaseAddress = (PVOID) Section->BasedSectionNode.Key;
+	if (Section->Flags.Image) {
+	    assert(Section->ImageSectionObject);
+	    Info->BaseAddress = (PVOID)Section->ImageSectionObject->ImageBase;
 	} else {
 	    Info->BaseAddress = 0;
 	}
@@ -1262,11 +1469,17 @@ NTSTATUS NtQuerySection(IN ASYNC_STATE State,
 	*ReturnLength = sizeof(SECTION_BASIC_INFORMATION);
     } else {
 	assert(SectionInformationClass == SectionImageInformation);
-	*((PSECTION_IMAGE_INFORMATION)SectionInformationBuffer) = Section->ImageSectionObject->ImageInformation;
-	*ReturnLength = sizeof(SECTION_IMAGE_INFORMATION);
+	if (Section->Flags.Image) {
+	    *((PSECTION_IMAGE_INFORMATION)SectionInformationBuffer) =
+		Section->ImageSectionObject->ImageInformation;
+	    *ReturnLength = sizeof(SECTION_IMAGE_INFORMATION);
+	} else {
+	    *ReturnLength = 0;
+	    Status = STATUS_INVALID_INFO_CLASS;
+	}
     }
     ObDereferenceObject(Section);
-    return STATUS_SUCCESS;
+    return Status;
 }
 
 #ifdef MMDBG
@@ -1352,7 +1565,11 @@ static VOID MiDbgDumpDataSectionObject(IN PDATA_SECTION_OBJECT DataSection)
 	MmDbgPrint("    (nil)\n");
 	return;
     }
-    MmDbgPrint("    UNIMPLEMENTED\n");
+    MmDbgPrint("    Fcb = %p\n", DataSection->Fcb);
+    MmDbgPrint("    Section objects:\n");
+    LoopOverList(SectionObject, &DataSection->SectionList, SECTION, Link) {
+	MmDbgPrint("      %p\n", SectionObject);
+    }
 }
 #endif
 
@@ -1364,13 +1581,11 @@ VOID MmDbgDumpSection(PSECTION Section)
     if (Section == NULL) {
 	MmDbgPrint("    (nil)\n");
     }
-    MmDbgPrint("    Flags: %s%s%s%s%s%s\n",
-	     Section->Flags.Image ? " image" : "",
-	     Section->Flags.Based ? " based" : "",
-	     Section->Flags.File ? " file" : "",
-	     Section->Flags.PhysicalMemory ? " physical-memory" : "",
-	     Section->Flags.Reserve ? " reserve" : "",
-	     Section->Flags.Commit ? " commit" : "");
+    MmDbgPrint("    Flags: %s%s%s%s\n",
+	       Section->Flags.Image ? " image" : "",
+	       Section->Flags.File ? " file" : "",
+	       Section->Flags.PageFile ? " page-file" : "",
+	       Section->Flags.PhysicalMemory ? " physical-memory" : "");
     ObDbgDumpObjectHandles(Section, 4);
     if (Section->Flags.Image) {
 	MiDbgDumpImageSectionObject(Section->ImageSectionObject);

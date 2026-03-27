@@ -76,7 +76,7 @@ static NTSTATUS CmpSetValueKey(IN PCM_KEY_OBJECT Key,
 		   CmpFreeValue(Value));
 	/* Increase the refcount of the key so it won't be deleted
 	 * until all values are deleted. */
-	ObpReferenceObject(Key);
+	ObReferenceObjectByPointer(Key);
     }
     return STATUS_SUCCESS;
 }

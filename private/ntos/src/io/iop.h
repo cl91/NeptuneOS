@@ -638,8 +638,6 @@ FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel(IN PTHREAD Thread)
 
 /* cache.c */
 NTSTATUS CcInitializeCacheManager();
-VOID CcSetFileSize(IN PIO_FILE_CONTROL_BLOCK Fcb,
-		   IN ULONG64 NewFileSize);
 VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb);
 VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb);
 

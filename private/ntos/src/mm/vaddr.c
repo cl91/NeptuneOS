@@ -105,8 +105,8 @@ static inline BOOLEAN MiVadNodeContainsAddr(IN PMMVAD Vad,
 /*
  * Returns the VAD node that contains the supplied virtual address.
  */
-static PMMVAD MiVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
-				  IN MWORD VirtAddr)
+PMMVAD MiVSpaceFindVadNode(IN PVIRT_ADDR_SPACE VSpace,
+			   IN MWORD VirtAddr)
 {
     PAVL_TREE Tree = &VSpace->VadTree;
     PMMVAD Node = AVL_NODE_TO_VAD(AvlTreeFindNodeOrPrev(Tree, VirtAddr));
@@ -148,7 +148,14 @@ static inline PMMVAD MiVadGetPrevNode(IN PMMVAD Vad)
  *
  * If specified, will search from top down (ie. from higher address to lower addr)
  *
- * If unaligned, address window will be aligned at 4K page boundary.
+ * For MEM_RESERVE_BITMAP_MANAGED, LowZeroBits specifies the granularity of the
+ * commitment status tracking. Commitment status is tracked in units of 1 << LowZeroBits.
+ * In this case LowZeroBits must be no less than PAGE_SHIFT (if the caller specified
+ * a LowZeroBits less than PAGE_SHIFT, it will be slightly adjusted to PAGE_SHIFT).
+ * Otherwise, LowZeroBits specifies the alignment of the address window. In this case
+ * LowZeroBits cannot be less than MM_MINIMAL_LOW_ZERO_BITS (again it will be silently
+ * adjusted if less than MM_MINIMAL_LOW_ZERO_BITS), unless we are reserving an image
+ * map VAD (ie. unless the VAD describes a PE/ELF section).
  *
  * If unspecified (ie. zero), EndAddr will be set to StartAddr + WindowSize
  *
@@ -156,11 +163,6 @@ static inline PMMVAD MiVadGetPrevNode(IN PMMVAD Vad)
  * one large page size, then we will attempt to locate an address window that
  * starts at the large page boundary (failing so, a regular search will be conducted).
  *
- * For MEM_RESERVE_BITMAP_MANAGED, LowZeroBits specifies the granularity of the
- * commitment status tracking. Commitment status is tracked in units of 1 << LowZeroBits.
- *
- * If LowZeroBits is larger than PAGE_LOG2SIZE, the address window will be aligned
- * such that the lowest LowZeroBits bits of the starting address are zero.
  */
 NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				  IN MWORD StartAddr,
@@ -190,6 +192,12 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
     /* COMMIT_ON_DEMAND can only be set for OWNED_MEMORY */
     assert(!(Flags & MEM_COMMIT_ON_DEMAND) || (Flags & MEM_RESERVE_OWNED_MEMORY));
 #endif
+
+    if (Flags & (MEM_RESERVE_BITMAP_MANAGED | MEM_RESERVE_IMAGE_MAP)) {
+	LowZeroBits = max(LowZeroBits, PAGE_LOG2SIZE);
+    } else {
+	LowZeroBits = max(LowZeroBits, MM_MINIMUM_LOW_ZERO_BITS);
+    }
 
     MWORD VirtAddr;
     PMMVAD Parent;
@@ -232,7 +240,7 @@ retry:
 	EndAddr = StartAddr + WindowSize;
     }
 
-    if (HighZeroBits > MM_MAXIMUM_ZERO_HIGH_BITS) {
+    if (HighZeroBits > MM_MAXIMUM_HIGH_ZERO_BITS) {
 	return STATUS_INVALID_PARAMETER;
     }
 
@@ -554,6 +562,54 @@ VOID MmRegisterMirroredVad(IN PMMVAD Viewer,
 }
 
 /*
+ * This routine is called by MmHandleThreadVmFault and MmCommitVirtualMemory to map the
+ * view range of the data file section. Prior to calling this routine, the relevant file
+ * range of the data file must be paged into memory (via CcPinData or CcPinDataEx). For
+ * page-file-backed section, this routine maps the pages according to the VAD's protection
+ * attributes. For non-page-file-backed data sections, this routine always map the pages
+ * as read-only.
+ */
+static NTSTATUS MiMapFileVad(IN PMMVAD Vad,
+			     IN MWORD StartAddr,
+			     IN MWORD SizeToMap)
+{
+    SizeToMap = PAGE_ALIGN_UP(StartAddr + SizeToMap) - PAGE_ALIGN(StartAddr);
+    StartAddr = PAGE_ALIGN(StartAddr);
+    assert(StartAddr >= Vad->AvlNode.Key);
+    assert(StartAddr + SizeToMap <= Vad->AvlNode.Key + Vad->WindowSize);
+    assert(SizeToMap);
+    PSECTION Section = Vad->Section;
+    assert(Section);
+    assert(Section->Flags.File);
+    PDATA_SECTION_OBJECT DataSection = Section->DataSectionObject;
+    assert(DataSection);
+    PIO_FILE_CONTROL_BLOCK Fcb = DataSection->Fcb;
+    assert(Fcb);
+    /* TODO: for read-only page-file mappings, map the common zero-page rather than
+     * using new pages. NT semantics forbid one from later changing it to writable,
+     * so we do not need to worry about committing memory in this case. */
+    PAGING_RIGHTS Rights = Section->Flags.PageFile ?
+	(Vad->Flags.ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW) : MM_RIGHTS_RO;
+    ULONG64 FileOffset = StartAddr - Vad->AvlNode.Key + Vad->DataSectionView.SectionOffset;
+    MWORD MappedSize = 0;
+    while (MappedSize < SizeToMap) {
+	PVOID Buffer = NULL;
+	ULONG BufferLength = 0;
+	RET_ERR(CcMapData(Fcb, FileOffset + MappedSize, SizeToMap - MappedSize,
+			  &BufferLength, &Buffer));
+	assert(Buffer);
+	assert(BufferLength);
+	assert(IS_PAGE_ALIGNED(BufferLength) ||
+	       BufferLength == (Fcb->FileSize - FileOffset - MappedSize));
+	RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace, (MWORD)Buffer, Vad->VSpace,
+				    StartAddr + MappedSize, PAGE_ALIGN_UP(BufferLength),
+				    Rights, MM_ATTRIBUTES_DEFAULT, TRUE));
+	MappedSize += PAGE_ALIGN_UP(BufferLength);
+    }
+    return STATUS_SUCCESS;
+}
+
+/*
  * Commit the virtual memory window [StartAddr, StartAddr + WindowSize). The
  * address window must have been already reserved and have not been committed
  * previously (ie. none of the memory pages within the address window is mapped).
@@ -593,13 +649,18 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* VADs marked as file map are committed lazily (ie. when a thread accesses a page
-     * and generates a VM fault) and you cannot call MmCommitVirtualMemory on it. */
+    /* If the VAD is a mapped view of a pagefile-backed data section, commit the
+     * specified memory region. Otherwise, return error. */
     if (Vad->Flags.FileMap) {
-	MmDbg("Error: File map is committed lazily.\n");
-	MmDbgDumpVSpace(VSpace);
-	assert(FALSE);
-	return STATUS_INVALID_PARAMETER;
+	PSECTION Section = Vad->Section;
+	assert(Section->Flags.File);
+	if (!Section->Flags.PageFile) {
+	    return STATUS_INVALID_PARAMETER;
+	}
+	if (StartAddr + WindowSize > Vad->AvlNode.Key + Vad->WindowSize) {
+	    return STATUS_INVALID_PARAMETER;
+	}
+	return MiMapFileVad(Vad, StartAddr, WindowSize);
     }
 
     /* VADs marked as image map are mapped using MmMapViewOfSection and you cannot
@@ -620,14 +681,14 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* TODO: We need to determine if we allow committing multiple VADs in one call. */
+    /* NT semantics require that memory region to be committed belows to the same VAD. */
     if ((StartAddr < Vad->AvlNode.Key) ||
 	(StartAddr + WindowSize > Vad->AvlNode.Key + Vad->WindowSize)) {
-	MmDbg("Committing addresses spanning multiple VADs is not implemented yet "
+	MmDbg("Committing addresses spanning multiple VADs is not allowed in NT "
 	      "(requested [%p, %p) found VAD [%p, %p))\n",
 	      (PVOID)StartAddr, (PVOID)(StartAddr + WindowSize),
 	      (PVOID)Vad->AvlNode.Key, (PVOID)(Vad->AvlNode.Key + Vad->WindowSize));
-	UNIMPLEMENTED;
+	return STATUS_INVALID_PARAMETER;
     }
 
     PAGING_RIGHTS Rights = (Vad->Flags.ReadOnly) ? MM_RIGHTS_RO : MM_RIGHTS_RW;
@@ -637,7 +698,7 @@ NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 	assert(IS_PAGE_ALIGNED(Vad->MirroredMemory.StartAddr));
 	RET_ERR(MmMapMirroredMemory(Vad->MirroredMemory.Master, Vad->MirroredMemory.StartAddr,
 				    Vad->VSpace, StartAddr, WindowSize, Rights,
-				    MM_ATTRIBUTES_DEFAULT));
+				    MM_ATTRIBUTES_DEFAULT, FALSE));
     } else if (Vad->Flags.OwnedMemory) {
 	RET_ERR(MmCommitOwnedMemoryEx(Vad->VSpace, StartAddr, WindowSize, Rights,
 				      MM_ATTRIBUTES_DEFAULT, Vad->Flags.LargePages, NULL, 0));
@@ -849,11 +910,13 @@ NTSTATUS MmTryCommitWindowRW(IN PVIRT_ADDR_SPACE VSpace,
 }
 
 /*
- * De-commit the given address window. The actual decommitted window is returned.
+ * Unmap the given address window. The actual unmapped window is returned.
+ * If there is no outstanding reference to the page, the page will be
+ * de-committed and its parent untyped memory will be released (recursively).
  */
-VOID MiUncommitWindow(IN PVIRT_ADDR_SPACE VSpace,
-		      IN OUT MWORD *pStartAddr,
-		      IN OUT MWORD *WindowSize)
+VOID MiUnmapWindow(IN PVIRT_ADDR_SPACE VSpace,
+		   IN OUT MWORD *pStartAddr,
+		   IN OUT MWORD *WindowSize)
 {
     MWORD EndAddr = PAGE_ALIGN_UP(*pStartAddr + *WindowSize);
     MWORD StartAddr = PAGE_ALIGN(*pStartAddr);
@@ -909,7 +972,7 @@ static VOID MiUncommitVad(IN PMMVAD Vad)
     assert(Vad->VSpace != NULL);
     MWORD StartAddr = Vad->AvlNode.Key;
     MWORD WindowSize = Vad->WindowSize;
-    MiUncommitWindow(Vad->VSpace, &StartAddr, &WindowSize);
+    MiUnmapWindow(Vad->VSpace, &StartAddr, &WindowSize);
     if (Vad->Flags.BitmapManaged && Vad->CommitmentStatus.Bitmaps) {
 	MWORD AllocationUnits = Vad->WindowSize >> Vad->CommitmentStatus.LowZeroBits;
 	if (AllocationUnits > LOW_BITMAP_MAXSIZE) {
@@ -955,11 +1018,16 @@ VOID MmDeleteVad(IN PMMVAD Vad)
     MiFreePool(Vad);
 }
 
-VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
-			       IN MWORD StartAddr,
-			       IN MWORD WindowSize)
+/*
+ * This is the raw unmap routine that operates at the page level and does not
+ * touch the VAD. Only the cache manager should call this routine to unmap the
+ * pages in the cache view space managed by bitmaps.
+ */
+VOID MmUnmapWindowEx(IN PVIRT_ADDR_SPACE VSpace,
+		     IN MWORD StartAddr,
+		     IN MWORD WindowSize)
 {
-    MiUncommitWindow(VSpace, &StartAddr, &WindowSize);
+    MiUnmapWindow(VSpace, &StartAddr, &WindowSize);
 }
 
 /*
@@ -1005,7 +1073,8 @@ static NTSTATUS MiMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
 /*
  * Maps the user buffer in the given virt addr space into another
  * virt addr space, returning the starting virtual address of the
- * buffer in the target virt addr space.
+ * buffer in the target virt addr space. The buffer address and
+ * buffer length do not need to be page-aligned.
  *
  * If ReadOnly is TRUE, the target pages will be mapped read-only.
  * Otherwise the target pages will be mapped read-write.
@@ -1069,7 +1138,7 @@ VOID MmUnmapRegion(IN PVIRT_ADDR_SPACE VSpace,
 	StartAddr >>= LowZeroBits;
 	StartAddr <<= LowZeroBits;
 	MiUnmarkCommittedSubregion(Vad, StartAddr);
-	MmUncommitVirtualMemoryEx(VSpace, StartAddr, 1ULL << LowZeroBits);
+	MmUnmapWindowEx(VSpace, StartAddr, 1ULL << LowZeroBits);
     } else {
 	MmDeleteVad(Vad);
     }
@@ -1103,7 +1172,7 @@ NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
     RET_ERR(MmMapMirroredMemory(VSpace, Page->AvlNode.Key, &MiNtosVaddrSpace,
 				HyperspaceAddr, MiPagingWindowSize(Page->Type),
 				Write ? MM_RIGHTS_RW : MM_RIGHTS_RO,
-				MM_ATTRIBUTES_DEFAULT));
+				MM_ATTRIBUTES_DEFAULT, FALSE));
     *MappedAddress = (PVOID)(HyperspaceAddr + Offset);
     *MappedLength = MiPagingWindowSize(Page->Type) - Offset;
     return STATUS_SUCCESS;
@@ -1114,30 +1183,237 @@ NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
  */
 VOID MmUnmapHyperspacePage(IN PVOID MappedAddress)
 {
-    MmUncommitVirtualMemory((MWORD)MappedAddress, 1);
+    MmUnmapWindow((MWORD)MappedAddress, 1);
+}
+
+/* ARM64 ESR Bits */
+#define ARM_ESR_RW_BIT        (1 << 6)   /* Bit 6: 0=Read, 1=Write */
+#define ARM_ESR_EC_MASK       (0x3F)     /* EC is Bits [31:26] */
+#define ARM_ESR_EC_SHIFT      (26)
+
+/* Exception Classes for Aborts */
+#define EC_INSTRUCTION_ABORT_LOWER 0x20
+#define EC_INSTRUCTION_ABORT_SAME  0x21
+#define EC_DATA_ABORT_LOWER        0x24
+#define EC_DATA_ABORT_SAME         0x25
+
+FORCEINLINE BOOLEAN MiIsPermissionFault(IN MWORD Fsr)
+{
+#if defined(_M_IX86) || defined(_M_AMD64)
+    return Fsr & 0x1;
+#elif defined(_M_ARM64)
+    return ((Fsr >> 2) & 0xf) == 3;
+#else
+#error "Unsupported architecture"
+#endif
+}
+
+FORCEINLINE BOOLEAN MiIsWriteFault(IN MWORD Fsr)
+{
+#if defined(_M_IX86) || defined(_M_AMD64)
+    return Fsr & 0x2;
+#elif defined(_M_ARM64)
+    ULONG Ec = (Fsr >> ARM_ESR_EC_SHIFT) & ARM_ESR_EC_MASK;
+    /* Only Data Aborts have a valid WnR bit.
+     * Instruction aborts are never "writes". */
+    if (Ec == EC_DATA_ABORT_LOWER || Ec == EC_DATA_ABORT_SAME) {
+        return (Fsr & ARM_ESR_RW_BIT) != 0;
+    }
+    return FALSE;
+#else
+#error "Unsupported architecture"
+#endif
+}
+
+FORCEINLINE BOOLEAN MiIsExecuteFault(IN MWORD Fsr)
+{
+#if defined(_M_IX86) || defined(_M_AMD64)
+    return Fsr & 0x10;
+#elif defined(_M_ARM64)
+    ULONG Ec = (Fsr >> ARM_ESR_EC_SHIFT) & ARM_ESR_EC_MASK;
+    /* If the Exception Class is an Instruction Abort, it's an execute fault. */
+    return (Ec == EC_INSTRUCTION_ABORT_LOWER || Ec == EC_INSTRUCTION_ABORT_SAME);
+#else
+#error "Unsupported architecture"
+#endif
+}
+
+/* Remap the specified address window with the new access rights. Note that
+ * since all page caps are derived with full seL4 rights, we can simply unmap
+ * the page cap and remap the same page cap using the new access rights. In
+ * other words, the paging rights (RWX) of the mapping is set at mapping time,
+ * not at page cap creation time. The unmapped region in the specified window
+ * is ignored (no error is generated for unmapped pages in the region). */
+static NTSTATUS MiRemapVirtualMemory(IN PVIRT_ADDR_SPACE VSpace,
+				     IN MWORD StartAddr,
+				     IN MWORD WindowSize,
+				     IN PAGING_RIGHTS Rights)
+{
+    assert(IS_PAGE_ALIGNED(StartAddr));
+    assert(IS_PAGE_ALIGNED(WindowSize));
+    UNIMPLEMENTED;
+}
+
+static VOID MiDispatchUserException(IN PTHREAD Thread,
+				    IN MWORD Addr,
+				    IN MWORD Ip,
+				    IN MWORD FaultStatusRegister)
+{
+    MmDbgDumpVSpace(&Thread->Process->VSpace);
+    /* For VM fault, the first exception parameter is the type of the fault (read = 0,
+     * write = 1, no-execute = 8). The second exception parameter is the vm address
+     * that the client was trying to access. */
+    MWORD ExceptionParameters[] = {
+	MiIsExecuteFault(FaultStatusRegister) ? 8 : MiIsWriteFault(FaultStatusRegister),
+	Addr
+    };
+    NTSTATUS Status = KeDispatchUserException(Thread, STATUS_ACCESS_VIOLATION, Ip,
+					      ARRAYSIZE(ExceptionParameters),
+					      ExceptionParameters);
+    if (!NT_SUCCESS(Status)) {
+	MmDbg("Failed to dispatch user exception (status 0x%x), terminating thread.\n",
+	      Status);
+	PsTerminateThread(Thread, Status);
+    }
+}
+
+typedef struct _FILE_MAP_PIN_DATA_CONTEXT {
+    PTHREAD Thread;
+    MWORD Addr;
+    MWORD Ip;
+    MWORD FaultStatusRegister;
+    PSECTION Section;
+} FILE_MAP_PIN_DATA_CONTEXT, *PFILE_MAP_PIN_DATA_CONTEXT;
+
+static VOID MiFileMapPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
+				     IN ULONG64 FileOffset,
+				     IN ULONG64 Length,
+				     IN NTSTATUS Status,
+				     IN OUT PVOID Context)
+{
+    PFILE_MAP_PIN_DATA_CONTEXT Ctx = Context;
+    assert(Ctx);
+    MmDbg("File mapping callback, file offset 0x%llx, length 0x%llx, status 0x%x,"
+	  "thread %p (%s), address %p, ip %p\n", FileOffset, Length, Status,
+	  Ctx->Thread, KEDBG_THREAD_TO_FILENAME(Ctx->Thread),
+	  (PVOID)Ctx->Addr, (PVOID)Ctx->Ip);
+    if (!NT_SUCCESS(Status)) {
+	goto err;
+    }
+    /* Vad may no longer be valid when this routine is called, so we need to check. */
+    PMMVAD Vad = MiVSpaceFindVadNode(&Ctx->Thread->Process->VSpace, Ctx->Addr);
+    if (!Vad || !Vad->Flags.FileMap || Vad->Section != Ctx->Section) {
+	goto err;
+    }
+    MWORD Alignment = 1ULL << MM_MINIMUM_LOW_ZERO_BITS;
+    assert(Vad->AvlNode.Key <= ALIGN_DOWN_BY(Ctx->Addr, Alignment));
+    MWORD WindowAddr = max(ALIGN_DOWN_BY(Ctx->Addr, Alignment), Vad->AvlNode.Key);
+    MWORD WindowSize = min(Alignment, Vad->AvlNode.Key + Vad->WindowSize - WindowAddr);
+    if (NT_SUCCESS(MiMapFileVad(Vad, WindowAddr, WindowSize))) {
+	PsResumeThread(Ctx->Thread);
+	goto out;
+    }
+err:
+    MiDispatchUserException(Ctx->Thread, Ctx->Addr, Ctx->Ip, Ctx->FaultStatusRegister);
+out:
+    ObDereferenceObject(Ctx->Thread);
+    ObDereferenceObject(Ctx->Section);
+    ExFreePoolWithTag(Ctx, NTOS_MM_TAG);
 }
 
 /*
- * Check the process VSpace to see if the faulting address is in
- * a COMMIT_ON_DEMAND page. If it is, try to commit the page and
- * if successful, return TRUE so the thread can be resumed.
- *
- * Otherwise return FALSE.
+ * Try to handle the thread VM fault. If successful, resume the
+ * thread. Otherwise, call KeDispatchUserException to dispatch SEH.
+ * In the case that the page fault handler needs to wait for IO,
+ * thread resumption is done asynchronously (ie. thread is not
+ * resumed immediately, but only after data become available). If
+ * an IO error occurred during page fault handling, SEH will be
+ * dispatched.
  */
-BOOLEAN MmHandleThreadVmFault(IN PTHREAD Thread,
-			      IN MWORD Addr)
+VOID MmHandleThreadVmFault(IN PTHREAD Thread,
+			   IN MWORD Addr,
+			   IN MWORD Ip,
+			   IN MWORD FaultStatusRegister)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     MmDbg("Attempt to handle VM-FAULT of thread %s at %p\n",
 	  Thread->DebugName, (PVOID)Addr);
     PMMVAD Vad = MiVSpaceFindVadNode(&Thread->Process->VSpace, Addr);
-    if (Vad == NULL || !Vad->Flags.CommitOnDemand) {
-	MmDbgDumpVSpace(&Thread->Process->VSpace);
-	return FALSE;
+    if (Vad == NULL) {
+	goto err;
     }
-    return NT_SUCCESS(MmCommitVirtualMemoryEx(&Thread->Process->VSpace,
-					      PAGE_ALIGN(Addr), PAGE_SIZE));
+
+    /* Vad is a view of a data section. For file-backed (including page-file-backed) data
+     * sections, initially the view region is unmapped and we should load the file from disk
+     * (no-op in the case of page-file) and map the view region, but for non-page-file-backed
+     * data sections this mapping is read-only (for page-file-backed data sections, this is
+     * read-write if allowed by section protection). For writable views, the next write will
+     * trigger another VM fault at which time we remap the pages as writable. For readonly
+     * views, writing leads to SEH dispatch. */
+    if (Vad->Flags.FileMap) {
+	PSECTION Section = Vad->Section;
+	assert(Section->Flags.File);
+	if (MiIsPermissionFault(FaultStatusRegister)) {
+	    if (Vad->Flags.ReadOnly || Section->Flags.PageFile) {
+		goto err;
+	    }
+	    /* Page is present but mapped read-only. We will remap the page as readwrite.
+	     * We do this for the entire 64KB-aligned window that contains the address,
+	     * ignoring the unmapped pages in the window. */
+	    MWORD Alignment = 1ULL << MM_MINIMUM_LOW_ZERO_BITS;
+	    assert(Vad->AvlNode.Key <= ALIGN_DOWN_BY(Addr, Alignment));
+	    MWORD WindowAddr = max(ALIGN_DOWN_BY(Addr, Alignment), Vad->AvlNode.Key);
+	    MWORD WindowSize = min(Alignment, Vad->AvlNode.Key + Vad->WindowSize - WindowAddr);
+	    if (!NT_SUCCESS(MiRemapVirtualMemory(&Thread->Process->VSpace,
+						 WindowAddr, WindowSize,
+						 MM_RIGHTS_RW))) {
+		goto err;
+	    }
+	    ULONG64 FileOffset =
+		WindowAddr - Vad->AvlNode.Key + Vad->DataSectionView.SectionOffset;
+	    CcSetSharedMapDirtyBits(Section->DataSectionObject->Fcb, FileOffset,
+				    WindowSize, TRUE);
+	    return;
+	}
+	PDATA_SECTION_OBJECT DataSection = Section->DataSectionObject;
+	assert(DataSection);
+	PIO_FILE_CONTROL_BLOCK Fcb = DataSection->Fcb;
+	if (!Fcb) {
+	    assert(Section->Flags.PageFile);
+	    /* We are a pagefile-backed section without SEC_COMMIT, so always fail. */
+	    goto err;
+	}
+	/* Page is not present. We need to load the data file from disk and map the pages. */
+	PFILE_MAP_PIN_DATA_CONTEXT Context =
+	    ExAllocatePoolWithTag(sizeof(FILE_MAP_PIN_DATA_CONTEXT), NTOS_MM_TAG);
+	if (!Context) {
+	    goto err;
+	}
+	Context->Addr = Addr;
+	Context->Ip = Ip;
+	Context->FaultStatusRegister = FaultStatusRegister;
+	Context->Section = Section;
+	ObReferenceObjectByPointer(Section);
+	Context->Thread = Thread;
+	ObReferenceObjectByPointer(Thread);
+	ULONG64 FileOffset = VIEW_ALIGN(PAGE_ALIGN(Addr) - Vad->AvlNode.Key +
+					Vad->DataSectionView.SectionOffset);
+	ULONG WindowSize = min(VIEW_SIZE, Fcb->FileSize - FileOffset);
+	CcPinDataEx(Fcb, FileOffset, WindowSize, FALSE, MiFileMapPinDataCallback, Context);
+	return;
+    }
+    if (Vad->Flags.CommitOnDemand) {
+	if (!NT_SUCCESS(MmCommitVirtualMemoryEx(&Thread->Process->VSpace,
+						PAGE_ALIGN(Addr), PAGE_SIZE))) {
+	    goto err;
+	}
+	PsResumeThread(Thread);
+	return;
+    }
+    /* For unhandled VM fault, we dispatch user SEH. */
+err:
+    MiDispatchUserException(Thread, Addr, Ip, FaultStatusRegister);
 }
 
 FORCEINLINE PAGING_ATTRIBUTES MiGetPagingAttributesFromCacheType(MEMORY_CACHING_TYPE CacheType)
@@ -1275,6 +1551,11 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
 	  VSpace->VSpaceCap, BaseAddress ? *BaseAddress : NULL, (MWORD)HighZeroBits,
 	  RegionSize ? (MWORD)*RegionSize : 0, AllocationType, Protect);
 
+    if (AllocationType & MEM_PHYSICAL) {
+	/* seL4 does not support Address Windowing Extensions on i386, so fail. */
+	return STATUS_NOT_SUPPORTED;
+    }
+
     /* On 64-bit systems the HighZeroBits parameter is interpreted as a bit mask if
      * it is greater than or equal to 32. Convert the bit mask to the number of bits
      * in this case. */
@@ -1290,7 +1571,7 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
 #endif
 
     NTSTATUS Status = STATUS_INTERNAL_ERROR;
-    if (HighZeroBits > MM_MAXIMUM_ZERO_HIGH_BITS) {
+    if (HighZeroBits > MM_MAXIMUM_HIGH_ZERO_BITS) {
         Status = STATUS_INVALID_PARAMETER_3;
 	goto out;
     }
@@ -1347,7 +1628,7 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
 	}
     }
     /* These are not implemented yet */
-    if ((AllocationType & (MEM_RESET | MEM_PHYSICAL | MEM_WRITE_WATCH))) {
+    if ((AllocationType & (MEM_RESET | MEM_WRITE_WATCH))) {
         UNIMPLEMENTED;
     }
 
@@ -1461,7 +1742,7 @@ NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
 	MiUncommitVad(Vad);
     } else {
 	assert(FreeType == MEM_DECOMMIT);
-	MiUncommitWindow(VSpace, (MWORD *)BaseAddress, (MWORD *)RegionSize);
+	MiUnmapWindow(VSpace, (MWORD *)BaseAddress, (MWORD *)RegionSize);
     }
 
     Status = STATUS_SUCCESS;
@@ -1586,16 +1867,19 @@ VOID MmDbgDumpVad(PMMVAD Vad)
     }
 
     MmDbgPrint("    vaddr start = %p  window size = 0x%zx\n"
-	       "   %s%s%s%s%s%s%s%s\n",
+	       "   %s%s%s%s%s%s%s%s%s%s%s\n",
 	       (PVOID) Vad->AvlNode.Key, Vad->WindowSize,
+	       Vad->Flags.NoAccess ? " no-access" : "",
+	       Vad->Flags.ReadOnly ? " read-only" : "",
 	       Vad->Flags.ImageMap ? " image-map" : "",
 	       Vad->Flags.FileMap ? " file-map" : "",
 	       Vad->Flags.CacheMap ? " cache-map" : "",
+	       Vad->Flags.PhysicalMapping ? " physical-mapping" : "",
 	       Vad->Flags.BitmapManaged ? " bitmap-managed" : "",
 	       Vad->Flags.LargePages ? " large-pages" : "",
-	       Vad->Flags.PhysicalMapping ? " physical-mapping" : "",
 	       Vad->Flags.OwnedMemory ? " owned-memory" : "",
-	       Vad->Flags.MirroredMemory ? " mirrored-memory" : "");
+	       Vad->Flags.MirroredMemory ? " mirrored-memory" : "",
+	       Vad->Flags.CommitOnDemand ? " commit-on-demand" : "");
     MmDbgPrint("    section = %p\n", Vad->Section);
     if (Vad->Flags.ImageMap) {
 	MmDbgPrint("    subsection = %p\n", Vad->ImageSectionView.SubSection);

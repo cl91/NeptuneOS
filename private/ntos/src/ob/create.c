@@ -113,7 +113,7 @@ NTSTATUS ObInsertObject(IN OPTIONAL POBJECT DirectoryObject,
     ObjectHeader->ParentObject = Parent;
     /* We need to increase the refcount of the parent object so it cannot be
      * deleted before all its children are deleted. */
-    ObpReferenceObject(Parent);
+    ObReferenceObjectByPointer(Parent);
     Status = STATUS_SUCCESS;
 
 out:

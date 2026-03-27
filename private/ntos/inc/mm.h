@@ -402,7 +402,7 @@ typedef struct _MMVAD {
 				 * view, this is unused. */
     union {
 	struct {
-	    MWORD SectionOffset; /* Rounded down to 4K page boundary */
+	    MWORD SectionOffset; /* Rounded down to 64K page boundary */
 	} DataSectionView;
 	struct {
 	    struct _SUBSECTION *SubSection;
@@ -674,9 +674,9 @@ typedef enum _MM_MEM_PRESSURE {
  * to the same FILE which can be mapped as image or data, the IO_FILE_OBJECT contains
  * pointers to both IMAGE_SECTION_OBJECT and DATA_SECTION_OBJECT.
  *
- * Note the nomenclatures here are somewhat confusing as the PE object format also has
+ * Note the terms here are somewhat confusing as the PE object format also has
  * a notion of "sections". A PE file can have multiple sections (.text, .data, etc)
- * which are loaded into memory according to its image headers (including the
+ * which are loaded into memory according to its image headers (in particular its
  * section headers). During loading NTOS will create a SECTION object for the
  * PE file, which will simply be a pointer to an IMAGE_SECTION_OBJECT struct,
  * that contains multiple SUBSECTIONS each of which corresponds to a section
@@ -685,17 +685,14 @@ typedef enum _MM_MEM_PRESSURE {
 typedef union _MMSECTION_FLAGS {
     struct {
 	ULONG Image : 1;
-	ULONG Based : 1;
 	ULONG File : 1;
+	ULONG PageFile : 1; /* File will always be TRUE if PageFile is TRUE. */
 	ULONG PhysicalMemory : 1;
-	ULONG Reserve : 1;
-	ULONG Commit : 1;
     };
     ULONG Word;
 } MMSECTION_FLAGS;
 
 typedef struct _SECTION {
-    AVL_NODE BasedSectionNode; /* All SEC_BASED Sections are organized in an AVL tree */
     union {
 	struct _IMAGE_SECTION_OBJECT *ImageSectionObject;
 	struct _DATA_SECTION_OBJECT *DataSectionObject;
@@ -729,6 +726,7 @@ typedef struct _IMAGE_SECTION_OBJECT {
     LIST_ENTRY SectionList; /* List of all SECTION objects that share this image section.
 			     * Note this is the NT SECTION object, not the sections of the
 			     * PE image file. The latter corresponds to SUBSECTIONs.*/
+    MWORD VirtualSize; /* Sum of the virtual size of all the sub-sections. */
     MWORD ImageBase;
     ULONG ImageCacheFileSize;
     SECTION_IMAGE_INFORMATION ImageInformation;
@@ -829,7 +827,8 @@ NTSTATUS MmMapMirroredMemory(IN PVIRT_ADDR_SPACE OwnerVSpace,
 			     IN MWORD ViewerStartAddr,
 			     IN MWORD WindowSize,
 			     IN PAGING_RIGHTS NewRights,
-			     IN PAGING_ATTRIBUTES NewAttributes);
+			     IN PAGING_ATTRIBUTES NewAttributes,
+			     IN BOOLEAN IgnoreExisting);
 
 FORCEINLINE NTSTATUS MmCommitOwnedMemory(IN MWORD StartAddr,
 					 IN MWORD WindowSize,
@@ -845,13 +844,15 @@ FORCEINLINE NTSTATUS MmCommitOwnedMemory(IN MWORD StartAddr,
 NTSTATUS MmSectionInitialization();
 struct _ASYNC_STATE;
 struct _THREAD;
-NTSTATUS MmCreateSection(IN struct _IO_FILE_OBJECT *FileObject,
+NTSTATUS MmCreateSection(IN OPTIONAL struct _IO_FILE_OBJECT *FileObject,
+			 IN SIZE_T MaximumSize,
 			 IN ULONG PageProtection,
 			 IN ULONG SectionAttribute,
 			 OUT PSECTION *SectionObject);
 NTSTATUS MmCreateSectionEx(IN struct _ASYNC_STATE State,
 			   IN struct _THREAD *Thread,
-			   IN struct _IO_FILE_OBJECT *FileObject,
+			   IN OPTIONAL struct _IO_FILE_OBJECT *FileObject,
+			   IN SIZE_T MaximumSize,
 			   IN ULONG PageProtection,
 			   IN ULONG SectionAttributes,
 			   OUT PSECTION *SectionObject);
@@ -860,6 +861,7 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 			    IN OUT MWORD *BaseAddress,
 			    IN OUT ULONG64 *SectionOffset,
 			    IN OUT MWORD *ViewSize,
+			    IN MWORD CommitSize,
 			    IN ULONG HighZeroBits,
 			    IN SECTION_INHERIT InheritDisposition,
 			    IN ULONG ReserveFlags,
@@ -880,9 +882,9 @@ NTSTATUS MmReserveVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 NTSTATUS MmCommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
 				 IN MWORD StartAddr,
 				 IN MWORD WindowSize);
-VOID MmUncommitVirtualMemoryEx(IN PVIRT_ADDR_SPACE VSpace,
-			       IN MWORD StartAddr,
-			       IN MWORD WindowSize);
+VOID MmUnmapWindowEx(IN PVIRT_ADDR_SPACE VSpace,
+		     IN MWORD StartAddr,
+		     IN MWORD WindowSize);
 MWORD MmFindAndMarkUncommittedSubregion(IN PMMVAD Vad);
 NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
 			IN MWORD WindowStart,
@@ -940,8 +942,10 @@ NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
 			     OUT ULONG *MappedLength);
 VOID MmUnmapHyperspacePage(IN PVOID MappedAddress);
 struct _THREAD;
-BOOLEAN MmHandleThreadVmFault(IN struct _THREAD *Thread,
-			      IN MWORD Addr);
+VOID MmHandleThreadVmFault(IN struct _THREAD *Thread,
+			   IN MWORD Addr,
+			   IN MWORD Ip,
+			   IN MWORD FaultStatusRegister);
 
 FORCEINLINE NTSTATUS MmReserveVirtualMemory(IN MWORD StartAddr,
 					    IN OPTIONAL MWORD EndAddr,
@@ -962,11 +966,11 @@ FORCEINLINE NTSTATUS MmCommitVirtualMemory(IN MWORD StartAddr,
     return MmCommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
 }
 
-FORCEINLINE VOID MmUncommitVirtualMemory(IN MWORD StartAddr,
-					 IN MWORD WindowSize)
+FORCEINLINE VOID MmUnmapWindow(IN MWORD StartAddr,
+			       IN MWORD WindowSize)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
-    MmUncommitVirtualMemoryEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
+    MmUnmapWindowEx(&MiNtosVaddrSpace, StartAddr, WindowSize);
 }
 
 
@@ -1004,7 +1008,8 @@ FORCEINLINE VOID MmUnmapIoSpace(IN MWORD VirtAddr)
  * virt addr space, returning the starting virtual address of the
  * buffer in the server virt addr space. The user buffer must be
  * writable by the user. Otherwise STATUS_INVALID_PAGE_PROTECTION
- * is returned.
+ * is returned. The buffer address and buffer length do not need to
+ * be page-aligned.
  */
 FORCEINLINE NTSTATUS MmMapUserBuffer(IN PVIRT_ADDR_SPACE VSpace,
 				     IN MWORD BufferStart,

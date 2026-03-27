@@ -836,6 +836,11 @@ NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
 			     IN PTHREAD_CONTEXT Context);
 NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
 			    IN PTHREAD_CONTEXT Context);
+NTSTATUS KeDispatchUserException(IN struct _THREAD *Thread,
+				 IN ULONG ExceptionCode,
+				 IN MWORD ExceptionAddress,
+				 IN ULONG NumberOfParameters,
+				 IN MWORD ExceptionParameters[]);
 BOOLEAN KePtrInSvcMsgBuf(IN MWORD Ptr, IN struct _THREAD *Thread);
 
 #if defined(_M_IX86) || defined(_M_AMD64)

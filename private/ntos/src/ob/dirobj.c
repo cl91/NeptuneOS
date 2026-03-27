@@ -165,7 +165,7 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
 	 * ntdll can open a file handle to the boot modules directory. */
 	RET_ERR(ObpDirectoryObjectSearchObject(DirObj, ".", 1,
 					      FALSE, pOpenedInstance));
-	ObpReferenceObject(*pOpenedInstance);
+	ObReferenceObjectByPointer(*pOpenedInstance);
 	*pRemainingPath = SubPath;
     } else {
 	/* TODO: Implement NtOpenObjectDirectory */
@@ -240,7 +240,7 @@ NTSTATUS ObDirectoryObjectInsertPath(IN POBJECT_DIRECTORY Directory,
 	    RET_ERR_EX(ObpDirectoryObjectInsertObject(Directory, ChildDir, Path, Sep),
 		       ObDereferenceObject(ChildDir));
 	    OBJECT_TO_OBJECT_HEADER(ChildDir)->ParentObject = Directory;
-	    ObpReferenceObject(Directory);
+	    ObReferenceObjectByPointer(Directory);
 	}
 	Path += Sep + 1;
 	Directory = ChildDir;

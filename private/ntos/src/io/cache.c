@@ -454,8 +454,8 @@ static VOID CiDeleteView(IN PCC_VIEW View)
     assert(!View->DirtyMap);
     assert(!View->IoReq);
     AvlTreeRemoveNode(&View->CacheMap->ViewTree, &View->Node);
-    MmUncommitVirtualMemoryEx(View->CacheMap->CacheSpace->AddrSpace,
-			      View->MappedAddress, VIEW_SIZE);
+    MmUnmapWindowEx(View->CacheMap->CacheSpace->AddrSpace,
+		    View->MappedAddress, VIEW_SIZE);
     PCC_VIEW_TABLE ViewTable = View->CacheMap->CacheSpace->ViewTable;
     ULONG ViewTableIndex = (View->MappedAddress >> VIEW_LOG2SIZE) &
 	((1UL << VIEW_TABLE_ADDRESS_BITS) - 1);
@@ -609,8 +609,8 @@ static VOID CiCompleteQueuedIoReq(IN PQUEUED_IO_REQUEST Req,
 	    } else if (SizeToMap > View->MappedSize) {
 		ULONG AlignedSize = PAGE_ALIGN_UP(View->MappedSize);
 		if (SizeToMap > AlignedSize) {
-		    MmUncommitVirtualMemory(View->MappedAddress + AlignedSize,
-					    SizeToMap - AlignedSize);
+		    MmUnmapWindow(View->MappedAddress + AlignedSize,
+				  SizeToMap - AlignedSize);
 		}
 		CiFreeFileRegionMapping(View->CacheMap->Fcb, View->Node.Key + View->MappedSize,
 					SizeToMap - View->MappedSize);
@@ -851,7 +851,8 @@ static VOID CiFileRegionMappingCallback(IN PIO_FILE_CONTROL_BLOCK VolumeFcb,
 		IF_ERR_GOTO(out, Status,
 			    MmMapMirroredMemory(CiNtosCacheSpace.AddrSpace, (MWORD)Buffer,
 						CiNtosCacheSpace.AddrSpace, MappedAddress,
-						WindowSize, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT));
+						WindowSize, MM_RIGHTS_RW,
+						MM_ATTRIBUTES_DEFAULT, FALSE));
 		MappedLength += WindowSize;
 	    }
 	    assert(MappedLength == LengthToMap);
@@ -1179,7 +1180,7 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	/* If the view is fully mapped, simply continue. Note we need to set IoReq to
 	 * NULL so when processing the next view region, we will not try to extend the
 	 * existing IoReq. */
-	if (View->MappedSize >= SizeToMap) {
+	if (PAGE_ALIGN_UP(View->MappedSize) >= SizeToMap) {
 	    IoReq = NULL;
 	    continue;
 	}
@@ -1211,7 +1212,7 @@ VOID CcPinDataEx(IN PIO_FILE_CONTROL_BLOCK Fcb,
 	IoReq = CiAllocatePool(sizeof(QUEUED_IO_REQUEST));
 	if (!IoReq) {
 	    if (IsVolume) {
-		MmUncommitVirtualMemory(View->MappedAddress, VIEW_SIZE);
+		MmUnmapWindow(View->MappedAddress, VIEW_SIZE);
 	    }
 	    Status = STATUS_INSUFFICIENT_RESOURCES;
 	    break;
@@ -1436,10 +1437,10 @@ VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb)
     }
 }
 
-static VOID CiSetSharedMapDirtyBits(IN PIO_FILE_CONTROL_BLOCK Fcb,
-				    IN ULONG64 FileOffset,
-				    IN ULONG64 Length,
-				    IN BOOLEAN Set)
+VOID CcSetSharedMapDirtyBits(IN PIO_FILE_CONTROL_BLOCK Fcb,
+			     IN ULONG64 FileOffset,
+			     IN ULONG64 Length,
+			     IN BOOLEAN Set)
 {
     ULONG64 CurrentOffset = FileOffset;
     while (CurrentOffset < FileOffset + Length) {
@@ -1499,7 +1500,7 @@ static BOOLEAN CiPagedWriteCallback(IN PPENDING_IRP PendingIrp,
     RemoveEntryList(&Req->Link);
     if (!NT_SUCCESS(IoStatus.Status)) {
 	Req->CallbackInfo->IoStatus = IoStatus;
-	CiSetSharedMapDirtyBits(Req->CallbackInfo->VolumeDevice->Vcb->VolumeFcb,
+	CcSetSharedMapDirtyBits(Req->CallbackInfo->VolumeDevice->Vcb->VolumeFcb,
 				Req->VolumeFileOffset, Req->Length, TRUE);
     }
     if (IsListEmpty(&Req->CallbackInfo->ReqList)) {
@@ -1618,7 +1619,7 @@ VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
 	    Req->Length += WriteLength;
 	    /* Clear the dirty bits so future calls to this routine won't generate
 	     * unnecessary WRITE (unless pages are dirty again, or if WRITE failed). */
-	    CiSetSharedMapDirtyBits(VolumeFcb, VolumeFileOffset, WriteLength, FALSE);
+	    CcSetSharedMapDirtyBits(VolumeFcb, VolumeFileOffset, WriteLength, FALSE);
 	    continue;
 	}
 	/* Otherwise, we need to allocate a new PAGED_WRITE_REQUEST. */
@@ -1633,7 +1634,7 @@ VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
 	Req->VolumeFileOffset = VolumeFileOffset;
 	Req->Length = WriteLength;
 	Req->MappedAddress = MappedAddress;
-	CiSetSharedMapDirtyBits(VolumeFcb, VolumeFileOffset, WriteLength, FALSE);
+	CcSetSharedMapDirtyBits(VolumeFcb, VolumeFileOffset, WriteLength, FALSE);
     }
 
     LoopOverList(Req, &CallbackInfo->ReqList, PAGED_WRITE_REQUEST, Link) {
@@ -1653,7 +1654,7 @@ VOID CcFlushCache(IN PIO_DEVICE_OBJECT VolumeDevice,
 	Status = IopCallDriver(IOP_PAGING_IO_REQUESTOR, &Irp, &Req->PendingIrp);
 	if (!NT_SUCCESS(Status)) {
 	    CallbackInfo->IoStatus.Status = Status;
-	    CiSetSharedMapDirtyBits(VolumeFcb, Req->VolumeFileOffset, Req->Length, TRUE);
+	    CcSetSharedMapDirtyBits(VolumeFcb, Req->VolumeFileOffset, Req->Length, TRUE);
 	    RemoveEntryList(&Req->Link);
 	    CiFreePool(Req);
 	}
@@ -1759,7 +1760,7 @@ NTSTATUS CcMapDataEx(IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 	Status = MmMapMirroredMemory(&MiNtosVaddrSpace, (MWORD)Buffer,
 				     View->CacheMap->CacheSpace->AddrSpace,
 				     View->MappedAddress, MappedViewSize,
-				     MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT);
+				     MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT, FALSE);
 	if (NT_SUCCESS(Status)) {
 	    View->MappedSize = MappedViewSize;
 	}

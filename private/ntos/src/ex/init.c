@@ -26,7 +26,7 @@ static NTSTATUS EiStartSessionManager()
     }
     assert(SmssExe != NULL);
 
-    Status = MmCreateSection(SmssExe, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
+    Status = MmCreateSection(SmssExe, 0, 0, SEC_IMAGE | SEC_RESERVE | SEC_COMMIT,
 			     &SmssSection);
     if (!NT_SUCCESS(Status)) {
 	goto fail;

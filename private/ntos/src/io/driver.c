@@ -51,14 +51,14 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     }
     Driver->Node.Key = (ULONG_PTR)Process;
     AvlTreeInsertNode(&IopDriverObjectTree, Parent, &Driver->Node);
-    ObpReferenceObject(Process);
+    ObReferenceObjectByPointer(Process);
 
     /* Get the init thread of driver process running */
     PTHREAD Thread = NULL;
     RET_ERR(PsCreateThread(Process, NULL, NULL, Driver, 0, &Thread));
     assert(Thread != NULL);
     Driver->MainEventLoopThread = Thread;
-    ObpReferenceObject(Thread);
+    ObReferenceObjectByPointer(Thread);
 
     return STATUS_SUCCESS;
 }
@@ -239,7 +239,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 
     /* Create the driver image section */
     AWAIT_EX(Status, MmCreateSectionEx, State, Locals, Thread,
-	     Locals.DriverImageFile, PAGE_EXECUTE, SEC_IMAGE, &DriverImageSection);
+	     Locals.DriverImageFile, 0, PAGE_EXECUTE, SEC_IMAGE, &DriverImageSection);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }

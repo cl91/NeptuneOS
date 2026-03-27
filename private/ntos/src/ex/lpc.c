@@ -361,9 +361,9 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 	Locals.Connection->ConnectionInformationLength = ConnectionInformationLength;
     }
     Locals.Connection->PortObject = Locals.PortObject;
-    ObpReferenceObject(Locals.PortObject);
+    ObReferenceObjectByPointer(Locals.PortObject);
     Locals.Connection->ClientThread = Thread;
-    ObpReferenceObject(Thread);
+    ObReferenceObjectByPointer(Thread);
     InsertHeadList(&Thread->LpcConnectionList, &Locals.Connection->ThreadLink);
     KeInitializeEvent(&Locals.Connection->Connected, SynchronizationEvent);
     InsertHeadList(&Locals.PortObject->QueuedConnections, &Locals.Connection->Link);

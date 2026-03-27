@@ -761,49 +761,13 @@ static VOID KiDumpSystemThreadFault(IN seL4_Fault_t Fault,
 
 #define MIN_USER_EXCEPTION_STACK    (256)
 
-/*
- * Attempt to handle the thread fault. Return STATUS_SUCCESS if the
- * fault is handled and thread should be resumed. Return error if the
- * fault cannot be handled and the thread should be terminated.
- */
-static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
-				    IN seL4_Fault_t Fault)
+NTSTATUS KeDispatchUserException(IN PTHREAD Thread,
+				 IN ULONG ExceptionCode,
+				 IN MWORD ExceptionAddress,
+				 IN ULONG NumberOfParameters,
+				 IN MWORD ExceptionParameters[])
 {
-    assert(Thread != NULL);
-
-    ULONG ExceptionCode = KI_VM_FAULT_CODE;
-    MWORD ExceptionAddress = 0;
-    MWORD ExceptionParameter = 0;
-    switch (seL4_Fault_get_seL4_FaultType(Fault)) {
-    case seL4_Fault_VMFault:
-	/* For VM fault the first exception parameter is the vm address that
-	 * the client was trying to access. */
-	ExceptionParameter = seL4_Fault_VMFault_get_Addr(Fault);
-	/* Check if the VM fault should be handled transparently, without
-	 * ever involving the client side. */
-	if (MmHandleThreadVmFault(Thread, ExceptionParameter)) {
-	    DbgTrace("VM fault handled transparently. Restarting thread.\n");
-	    /* VM fault is handled transparently. Restart the thread. */
-	    return STATUS_SUCCESS;
-	}
-	ExceptionAddress = seL4_Fault_VMFault_get_IP(Fault);
-	break;
-    case seL4_Fault_UserException:
-	ExceptionCode = seL4_Fault_UserException_get_Number(Fault);
-	ExceptionAddress = seL4_Fault_UserException_get_FaultIP(Fault);
-	ExceptionParameter = seL4_Fault_UserException_get_Code(Fault);
-	break;
-    /* Anything other than user exception or vm fault will simply
-     * terminate the thread. */
-    case seL4_Fault_CapFault:
-	return STATUS_INVALID_HANDLE;
-    case seL4_Fault_UnknownSyscall:
-	return STATUS_INVALID_SYSTEM_SERVICE;
-    case seL4_Fault_NullFault:
-    default:
-	return STATUS_UNSUCCESSFUL;
-    }
-
+    assert(NumberOfParameters <= EXCEPTION_MAXIMUM_PARAMETERS);
     /* Note this code path corresponds to the FirstChance == TRUE logic
      * in the KiDispatchException function of the Windows/ReactOS code
      * (ntoskrnl/ke/i386/exp.c in ReactOS). The second chance exception
@@ -869,8 +833,10 @@ static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
 	(MappedUserStack + MIN_USER_EXCEPTION_STACK + ContextSize);
     ExceptionRecord->ExceptionCode = ExceptionCode;
     ExceptionRecord->ExceptionAddress = (PVOID)ExceptionAddress;
-    ExceptionRecord->NumberParameters = 1;
-    ExceptionRecord->ExceptionInformation[0] = ExceptionParameter;
+    ExceptionRecord->NumberParameters = NumberOfParameters;
+    for (ULONG i = 0; i < NumberOfParameters; i++) {
+	ExceptionRecord->ExceptionInformation[i] = ExceptionParameters[i];
+    }
 
     /* Set the thread context to dispatch to KiUserExceptionDispatcher */
     MWORD NewStackPointer = AlignedStackPointer - ExceptionRecordSize -
@@ -884,7 +850,153 @@ static NTSTATUS KiHandleThreadFault(IN PTHREAD Thread,
     MmUnmapUserBuffer(MappedUserStack);
     DbgTrace("Dispatched thread %s to client address %p\n",
 	     Thread->DebugName, (PVOID)Thread->Process->UserExceptionDispatcher);
+    PsResumeThread(Thread);
     return STATUS_SUCCESS;
+}
+
+#if defined(_M_IX86) || defined(_M_AMD64)
+/*
+ * This table converts the x86/amd64 exception code to the NT status code.
+ */
+static NTSTATUS KiUserExceptionCodeTable[] = {
+    STATUS_INTEGER_DIVIDE_BY_ZERO,  /* 0x00 #DE (Divide Error) */
+    STATUS_SINGLE_STEP,		    /* 0x01 #DB (Debug Exception) */
+    STATUS_UNSUCCESSFUL,	    /* 0x02 Non-maskable Interrupt */
+    STATUS_BREAKPOINT,		    /* 0x03 #BP (Breakpoint Exception) */
+    STATUS_INTEGER_OVERFLOW,	    /* 0x04 #OF (Overflow Exception) */
+    STATUS_ARRAY_BOUNDS_EXCEEDED,   /* 0x05 #BR (BOUND Range Exceeded) */
+    STATUS_ILLEGAL_INSTRUCTION,	    /* 0x06 #UD (Invalid Opcode Code) */
+    STATUS_FLOAT_INVALID_OPERATION, /* 0x07 #NM (Device Not Available) */
+    STATUS_UNSUCCESSFUL,	    /* 0x08 #DF (Double Fault Exception) */
+    STATUS_UNSUCCESSFUL,	    /* 0x09 Reserved */
+    STATUS_UNSUCCESSFUL,	    /* 0x0A #TS (Invalid TSS Exception) */
+    STATUS_UNSUCCESSFUL,	    /* 0x0B #NP (Segment Not Present) */
+    STATUS_UNSUCCESSFUL,	    /* 0x0C #SS (Stack Fault Exception) */
+    STATUS_ACCESS_VIOLATION,	    /* 0x0D #GP (General Protection Fault) */
+    STATUS_ACCESS_VIOLATION,	    /* 0x0E #PF (Page Fault Exception) */
+    STATUS_UNSUCCESSFUL,	    /* 0x0F Reserved */
+    STATUS_FLOAT_INVALID_OPERATION, /* 0x10 #MF (x87 Floating-Point Exception) */
+    STATUS_DATATYPE_MISALIGNMENT,   /* 0x11 #AC (Alignment Check) */
+    STATUS_UNSUCCESSFUL,            /* 0x12 #MC (Machine Check) */
+    STATUS_FLOAT_INVALID_OPERATION, /* 0x13 #XF (SIMD Floating-Point Exception) */
+};
+
+/*
+ * This routine converts the architecture-specific user exception number to the NT
+ * exception code.
+ */
+static NTSTATUS KiConvertExceptionCode(IN ULONG ExceptionCode,
+				       IN PTHREAD Thread,
+				       IN MWORD ExceptionAddress)
+{
+    if (ExceptionCode >= ARRAYSIZE(KiUserExceptionCodeTable)) {
+	return STATUS_UNSUCCESSFUL;
+    } else {
+	ExceptionCode = KiUserExceptionCodeTable[ExceptionCode];
+    }
+
+    /* In the case of illegal instruction, we check if it's an invalid lock
+     * sequence. Note we don't need to worry about access violations here
+     * because system wouldn't send an illegal instruction exception if the
+     * IP points to invalid memory. */
+    if (ExceptionCode == STATUS_ILLEGAL_INSTRUCTION) {
+	/* Check for LOCK prefix */
+	PUCHAR MappedExceptionAddress = NULL;
+	NTSTATUS Status = MmMapUserBuffer(&Thread->Process->VSpace,
+					  ExceptionAddress,
+					  sizeof(UCHAR),
+					  (PPVOID)&MappedExceptionAddress);
+	if (!NT_SUCCESS(Status)) {
+	    return ExceptionCode;
+	}
+	if (*MappedExceptionAddress == 0xF0) {
+	    ExceptionCode = STATUS_INVALID_LOCK_SEQUENCE;
+	}
+	MmUnmapUserBuffer(MappedExceptionAddress);
+    }
+    return ExceptionCode;
+}
+
+#elif defined(_M_ARM64)
+
+static NTSTATUS KiConvertExceptionCode(IN ULONG ExceptionCode,
+				       IN PTHREAD Thread,
+				       IN MWORD ExceptionAddress)
+{
+    switch (ExceptionCode) {
+    case 0x00: /* Unknown reason / Undefined Instruction */
+	return STATUS_ILLEGAL_INSTRUCTION;
+
+    case 0x07: /* Floating point / SIMD */
+	return STATUS_FLOAT_INVALID_OPERATION;
+
+    case 0x30: /* Watchpoint (Lower EL) */
+    case 0x31: /* Watchpoint (Same EL) */
+	return STATUS_DATATYPE_MISALIGNMENT;
+
+    case 0x3C: /* Software Breakpoint (BRK) */
+	return STATUS_BREAKPOINT;
+
+    default:
+	/* Fallback for unhandled hardware traps */
+	return STATUS_UNSUCCESSFUL;
+    }
+}
+
+#else
+#error "Unsupported architecture"
+#endif
+
+/*
+ * Attempt to handle the thread fault. Return STATUS_SUCCESS if the
+ * fault is handled and thread should be resumed. Return error if the
+ * fault cannot be handled and the thread should be terminated.
+ */
+static VOID KiHandleThreadFault(IN PTHREAD Thread,
+				IN seL4_Fault_t Fault)
+{
+    assert(Thread != NULL);
+
+    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+    switch (seL4_Fault_get_seL4_FaultType(Fault)) {
+    case seL4_Fault_VMFault:
+	/* Call the MM page fault handler to try to handle the page fault.
+	 * The page fault handler will either resume the thread (when it
+	 * successfully handled the fault), or call KeDispatchUserException
+	 * to dispatch SEH. */
+	MmHandleThreadVmFault(Thread, seL4_Fault_VMFault_get_Addr(Fault),
+			      seL4_Fault_VMFault_get_IP(Fault),
+			      seL4_Fault_VMFault_get_FSR(Fault));
+	return;
+    case seL4_Fault_UserException:
+    {
+	ULONG ExceptionCode = seL4_Fault_UserException_get_Number(Fault);
+	MWORD ExceptionAddress = seL4_Fault_UserException_get_FaultIP(Fault);
+	MWORD ExceptionParameter = seL4_Fault_UserException_get_Code(Fault);
+	ExceptionCode = KiConvertExceptionCode(ExceptionCode, Thread, ExceptionAddress);
+	Status = KeDispatchUserException(Thread, ExceptionCode,
+					 ExceptionAddress, 1, &ExceptionParameter);
+	if (!NT_SUCCESS(Status)) {
+	    goto err;
+	} else {
+	    return;
+	}
+    }
+    /* Anything other than user exception or vm fault will simply
+     * terminate the thread. */
+    case seL4_Fault_CapFault:
+	Status = STATUS_INVALID_HANDLE;
+	break;
+    case seL4_Fault_UnknownSyscall:
+	Status = STATUS_INVALID_SYSTEM_SERVICE;
+	break;
+    default:
+	break;
+    }
+err:
+    /* The fault cannot be handled. Print a message and terminate the thread. */
+    KiDumpThreadFault(Fault, Thread, TRUE, HalVgaPrint);
+    PsTerminateThread(Thread, Status);
 }
 
 static inline VOID KiReplyThread(IN PTHREAD Thread,
@@ -916,20 +1028,16 @@ VOID KiDispatchExecutiveServices()
 	if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_FAULT_HANDLER) {
 	    /* The thread has faulted. */
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
+	    /* A faulting thread cannot be in the suspended state (a suspended thread
+	     * is not running, and therefore cannot generate faults). By the same token
+	     * it cannot be in the ready thread list. */
+	    assert(!Thread->Suspended);
+	    assert(!ListHasEntry(&KiReadyThreadList, &Thread->ReadyListLink));
 	    seL4_Fault_t Fault = seL4_getFault(Request);
 #ifdef CONFIG_DEBUG_BUILD
 	    KiDumpThreadFault(Fault, Thread, FALSE, DbgPrint);
 #endif
-	    NTSTATUS Status = KiHandleThreadFault(Thread, Fault);
-	    if (!NT_SUCCESS(Status)) {
-		/* The fault cannot be handled. Print a message and terminate the thread. */
-		KiDumpThreadFault(Fault, Thread, TRUE, HalVgaPrint);
-		PsTerminateThread(Thread, Status);
-	    } else {
-		/* The fault has been either handled or we are dispatching user SEH.
-		 * Restart the thread. */
-		seL4_Reply(seL4_MessageInfo_new(0, 0, 0, 0));
-	    }
+	    KiHandleThreadFault(Thread, Fault);
 	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER) {
 	    /* The system thread has faulted. For system threads we always terminate the
 	     * thread. */

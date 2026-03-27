@@ -1,5 +1,15 @@
 #include "obp.h"
 
+FORCEINLINE VOID ObpReferenceObjectHeader(IN POBJECT_HEADER ObjectHeader)
+{
+    ObjectHeader->RefCount++;
+}
+
+VOID ObReferenceObjectByPointer(IN POBJECT Object)
+{
+    ObpReferenceObjectHeader(OBJECT_TO_OBJECT_HEADER(Object));
+}
+
 static NTSTATUS ObpLookupObjectHandle(IN PPROCESS Process,
 				      IN HANDLE Handle,
 				      OUT POBJECT *pObject,
@@ -119,7 +129,7 @@ static VOID ObpInsertHandle(IN PPROCESS Process,
     InsertTailList(&Header->HandleEntryList, &Entry->HandleEntryLink);
     AvlTreeInsertNode(&Process->HandleTable.Tree, Parent, &Entry->AvlNode);
     /* Increase the reference count since we now exposing it to client space */
-    ObpReferenceObject(Object);
+    ObReferenceObjectByPointer(Object);
     *pHandle = (HANDLE)Entry->AvlNode.Key;
 }
 
@@ -200,7 +210,7 @@ NTSTATUS ObReferenceObjectByName(IN PCSTR Path,
     POBJECT_HEADER ObjectHeader = OBJECT_TO_OBJECT_HEADER(Object);
     assert(ObjectHeader->Type != NULL);
     if (Type == OBJECT_TYPE_ANY || Type == ObjectHeader->Type->Index) {
-	ObpReferenceObject(Object);
+	ObReferenceObjectByPointer(Object);
 	*pObject = Object;
 	return STATUS_SUCCESS;
     }
@@ -226,7 +236,7 @@ NTSTATUS ObReferenceObjectByHandle(IN PTHREAD Thread,
     } else {
 	RET_ERR(ObpLookupObjectHandleWithType(Thread->Process, Handle, Type, pObject));
     }
-    ObpReferenceObject(*pObject);
+    ObReferenceObjectByPointer(*pObject);
     return STATUS_SUCCESS;
 }
 

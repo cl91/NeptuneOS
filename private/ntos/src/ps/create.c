@@ -316,7 +316,7 @@ static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
 						  &ClientProcess->VSpace, ClientAddr,
 						  InitialCommitSize,
 						  ClientReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW,
-						  MM_ATTRIBUTES_DEFAULT));
+						  MM_ATTRIBUTES_DEFAULT, FALSE));
 
     *pServerAddr = ServerAddr;
     *pClientAddr = ClientAddr;
@@ -389,7 +389,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 		      Process->SharedCNode->TreeNode.Cap, seL4_AllRights));
 
     Thread->Process = Process;
-    ObpReferenceObject(Process);
+    ObReferenceObjectByPointer(Process);
     InitializeListHead(&Thread->ThreadListEntry);
     InitializeListHead(&Thread->PendingIrpList);
     InitializeListHead(&Thread->QueuedApcList);
@@ -556,7 +556,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     }
     BOOLEAN PeImage = Section->ImageSectionObject->Type == PeImageSection;
 
-    ObpReferenceObject(Section);
+    ObReferenceObjectByPointer(Section);
     Process->ImageSection = Section;
     KeInitializeDispatcherHeader(&Process->Header, NotificationEvent);
 
@@ -578,7 +578,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 	MWORD NtdllBase = 0;
 	MWORD NtdllViewSize = 0;
 	RET_ERR(MmMapViewOfSection(&Process->VSpace, PspSystemDllSection,
-				   &NtdllBase, NULL, &NtdllViewSize, 0,
+				   &NtdllBase, NULL, &NtdllViewSize, 0, 0,
 				   ViewShare, 0, TRUE));
 	assert(NtdllBase != 0);
 	assert(NtdllViewSize != 0);
@@ -590,7 +590,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     MWORD ImageVirtualSize = 0;
     RET_ERR(MmMapViewOfSection(&Process->VSpace, Section,
 			       &ImageBaseAddress, NULL, &ImageVirtualSize,
-			       0, ViewUnmap, 0, TRUE));
+			       0, 0, ViewUnmap, 0, TRUE));
     assert(ImageBaseAddress != 0);
     assert(ImageVirtualSize != 0);
     Process->InitInfo.ImageBase = ImageBaseAddress;

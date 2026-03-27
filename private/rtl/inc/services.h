@@ -39,10 +39,15 @@ typedef seL4_Word MWORD;
 #define IS_ALIGNED_BY(addr, align)	((ULONG_PTR)(addr) == ALIGN_DOWN_BY(addr, align))
 #define IS_ALIGNED(addr, type)		((ULONG_PTR)(addr) == ALIGN_DOWN(addr, type))
 
+/* Windows NT allocates virtual memory in granularity of 64KB. In other words, the
+ * virtual address ranges returned by NtAllocateVirtualMemory and NtMapViewOfSection
+ * always start at an address with the low 16 bits zero. This also determines the
+ * minimal user address, defined below. */
+#define MM_MINIMUM_LOW_ZERO_BITS	(16)
 /* The maximum number of zero bits (starting from the most significant bit) in
  * the virtual address that the user can specify in virtual memory allocation.
- * This is determined by the lowest user address, defined below */
-#define MM_MAXIMUM_ZERO_HIGH_BITS	(MWORD_BITS - PAGE_LOG2SIZE - 1)
+ * This is determined by the minimal number of low zero bits. */
+#define MM_MAXIMUM_HIGH_ZERO_BITS	(MWORD_BITS - PAGE_LOG2SIZE - 1)
 
 #ifdef _WIN64
 #define MWORD_LOG2SIZE			(3)
@@ -55,7 +60,7 @@ typedef seL4_Word MWORD;
 #define MWORD_BITS_LOG2SIZE		(MWORD_LOG2SIZE + 3)
 
 /* All hard-coded addresses in client processes' address space go here. */
-#define LOWEST_USER_ADDRESS		(0x00010000ULL)
+#define LOWEST_USER_ADDRESS		(1ULL << MM_MINIMUM_LOW_ZERO_BITS)
 /* First 1MB unmapped to catch stack overflow */
 #define THREAD_STACK_START		(0x00100000ULL)
 /* Start of the address space where we can map user images */
@@ -147,9 +152,6 @@ typedef seL4_Word MWORD;
 #else
 #error "Unsupported architecture"
 #endif
-
-/* This is used to distinguish VM faults from user exceptions. See ntos/ke/services.c */
-#define KI_VM_FAULT_CODE	(0xFFFF)
 
 static inline VOID KeSetThreadContextFromEntryPoint(OUT PCONTEXT Context,
 						    IN PTHREAD_START_ROUTINE EntryPoint,
