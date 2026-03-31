@@ -70,7 +70,7 @@ static VOID IopQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
     IoWorkItem->Context = Context;
     IoWorkItem->ExtendedRoutine = ExtendedRoutine;
     IoWorkItem->Queued = TRUE;
-    InsertHeadList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
+    InsertTailList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
     KeReleaseMutex(&IopWorkItemMutex);
     NtCurrentTeb()->Wdm.IoWorkItemQueued = TRUE;
 }
