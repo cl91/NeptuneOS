@@ -58,10 +58,12 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     RET_ERR(PsCreateThread(Process, NULL, NULL, Driver, 0, &Thread));
     assert(Thread != NULL);
     Driver->MainEventLoopThread = Thread;
-    ObReferenceObjectByPointer(Thread);
 
     return STATUS_SUCCESS;
 }
+
+static VOID IopDisconnectInterrupt(IN PINTERRUPT_SERVICE Svc,
+				   IN NTSTATUS Status);
 
 VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
@@ -113,7 +115,7 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     assert(IsListEmpty(&Driver->PlugPlayNotificationList));
 
     if (Driver->MainEventLoopThread) {
-	ObDereferenceObject(Driver->MainEventLoopThread);
+	PsTerminateThread(Driver->MainEventLoopThread, STATUS_DRIVER_PROCESS_TERMINATED);
     }
     if (Driver->Node.Key) {
 	PPROCESS DriverProcess = (PVOID)(ULONG_PTR)Driver->Node.Key;
@@ -126,9 +128,41 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     if (Driver->DriverRegistryPath) {
 	IopFreePool(Driver->DriverRegistryPath);
     }
-    /* TODO: Close IO ports, disconnect interrupts, uninit cache. */
     KeUninitializeEvent(&Driver->InitializationDoneEvent);
     KeUninitializeEvent(&Driver->IoPacketQueuedEvent);
+
+    /* Delete the DPC thread and DPC-related caps */
+    if (Driver->DpcThread) {
+	PsTerminateThread(Driver->DpcThread, STATUS_DRIVER_PROCESS_TERMINATED);
+    }
+    if (Driver->TimerNotification.Cap) {
+	MmCapTreeDeleteNode(&Driver->TimerNotification);
+    }
+    if (Driver->BugcheckNotification.Cap) {
+	MmCapTreeDeleteNode(&Driver->BugcheckNotification);
+    }
+    if (Driver->DpcNotification.TreeNode.Cap) {
+	KeDestroyNotification(&Driver->DpcNotification);
+    }
+
+    /* Disconnect all interrupts */
+    LoopOverList(Svc, &Driver->InterruptServiceList, INTERRUPT_SERVICE, Link) {
+	IopDisconnectInterrupt(Svc, STATUS_DRIVER_PROCESS_TERMINATED);
+    }
+
+    /* Purge the cache space and flush the dirty data into the shared cache maps. */
+    if (Driver->CacheSpace) {
+	CcUninitializeCacheSpace(Driver->CacheSpace);
+    }
+
+#if defined(_M_IX86) || defined(_M_AMD64)
+    /* Close all x86 IO ports */
+    LoopOverList(IoPort, &Driver->IoPortList, X86_IOPORT, Link) {
+	KeDisableIoPort(IoPort);
+	RemoveEntryList(&IoPort->Link);
+	IopFreePool(IoPort);
+    }
+#endif
 }
 
 /*
@@ -568,6 +602,22 @@ err:
     return Status;
 }
 
+static VOID IopDisconnectInterrupt(IN PINTERRUPT_SERVICE Svc,
+				   IN NTSTATUS Status)
+{
+    RemoveEntryList(&Svc->Link);
+    if (Svc->Notification.TreeNode.Cap != 0) {
+	KeDestroyNotification(&Svc->Notification);
+    }
+    if (Svc->InterruptMutex.TreeNode.Cap != 0) {
+	KeDestroyNotification(&Svc->InterruptMutex);
+    }
+    if (Svc->IsrThread != NULL) {
+	PsTerminateThread(Svc->IsrThread, Status);
+    }
+    IopFreePool(Svc);
+}
+
 NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 			     IN PTHREAD Thread,
 			     IN ULONG Vector,
@@ -651,6 +701,14 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 					  &DriverObject->DpcNotification.TreeNode,
 					  seL4_AllRights, TIMER_NOTIFICATION_BADGE));
 
+    /* Likewise, derive a bugcheck notification cap so server can signal drivers
+     * when it has bugchecked. */
+    DriverObject->BugcheckNotification.CNode = &MiNtosCNode;
+    IF_ERR_GOTO(err, Status,
+		MmCapTreeDeriveBadgedNode(&DriverObject->BugcheckNotification,
+					  &DriverObject->DpcNotification.TreeNode,
+					  seL4_AllRights, BUGCHECK_NOTIFICATION_BADGE));
+
     /* Assign a handle for the DPC thread in the driver process */
     IF_ERR_GOTO(err, Status, ObCreateHandle(Thread->Process, DriverObject->DpcThread,
 					    FALSE, ThreadHandle, NULL));
@@ -667,9 +725,13 @@ err:
     if (DriverObject->TimerNotification.Cap) {
 	MmCapTreeDeleteNode(&DriverObject->TimerNotification);
     }
+    if (DriverObject->BugcheckNotification.Cap) {
+	MmCapTreeDeleteNode(&DriverObject->BugcheckNotification);
+    }
     if (DriverObject->DpcNotification.TreeNode.Cap) {
 	KeDestroyNotification(&DriverObject->DpcNotification);
     }
+    DriverObject->DpcThread = NULL;
     return Status;
 }
 

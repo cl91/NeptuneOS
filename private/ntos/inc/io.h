@@ -29,6 +29,7 @@ typedef struct _IO_DRIVER_OBJECT {
     struct _THREAD *DpcThread;		 /* DPC thread of the driver process */
     NOTIFICATION DpcNotification;	 /* DPC notification cap (in the process shared CNode) */
     CAP_TREE_NODE TimerNotification;	 /* Derived from the DPC notification cap */
+    CAP_TREE_NODE BugcheckNotification; /* Derived from the DPC notification cap */
     struct _CC_CACHE_SPACE *CacheSpace; /* Non-NULL if the driver initialized cache support. */
     LIST_ENTRY IoPortList; /* List of all X86 IO ports enabled for this driver */
     LIST_ENTRY IoTimerList;  /* List of all IO_TIMER of this driver. */
@@ -221,6 +222,7 @@ NTSTATUS CcInitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb,
 			      IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,
 			      OUT OPTIONAL struct _CC_CACHE_MAP **pCacheMap);
 VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb);
+VOID CcUninitializeCacheSpace(IN struct _CC_CACHE_SPACE *CacheSpace);
 NTSTATUS CcPinData(IN ASYNC_STATE AsyncState,
 		   IN struct _THREAD *Thread,
 		   IN PIO_FILE_CONTROL_BLOCK Fcb,

@@ -107,6 +107,7 @@ FORCEINLINE MWORD CiViewTableGetMappedAddress(IN PCC_VIEW_TABLE Table)
 typedef struct _CC_CACHE_MAP {
     PIO_FILE_CONTROL_BLOCK Fcb;
     struct _CC_CACHE_SPACE *CacheSpace;
+    LIST_ENTRY CacheSpaceLink;	/* List link for CC_CACHE_SPACE::CacheMapList */
     AVL_TREE ViewTree;		/* Tree of CC_VIEW.Node */
     union {
 	struct {
@@ -127,6 +128,7 @@ typedef struct _CC_CACHE_SPACE {
     PCC_VIEW_TABLE ViewTable;	/* For 32-bit arch, this is the first L1 view table.
 				 * For 64-bit arch, this is the first L2 view table. */
     PVIRT_ADDR_SPACE AddrSpace;	/* Address space that this cache space belongs to. */
+    LIST_ENTRY CacheMapList;	/* List of all cache maps in this cache space. */
 } CC_CACHE_SPACE, *PCC_CACHE_SPACE;
 
 /*
@@ -214,6 +216,7 @@ static NTSTATUS CiInitializeCacheSpace(IN PIO_DRIVER_OBJECT DriverObject,
     }
     assert(IoDriverObjectToProcess(DriverObject));
     CacheSpace->AddrSpace = &IoDriverObjectToProcess(DriverObject)->VSpace;
+    InitializeListHead(&CacheSpace->CacheMapList);
     *pCacheSpace = CacheSpace;
     return STATUS_SUCCESS;
 }
@@ -222,7 +225,13 @@ NTSTATUS CcInitializeCacheManager()
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     CiNtosCacheSpace.AddrSpace = &MiNtosVaddrSpace;
+    InitializeListHead(&CiNtosCacheSpace.CacheMapList);
     return STATUS_SUCCESS;
+}
+
+FORCEINLINE BOOLEAN CiCacheMapIsShared(IN PCC_CACHE_MAP CacheMap)
+{
+    return CacheMap->Fcb->SharedCacheMap == CacheMap;
 }
 
 /*
@@ -293,6 +302,7 @@ alloc:
 	CacheMap->CacheSpace = DriverObject->CacheSpace;
 	InsertHeadList(&Fcb->PrivateCacheMaps, &CacheMap->PrivateMap.Link);
     }
+    InsertTailList(&CacheMap->CacheSpace->CacheMapList, &CacheMap->CacheSpaceLink);
     if (pCacheMap) {
 	*pCacheMap = CacheMap;
     }
@@ -464,7 +474,7 @@ static VOID CiDeleteView(IN PCC_VIEW View)
     CiFreePool(View);
 }
 
-static VOID CiPurgeCacheMap(IN PCC_CACHE_MAP Map)
+static VOID CiDeleteCacheMap(IN PCC_CACHE_MAP Map)
 {
     /* Fcb must not have any dirty cached data or queued IO request at the time of
      * calling this routine. */
@@ -472,22 +482,76 @@ static VOID CiPurgeCacheMap(IN PCC_CACHE_MAP Map)
     while ((View = AVL_NODE_TO_VIEW(AvlGetFirstNode(&Map->ViewTree))) != NULL) {
 	CiDeleteView(View);
     }
+    RemoveEntryList(&Map->CacheSpaceLink);
+    CiFreePool(Map);
 }
 
 VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb)
 {
     if (Fcb->SharedCacheMap) {
-	CiPurgeCacheMap(Fcb->SharedCacheMap);
-	CiFreePool(Fcb->SharedCacheMap);
+	CiDeleteCacheMap(Fcb->SharedCacheMap);
 	Fcb->SharedCacheMap = NULL;
     }
-
     LoopOverList(Map, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
 	RemoveEntryList(&Map->PrivateMap.Link);
-	CiPurgeCacheMap(Map);
-	CiFreePool(Map);
+	CiDeleteCacheMap(Map);
     }
     CiFreeFileRegionMapping(Fcb, 0, ~0ULL);
+}
+
+static VOID CiFlushPrivateViewToShared(IN PCC_VIEW PrivateView)
+{
+    PIO_FILE_CONTROL_BLOCK Fcb = PrivateView->CacheMap->Fcb;
+    PAVL_NODE Node = AvlTreeFindNode(&Fcb->SharedCacheMap->ViewTree,
+				     PrivateView->Node.Key);
+    assert(Node);
+    PCC_VIEW SharedView = AVL_NODE_TO_VIEW(Node);
+    SharedView->DirtyMap |= PrivateView->DirtyMap;
+    PrivateView->DirtyMap = 0;
+}
+
+VOID CcUninitializeCacheSpace(IN PCC_CACHE_SPACE CacheSpace)
+{
+    assert(CacheSpace);
+    LoopOverList(CacheMap, &CacheSpace->CacheMapList, CC_CACHE_MAP, CacheSpaceLink) {
+	if (CiCacheMapIsShared(CacheMap)) {
+	    CacheMap->Fcb->SharedCacheMap = NULL;
+	} else {
+	    LoopOverView(View, CacheMap) {
+		CiFlushPrivateViewToShared(View);
+	    }
+	    RemoveEntryList(&CacheMap->PrivateMap.Link);
+	}
+	CiDeleteCacheMap(CacheMap);
+    }
+
+    for (PCC_VIEW_TABLE Table = CacheSpace->ViewTable; Table; Table = Table->Next) {
+#ifdef _WIN64
+	assert(CiViewTableIsL2(Table));
+	for (ULONG j = 0; j < VIEW_TABLE_BITMAP_SIZE; j++) {
+	    PCC_VIEW_TABLE Tbl = Table->ViewTables[j];
+	    if (!Tbl) {
+		continue;
+	    }
+#else
+	    PCC_VIEW_TABLE Tbl = Table;
+#endif
+	    /* View table should be empty at this point. */
+	    assert(Tbl);
+	    assert(!CiViewTableIsL2(Tbl));
+	    assert(Tbl->Views);
+	    for (ULONG i = 0; i < VIEW_TABLE_BITMAP_SIZE; i++) {
+		assert(!GetBit(Tbl->Bitmap, i));
+		assert(!Tbl->Views[i]);
+	    }
+	    CiFreePool(Tbl->Views);
+	    CiFreePool(Tbl);
+#ifdef _WIN64
+	}
+	CiFreePool(Table->ViewTables);
+	CiFreePool(Table);
+#endif
+    }
 }
 
 typedef struct _PIN_DATA_CALLBACK_CONTEXT {
@@ -1427,12 +1491,8 @@ VOID CiFlushPrivateCacheToShared(IN PIO_FILE_CONTROL_BLOCK Fcb)
     assert(Fcb);
     LoopOverList(CacheMap, &Fcb->PrivateCacheMaps, CC_CACHE_MAP, PrivateMap.Link) {
 	LoopOverView(PrivateView, CacheMap) {
-	    PAVL_NODE Node = AvlTreeFindNode(&Fcb->SharedCacheMap->ViewTree,
-					     PrivateView->Node.Key);
-	    assert(Node);
-	    PCC_VIEW SharedView = AVL_NODE_TO_VIEW(Node);
-	    SharedView->DirtyMap |= PrivateView->DirtyMap;
-	    PrivateView->DirtyMap = 0;
+	    assert(PrivateView->CacheMap->Fcb == Fcb);
+	    CiFlushPrivateViewToShared(PrivateView);
 	}
     }
 }
