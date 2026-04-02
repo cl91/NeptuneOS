@@ -28,6 +28,9 @@ static VOID IopProcessDpcQueue()
     while (TRUE) {
 	MWORD Badge = 0;
 	seL4_Wait(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap), &Badge);
+	if (Badge & BUGCHECK_NOTIFICATION_BADGE) {
+	    KiNotifyBugcheck();
+	}
 	IopAcquireDpcMutex();
 	Entry = IopDpcQueue.Flink;
     check:

@@ -9,15 +9,32 @@
 static PSYSTEM_THREAD KiBugCheckThread;
 static IPC_ENDPOINT KiExecutiveThreadFaultHandler;
 
+static VOID KiNotifyDrivers()
+{
+    LoopOverList(Driver, &IoBugcheckNotificationList,
+		 IO_DRIVER_OBJECT, BugcheckNotificationLink) {
+	if (Driver->BugcheckNotification.Cap) {
+	    seL4_Signal(Driver->BugcheckNotification.Cap);
+	} else {
+	    char Buf[256];
+	    snprintf(Buf, sizeof(Buf),
+		     "Driver object %s has null bugcheck notification cap.\n",
+		     IODBG_DRIVER_FILENAME(Driver));
+	    HalDisplayString(Buf);
+	}
+    }
+
+}
+
 static VOID KiPrintHaltMsg(PCSTR Format, va_list arglist)
 {
-    char buf[512];
-    vsnprintf(buf, sizeof(buf), Format, arglist);
+    char Buf[512];
+    vsnprintf(Buf, sizeof(Buf), Format, arglist);
     HalDisplayString("\n\n");
-    HalDisplayString(buf);
+    HalDisplayString(Buf);
     HalDisplayString("\nFATAL ERROR. SYSTEM HALTED.\n");
 #ifdef CONFIG_DEBUG_BUILD
-    seL4_DebugPutString(buf);
+    seL4_DebugPutString(Buf);
     /* Dump some useful information. */
     seL4_DebugDumpScheduler();
 #endif
@@ -29,9 +46,13 @@ VOID KiHaltSystem(IN PCSTR Format, ...)
     va_start(arglist, Format);
     KiPrintHaltMsg(Format, arglist);
     va_end(arglist);
+    KiNotifyDrivers();
+    __builtin_trap();
 
     /* Loop forever */
-    while (1);
+    while (1) {
+	seL4_Yield();
+    }
 }
 
 VOID KeBugCheck(IN PCSTR Function,
@@ -49,9 +70,13 @@ VOID KeBugCheckMsg(IN PCSTR Format, ...)
     va_start(arglist, Format);
     KiPrintHaltMsg(Format, arglist);
     va_end(arglist);
+    KiNotifyDrivers();
+    __builtin_trap();
 
     /* Loop forever */
-    while (1);
+    while (1) {
+	seL4_Yield();
+    }
 }
 
 static VOID KiDumpExecutiveThreadFault(IN seL4_Fault_t Fault,
@@ -102,6 +127,8 @@ static VOID KiBugCheckSystem()
 	KiDumpExecutiveThreadFault(Fault, DbgPrint);
 #endif
 	KiDumpExecutiveThreadFault(Fault, HalVgaPrint);
+	KiNotifyDrivers();
+	seL4_Yield();
     }
 }
 

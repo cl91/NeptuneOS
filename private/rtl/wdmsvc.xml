@@ -127,6 +127,12 @@
     <parameter annotation="in" type="GLOBAL_HANDLE" name="DeviceHandle" />
   </svc>
 
+  <svc name="WdmRegisterBugcheckNotification">
+  </svc>
+
+  <svc name="WdmUnregisterBugcheckNotification">
+  </svc>
+
   <svc name="WdmMapIoSpace">
     <parameter annotation="in" type="ULONG64" name="PhysicalBase" />
     <parameter annotation="in" type="MWORD" name="WindowSize" />

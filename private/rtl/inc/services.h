@@ -84,6 +84,8 @@ typedef seL4_Word MWORD;
 #define KUSER_SHARED_DATA_CLIENT_ADDR	(USER_SHARED_DATA)
 #define HIGHEST_USER_ADDRESS		(USER_ADDRESS_END - 1)
 
+C_ASSERT(sizeof(KUSER_SHARED_DATA) < PAGE_SIZE);
+
 /*
  * IPC buffer cannot exceed 64KB because we use a SHORT to represent
  * the buffer argument offset and size. On 64-bit architectures this can

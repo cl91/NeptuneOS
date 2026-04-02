@@ -104,6 +104,8 @@
 @ stdcall KeResetEvent(ptr)
 @ stdcall KeClearEvent(ptr)
 @ stdcall KeWaitForSingleObject(ptr long long long ptr)
+@ stdcall KeRegisterBugCheckCallback(ptr ptr ptr long ptr)
+@ stdcall KeDeregisterBugCheckCallback(ptr)
 @ stdcall -arch=arm64 KeFlushIoBuffers(ptr long long)
 @ stdcall ObReferenceObject(ptr)
 @ stdcall ObDereferenceObject(ptr)

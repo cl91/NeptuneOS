@@ -1,5 +1,7 @@
 #include "iop.h"
 
+LIST_ENTRY IoBugcheckNotificationList;
+
 PIO_DRIVER_OBJECT IoGetDriverObjectFromProcess(IN PPROCESS Process)
 {
     return AVL_NODE_TO_DRIVER_OBJECT(AvlTreeFindNode(&IopDriverObjectTree,
@@ -113,6 +115,12 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 	IopUnregisterPlugPlayNotification(Entry);
     }
     assert(IsListEmpty(&Driver->PlugPlayNotificationList));
+
+    /* Remove us from the bugcheck notification list, if registered. */
+    if (ListHasEntry(&IoBugcheckNotificationList,
+		     &Driver->BugcheckNotificationLink)) {
+	RemoveEntryList(&Driver->BugcheckNotificationLink);
+    }
 
     if (Driver->MainEventLoopThread) {
 	PsTerminateThread(Driver->MainEventLoopThread, STATUS_DRIVER_PROCESS_TERMINATED);
@@ -750,6 +758,37 @@ NTSTATUS WdmCreateTimer(IN ASYNC_STATE State,
     InsertHeadList(&DriverObject->IoTimerList, &IoTimer->DriverLink);
     *GlobalHandle = OBJECT_TO_GLOBAL_HANDLE(IoTimer);
     return STATUS_SUCCESS;
+}
+
+NTSTATUS WdmRegisterBugcheckNotification(IN ASYNC_STATE State,
+					 IN PTHREAD Thread)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+    assert(DriverObject);
+    if (!ListHasEntry(&IoBugcheckNotificationList,
+		      &DriverObject->BugcheckNotificationLink)) {
+	InsertTailList(&IoBugcheckNotificationList,
+		       &DriverObject->BugcheckNotificationLink);
+	return STATUS_SUCCESS;
+    }
+    return STATUS_ALREADY_REGISTERED;
+}
+
+NTSTATUS WdmUnregisterBugcheckNotification(IN ASYNC_STATE State,
+					   IN PTHREAD Thread)
+{
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+    assert(DriverObject);
+    if (ListHasEntry(&IoBugcheckNotificationList,
+		      &DriverObject->BugcheckNotificationLink)) {
+	RemoveEntryList(&DriverObject->BugcheckNotificationLink);
+	return STATUS_SUCCESS;
+    }
+    return STATUS_UNSUCCESSFUL;
 }
 
 NTSTATUS WdmSetTimer(IN ASYNC_STATE State,

@@ -633,9 +633,6 @@ FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel(IN PTHREAD Thread)
     return DriverObject->DpcThread != Thread && !Thread->IsrThread;
 }
 
-#define IODBG_DRIVER_FILENAME(DriverObject)				\
-    KEDBG_PROCESS_TO_FILENAME(IoDriverObjectToProcess(DriverObject))
-
 /* cache.c */
 NTSTATUS CcInitializeCacheManager();
 VOID CiFlushDirtyDataToVolume(IN PIO_FILE_CONTROL_BLOCK Fcb);

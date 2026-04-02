@@ -182,6 +182,9 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _KINTERRUPT {
     MWORD NotificationCap;
 } KINTERRUPT;
 
+/* bug.c */
+VOID KiNotifyBugcheck();
+
 /* cache.c */
 VOID CiInitialzeCacheManager();
 ULONG CiProcessDirtyBufferList(IN ULONG RemainingBufferSize,

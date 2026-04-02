@@ -50,6 +50,7 @@ typedef struct _IO_DRIVER_OBJECT {
     LIST_ENTRY CloseDeviceMsgList;   /* List of CLOSE_DEVICE_MESSAGE */
     LIST_ENTRY InterruptServiceList; /* List of INTERRUPT_SERVICE */
     LIST_ENTRY PlugPlayNotificationList; /* List of PLUG_PLAY_NOTIFICATION */
+    LIST_ENTRY BugcheckNotificationLink; /* List link for IoBugcheckNotificationList */
     KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting
 				     * IO packet */
     KEVENT IoPacketQueuedEvent;	    /* Signaled when an IO packet is queued on the driver
@@ -297,6 +298,7 @@ FORCEINLINE NTSTATUS CcCopyWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
 }
 
 /* driver.c */
+extern LIST_ENTRY IoBugcheckNotificationList;
 PIO_DRIVER_OBJECT IoGetDriverObjectFromProcess(IN struct _PROCESS *Process);
 NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 			IN struct _THREAD *Thread,
@@ -309,6 +311,8 @@ FORCEINLINE struct _PROCESS *IoDriverObjectToProcess(IN PIO_DRIVER_OBJECT Driver
     return (PVOID)(ULONG_PTR)DriverObject->Node.Key;
 }
 
+#define IODBG_DRIVER_FILENAME(DriverObject)				\
+    KEDBG_PROCESS_TO_FILENAME(IoDriverObjectToProcess(DriverObject))
 
 /* file.c */
 NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,

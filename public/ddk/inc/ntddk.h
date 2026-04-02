@@ -2159,3 +2159,42 @@ FORCEINLINE IO_PRIORITY_HINT IoGetIoPriorityHint(IN PIRP Irp)
  * UUID helper routines
  */
 NTAPI NTSYSAPI NTSTATUS ExUuidCreate(OUT UUID *Uuid);
+
+/*
+ * Bugcheck callback routines
+ */
+typedef enum _KBUGCHECK_BUFFER_DUMP_STATE {
+    BufferEmpty,
+    BufferInserted,
+    BufferStarted,
+    BufferFinished,
+    BufferIncomplete
+} KBUGCHECK_BUFFER_DUMP_STATE;
+
+typedef VOID (NTAPI KBUGCHECK_CALLBACK_ROUTINE)(IN PVOID Buffer,
+						IN ULONG Length);
+typedef KBUGCHECK_CALLBACK_ROUTINE *PKBUGCHECK_CALLBACK_ROUTINE;
+
+typedef struct _KBUGCHECK_CALLBACK_RECORD {
+    LIST_ENTRY Entry;
+    PKBUGCHECK_CALLBACK_ROUTINE CallbackRoutine;
+    PVOID Buffer;
+    ULONG Length;
+    PUCHAR Component;
+    ULONG_PTR Checksum;
+    UCHAR State;
+} KBUGCHECK_CALLBACK_RECORD, *PKBUGCHECK_CALLBACK_RECORD;
+
+FORCEINLINE VOID KeInitializeCallbackRecord(IN PKBUGCHECK_CALLBACK_RECORD CallbackRecord)
+{
+    CallbackRecord->State = BufferEmpty;
+}
+
+NTAPI NTSYSAPI BOOLEAN KeRegisterBugCheckCallback(OUT PKBUGCHECK_CALLBACK_RECORD CallbackRecord,
+						  IN PKBUGCHECK_CALLBACK_ROUTINE CallbackRoutine,
+						  IN PVOID Buffer,
+						  IN ULONG Length,
+						  IN PUCHAR Component);
+
+NTAPI NTSYSAPI BOOLEAN
+KeDeregisterBugCheckCallback(IN OUT PKBUGCHECK_CALLBACK_RECORD CallbackRecord);

@@ -177,6 +177,9 @@ typedef struct _KUSER_SHARED_DATA {
     ULONG Cookie;
     ULONG CookiePad[1];
     LCID DefaultLocale;
+    ULONG BugcheckMsgLength;
+    CHAR BugcheckMsg[512];
+    CHAR NullByte;
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
 #include <poppack.h>
 

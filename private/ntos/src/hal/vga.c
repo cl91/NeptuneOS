@@ -3040,6 +3040,26 @@ VOID HalDisplayString(PCSTR String)
     if (!HalpVgaInitialized) {
 	return;
     }
+    ULONG Length = strlen(String);
+    PKUSER_SHARED_DATA Data = PsGetUserSharedData();
+    if (Data) {
+	if (Data->BugcheckMsgLength + Length < sizeof(Data->BugcheckMsg)) {
+	    memcpy(Data->BugcheckMsg + Data->BugcheckMsgLength, String, Length);
+	    Data->BugcheckMsgLength += Length;
+	} else if (Length < sizeof(Data->BugcheckMsg)) {
+	    ULONG RemainingLength = sizeof(Data->BugcheckMsg) - Length;
+	    memcpy(Data->BugcheckMsg,
+		   Data->BugcheckMsg + Data->BugcheckMsgLength - RemainingLength,
+		   RemainingLength);
+	    memcpy(Data->BugcheckMsg + RemainingLength, String, Length);
+	    Data->BugcheckMsgLength = sizeof(Data->BugcheckMsg);
+	} else {
+	    /* In this case we truncate the head of the message. */
+	    memcpy(Data->BugcheckMsg, String + Length - sizeof(Data->BugcheckMsg),
+		   sizeof(Data->BugcheckMsg));
+	    Data->BugcheckMsgLength = sizeof(Data->BugcheckMsg);
+	}
+    }
     while (*String != 0) {
 	UCHAR Chr = *String;
 	if (isprint(Chr)) {
