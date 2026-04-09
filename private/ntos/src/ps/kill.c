@@ -34,10 +34,6 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 	return;
     }
 
-    /* Dereference the PROCESS object because we increased it during THREAD
-     * object creation */
-    ObDereferenceObject(Thread->Process);
-
 #ifndef _WIN64
     /* If we have generated the thread ID, remove it */
     if (Thread->CidMapNode.Key) {
@@ -91,6 +87,10 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 
     /* Delete the thread-private CNode. This will revoke all caps within it. */
     MmDeleteCNode(Thread->CSpace);
+
+    /* Dereference the PROCESS object because we increased it during THREAD
+     * object creation */
+    ObDereferenceObject(Thread->Process);
 
     /* Finally, delete the TCB object */
     MmCapTreeDeleteNode(&Thread->TreeNode);
@@ -212,10 +212,7 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
     assert(ThreadToTerminate != NULL);
     PsTerminateThread(ThreadToTerminate, ExitStatus);
     /* If the current thread is terminating, do not reply to it */
-    if (ThreadHandle == NtCurrentThread()) {
-	return STATUS_NTOS_NO_REPLY;
-    }
-    return STATUS_SUCCESS;
+    return ThreadHandle == NtCurrentThread() ? STATUS_NTOS_NO_REPLY : STATUS_SUCCESS;
 }
 
 /*
@@ -238,6 +235,9 @@ NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
     DbgTrace("Terminating process %p (%s) with status 0x%08x\n",
 	     Process, KEDBG_PROCESS_TO_FILENAME(Process), ExitStatus);
     Process->Terminated = TRUE;
+
+    /* Make sure the calling thread is not deleted prematurely. */
+    ObReferenceObjectByPointer(Thread);
 
     /* If we are terminating a running driver process, unload the driver.
      * Note we do not do this before the driver is fully loaded since
@@ -263,11 +263,12 @@ close:
     goto close;
 
 out:
-    LoopOverList(Thread, &Process->ThreadList, THREAD, ThreadListEntry) {
-	PsTerminateThread(Thread, ExitStatus);
+    LoopOverList(ThreadToTerminate, &Process->ThreadList, THREAD, ThreadListEntry) {
+	PsTerminateThread(ThreadToTerminate, ExitStatus);
     }
     KeSignalDispatcherObject(&Process->Header);
     ObDereferenceObject(Process);
+    ObDereferenceObject(Thread);
     ASYNC_END(State, STATUS_SUCCESS);
 }
 
@@ -279,19 +280,20 @@ NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
     ASYNC_BEGIN(State, Locals, {
 	    PPROCESS Process;
 	});
-    PPROCESS Process = NULL;
     ASYNC_RET_ERR(State, ObReferenceObjectByHandle(Thread, ProcessHandle,
 						   OBJECT_TYPE_PROCESS,
-						   (POBJECT *)&Process));
-    assert(Process != NULL);
-    Locals.Process = Process;
-    ObDereferenceObject(Process);
+						   (POBJECT *)&Locals.Process));
+    /* Before we terminate the give process we need to increase the refcount of the
+     * calling thread to make sure it is not deleted prematurely. Otherwise the whole
+     * async routine mechanism breaks down (we use the THREAD object to store the async
+     * stack, and if the THREAD object is deleted, the async stack becomes invalid). */
+    ObReferenceObjectByPointer(Thread);
     AWAIT(PsTerminateProcess, State, Locals, Thread, Locals.Process, ExitStatus);
+    ObDereferenceObject(Locals.Process);
+    ObDereferenceObject(Thread);
     /* If the current process is terminating, do not reply to the calling thread. */
-    if (ProcessHandle == NtCurrentProcess()) {
-	ASYNC_RETURN(State, STATUS_NTOS_NO_REPLY);
-    }
-    ASYNC_END(State, STATUS_SUCCESS);
+    ASYNC_END(State,
+	      ProcessHandle == NtCurrentProcess() ? STATUS_NTOS_NO_REPLY : STATUS_SUCCESS);
 }
 
 NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
