@@ -41,7 +41,7 @@ NTSTATUS KeCreateEndpointEx(IN PIPC_ENDPOINT Endpoint,
     PUNTYPED Untyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_EndpointBits, &Untyped));
     assert(Untyped != NULL);
-    KiInitializeIpcEndpoint(Endpoint, CSpace, 0, 0);
+    KeInitializeIpcEndpoint(Endpoint, CSpace, 0, 0);
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
 				  &Endpoint->TreeNode),
 	       MmReleaseUntyped(Untyped));
@@ -100,11 +100,11 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
     if (ReplyEndpoint->TreeNode.Cap == 0) {
 	RET_ERR(MmAllocateCap(&MiNtosCNode, &ReplyCap));
 	assert(ReplyCap != 0);
-	KiInitializeIpcEndpoint(ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
+	KeInitializeIpcEndpoint(ReplyEndpoint, &MiNtosCNode, ReplyCap, 0);
     }
 
     KiAllocatePool(ServiceEndpoint, IPC_ENDPOINT);
-    KiInitializeIpcEndpoint(ServiceEndpoint, CSpace, 0, 0);
+    KeInitializeIpcEndpoint(ServiceEndpoint, CSpace, 0, 0);
     RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
 					 &KiExecutiveServiceEndpoint.TreeNode,
 					 ENDPOINT_RIGHTS_SEND_GRANTREPLY,

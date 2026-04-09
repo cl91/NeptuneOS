@@ -567,11 +567,13 @@ NTSTATUS MmCapTreeCopyNode(IN PCAP_TREE_NODE NewNode,
  * Allocate a cap slot and mint the old node into the new cap slot
  * with a new badge.
  *
- * We enforce the following rules:
+ * We enforce the following important rules:
  *
- *   1. The old node must not have already been badged.
- *   2. Only IPC endpoint and notification caps can be badged.
- *   3. Only the original cap can be badged. In other words, if you
+ *   1. You MUST call MmInitializeCapTreeNode to initialize the new
+ *      node before calling this routine.
+ *   2. The old node must not have already been badged.
+ *   3. Only IPC endpoint and notification caps can be badged.
+ *   4. Only the original cap can be badged. In other words, if you
  *      copy original endpoint cap Ep0 to Ep1, you cannot badge Ep1.
  *      This is not a seL4 restriction but to simplify our algorithms.
  *
@@ -596,6 +598,8 @@ NTSTATUS MmCapTreeDeriveBadgedNode(IN PCAP_TREE_NODE NewNode,
     assert(OldNode->Parent != NULL);
     assert(OldNode->Parent->Type == CAP_TREE_NODE_UNTYPED);
     assert(NewNode->Parent == NULL || NewNode->Parent == OldNode);
+    assert(NewNode->ChildrenList.Blink && NewNode->ChildrenList.Flink);
+    assert(IsListEmpty(&NewNode->ChildrenList));
 
     MWORD NewCap = 0;
     RET_ERR(MmAllocateCap(NewNode->CNode, &NewCap));

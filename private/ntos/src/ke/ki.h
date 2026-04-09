@@ -99,18 +99,6 @@ LIST_ENTRY KiReadyThreadList;
 NTSTATUS KiInitExecutiveServices();
 VOID KiDispatchExecutiveServices();
 
-static inline VOID KiInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
-					   IN PCNODE CSpace,
-					   IN MWORD Cap,
-					   IN MWORD Badge)
-{
-    assert(Self != NULL);
-    assert(CSpace != NULL);
-    MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_ENDPOINT, Cap,
-			    CSpace, NULL);
-    Self->TreeNode.Badge = Badge;
-}
-
 /* timer.c */
 VOID KiSignalExpiredTimerList();
 NTSTATUS KiInitTimer();

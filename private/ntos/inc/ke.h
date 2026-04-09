@@ -40,6 +40,18 @@ typedef struct _IPC_ENDPOINT {
 #define ENDPOINT_RIGHTS_SEND		seL4_CanWrite
 #define ENDPOINT_RIGHTS_SEND_GRANTREPLY	seL4_CapRights_new(1, 0, 0, 1)
 
+static inline VOID KeInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
+					   IN PCNODE CSpace,
+					   IN MWORD Cap,
+					   IN MWORD Badge)
+{
+    assert(Self != NULL);
+    assert(CSpace != NULL);
+    MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_ENDPOINT, Cap,
+			    CSpace, NULL);
+    Self->TreeNode.Badge = Badge;
+}
+
 NTSTATUS KeCreateEndpointEx(IN PIPC_ENDPOINT Endpoint,
 			    IN PCNODE CNode);
 

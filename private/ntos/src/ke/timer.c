@@ -204,7 +204,7 @@ NTSTATUS KiInitTimer()
     if (KiTimerIrqThread == NULL) {
 	return STATUS_NO_MEMORY;
     }
-    KiInitializeIpcEndpoint(&KiTimerServiceNotification, &MiNtosCNode, 0, 0);
+    KeInitializeIpcEndpoint(&KiTimerServiceNotification, &MiNtosCNode, 0, 0);
     RET_ERR(MmCapTreeDeriveBadgedNode(&KiTimerServiceNotification.TreeNode,
 				      &KiExecutiveServiceEndpoint.TreeNode,
 				      ENDPOINT_RIGHTS_SEND_GRANTREPLY,

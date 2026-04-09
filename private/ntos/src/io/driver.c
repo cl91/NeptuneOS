@@ -703,7 +703,8 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
     /* Derive the notification cap in the server CSpace so we can signal for timer
      * expiration. The cap has a badge indicating its purpose. */
     extern CNODE MiNtosCNode;
-    DriverObject->TimerNotification.CNode = &MiNtosCNode;
+    MmInitializeCapTreeNode(&DriverObject->TimerNotification, CAP_TREE_NODE_NOTIFICATION,
+			    0, &MiNtosCNode, NULL);
     IF_ERR_GOTO(err, Status,
 		MmCapTreeDeriveBadgedNode(&DriverObject->TimerNotification,
 					  &DriverObject->DpcNotification.TreeNode,
@@ -711,7 +712,8 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 
     /* Likewise, derive a bugcheck notification cap so server can signal drivers
      * when it has bugchecked. */
-    DriverObject->BugcheckNotification.CNode = &MiNtosCNode;
+    MmInitializeCapTreeNode(&DriverObject->BugcheckNotification, CAP_TREE_NODE_NOTIFICATION,
+			    0, &MiNtosCNode, NULL);
     IF_ERR_GOTO(err, Status,
 		MmCapTreeDeriveBadgedNode(&DriverObject->BugcheckNotification,
 					  &DriverObject->DpcNotification.TreeNode,
