@@ -236,9 +236,7 @@ NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
     /* Clear the UnrecognizedVolume flag of all device objects so client processes
      * can reattempt to mount them. */
     LoopOverDrivers(DrvObj) {
-	DbgTrace("DrvObj %p (%s)\n", DrvObj, IODBG_DRIVER_FILENAME(DrvObj));
 	LoopOverList(DevObj, &DrvObj->DeviceList, IO_DEVICE_OBJECT, DeviceLink) {
-	    IopDbgDumpDeviceObject(DevObj, 2);
 	    DevObj->UnrecognizedVolume = FALSE;
 	}
     }
