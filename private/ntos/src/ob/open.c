@@ -130,14 +130,13 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
  * Type specifies the object type of the handle (ie. specify OBJECT_TYPE_FILE
  * if you are opening a DEVICE object).
  */
-NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread,
-			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
-			      IN OBJECT_TYPE_ENUM Type,
-			      IN ACCESS_MASK DesiredAccess,
-			      IN POB_OPEN_CONTEXT OpenContext,
-			      IN BOOLEAN AssignHandle,
-			      OUT PVOID *pHandle)
+NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
+			    IN PTHREAD Thread,
+			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+			    IN OBJECT_TYPE_ENUM Type,
+			    IN ACCESS_MASK DesiredAccess,
+			    IN POB_OPEN_CONTEXT OpenContext,
+			    OUT PVOID *pHandle)
 {
     assert(ObpRootObjectDirectory != NULL);
     assert(Thread != NULL);
@@ -248,6 +247,12 @@ open:
 	goto out;
     }
 
+    /* If the object is an exclusive object, it can only be opened once. */
+    if (ObObjectIsExclusive(Locals.Object) &&
+	!IsListEmpty(&OBJECT_TO_OBJECT_HEADER(Locals.Object)->HandleEntryList)) {
+	Status = STATUS_ACCESS_DENIED;
+    }
+
     /* Increase the reference count of the object so it doesn't get deleted by another
      * client thread during the wait. */
     ObReferenceObjectByPointer(Locals.Object);
@@ -320,15 +325,10 @@ done:
     /* Remaining path is empty. Open is successful. Check the object type. */
     if (Type == OBJECT_TYPE_ANY || Type == OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->Index) {
 	/* Type is valid. Assign the handle. */
-	if (AssignHandle) {
-	    Status = ObCreateHandle(Thread->Process, Locals.Object, TRUE, pHandle, NULL);
-	} else {
-	    /* We are returning a pointer to the object to another server component.
-	     * In this case we should increse the refcount because the caller is
-	     * expected to decrease it later. */
-	    ObReferenceObjectByPointer(Locals.Object);
-	    *pHandle = Locals.Object;
-	}
+	Status = ObCreateHandle(Thread->Process, Locals.Object, TRUE, pHandle, NULL);
+	/* If object is being opened exclusively, ensure we only have one handle. */
+	assert(!ObObjectIsExclusive(Locals.Object) ||
+	       (ObGetObjectHandleCount(Locals.Object) == 1));
     } else {
 	Status = STATUS_OBJECT_TYPE_MISMATCH;
     }

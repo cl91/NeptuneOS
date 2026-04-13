@@ -185,7 +185,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     ULONG RegValueType = 0;
     PCSTR DriverImagePath = NULL;
     POBJECT KeyObject = NULL;
-    PIO_FILE_OBJECT DriverImageFile = NULL;
+    PVOID DriverImageHandle = NULL;
     PSECTION DriverImageSection = NULL;
 
     ASYNC_BEGIN(State, Locals, {
@@ -195,6 +195,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 	    POBJECT KeyObject;
 	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
 	    IO_OPEN_CONTEXT OpenContext;
+	    PVOID DriverImageHandle;
 	    PIO_FILE_OBJECT DriverImageFile;
 	    PSECTION DriverImageSection;
 	    PIO_DRIVER_OBJECT DriverObject;
@@ -271,13 +272,25 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     Locals.OpenContext.OpenPacket.ShareAccess = FILE_SHARE_DELETE | FILE_SHARE_READ;
     Locals.OpenContext.OpenPacket.Disposition = 0;
 
-    AWAIT_EX(Status, ObOpenObjectByNameEx, State, Locals,
+    AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
 	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_FILE, FILE_EXECUTE,
-	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FALSE, (PVOID *)&DriverImageFile);
+	     (POB_OPEN_CONTEXT)&Locals.OpenContext, &DriverImageHandle);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
-    Locals.DriverImageFile = DriverImageFile;
+    Status = ObReferenceObjectByHandle(Thread, DriverImageHandle, OBJECT_TYPE_FILE,
+				       (PVOID *)&Locals.DriverImageFile);
+    /* Since there is no async routine invocation between ObOpenObjectByName and
+     * ObReferenceObjectByHandle, this handle cannot be closed by another thread.
+     * Therefore ObReferenceObjectByHandle should always succeed. If it did not,
+     * the NT executive must be in a badly inconsistent state, so we have no choice
+     * but to bugcheck. */
+    if (!NT_SUCCESS(Status)) {
+	KeBugCheckMsg("IopLoadDriver: ObReferenceObjectByHandle should always succeed.");
+    }
+    Locals.DriverImageHandle = DriverImageHandle;
+    AWAIT(NtClose, State, Locals, Thread, Locals.DriverImageHandle);
+    Locals.DriverImageHandle = NULL;
 
     /* Create the driver image section */
     AWAIT_EX(Status, MmCreateSectionEx, State, Locals, Thread,
@@ -329,6 +342,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     }
 
 out:
+    assert(!Locals.DriverImageHandle);
     /* Regardless of success or error, we need to dereference the objects
      * referenced above. */
     if (Locals.DriverObjectDirectory) {

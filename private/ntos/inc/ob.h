@@ -72,18 +72,15 @@ typedef enum _OBJECT_TYPE_ENUM {
  * identifier of the object in the client-side.
  */
 typedef PVOID POBJECT;
-typedef struct _OBJECT_HEADER {
+typedef struct DECLSPEC_ALIGN(EX_POOL_SMALLEST_BLOCK) _OBJECT_HEADER {
     struct _OBJECT_TYPE *Type;
     MWORD Flags;
-    LIST_ENTRY ObjectLink;
+    LIST_ENTRY ObjectLink;	/* Links all objects in the entire system. */
     LIST_ENTRY HandleEntryList;	/* List of all handle entries of this object. */
     POBJECT ParentObject; /* Parent object under which this object is inserted */
     PVOID ParentLink;	  /* Pointer that the parent object can freely use to
 			   * point to bookkeeping information. */
     LONGLONG RefCount;
-#ifdef _WIN64
-    MWORD Padding; /* Padding to make this structure 16-byte aligned */
-#endif
 } OBJECT_HEADER, *POBJECT_HEADER;
 
 C_ASSERT(IS_ALIGNED_BY(sizeof(OBJECT_HEADER), EX_POOL_SMALLEST_BLOCK));
@@ -580,6 +577,21 @@ FORCEINLINE VOID ObClearPermanentFlag(IN POBJECT Object)
     OBJECT_TO_OBJECT_HEADER(Object)->Flags &= ~((MWORD)OBJ_PERMANENT);
 }
 
+FORCEINLINE BOOLEAN ObObjectIsExclusive(IN POBJECT Object)
+{
+    return OBJECT_TO_OBJECT_HEADER(Object)->Flags & OBJ_EXCLUSIVE;
+}
+
+FORCEINLINE VOID ObSetExclusiveFlag(IN POBJECT Object)
+{
+    OBJECT_TO_OBJECT_HEADER(Object)->Flags |= OBJ_EXCLUSIVE;
+}
+
+FORCEINLINE VOID ObClearExclusiveFlag(IN POBJECT Object)
+{
+    OBJECT_TO_OBJECT_HEADER(Object)->Flags &= ~((MWORD)OBJ_EXCLUSIVE);
+}
+
 /*
  * By default, an unnamed object created after ObCreateObject followed by
  * ObCreateHandle will have refcount == 2, making it a permanent object.
@@ -608,25 +620,13 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
 			     IN PCSTR Path,
 			     IN BOOLEAN CaseInsensitive,
 			     OUT POBJECT *FoundObject);
-NTSTATUS ObOpenObjectByNameEx(IN ASYNC_STATE State,
-			      IN struct _THREAD *Thread,
-			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
-			      IN OBJECT_TYPE_ENUM Type,
-			      IN ACCESS_MASK DesiredAccess,
-			      IN POB_OPEN_CONTEXT OpenContext,
-			      IN BOOLEAN AssignHandle,
-			      OUT PVOID *pHandle);
-
-FORCEINLINE NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
-					IN struct _THREAD *Thread,
-					IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
-					IN OBJECT_TYPE_ENUM Type,
-					IN ACCESS_MASK DesiredAccess,
-					IN POB_OPEN_CONTEXT OpenContext,
-					OUT PVOID *pHandle) {
-    return ObOpenObjectByNameEx(State, Thread, ObjectAttributes, Type,
-				DesiredAccess, OpenContext, TRUE, pHandle);
-}
+NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
+			    IN struct _THREAD *Thread,
+			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+			    IN OBJECT_TYPE_ENUM Type,
+			    IN ACCESS_MASK DesiredAccess,
+			    IN POB_OPEN_CONTEXT OpenContext,
+			    OUT PVOID *pHandle);
 
 /* query.c */
 NTSTATUS ObQueryNameString(IN POBJECT Object,

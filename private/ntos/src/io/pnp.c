@@ -463,7 +463,7 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN ASYNC_STATE State,
 					 IN PDEVICE_NODE DeviceNode)
 {
     NTSTATUS Status;
-    POBJECT ClassKey = NULL;
+    PVOID ClassKeyHandle;
     POBJECT EnumKey = NULL;
     ULONG RegValueType = 0;
     PCSTR DriverServiceName = NULL;
@@ -472,6 +472,7 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN ASYNC_STATE State,
     ASYNC_BEGIN(State, Locals, {
 	    CHAR KeyPath[256];
 	    POBJECT EnumKey;
+	    PVOID ClassKeyHandle;
 	    POBJECT ClassKey;
 	    PCSTR DeviceUpperFilterNames;
 	    PCSTR DeviceLowerFilterNames;
@@ -550,14 +551,27 @@ static NTSTATUS IopDeviceNodeLoadDrivers(IN ASYNC_STATE State,
     Locals.ObjectAttributes.ObjectNameBufferLength = strlen(Locals.KeyPath) + 1;
     Locals.OpenContext.Header.Type = OPEN_CONTEXT_KEY_OPEN;
     Locals.OpenContext.Create = FALSE;
-    AWAIT_EX(Status, ObOpenObjectByNameEx, State, Locals, Thread,
+    AWAIT_EX(Status, ObOpenObjectByName, State, Locals, Thread,
 	     Locals.ObjectAttributes, OBJECT_TYPE_KEY, KEY_ENUMERATE_SUB_KEYS,
-	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FALSE, &ClassKey);
+	     (POB_OPEN_CONTEXT)&Locals.OpenContext, &ClassKeyHandle);
     if (!NT_SUCCESS(Status)) {
 	goto load;
     }
+    POBJECT ClassKey;
+    Status = ObReferenceObjectByHandle(Thread, ClassKeyHandle, OBJECT_TYPE_KEY,
+				       &ClassKey);
     assert(ClassKey);
+    /* Like the case in IopLoadDriver, there is no async routine invocation between
+     * ObOpenObjectByName and ObReferenceObjectByHandle, so this should always succeed.
+     * If it did not, we should bugcheck. */
+    if (!NT_SUCCESS(Status)) {
+	KeBugCheckMsg("IopDeviceNodeLoadDrivers: ObReferenceObjectByHandle "
+		      "should always succeed.");
+    }
     Locals.ClassKey = ClassKey;
+    Locals.ClassKeyHandle = ClassKeyHandle;
+    AWAIT(NtClose, State, Locals, Thread, Locals.ClassKeyHandle);
+    Locals.ClassKeyHandle = NULL;
     Locals.ClassUpperFilterNames = IopGetMultiSz(Locals.ClassKey, "UpperFilters");
     Locals.ClassLowerFilterNames = IopGetMultiSz(Locals.ClassKey, "LowerFilters");
 
@@ -665,6 +679,7 @@ out:
     if (Locals.ClassKey) {
 	ObDereferenceObject(Locals.ClassKey);
     }
+    assert(!Locals.ClassKeyHandle);
     ASYNC_END(State, Status);
 }
 

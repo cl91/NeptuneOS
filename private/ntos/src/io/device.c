@@ -17,6 +17,9 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
     IO_DEVICE_INFO DeviceInfo = Ctx->DeviceInfo;
     BOOLEAN Exclusive = Ctx->Exclusive;
+    if (Exclusive) {
+	ObSetExclusiveFlag(Device);
+    }
     InitializeListHead(&Device->OpenFileList);
     InitializeListHead(&Device->CloseMsgList);
     InitializeListHead(&Device->DeviceChangeNotificationList);
@@ -200,6 +203,9 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
 	    PIO_DEVICE_OBJECT TargetDevice;
 	    PPENDING_IRP PendingIrp;
 	});
+
+    /* If the device object is exclusive, make sure no one else has opened it. */
+    assert(!Device->Exclusive || IsListEmpty(&Device->OpenFileList));
 
     /* If the device object is from the underlying storage driver of a mounted volume,
      * we send open IRPs to its file system volume device object instead. */
