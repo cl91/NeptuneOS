@@ -185,8 +185,9 @@ typedef struct _CAP_TREE_NODE {
 		* private caps of the thread objects) this index does not contain the
 		* guard value of the outer CNode and the index bits of the inner CNode. */
     MWORD Badge; /* Badge (for IPC endpoint) or guard (if this cap is a CNode). */
-    struct _CNODE *CNode;  /* CNode into which this cap is inserted. */
     struct _CAP_TREE_NODE *Parent; /* Cap from which this cap is derived. */
+    struct _CNODE *CNode;  /* CNode into which this cap is inserted. */
+    LIST_ENTRY CNodeLink;  /* Links all cap node beloning to the same CNode. */
     LIST_ENTRY ChildrenList; /* List head of the sibling list of children. */
     LIST_ENTRY SiblingLink;  /* Chains all siblings together. */
 } CAP_TREE_NODE, *PCAP_TREE_NODE;
@@ -226,10 +227,13 @@ FORCEINLINE SIZE_T MmCapTreeNodeSiblingCount(IN PCAP_TREE_NODE Node)
  */
 typedef struct _CNODE {
     CAP_TREE_NODE TreeNode;	/* Must be first entry */
+    LIST_ENTRY NodeList;	/* List (unsorted) of all caps under this CNode */
     MWORD *UsedMap;		/* Bitmap of used slots */
     ULONG Log2Size;		/* Called 'radix' in seL4 manual */
     ULONG RecentFree;		/* Most recently freed bit */
     ULONG TotalUsed;		/* Number of used slots */
+    BOOLEAN Deleted;		/* TRUE if the CNode is marked for deletion. Actual
+				 * deletion will happen when all its caps are deleted. */
 } CNODE, *PCNODE;
 
 #define TREE_NODE_TO_UNTYPED(Node) CONTAINING_RECORD(Node, UNTYPED, TreeNode)
@@ -254,6 +258,10 @@ FORCEINLINE VOID MiCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
     }
 }
 
+/*
+ * You cannot call this routine on a cap tree node that has already been initialized,
+ * unless you detach the node from its parent as well as its CNode prior to calling.
+ */
 FORCEINLINE VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
 					 IN CAP_TREE_NODE_TYPE Type,
 					 IN MWORD Cap,
@@ -262,12 +270,15 @@ FORCEINLINE VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
 {
     assert(Self != NULL);
     assert(Cap < (1ULL << CSpace->Log2Size));
+    assert(!Self->CNode);
+    assert(!CSpace->Deleted);
     Self->Type = Type;
     Self->Cap = Cap;
     Self->CNode = CSpace;
     InitializeListHead(&Self->ChildrenList);
     InitializeListHead(&Self->SiblingLink);
     MiCapTreeNodeSetParent(Self, Parent);
+    InsertTailList(&CSpace->NodeList, &Self->CNodeLink);
 }
 
 /*
@@ -772,6 +783,7 @@ NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
 			    IN LONG NumberRequested);
 VOID MmDeallocateCap(IN PCNODE CNode,
 		     IN MWORD Cap);
+VOID MmCapTreeDeallocateNode(IN PCAP_TREE_NODE Node);
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode);
 VOID MmDeleteCNode(IN PCNODE CNode);

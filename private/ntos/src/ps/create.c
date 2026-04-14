@@ -180,7 +180,6 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
 
     NTSTATUS Status;
     IF_ERR_GOTO(Fail, Status, MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
-    Thread->TreeNode.CNode = &MiNtosCNode;
     assert(TcbUntyped->TreeNode.CNode == &MiNtosCNode);
     MmInitializeCapTreeNode(&Thread->TreeNode, CAP_TREE_NODE_TCB,
 			    0, &MiNtosCNode, NULL);

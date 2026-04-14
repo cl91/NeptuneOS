@@ -118,9 +118,10 @@ static inline VOID MiInitializeCNode(IN PCNODE Self,
 {
     assert(Self != NULL);
     assert(UsedMap != NULL);
-    /* This has to be set before MmInitializeCapTreeNode in the case of
-     * initializing the NT Executive root task CNode. */
+    /* These two fields have to be set before MmInitializeCapTreeNode in the
+     * case of initializing the NT Executive root task CNode. */
     Self->Log2Size = Log2Size;
+    InitializeListHead(&Self->NodeList);
     MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_CNODE,
 			    Cap, CSpace, Parent);
     Self->TreeNode.Badge = seL4_CNode_CapData_new(GuardValue, GuardBits).words[0];
@@ -169,6 +170,7 @@ extern MI_INIT_INFO MiInitInfo;
 
 /* cap.c */
 VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node);
+VOID MiRemoveNodeFromCNode(IN PCAP_TREE_NODE Node);
 
 /* untyped.c */
 VOID MiInitializePhyMemDescriptor(PPHY_MEM_DESCRIPTOR PhyMem);

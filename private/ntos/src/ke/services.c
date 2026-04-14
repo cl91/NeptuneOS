@@ -175,7 +175,7 @@ VOID KeDisableThreadServices(IN PTHREAD Thread)
 {
     extern CNODE MiNtosCNode;
     if (Thread->ReplyEndpoint.TreeNode.Cap != 0) {
-	MmDeallocateCap(&MiNtosCNode, Thread->ReplyEndpoint.TreeNode.Cap);
+	MmCapTreeDeallocateNode(&Thread->ReplyEndpoint.TreeNode);
     }
     KiDeleteThreadEndpoint(Thread->SystemServiceEndpoint);
     KiDeleteThreadEndpoint(Thread->WdmServiceEndpoint);

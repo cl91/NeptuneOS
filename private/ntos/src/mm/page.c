@@ -529,6 +529,9 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
     RET_ERR_EX(MiUnmapPagingStructure(Page), MiFreePagingStructure(Page));
     /* This is necessary because MmCapTreeNodeSetParent requires empty parent */
     MiCapTreeRemoveFromParent(&Page->TreeNode);
+    /* Detach the page cap node from its CNode because MmInitializeCapTreeNode
+     * requires so (see comments therein). */
+    MiRemoveNodeFromCNode(&Page->TreeNode);
     MiInitializePagingStructure(Page, &Untyped->TreeNode, ParentPaging, VSpaceCap,
 				Page->TreeNode.Cap, VirtAddr, Type, FALSE, Rights,
 				Attributes);
@@ -976,7 +979,7 @@ VOID MmDbgDumpPagingStructure(IN PPAGING_STRUCTURE Paging)
 	       MmPageIsWritable(Paging) ? "RW" : "RO", (ULONG)Paging->Attributes);
     MmDbgPrint("    ");
     MmDbgDumpCapTreeNode(&Paging->TreeNode);
-    MmDbgPrint("  Cap Tree Parent ");
+    MmDbgPrint("\n    Cap Tree Parent ");
     MmDbgDumpCapTreeNode(Paging->TreeNode.Parent);
     MmDbgPrint("\n    Parent Paging Structure ");
     if (Paging->SuperStructure != NULL) {
