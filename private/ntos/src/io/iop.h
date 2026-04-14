@@ -285,7 +285,6 @@ typedef struct _INTERRUPT_SERVICE {
     ULONG Vector;
     LIST_ENTRY Link;
     IRQ_HANDLER IrqHandler;
-    PTHREAD IsrThread;
     HANDLE ThreadHandle; /* Handle of the ISR thread in the driver process */
     NOTIFICATION Notification;	      /* Cap in the driver ISR thread private CNode */
     NOTIFICATION InterruptMutex;      /* Cap in the driver process shared CNode */
@@ -630,7 +629,7 @@ FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel(IN PTHREAD Thread)
     assert(Thread->Process);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject);
-    return DriverObject->DpcThread != Thread && !Thread->IsrThread;
+    return !Thread->DpcThread && !Thread->IsrThread;
 }
 
 /* cache.c */

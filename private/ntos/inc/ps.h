@@ -48,6 +48,7 @@ typedef struct _THREAD {
     BOOLEAN InitialThread;
     BOOLEAN Terminated;	/* TRUE if the thread has been terminated */
     BOOLEAN IsrThread; /* TRUE if the thread is an interrupt service thread of a driver */
+    BOOLEAN DpcThread; /* TRUE if the thread is the DPC thread of a driver */
     BOOLEAN Suspended; /* TRUE if the thread has been suspended due to async await */
     BOOLEAN Alertable; /* TRUE if we can deliver APC to the thread */
     LIST_ENTRY PendingIrpList;	/* List of pending IO packets. The objects of this list
@@ -106,6 +107,16 @@ typedef struct _PROCESS {
 #endif
 } PROCESS, *PPROCESS;
 
+FORCEINLINE PTHREAD PsGetProcessInitialThread(IN PPROCESS Process)
+{
+    PLIST_ENTRY Entry = GetNthEntryList(&Process->ThreadList, 0);
+    if (!Entry) {
+	return NULL;
+    }
+    PTHREAD Thread = CONTAINING_RECORD(Entry, THREAD, ThreadListEntry);
+    return Thread->InitialThread ? Thread : NULL;
+}
+
 /*
  * System thread object
  *
@@ -163,6 +174,7 @@ FORCEINLINE MWORD PsThreadCNodeIndexToGuardedCap(IN MWORD Cap,
 /* Flags for PsCreateThread */
 #define PS_CREATE_THREAD_SUSPENDED	(1)
 #define PS_CREATE_ISR_THREAD		(2)
+#define PS_CREATE_DPC_THREAD		(4)
 
 /* init.c */
 NTSTATUS PsInitSystemPhase0();

@@ -354,6 +354,8 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     PTHREAD_CREATION_CONTEXT Ctx = (PTHREAD_CREATION_CONTEXT)CreaCtx;
     PPROCESS Process = Ctx->Process;
     assert(Ctx != NULL);
+    Thread->IsrThread = Ctx->IsrThread;
+    Thread->DpcThread = Ctx->DpcThread;
 
     /* Unless you are creating the initial thread of a process, you must specify
      * the thread context */
@@ -757,6 +759,14 @@ fail:
     return Status;
 }
 
+/*
+ * Create a THREAD object for the given PROCESS object.
+ *
+ * If you did not specify PS_CREATE_THREAD_SUSPENDED, the thread is scheduled
+ * immediately after this routine returns. In this case you need to call
+ * PsTerminateThread to terminate the thread safely. Simply dereferencing the
+ * THREAD object is incorrect in this case.
+ */
 NTSTATUS PsCreateThread(IN PPROCESS Process,
                         IN PCONTEXT ThreadContext,
                         IN PINITIAL_TEB InitialTeb,
@@ -785,7 +795,8 @@ NTSTATUS PsCreateThread(IN PPROCESS Process,
 	.InitialTeb = InitialTeb,
 	.DriverObject = DriverObject,
 	.CreateSuspended = !!(Flags & PS_CREATE_THREAD_SUSPENDED),
-	.IsrThread = !!(Flags & PS_CREATE_ISR_THREAD)
+	.IsrThread = !!(Flags & PS_CREATE_ISR_THREAD),
+	.DpcThread = !!(Flags & PS_CREATE_DPC_THREAD),
     };
     RET_ERR(ObCreateObject(OBJECT_TYPE_THREAD, (POBJECT *)&Thread, &CreaCtx));
     *pThread = Thread;

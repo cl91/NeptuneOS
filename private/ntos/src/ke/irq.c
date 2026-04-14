@@ -19,6 +19,15 @@ NTSTATUS KeCreateIrqHandlerCapEx(IN OUT PIRQ_HANDLER IrqHandler,
     return STATUS_SUCCESS;
 }
 
+VOID KeDestroyIrqHandler(IN OUT PIRQ_HANDLER IrqHandler)
+{
+    assert(IrqHandler != NULL);
+    assert(!MmCapTreeNodeHasChildren(&IrqHandler->TreeNode));
+    /* Detach the cap node from the cap derivation tree and release its
+     * parent untyped (if any) */
+    MmCapTreeDeleteNode(&IrqHandler->TreeNode);
+}
+
 NTSTATUS KeConnectIrqNotification(IN PIRQ_HANDLER IrqHandler,
 				  IN PNOTIFICATION Notification)
 {

@@ -892,6 +892,7 @@ extern ULONG KeFeatureBits;
 /* irq.c */
 NTSTATUS KeCreateIrqHandlerCapEx(IN OUT PIRQ_HANDLER IrqHandler,
 				 IN PCNODE CNode);
+VOID KeDestroyIrqHandler(IN OUT PIRQ_HANDLER IrqHandler);
 NTSTATUS KeConnectIrqNotification(IN PIRQ_HANDLER IrqHandler,
 				  IN PNOTIFICATION Notification);
 

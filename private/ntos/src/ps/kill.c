@@ -176,7 +176,7 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
     /* If the thread to terminate is the main event loop of a driver thread,
      * set the InitializationDone event to wake up the thread waiting on NtLoadDriver */
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
-    if (DriverObject != NULL && Thread->InitialThread) {
+    if (DriverObject && Thread->InitialThread) {
 	KeSetEvent(&DriverObject->InitializationDoneEvent);
     }
     /* Suspend the thread. This is needed so the thread doesn't keep running

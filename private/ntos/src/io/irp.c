@@ -1332,7 +1332,7 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
     assert(DriverObject != NULL);
 
     ASYNC_BEGIN(State);
-    if (Thread != DriverObject->MainEventLoopThread) {
+    if (!Thread->InitialThread) {
 	ASYNC_RETURN(State, STATUS_INVALID_PARAMETER);
     }
     KeSetEvent(&DriverObject->InitializationDoneEvent);

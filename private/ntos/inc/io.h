@@ -25,8 +25,6 @@ typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverRegistryPath;
     AVL_NODE Node;	      /* Key is object address of driver process */
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
-    struct _THREAD *MainEventLoopThread; /* Main event loop thread of the driver process */
-    struct _THREAD *DpcThread;		 /* DPC thread of the driver process */
     NOTIFICATION DpcNotification;	 /* DPC notification cap (in the process shared CNode) */
     CAP_TREE_NODE TimerNotification;	 /* Derived from the DPC notification cap */
     CAP_TREE_NODE BugcheckNotification; /* Derived from the DPC notification cap */
