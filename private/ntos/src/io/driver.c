@@ -31,7 +31,6 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     }
     InitializeListHead(&Driver->DeviceList);
     InitializeListHead(&Driver->IoPortList);
-    InitializeListHead(&Driver->IoTimerList);
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
     InitializeListHead(&Driver->ForwardedIrpList);
@@ -118,14 +117,13 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 	IopFreePool(Irp);
     }
 
-    /* If the driver has registered IO timer, delete them. */
-    LoopOverList(IoTimer, &Driver->IoTimerList, IO_TIMER, DriverLink) {
-	KeRemoveIoTimerFromQueue(IoTimer);
-	RemoveEntryList(&IoTimer->DriverLink);
-	IopFreePool(IoTimer);
+    /* If the driver has enabled the singleton IO timer object, delete it. */
+    if (Driver->IoTimer.Notification.Cap) {
+	KeRemoveIoTimer(&Driver->IoTimer);
+	MmCapTreeDeleteNode(&Driver->IoTimer.Notification);
     }
 
-    /* Unregister the PnP notifications if driver has registered them */
+    /* Unregister the PnP notifications if driver has registered them. */
     LoopOverList(Entry, &Driver->PlugPlayNotificationList,
 		 PLUG_PLAY_NOTIFICATION, DriverLink) {
 	IopUnregisterPlugPlayNotification(Entry);
@@ -152,15 +150,14 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     KeUninitializeEvent(&Driver->InitializationDoneEvent);
     KeUninitializeEvent(&Driver->IoPacketQueuedEvent);
 
-    /* Delete the DPC-related caps */
-    if (Driver->TimerNotification.Cap) {
-	MmCapTreeDeleteNode(&Driver->TimerNotification);
-    }
     if (Driver->BugcheckNotification.Cap) {
 	MmCapTreeDeleteNode(&Driver->BugcheckNotification);
     }
     if (Driver->DpcNotification.TreeNode.Cap) {
 	KeDestroyNotification(&Driver->DpcNotification);
+    }
+    if (Driver->TimerServiceEndpoint.TreeNode.Cap) {
+	KeDestroyEndpoint(&Driver->TimerServiceEndpoint);
     }
 
     /* Clean up all interrupt services. Note that we do not need to terminate the ISR
@@ -691,7 +688,8 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 			    IN PVOID EntryPoint,
 			    OUT HANDLE *ThreadHandle,
 			    OUT MWORD *WdmServiceCap,
-			    OUT MWORD *DpcNotificationCap)
+			    OUT MWORD *DpcNotificationCap,
+			    OUT MWORD *TimerServiceCap)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
@@ -730,21 +728,40 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
     /* Derive the notification cap in the server CSpace so we can signal for timer
      * expiration. The cap has a badge indicating its purpose. */
     extern CNODE MiNtosCNode;
-    MmInitializeCapTreeNode(&DriverObject->TimerNotification, CAP_TREE_NODE_NOTIFICATION,
+    MmInitializeCapTreeNode(&DriverObject->IoTimer.Notification, CAP_TREE_NODE_NOTIFICATION,
 			    0, &MiNtosCNode, NULL);
-    IF_ERR_GOTO(err, Status,
-		MmCapTreeDeriveBadgedNode(&DriverObject->TimerNotification,
-					  &DriverObject->DpcNotification.TreeNode,
-					  seL4_AllRights, TIMER_NOTIFICATION_BADGE));
+    Status = MmCapTreeDeriveBadgedNode(&DriverObject->IoTimer.Notification,
+				       &DriverObject->DpcNotification.TreeNode,
+				       seL4_AllRights, TIMER_NOTIFICATION_BADGE);
+    if (!NT_SUCCESS(Status)) {
+	MmUninitializeCapTreeNode(&DriverObject->IoTimer.Notification);
+	goto err;
+    }
+    KeAddIoTimer(&DriverObject->IoTimer);
 
     /* Likewise, derive a bugcheck notification cap so server can signal drivers
      * when it has bugchecked. */
     MmInitializeCapTreeNode(&DriverObject->BugcheckNotification, CAP_TREE_NODE_NOTIFICATION,
 			    0, &MiNtosCNode, NULL);
-    IF_ERR_GOTO(err, Status,
-		MmCapTreeDeriveBadgedNode(&DriverObject->BugcheckNotification,
-					  &DriverObject->DpcNotification.TreeNode,
-					  seL4_AllRights, BUGCHECK_NOTIFICATION_BADGE));
+    Status = MmCapTreeDeriveBadgedNode(&DriverObject->BugcheckNotification,
+				       &DriverObject->DpcNotification.TreeNode,
+				       seL4_AllRights, BUGCHECK_NOTIFICATION_BADGE);
+    if (!NT_SUCCESS(Status)) {
+	MmUninitializeCapTreeNode(&DriverObject->BugcheckNotification);
+	goto err;
+    }
+
+    /* Derive the timer service endpoint with the global handle of the
+     * IO_DRIVER_OBJECT as the badge. This endpoint cap is in the process
+     * shared CNode. */
+    KeInitializeIpcEndpoint(&DriverObject->TimerServiceEndpoint,
+			    Thread->Process->SharedCNode, 0, 0);
+    Status = KeEnableIoTimerService(&DriverObject->TimerServiceEndpoint,
+				    OBJECT_TO_GLOBAL_HANDLE(DriverObject));
+    if (!NT_SUCCESS(Status)) {
+	KeUninitializeIpcEndpoint(&DriverObject->TimerServiceEndpoint);
+	goto err;
+    }
 
     /* Assign a handle for the DPC thread in the driver process */
     IF_ERR_GOTO(err, Status, ObCreateHandle(Thread->Process, DpcThread,
@@ -753,14 +770,16 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 	PsThreadCNodeIndexToGuardedCap(DpcThread->WdmServiceEndpoint->TreeNode.Cap,
 				       DpcThread);
     *DpcNotificationCap = DriverObject->DpcNotification.TreeNode.Cap;
+    *TimerServiceCap = DriverObject->TimerServiceEndpoint.TreeNode.Cap;
     return STATUS_SUCCESS;
 
 err:
     if (DpcThread) {
 	PsTerminateThread(DpcThread, STATUS_UNSUCCESSFUL);
     }
-    if (DriverObject->TimerNotification.Cap) {
-	MmCapTreeDeleteNode(&DriverObject->TimerNotification);
+    if (DriverObject->IoTimer.Notification.Cap) {
+	MmCapTreeDeleteNode(&DriverObject->IoTimer.Notification);
+	KeRemoveIoTimer(&DriverObject->IoTimer);
     }
     if (DriverObject->BugcheckNotification.Cap) {
 	MmCapTreeDeleteNode(&DriverObject->BugcheckNotification);
@@ -768,24 +787,10 @@ err:
     if (DriverObject->DpcNotification.TreeNode.Cap) {
 	KeDestroyNotification(&DriverObject->DpcNotification);
     }
+    if (DriverObject->TimerServiceEndpoint.TreeNode.Cap) {
+	KeDestroyEndpoint(&DriverObject->TimerServiceEndpoint);
+    }
     return Status;
-}
-
-NTSTATUS WdmCreateTimer(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
-			IN BOOLEAN OneTime,
-			OUT GLOBAL_HANDLE *GlobalHandle)
-{
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
-    assert(DriverObject);
-    IopAllocatePool(IoTimer, IO_TIMER);
-    IoTimer->DriverObject = DriverObject;
-    IoTimer->OneTime = OneTime;
-    InsertHeadList(&DriverObject->IoTimerList, &IoTimer->DriverLink);
-    *GlobalHandle = OBJECT_TO_GLOBAL_HANDLE(IoTimer);
-    return STATUS_SUCCESS;
 }
 
 NTSTATUS WdmRegisterBugcheckNotification(IN ASYNC_STATE State,
@@ -817,31 +822,6 @@ NTSTATUS WdmUnregisterBugcheckNotification(IN ASYNC_STATE State,
 	return STATUS_SUCCESS;
     }
     return STATUS_UNSUCCESSFUL;
-}
-
-NTSTATUS WdmSetTimer(IN ASYNC_STATE State,
-		     IN PTHREAD Thread,
-		     IN GLOBAL_HANDLE GlobalHandle,
-		     IN PULARGE_INTEGER AbsoluteDueTime,
-		     IN LONG Period)
-{
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
-    assert(DriverObject);
-    LoopOverList(IoTimer, &DriverObject->IoTimerList, IO_TIMER, DriverLink) {
-	/* If driver has expired one-time timers, remove them */
-	if (IoTimer->OneTime && IoTimer->Expired) {
-	    assert(!IoTimer->State);
-	    KeRemoveIoTimerFromQueue(IoTimer);
-	    RemoveEntryList(&IoTimer->DriverLink);
-	    IopFreePool(IoTimer);
-	} else if (OBJECT_TO_GLOBAL_HANDLE(IoTimer) == GlobalHandle) {
-	    KeQueueIoTimer(IoTimer, *AbsoluteDueTime, Period);
-	    return STATUS_SUCCESS;
-	}
-    }
-    return STATUS_INVALID_HANDLE;
 }
 
 NTSTATUS WdmCreateCoroutineStack(IN ASYNC_STATE State,

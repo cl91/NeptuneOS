@@ -5,6 +5,7 @@
 #include <hal.h>
 #include <assert.h>
 #include <debug.h>
+#include <timesvc.h>
 #include "coroutine.h"
 
 #include <util.h>
@@ -256,7 +257,7 @@ extern KMUTEX IopX86PortMutex;
 
 /* timer.c */
 extern LIST_ENTRY IopPendingTimerList;
-extern ULONG KiStallScaleFactor;
+extern MWORD KiTimerServiceCap;
 VOID IopProcessTimerList();
 
 /* util.c */

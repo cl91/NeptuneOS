@@ -5,6 +5,7 @@
 #include <printf.h>
 #include <util.h>
 #include <intrin.h>
+#include <timesvc.h>
 #include "mm.h"
 
 #define NTOS_KE_TAG			(EX_POOL_TAG('n','t','k','e'))
@@ -22,8 +23,11 @@ struct _SYSTEM_THREAD;
 typedef enum _THREAD_PRIORITY {
     PASSIVE_LEVEL = 1,
     DISPATCH_LEVEL = 2,
-    DEVICE_INTERRUPT_MIN_LEVEL = 10,
-    TIMER_INTERRUPT_LEVEL = 255
+    SYSTEM_SERVICE_LEVEL = 3,
+    DEVICE_INTERRUPT_MIN_LEVEL = 4,
+    IO_TIMER_SERVICE_LEVEL = 253,
+    TIMER_INTERRUPT_LEVEL = 254,
+    BUGCHECK_LEVEL = 255
 } THREAD_PRIORITY;
 
 #define LoopOverUntyped(cap, desc, bootinfo)				\
@@ -54,6 +58,11 @@ static inline VOID KeInitializeIpcEndpoint(IN PIPC_ENDPOINT Self,
     MmInitializeCapTreeNode(&Self->TreeNode, CAP_TREE_NODE_ENDPOINT, Cap,
 			    CSpace, NULL);
     Self->TreeNode.Badge = Badge;
+}
+
+static inline VOID KeUninitializeIpcEndpoint(IN PIPC_ENDPOINT Endpoint)
+{
+    MmUninitializeCapTreeNode(&Endpoint->TreeNode);
 }
 
 NTSTATUS KeCreateEndpointEx(IN PIPC_ENDPOINT Endpoint,
@@ -115,8 +124,8 @@ static inline VOID KeDestroyNotification(IN PNOTIFICATION Notification)
 {
     assert(Notification != NULL);
     assert(!MmCapTreeNodeHasChildren(&Notification->TreeNode));
-    /* Detach the cap node from the cap derivation tree and release its
-     * parent untyped (if any) */
+    /* Detach the cap node from the cap derivation tree and its CNode and
+     * release its parent untyped (if any) */
     MmCapTreeDeleteNode(&Notification->TreeNode);
 }
 
@@ -797,7 +806,7 @@ typedef struct _KAPC {
  */
 typedef struct _TIMER {
     DISPATCHER_HEADER Header;
-    ULARGE_INTEGER DueTime;	/* Absolute due time in units of 100ns */
+    ABSOLUTE_COUNTER_TIME DueTime; /* Time stamp counter value at timer due time */
     struct _THREAD *ApcThread;
     LIST_ENTRY ThreadLink; /* List entry for the ApcThread's TimerApcList */
     PTIMER_APC_ROUTINE ApcRoutine; /* Pointer in client address space! */
@@ -807,8 +816,9 @@ typedef struct _TIMER {
 	LIST_ENTRY QueueEntry;  /* List entry for KiQueuedTimerList */
 	LIST_ENTRY ExpiredListEntry; /* List entry KiExpiredTimerList */
     };
-    LONG Period;		/* Periodicity of the timer */
-    BOOLEAN State;		/* TRUE if timer is set */
+    LONG Period;		/* Periodicity of the timer (in TSC) */
+    BOOLEAN State; /* TRUE if timer is set. In this case the timer is either in
+		    * KiQueuedTimerList or in KiExpiredTimerList. */
 } TIMER, *PTIMER;
 
 /* async.c */
@@ -886,12 +896,13 @@ static inline VOID KeDisableIoPort(IN PX86_IOPORT IoPort)
 #endif
 
 /* init.c */
-extern ULONG KeX86TscFreq;
 extern ULONG KeProcessorCount;
 extern ULONG KeProcessorArchitecture;
 extern ULONG KeProcessorLevel;
 extern ULONG KeProcessorRevision;
 extern ULONG KeFeatureBits;
+NTSTATUS KeSetThreadPriority(IN MWORD ThreadCap,
+			     IN THREAD_PRIORITY Priority);
 
 /* irq.c */
 NTSTATUS KeCreateIrqHandlerCapEx(IN OUT PIRQ_HANDLER IrqHandler,
@@ -907,23 +918,26 @@ NTSTATUS KeCreateIrqHandlerCap(IN OUT PIRQ_HANDLER IrqHandler)
 }
 
 /* timer.c */
+extern SYSTEM_TIME KiInitialSystemTime;
+extern ABSOLUTE_COUNTER_TIME KeInitialTimeCounter;
 VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type);
 BOOLEAN KeCancelTimer(IN PTIMER Timer);
 BOOLEAN KeSetTimer(IN PTIMER Timer,
-		   IN LARGE_INTEGER DueTime,
+		   IN SYSTEM_TIME DueTime,
 		   IN struct _THREAD *ApcThread,
 		   IN PTIMER_APC_ROUTINE TimerApcRoutine,
 		   IN PVOID TimerApcContext,
 		   IN LONG Period);
 VOID KeUninitializeTimer(IN PTIMER Timer);
 struct _IO_TIMER;
-VOID KeQueueIoTimer(IN struct _IO_TIMER *Timer,
-		    IN ULARGE_INTEGER DueTime,
-		    IN LONG Period);
-VOID KeRemoveIoTimerFromQueue(IN struct _IO_TIMER *Timer);
-ULONGLONG KeQuerySystemTime(VOID);
-ULONGLONG KeQueryInterruptTime(VOID);
+VOID KeAddIoTimer(IN struct _IO_TIMER *Timer);
+VOID KeRemoveIoTimer(IN struct _IO_TIMER *Timer);
+NTSTATUS KeEnableIoTimerService(IN PIPC_ENDPOINT Endpoint,
+				IN MWORD IpcBadge);
+SYSTEM_TIME KeQuerySystemTime(VOID);
+INTERRUPT_TIME KeQueryInterruptTime(VOID);
+VOID KePopulateConstantUserSharedTimeData(PKUSER_SHARED_DATA Data);
 
 /* Remove the timer from the timer queue. Note that you normally should
  * call KeUninitializeTimer instead, which will take care of properly signaling

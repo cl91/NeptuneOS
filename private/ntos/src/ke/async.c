@@ -100,7 +100,9 @@ NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
     if (TimeOut) {
 	KiInitializeWaitBlock(&Thread->TimerWaitBlock, Thread,
 			      &Thread->WaitTimer.Header, WaitAny, NULL);
-	KeSetTimer(&Thread->WaitTimer, *TimeOut, NULL, NULL, NULL, 0);
+	KeSetTimer(&Thread->WaitTimer,
+		   (SYSTEM_TIME) { .SystemTime = TimeOut->QuadPart },
+		   NULL, NULL, NULL, 0);
     }
     KiInitializeWaitBlock(&Thread->RootWaitBlock, Thread, DispatcherObject,
 			  WaitAny, TimeOut ? &Thread->TimerWaitBlock : NULL);
@@ -173,7 +175,9 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
     if (TimeOut) {
 	KiInitializeWaitBlock(&Thread->RootWaitBlock, Thread,
 			      &Thread->WaitTimer.Header, WaitAny, NULL);
-	KeSetTimer(&Thread->WaitTimer, *TimeOut, NULL, NULL, NULL, 0);
+	KeSetTimer(&Thread->WaitTimer,
+		   (SYSTEM_TIME) { .SystemTime = TimeOut->QuadPart },
+		   NULL, NULL, NULL, 0);
     } else {
 	KiInitializeWaitBlock(&Thread->RootWaitBlock, Thread,
 			      DispatcherObjects[0], WaitType, NULL);

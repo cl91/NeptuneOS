@@ -91,10 +91,28 @@ VOID MmDbgDumpCapTreeNode(IN PCAP_TREE_NODE Node)
     if (Node->CNode != &MiNtosCNode) {
 	CapType = "in client process's CSpace";
     }
-    MmDbgPrint("Cap 0x%zx (Type %s%s Badge/Guard 0x%zx CNode %p (FL %p BL %p) seL4 Cap %s)",
+    MmDbgPrint("Cap 0x%zx (Type %s%s Badge/Guard 0x%zx CNode %p (FL %p BL %p) "
+	       "seL4 Cap %s Parent %p SiblingLink (FL %p BL %p) ChildrenList (FL %p BL %p))",
 	       Node->Cap, Type, Annotation, Node->Badge, Node->CNode,
 	       Node->CNodeLink.Flink, Node->CNodeLink.Blink,
-	       CapType);
+	       CapType, Node->Parent, Node->SiblingLink.Flink, Node->SiblingLink.Blink,
+	       Node->ChildrenList.Flink, Node->ChildrenList.Blink);
+    if (Node->CNode) {
+	LoopOverList(Entry, &Node->CNode->NodeList, CAP_TREE_NODE, CNodeLink) {
+	    assert(Entry->CNodeLink.Flink);
+	    assert(Entry->CNodeLink.Blink);
+	    assert(Entry->CNodeLink.Flink->Blink == &Entry->CNodeLink);
+	    assert(Entry->CNodeLink.Blink->Flink == &Entry->CNodeLink);
+	}
+    }
+    if (Node->SiblingLink.Flink) {
+	assert(Node->SiblingLink.Blink);
+	assert(Node->SiblingLink.Flink->Blink == &Node->SiblingLink);
+    }
+    if (Node->SiblingLink.Blink) {
+	assert(Node->SiblingLink.Flink);
+	assert(Node->SiblingLink.Blink->Flink == &Node->SiblingLink);
+    }
 #endif
 }
 
@@ -231,15 +249,6 @@ VOID MmDeallocateCap(IN PCNODE CNode,
     CNode->TotalUsed--;
 }
 
-/* Mark the capability slot of the given CNode as free and remove the
- * slot from the CNode. */
-VOID MmCapTreeDeallocateNode(IN PCAP_TREE_NODE Node)
-{
-    MmDeallocateCap(Node->CNode, Node->Cap);
-    MiRemoveNodeFromCNode(Node);
-    Node->Cap = 0;
-}
-
 /*
  * Request a suitably sized untyped memory and retype it into a CNode
  * object, allocating the required book-keeping information on ExPool
@@ -300,18 +309,6 @@ VOID MmDeleteCNode(IN PCNODE CNode)
     } else {
 	CNode->Deleted = TRUE;
     }
-}
-
-VOID MiRemoveNodeFromCNode(IN PCAP_TREE_NODE Node)
-{
-    assert(Node->CNode);
-    assert(ListHasEntry(&Node->CNode->NodeList, &Node->CNodeLink));
-    RemoveEntryList(&Node->CNodeLink);
-    InvalidateListEntry(&Node->CNodeLink);
-    if (Node->CNode->Deleted) {
-	MmDeleteCNode(Node->CNode);
-    }
-    Node->CNode = NULL;
 }
 
 /*
@@ -437,17 +434,14 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
     assert(ListHasEntry(&Node->CNode->NodeList, &Node->CNodeLink));
     assert(Node->Cap);
     MmDbg("Before deleting cap 0x%zx\n", Node->Cap);
-    if (Node->Parent != NULL) {
-	MmDbgDumpCapTree(Node->Parent, 0);
+    PCAP_TREE_NODE Parent = Node->Parent;
+    if (Parent) {
+	MmDbgDumpCapTree(Parent, 0);
     } else {
 	MmDbgDumpCapTree(Node, 0);
     }
     MiDeleteCap(Node);
-    MmCapTreeDeallocateNode(Node);
-    PCAP_TREE_NODE Parent = Node->Parent;
-    if (Parent != NULL) {
-	MiCapTreeRemoveFromParent(Node);
-    }
+    MmUninitializeCapTreeNode(Node);
     CapTreeLoopOverChildren(Child, Node) {
 	MiCapTreeRemoveFromParent(Child);
 	if (Parent != NULL) {
@@ -462,7 +456,7 @@ VOID MmCapTreeDeleteNode(IN PCAP_TREE_NODE Node)
     }
     /* If the parent cap tree node is an untyped cap and it has no children,
        release it */
-    if (Parent != NULL && Parent->Type == CAP_TREE_NODE_UNTYPED
+    if (Parent && Parent->Type == CAP_TREE_NODE_UNTYPED
 	&& !MmCapTreeNodeHasChildren(Parent)) {
 	MmReleaseUntyped(TREE_NODE_TO_UNTYPED(Parent));
     }
@@ -473,7 +467,9 @@ static VOID MiCapTreeDeallocateCapRecursively(IN PCAP_TREE_NODE Node)
     assert(Node != NULL);
     assert(Node->CNode != NULL);
     assert(Node->Cap);
-    MmCapTreeDeallocateNode(Node);
+    MmDeallocateCap(Node->CNode, Node->Cap);
+    MiRemoveNodeFromCNode(Node);
+    Node->Cap = 0;
     CapTreeLoopOverChildren(Child, Node) {
 	MiCapTreeDeallocateCapRecursively(Child);
     }
@@ -525,7 +521,7 @@ VOID MiCapTreeRevokeNode(IN PCAP_TREE_NODE Node)
  * creates a CDT child node of the original unbadged cap node. See the
  * comments in MmCapTreeDeriveBadgedNode for details.
  *
- * In NeptuneOS, to simplify system construction we explicitly disallow
+ * In Neptune OS, to simplify system construction we explicitly disallow
  * copying untyped caps. Furthermore, since copying the original cap
  * creates children, while copying the derived cap creates siblings, we
  * need to distinguish original caps from their copies. This can be done

@@ -75,7 +75,7 @@ static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault,
 		   (PVOID)seL4_Fault_VMFault_get_FSR(Fault));
 	break;
     default:
-	DbgPrinter("WTF??? This should never happen.\n");
+	DbgPrinter("Invalid seL4 fault type.\n");
 	break;
     }
 }
@@ -88,6 +88,8 @@ ULONG KiDeliverApc(IN PTHREAD Thread,
 /* bugcheck.c */
 NTSTATUS KiInitBugCheck();
 VOID KiHaltSystem(IN PCSTR Format, ...);
+NTSTATUS KeSetThreadPriority(IN MWORD ThreadCap,
+			     IN THREAD_PRIORITY Priority);
 
 #define HALT_IF_ERR(Expr)	{NTSTATUS Error = (Expr); if (!NT_SUCCESS(Error)) { \
 	    KiHaltSystem("Unrecoverable error at %s @ %s line %d: Error Code 0x%x. System halted.\n", \
@@ -100,7 +102,9 @@ NTSTATUS KiInitExecutiveServices();
 VOID KiDispatchExecutiveServices();
 
 /* timer.c */
+extern ULONG KiX86TscFreqInMHz;
 VOID KiSignalExpiredTimerList();
+VOID KiUpdateUserSharedTimeData();
 NTSTATUS KiInitTimer();
 
 /* arch/context.c */

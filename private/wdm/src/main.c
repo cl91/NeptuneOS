@@ -37,6 +37,11 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     IopIncomingIoPacketBuffer = (PIO_PACKET)InitInfo->IncomingIoPacketBuffer;
     IopOutgoingIoPacketBuffer = (PIO_PACKET)InitInfo->OutgoingIoPacketBuffer;
     KiCoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;
+    ULONG TscFreqInMHz = SharedUserData->TscFrequencyInMHz;
+    KiCounterTimeMultiplier = (10ULL << TIME_MULTIPLIER_SHIFT) / TscFreqInMHz;
+    KiInterruptTimeMultiplier = ((ULONG64)TscFreqInMHz << TIME_MULTIPLIER_SHIFT) / 10;
+    KiInitialSystemTime.SystemTime = SharedUserData->InitialSystemTime;
+    KiInitialCounterTime.CounterTime = SharedUserData->InitialTsc;
     InitializeListHead(&IopDmaPoolList);
     InitializeListHead(&IopDeviceList);
     InitializeListHead(&IopFileObjectList);
@@ -45,13 +50,6 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
 #if defined(_M_IX86) || defined(_M_AMD64)
     InitializeListHead(&IopX86PortList);
     KeInitializeMutex(&IopX86PortMutex, InitInfo->X86PortMutexCap);
-    KiStallScaleFactor = (ULONG)InitInfo->X86TscFreq;
-#elif defined(_M_ARM64)
-    ULONG64 KiStallScaleFactor64;
-    asm volatile ("mrs %0, cntfrq_el0; isb;" : "=r"(KiStallScaleFactor64) :: "memory");
-    KiStallScaleFactor = KiStallScaleFactor64;
-#else
-#error "Unsupported architecture"
 #endif
     InitializeListHead(&IopDpcQueue);
     InitializeListHead(&IopWorkItemQueue);

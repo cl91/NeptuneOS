@@ -40,6 +40,7 @@
  * number is quite long.
  */
 #define PIT_FREQUENCY 1193182
+#define PIT_MULTIPLIER (((ULONG64)PIT_FREQUENCY << TIME_MULTIPLIER_SHIFT) / 10000000)
 #endif
 
 /*
@@ -176,11 +177,11 @@ FORCEINLINE VOID HalpSetApicPinFree(IN ULONG ApicIndex,
 
 typedef struct _HAL_HPET {
     ULONG64 BaseAddress;  /* Base physical address of the MMIO region */
+    ULONG64 Multiplier;	  /* Multiplier to convert time in 100ns to number of timer tick */
+    MWORD MappedBase;	  /* Base virtual address of the mapped MMIO region */
     BOOLEAN SystemTimer;  /* TRUE if this HPET is assigned as the system timer */
     UCHAR NumComparators; /* Total number of comparators of this timer */
     UCHAR ComparatorId;   /* Comparator ID in this HPET that is assigned as the system timer */
-    ULONG TimerTick;	  /* Timer tick in units of femtoseconds (1e-15s) */
-    ULONG64 Period;	  /* Period in units of femtoseconds (1e-15s) */
 } HAL_HPET, *PHAL_HPET;
 
 typedef struct _HAL_INTERRUPT_SOURCE_OVERRIDE {
@@ -200,13 +201,13 @@ VOID __outbyte(IN USHORT PortNum,
 	       IN UCHAR Data);
 
 /* hpet.c */
-NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
-			IN ULONG64 Period);
+NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler);
+VOID HalpSetHpet(IN ULONG64 RelativeDueTime);
 
 /* pit.c */
 NTSTATUS HalpInitPit(VOID);
-NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
-		       IN ULONG64 Period);
+NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler);
+VOID HalpSetPit(IN ULONG64 RelativeDueTime);
 
 #endif	/* defined(_M_IX86) || defined(_M_AMD64) */
 

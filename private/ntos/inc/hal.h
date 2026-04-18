@@ -43,8 +43,8 @@ NTSTATUS HalAllocateIrq(IN ULONG Irq);
 NTSTATUS HalDeallocateIrq(IN ULONG Irq);
 NTSTATUS HalGetIrqCap(IN PIRQ_HANDLER IrqHandler,
 		      MWORD Root, MWORD Index, UINT8 Depth);
-NTSTATUS HalEnableSystemTimer(OUT PIRQ_HANDLER IrqHandler,
-			      IN ULONG64 Period);
+NTSTATUS HalEnableSystemTimer(OUT PIRQ_HANDLER IrqHandler);
+VOID HalSetSystemTimer(IN ULONG64 RelativeDueTimeIn100ns);
 NTSTATUS HalMaskUnusableInterrupts(VOID);
 ULONG_PTR HalComputeInterruptMessageAddress(IN ULONG ProcessorId);
 ULONG HalComputeInterruptMessageData(IN ULONG Vector);

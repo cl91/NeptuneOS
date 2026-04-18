@@ -76,7 +76,6 @@ ULONG KeProcessorArchitecture;
 ULONG KeProcessorLevel;
 ULONG KeProcessorRevision;
 ULONG KeFeatureBits;
-ULONG KeX86TscFreq;
 
 /*
  * For the initial thread of the NTOS root task the base of the gs/fs
@@ -144,7 +143,7 @@ static VOID KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 	    HalRegisterFramebuffer((PHAL_FRAMEBUFFER)(BootInfoHeader+1));
 	    break;
 	case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
-	    KeX86TscFreq = *((uint32_t *)(BootInfoHeader+1));
+	    KiX86TscFreqInMHz = *((uint32_t *)(BootInfoHeader+1));
 	    break;
 #endif
 	case SEL4_BOOTINFO_HEADER_FDT:
@@ -303,7 +302,7 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
 	    break;
 	case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
 	    DbgPrint("    x86 tsc freq of size 0x%zx\n", BootInfoHeader->len);
-	    DbgPrint("        tsc freq is %d MHz\n", KeX86TscFreq);
+	    DbgPrint("        tsc freq is %d MHz\n", KiX86TscFreqInMHz);
 	    break;
 #endif
 	case SEL4_BOOTINFO_HEADER_FDT:
@@ -419,6 +418,7 @@ void KiInitializeSystem(seL4_BootInfo *bootinfo) {
     KeRunAllTests();
 #endif
 
+    KeSetThreadPriority(NTOS_TCB_CAP, SYSTEM_SERVICE_LEVEL);
     /* This should never return. */
     KiDispatchExecutiveServices();
 }

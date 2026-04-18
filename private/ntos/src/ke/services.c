@@ -40,7 +40,10 @@ NTSTATUS KeCreateEndpointEx(IN PIPC_ENDPOINT Endpoint,
     KeInitializeIpcEndpoint(Endpoint, CSpace, 0, 0);
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_EndpointObject, seL4_EndpointBits,
 				  &Endpoint->TreeNode),
-	       MmReleaseUntyped(Untyped));
+	       {
+		   MmReleaseUntyped(Untyped);
+		   KeUninitializeIpcEndpoint(Endpoint);
+	       });
     assert(Endpoint->TreeNode.Cap != 0);
     return STATUS_SUCCESS;
 }
@@ -54,8 +57,8 @@ VOID KeDestroyEndpoint(IN PIPC_ENDPOINT Endpoint)
 {
     assert(Endpoint != NULL);
     assert(!MmCapTreeNodeHasChildren(&Endpoint->TreeNode));
-    /* Detach the cap node from the cap derivation tree and release its
-     * parent untyped (if any) */
+    /* Detach the cap node from the cap derivation tree and it CNode and
+     * release its parent untyped (if any) */
     MmCapTreeDeleteNode(&Endpoint->TreeNode);
 }
 
@@ -105,7 +108,11 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
 					 &KiExecutiveServiceEndpoint.TreeNode,
 					 ENDPOINT_RIGHTS_SEND_GRANTREPLY,
 					 IPCBadge),
-	       KiFreePool(ServiceEndpoint));
+	       {
+		   KiFreePool(ServiceEndpoint);
+		   KeUninitializeIpcEndpoint(ServiceEndpoint);
+		   KeDestroyEndpoint(ReplyEndpoint);
+	       });
 
     *pServiceEndpoint = ServiceEndpoint;
     return STATUS_SUCCESS;
@@ -118,7 +125,7 @@ static NTSTATUS KiEnableThreadServiceEndpoint(IN PTHREAD Thread,
     assert(Thread->Process != NULL);
     assert(Thread->CSpace != NULL);
     assert(ServiceType < NUM_SERVICE_TYPES);
-    assert(ServiceType != SERVICE_TYPE_NOTIFICATION);
+    assert(ServiceType != SERVICE_TYPE_TIMER_NOTIFICATION);
     assert(ServiceType != SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER);
 
     MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread) | ServiceType;
@@ -171,7 +178,7 @@ VOID KeDisableThreadServices(IN PTHREAD Thread)
 {
     extern CNODE MiNtosCNode;
     if (Thread->ReplyEndpoint.TreeNode.Cap != 0) {
-	MmCapTreeDeallocateNode(&Thread->ReplyEndpoint.TreeNode);
+	KeUninitializeIpcEndpoint(&Thread->ReplyEndpoint);
     }
     KiDeleteThreadEndpoint(Thread->SystemServiceEndpoint);
     KiDeleteThreadEndpoint(Thread->WdmServiceEndpoint);
@@ -1027,6 +1034,7 @@ VOID KiDispatchExecutiveServices()
 	if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_FAULT_HANDLER) {
 	    /* The thread has faulted. */
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
+	    assert(Thread);
 	    /* A faulting thread cannot be in the suspended state (a suspended thread
 	     * is not running, and therefore cannot generate faults). By the same token
 	     * it cannot be in the ready thread list. */
@@ -1041,17 +1049,18 @@ VOID KiDispatchExecutiveServices()
 	    /* The system thread has faulted. For system threads we always terminate the
 	     * thread. */
 	    PSYSTEM_THREAD Thread = (PSYSTEM_THREAD)GLOBAL_HANDLE_TO_OBJECT(Badge);
+	    assert(Thread);
 	    seL4_Fault_t Fault = seL4_getFault(Request);
 #ifdef CONFIG_DEBUG_BUILD
 	    KiDumpSystemThreadFault(Fault, Thread, DbgPrint);
 #endif
 	    KiDumpSystemThreadFault(Fault, Thread, HalVgaPrint);
 	    PsTerminateSystemThread(Thread);
-	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) != SERVICE_TYPE_NOTIFICATION) {
-	    /* The timer irq thread generates service notifications with seL4_NBWait, to inform
-	     * us that the expired timer list should be checked even though there is no service
-	     * message from a client thread. In the case of a service notification, we skip the
-	     * following message processing, as is indicated by the if-condition above. */
+	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) != SERVICE_TYPE_TIMER_NOTIFICATION) {
+	    /* The timer notification is bound to our TCB. The timer IRQ handler
+	     * thread signals this notification to wake us up and check the expired
+	     * timer list. In this case there is no service message from a client
+	     * thread, and we skip the message processing below. */
 	    ULONG MsgBufferEnd = 0;
 	    ULONG NumApc = 0;
 	    BOOLEAN MoreToCome = FALSE;
@@ -1128,5 +1137,6 @@ VOID KiDispatchExecutiveServices()
 		KiReplyThread(ReadyThread, Status, NumApc, MoreToCome);
 	    }
 	}
+	KiUpdateUserSharedTimeData();
     }
 }

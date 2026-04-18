@@ -48,15 +48,6 @@ static inline BOOLEAN AlignUp(OUT PULONG AlignedAddress,
 	return Intsafe_AddULong32(AlignedAddress, Address, Alignment - nExcess);
 }
 
-static inline VOID MiCapTreeRemoveFromParent(IN PCAP_TREE_NODE Node)
-{
-    assert(Node->SiblingLink.Flink != NULL);
-    assert(Node->SiblingLink.Blink != NULL);
-    assert(!IsListEmpty(&Node->SiblingLink));
-    RemoveEntryList(&Node->SiblingLink);
-    Node->Parent = NULL;
-}
-
 static inline PCAP_TREE_NODE MiCapTreeNodeGetFirstChild(IN PCAP_TREE_NODE Node)
 {
     assert(MmCapTreeNodeHasChildren(Node));

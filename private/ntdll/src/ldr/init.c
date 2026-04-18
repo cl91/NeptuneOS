@@ -467,6 +467,9 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     /* Set the critical section timeout from PEB */
     RtlpTimeout = Peb->CriticalSectionTimeout;
 
+    /* Initialize the time multipliers from the user shared data */
+    KiInitTime();
+
     /* Check if this is a .NET executable */
     ULONG ComSectionSize;
     if (RtlImageDirectoryEntryToData(Peb->ImageBaseAddress, TRUE,

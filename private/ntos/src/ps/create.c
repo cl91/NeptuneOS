@@ -92,24 +92,10 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
     return STATUS_SUCCESS;
 }
 
-static NTSTATUS PspSetThreadPriority(IN MWORD ThreadCap,
-				     IN THREAD_PRIORITY Priority)
-{
-    assert(ThreadCap != 0);
-    int Error = seL4_TCB_SetPriority(ThreadCap, NTOS_TCB_CAP, Priority);
-
-    if (Error != 0) {
-	DbgTrace("seL4_TCB_SetPriority failed for thread cap 0x%zx with error %d\n",
-		 ThreadCap, Error);
-	return SEL4_ERROR(Error);
-    }
-    return STATUS_SUCCESS;
-}
-
 NTSTATUS PsSetThreadPriority(IN PTHREAD Thread,
 			     IN THREAD_PRIORITY Priority)
 {
-    RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, Priority));
+    RET_ERR(KeSetThreadPriority(Thread->TreeNode.Cap, Priority));
     Thread->CurrentPriority = Priority;
     return STATUS_SUCCESS;
 }
@@ -117,7 +103,7 @@ NTSTATUS PsSetThreadPriority(IN PTHREAD Thread,
 NTSTATUS PsSetSystemThreadPriority(IN PSYSTEM_THREAD Thread,
 				   IN THREAD_PRIORITY Priority)
 {
-    RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, Priority));
+    RET_ERR(KeSetThreadPriority(Thread->TreeNode.Cap, Priority));
     Thread->CurrentPriority = Priority;
     return STATUS_SUCCESS;
 }
@@ -183,8 +169,13 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     assert(TcbUntyped->TreeNode.CNode == &MiNtosCNode);
     MmInitializeCapTreeNode(&Thread->TreeNode, CAP_TREE_NODE_TCB,
 			    0, &MiNtosCNode, NULL);
-    IF_ERR_GOTO(Fail, Status, MmRetypeIntoObject(TcbUntyped, seL4_TCBObject,
-						 seL4_TCBBits, &Thread->TreeNode));
+    Status = MmRetypeIntoObject(TcbUntyped, seL4_TCBObject,
+				seL4_TCBBits, &Thread->TreeNode);
+    if (!NT_SUCCESS(Status)) {
+	MmUninitializeCapTreeNode(&Thread->TreeNode);
+	MmReleaseUntyped(TcbUntyped);
+	goto Fail;
+    }
 
     assert(DebugName != NULL);
     assert(DebugName[0] != '\0');
@@ -232,7 +223,7 @@ NTSTATUS PsCreateSystemThread(IN PSYSTEM_THREAD Thread,
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeSystemThreadContext(Thread, &Context, EntryPoint);
     IF_ERR_GOTO(Fail, Status, KeSetThreadContext(Thread->TreeNode.Cap, &Context));
-    IF_ERR_GOTO(Fail, Status, PspSetThreadPriority(Thread->TreeNode.Cap, PASSIVE_LEVEL));
+    IF_ERR_GOTO(Fail, Status, KeSetThreadPriority(Thread->TreeNode.Cap, PASSIVE_LEVEL));
     Thread->CurrentPriority = PASSIVE_LEVEL;
     if (!Suspended) {
 	IF_ERR_GOTO(Fail, Status, PspResumeThread(Thread->TreeNode.Cap));
@@ -244,8 +235,8 @@ Fail:
     if (StackStart) {
 	MmUnmapServerRegion(StackStart);
     }
-    if (TcbUntyped != NULL) {
-	MmReleaseUntyped(TcbUntyped);
+    if (Thread->TreeNode.Cap) {
+	MmCapTreeDeleteNode(&Thread->TreeNode);
     }
     return Status;
 }
@@ -474,7 +465,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     memset(&Context, 0, sizeof(THREAD_CONTEXT));
     PspInitializeThreadContext(Thread, &Context);
     RET_ERR(KeSetThreadContext(Thread->TreeNode.Cap, &Context));
-    RET_ERR(PspSetThreadPriority(Thread->TreeNode.Cap, PASSIVE_LEVEL));
+    RET_ERR(KeSetThreadPriority(Thread->TreeNode.Cap, PASSIVE_LEVEL));
     /* Thread->InitInfo.Context is initialized as zero so if the caller
      * did not supply Ctx->Context we simply leave Context as zero. */
     if (Ctx->Context != NULL) {
@@ -623,7 +614,6 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     if (DriverObject != NULL) {
 	Process->InitInfo.DriverProcess = TRUE;
-	Process->InitInfo.DriverInitInfo.X86TscFreq = KeX86TscFreq;
     }
 
     /* Reserve and commit the loader private heap */
@@ -755,8 +745,9 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 #undef CREATE_EVENT
 
     /* Generate a per-process security cookie */
-    LARGE_INTEGER SystemTime = { .QuadPart = KeQuerySystemTime() };
-    Process->Cookie = KeQueryInterruptTime() ^ SystemTime.LowPart ^ SystemTime.HighPart;
+    LARGE_INTEGER SystemTime = { .QuadPart = KeQuerySystemTime().SystemTime };
+    Process->Cookie =
+	KeQueryInterruptTime().InterruptTime ^ SystemTime.LowPart ^ SystemTime.HighPart;
 
     InsertTailList(&PspProcessList, &Process->ProcessListEntry);
 

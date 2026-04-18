@@ -3,40 +3,25 @@
 /* List of timers that have been set but have not expired. */
 LIST_ENTRY IopPendingTimerList;
 
-ULONG KiStallScaleFactor;
+SYSTEM_TIME KiInitialSystemTime;
+ABSOLUTE_COUNTER_TIME KiInitialCounterTime;
 
-#if defined(_M_IX86) || defined(_M_AMD64)
-/* Use the ordered version of rdtsc to get an accurate time stamp counter. */
-FORCEINLINE ULONG64 KiReadTimeStampCounter() {
-    ULONG Unused;
-    return __rdtscp(&Unused);
-}
-#elif defined(_M_ARM64)
-/* Read the CNTVCT cpu system register which provides a consistent value of
- * the virtual system counter across the system. */
-FORCEINLINE ULONG64 KiReadTimeStampCounter() {
-    ULONG64 VirtualTimerCounter;
-    asm volatile ("mrs %0, cntvct_el0; " : "=r"(VirtualTimerCounter));
-    return VirtualTimerCounter;
-}
-#else
-#error "Unsupported architecture"
-#endif
+ULONG64 KiCounterTimeMultiplier;
+ULONG64 KiInterruptTimeMultiplier;
+MWORD KiTimerServiceCap;
 
-static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer,
-				  IN EVENT_TYPE EventType,
-				  IN BOOLEAN OneTime)
+/* Earlist due time of the queued timers. */
+static ABSOLUTE_COUNTER_TIME KiGlobalTimerDueTime = { .CounterTime = ~0ULL };
+
+static VOID KiInitializeTimer(OUT PKTIMER Timer,
+			      IN EVENT_TYPE EventType)
 {
     RtlZeroMemory(Timer, sizeof(KTIMER));
     IopInitializeDpcThread();
-    NTSTATUS Status = WdmCreateTimer(OneTime, &Timer->Header.Header.GlobalHandle);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
     ObInitializeObject(&Timer->Header, CLIENT_OBJECT_TIMER, KTIMER);
     Timer->Header.Type = EventType;
     InitializeListHead(&Timer->Header.EnvList);
-    return STATUS_SUCCESS;
+    Timer->DueTime = ~0ULL;
 }
 
 /*
@@ -47,9 +32,28 @@ static NTSTATUS KiInitializeTimer(OUT PKTIMER Timer,
  */
 NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
 {
-    NTSTATUS Status = KiInitializeTimer(Timer, NotificationEvent, FALSE);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(Status);
+    KiInitializeTimer(Timer, NotificationEvent);
+}
+
+static VOID KiSetGlobalTimer(IN ABSOLUTE_COUNTER_TIME DueTime)
+{
+    assert((LONG64)DueTime.CounterTime > 0);
+    if (DueTime.CounterTime <= KiQueryAbsoluteCounterTime().CounterTime) {
+	NtCurrentTeb()->Wdm.DpcQueued = TRUE;
+	IopSignalDpcNotification();
+	return;
+    }
+    ULONG64 GlobalDueTime =
+	InterlockedCompareExchange64((PVOID)&KiGlobalTimerDueTime.CounterTime, 0, 0);
+    if (DueTime.CounterTime < GlobalDueTime) {
+	InterlockedExchange64((PVOID)&KiGlobalTimerDueTime.CounterTime, DueTime.CounterTime);
+	seL4_SetMR(0, (MWORD)DueTime.CounterTime);
+#ifndef _WIN64
+	seL4_SetMR(1, DueTime.CounterTime >> 32);
+#endif
+	assert(PsCapIsProcessShared(KiTimerServiceCap));
+	seL4_Call(RtlGetGuardedCapInProcessCNode(KiTimerServiceCap),
+		  seL4_MessageInfo_new(0, 0, 0, sizeof(ULONG64) / sizeof(MWORD)));
     }
 }
 
@@ -58,15 +62,16 @@ NTAPI VOID KeInitializeTimer(OUT PKTIMER Timer)
  */
 VOID IopProcessTimerList()
 {
+    InterlockedExchange64((PVOID)&KiGlobalTimerDueTime.CounterTime, ~0ULL);
+    ABSOLUTE_COUNTER_TIME CurrentTime = KiQueryAbsoluteCounterTime();
+    ABSOLUTE_COUNTER_TIME NewDueTime = { .CounterTime = ~0ULL };
     /* Acquire the DPC mutex because IopPendingTimerList may be modified by KeSetTimer. */
     IopAcquireDpcMutex();
     LoopOverList(Timer, &IopPendingTimerList, KTIMER, Header.QueueListEntry) {
 	/* If the timer is in the pending timer list, it must have been set. */
 	assert(Timer->State);
 	/* Check if the timer has expired. */
-	LARGE_INTEGER SystemTime;
-	KeQuerySystemTime(&SystemTime);
-	if (SystemTime.QuadPart >= Timer->AbsoluteDueTime) {
+	if (CurrentTime.CounterTime >= Timer->DueTime) {
 	    Timer->State = FALSE;
 	    RemoveEntryList(&Timer->Header.QueueListEntry);
 	    KiSignalWaitableObject(&Timer->Header, FALSE);
@@ -88,9 +93,14 @@ VOID IopProcessTimerList()
 		    IopAcquireDpcMutex();
 		}
 	    }
+	} else if (Timer->DueTime < NewDueTime.CounterTime) {
+	    NewDueTime.CounterTime = Timer->DueTime;
 	}
     }
     IopReleaseDpcMutex();
+    if (NewDueTime.CounterTime != ~0ULL) {
+	KiSetGlobalTimer(NewDueTime);
+    }
 }
 
 /*
@@ -109,19 +119,22 @@ static BOOLEAN KiSetTimer(IN OUT PKTIMER Timer,
 			  IN BOOLEAN LowPriorityTimer)
 {
     BOOLEAN PreviousState = KeCancelTimer(Timer);
+    BOOLEAN ExpireNow = FALSE;
     /* Compute the absolute due time of the timer. */
-    ULARGE_INTEGER AbsoluteDueTime = {
-	.QuadPart = DueTime.QuadPart
-    };
+    LARGE_INTEGER SystemTime;
+    KeQuerySystemTime(&SystemTime);
     if (DueTime.QuadPart < 0) {
-	LARGE_INTEGER SystemTime;
-	KeQuerySystemTime(&SystemTime);
-	AbsoluteDueTime.QuadPart = -DueTime.QuadPart + SystemTime.QuadPart;
+	DueTime.QuadPart = -DueTime.QuadPart + SystemTime.QuadPart;
+    } else {
+	/* Timer is due immediately if due time is less than current system time. */
+	ExpireNow = DueTime.QuadPart <= SystemTime.QuadPart;
     }
+    ABSOLUTE_COUNTER_TIME CounterTime = ExpireNow ? KiQueryAbsoluteCounterTime() :
+	KiSystemTimeToAbsoluteCounterTime((SYSTEM_TIME) { .SystemTime = DueTime.QuadPart });
     Timer->Dpc = DpcOrWorkItem;
     Timer->WorkerRoutine = WorkerRoutine;
     Timer->WorkerContext = WorkerContext;
-    Timer->AbsoluteDueTime = AbsoluteDueTime.QuadPart;
+    Timer->DueTime = CounterTime.CounterTime;
     Timer->Period = Period;
     Timer->LowPriority = LowPriorityTimer;
     IopAcquireDpcMutex();
@@ -130,12 +143,24 @@ static BOOLEAN KiSetTimer(IN OUT PKTIMER Timer,
     assert(!ListHasEntry(&IopPendingTimerList, &Timer->Header.QueueListEntry));
     Timer->State = TRUE;
     InsertHeadList(&IopPendingTimerList, &Timer->Header.QueueListEntry);
+    /* Find the earlist due time of the currently pending timers (including
+     * the one we just queued). */
+    ABSOLUTE_COUNTER_TIME EarliestDueTime = { .CounterTime = ~0ULL };
+    if (!ExpireNow) {
+	LoopOverList(QueuedTimer, &IopPendingTimerList, KTIMER, Header.QueueListEntry) {
+	    /* If the timer is in the pending timer list, it must have been set. */
+	    assert(QueuedTimer->State);
+	    if (QueuedTimer->DueTime < EarliestDueTime.CounterTime) {
+		EarliestDueTime.CounterTime = QueuedTimer->DueTime;
+	    }
+	}
+    }
     IopReleaseDpcMutex();
-
-    NTSTATUS Status = WdmSetTimer(Timer->Header.Header.GlobalHandle,
-				  &AbsoluteDueTime, Period);
-    if (!NT_SUCCESS(Status)) {
-	RtlRaiseStatus(Status);
+    if (ExpireNow) {
+	NtCurrentTeb()->Wdm.DpcQueued = TRUE;
+	IopSignalDpcNotification();
+    } else {
+	KiSetGlobalTimer(EarliestDueTime);
     }
     return PreviousState;
 }
@@ -192,20 +217,7 @@ NTAPI BOOLEAN KeSetLowPriorityTimer(IN OUT PKTIMER Timer,
  */
 NTAPI ULONGLONG KeQueryInterruptTime(VOID)
 {
-    LARGE_INTEGER CurrentTime;
-
-    /* Loop until we get a perfect match */
-    for (;;) {
-        /* Read the time value */
-        CurrentTime.HighPart = SharedUserData->InterruptTime.High1Time;
-        CurrentTime.LowPart = SharedUserData->InterruptTime.LowPart;
-        if (CurrentTime.HighPart == SharedUserData->InterruptTime.High2Time)
-	    break;
-        YieldProcessor();
-    }
-
-    /* Return the time value */
-    return CurrentTime.QuadPart;
+    return KiRelativeCounterTimeToInterruptTime(KiQueryRelativeCounterTime()).InterruptTime;
 }
 
 /*
@@ -213,15 +225,8 @@ NTAPI ULONGLONG KeQueryInterruptTime(VOID)
  */
 NTAPI VOID KeQuerySystemTime(OUT PLARGE_INTEGER CurrentTime)
 {
-    /* Loop until we get a perfect match */
-    for (;;) {
-        /* Read the time value */
-        CurrentTime->HighPart = SharedUserData->SystemTime.High1Time;
-        CurrentTime->LowPart = SharedUserData->SystemTime.LowPart;
-        if (CurrentTime->HighPart == SharedUserData->SystemTime.High2Time)
-	    break;
-        YieldProcessor();
-    }
+    CurrentTime->QuadPart =
+	KiAbsoluteCounterTimeToSystemTime(KiQueryAbsoluteCounterTime()).SystemTime;
 }
 
 /*
@@ -229,15 +234,8 @@ NTAPI VOID KeQuerySystemTime(OUT PLARGE_INTEGER CurrentTime)
  */
 NTAPI VOID KeQueryTickCount(OUT PLARGE_INTEGER CurrentCount)
 {
-    /* Loop until we get a perfect match */
-    for (;;) {
-        /* Read the time value */
-        CurrentCount->HighPart = SharedUserData->TickCount.High1Time;
-        CurrentCount->LowPart = SharedUserData->TickCount.LowPart;
-        if (CurrentCount->HighPart == SharedUserData->TickCount.High2Time)
-	    break;
-        YieldProcessor();
-    }
+    RELATIVE_COUNTER_TIME Time = KiQueryRelativeCounterTime();
+    CurrentCount->QuadPart = KiRelativeCounterTimeToTickCount(Time);
 }
 
 /*
@@ -246,7 +244,7 @@ NTAPI VOID KeQueryTickCount(OUT PLARGE_INTEGER CurrentCount)
  */
 NTAPI ULONG KeQueryTimeIncrement()
 {
-    return SharedUserData->TickTimeIncrement;
+    return TIMER_RESOLUTION_IN_100NS;
 }
 
 /*
@@ -261,13 +259,13 @@ NTAPI ULONG KeQueryTimeIncrement()
 NTAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds)
 {
     /* Get the initial time */
-    ULONG64 StartTime = KiReadTimeStampCounter();
+    ULONG64 StartTime = KiQueryAbsoluteCounterTime().CounterTime;
 
     /* Calculate the ending time */
-    ULONG64 EndTime = StartTime + KiStallScaleFactor * MicroSeconds;
+    ULONG64 EndTime = StartTime + SharedUserData->TscFrequencyInMHz * MicroSeconds;
 
     /* Loop until time is elapsed */
-    while (KiReadTimeStampCounter() < EndTime);
+    while (KiQueryAbsoluteCounterTime().CounterTime < EndTime);
 }
 
 /**
@@ -293,10 +291,7 @@ NTSTATUS KeDelayExecutionThread(IN BOOLEAN Alertable,
     assert(Interval);
     assert(Interval->QuadPart);
     KTIMER Timer;
-    NTSTATUS Status = KiInitializeTimer(&Timer, SynchronizationEvent, TRUE);
-    if (!NT_SUCCESS(Status)) {
-	return Status;
-    }
+    KiInitializeTimer(&Timer, SynchronizationEvent);
     KeSetTimer(&Timer, *Interval, NULL);
     return KeWaitForSingleObject(&Timer, 0, 0, Alertable, NULL);
 }

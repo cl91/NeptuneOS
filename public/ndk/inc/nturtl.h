@@ -363,26 +363,26 @@ typedef struct _TEB {                                        /* win32/win64 */
     PVOID                  *TlsExpansionSlots;                 /* 158/300 */
     PVOID                   DebuggerHandle;                    /* 15c/308 */
     union {
-	struct {
-	    ULONG_PTR       ServiceCap;                        /* 160/310 */
-	    PVOID           CoroutineStackLow;                 /* 164/318 */
-	    PVOID           CoroutineStackHigh;                /* 168/320 */
-	    BOOLEAN         DpcQueued;			       /* 16c/328 */
-	    BOOLEAN         IoWorkItemQueued;		       /* 16d/329 */
-	    BOOLEAN         EventSignaled;		       /* 16e/32a */
-	    BOOLEAN         IsDpcThread;		       /* 16f/32b */
-	    BOOLEAN         IsIsrThread;		       /* 170/32c */
-	    BOOLEAN         IsMainThread;		       /* 171/32d */
-	} Wdm;
-	struct {
+        struct {
+            ULONG_PTR       ServiceCap;                        /* 160/310 */
+            PVOID           CoroutineStackLow;                 /* 164/318 */
+            PVOID           CoroutineStackHigh;                /* 168/320 */
+            BOOLEAN         DpcQueued;                         /* 16c/328 */
+            BOOLEAN         IoWorkItemQueued;                  /* 16d/329 */
+            BOOLEAN         EventSignaled;                     /* 16e/32a */
+            BOOLEAN         IsDpcThread;                       /* 16f/32b */
+            BOOLEAN         IsIsrThread;                       /* 170/32c */
+            BOOLEAN         IsMainThread;                      /* 171/32d */
+        } Wdm;
+        struct {
             CLIENT_ID       RealClientId;                      /* 160/310 */
-	    PVOID           ThreadInfo;                        /* 168/320 */
-	    ULONG           ClientInfo[31];                    /* 1e8/328 (user32) */
+            PVOID           ThreadInfo;                        /* 168/320 */
+            ULONG           ClientInfo[31];                    /* 1e8/328 (user32) */
             ULONG           GuaranteedStackBytes;              /* 1ec/3a4 */
-	    PVOID           SystemReserved1[54];               /* 1f0/3b0 (kernel32) */
-	    UNICODE_STRING  StaticUnicodeString;               /* 2c8/560 (advapi32) */
-	    WCHAR           StaticUnicodeBuffer[261];          /* 2d0/570 (advapi32) */
-	} Win32;
+            PVOID           SystemReserved1[54];               /* 1f0/3b0 (kernel32) */
+            UNICODE_STRING  StaticUnicodeString;               /* 2c8/560 (advapi32) */
+            WCHAR           StaticUnicodeBuffer[261];          /* 2d0/570 (advapi32) */
+        } Win32;
     };
 } TEB, *PTEB;
 #include <poppack.h>

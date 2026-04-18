@@ -18,6 +18,17 @@ struct _CC_CACHE_MAP;
 struct _CC_CACHE_SPACE;
 
 /*
+ * Singleton timer object which client-side will multiplex. This object is
+ * different from the regular TIMER in the sense that driver timer expiry
+ * is delivered through DPC and therefore has higher accuracy.
+ */
+typedef struct _IO_TIMER {
+    CAP_TREE_NODE Notification;	/* Derived from the DPC notification cap */
+    LIST_ENTRY Link;  /* List entry for KiIoTimerList */
+    ABSOLUTE_COUNTER_TIME DueTime; /* The time stamp counter value at due time */
+} IO_TIMER, *PIO_TIMER;
+
+/*
  * Server-side object of the client side DRIVER_OBJECT.
  */
 typedef struct _IO_DRIVER_OBJECT {
@@ -25,12 +36,12 @@ typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverRegistryPath;
     AVL_NODE Node;	      /* Key is object address of driver process */
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
-    NOTIFICATION DpcNotification;	 /* DPC notification cap (in the process shared CNode) */
-    CAP_TREE_NODE TimerNotification;	 /* Derived from the DPC notification cap */
+    NOTIFICATION DpcNotification; /* DPC notification cap (in the process shared CNode) */
+    IO_TIMER IoTimer;		  /* Singleton timer object */
     CAP_TREE_NODE BugcheckNotification; /* Derived from the DPC notification cap */
+    IPC_ENDPOINT TimerServiceEndpoint; /* Derived from the timer service endpoint */
     struct _CC_CACHE_SPACE *CacheSpace; /* Non-NULL if the driver initialized cache support. */
     LIST_ENTRY IoPortList; /* List of all X86 IO ports enabled for this driver */
-    LIST_ENTRY IoTimerList;  /* List of all IO_TIMER of this driver. */
     LIST_ENTRY IoPacketQueue; /* IO packets queued on this driver object but has not
 			       * been processed yet. */
     LIST_ENTRY PendingIoPacketList; /* IO packets that have already been moved to driver
@@ -61,22 +72,6 @@ typedef struct _IO_DRIVER_OBJECT {
 			    * PsTerminateProcess to determine whether we should
 			    * dereference the driver object. */
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
-
-/*
- * Server-side object for the driver-client-side KTIMER. This object is
- * different from the regular TIMER in the sense that driver timer expiry
- * is delivered through DPC and therefore has higher accuracy.
- */
-typedef struct _IO_TIMER {
-    PIO_DRIVER_OBJECT DriverObject;
-    LIST_ENTRY DriverLink; /* List entry for IO_DRIVER_OBJECT::TimerList */
-    LIST_ENTRY QueueLink;  /* List entry for KiQueuedIoTimerList */
-    ULARGE_INTEGER DueTime;  /* Absolute due time in units of 100ns */
-    LONG Period;	     /* Periodicity of the timer */
-    BOOLEAN State;	     /* TRUE if timer is set */
-    BOOLEAN OneTime;	     /* TRUE if timer will be deleted after it is fired */
-    BOOLEAN Expired;	     /* TRUE if timer has expired */
-} IO_TIMER, *PIO_TIMER;
 
 /*
  * Server-side object of the client side DEVICE_OBJECT

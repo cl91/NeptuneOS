@@ -9,6 +9,20 @@
 static PSYSTEM_THREAD KiBugCheckThread;
 static IPC_ENDPOINT KiExecutiveThreadFaultHandler;
 
+NTSTATUS KeSetThreadPriority(IN MWORD ThreadCap,
+			     IN THREAD_PRIORITY Priority)
+{
+    assert(ThreadCap != 0);
+    int Error = seL4_TCB_SetPriority(ThreadCap, NTOS_TCB_CAP, Priority);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_SetPriority failed for thread cap 0x%zx with error %d\n",
+		 ThreadCap, Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
+}
+
 static VOID KiNotifyDrivers()
 {
     LoopOverList(Driver, &IoBugcheckNotificationList,
@@ -87,7 +101,7 @@ static VOID KiDumpExecutiveThreadFault(IN seL4_Fault_t Fault,
 		KiDbgGetFaultName(Fault));
     KiDbgDumpFault(Fault, DbgPrinter);
     THREAD_CONTEXT Context;
-    NTSTATUS Status = KeLoadThreadContext(seL4_CapInitThreadTCB, &Context);
+    NTSTATUS Status = KeLoadThreadContext(NTOS_TCB_CAP, &Context);
     if (!NT_SUCCESS(Status)) {
 	DbgPrinter("Unable to dump Executive thread context. Error 0x%08x\n", Status);
     }
@@ -128,7 +142,6 @@ static VOID KiBugCheckSystem()
 #endif
 	KiDumpExecutiveThreadFault(Fault, HalVgaPrint);
 	KiNotifyDrivers();
-	seL4_Yield();
     }
 }
 
@@ -150,6 +163,7 @@ static NTSTATUS KiSetThreadSpace(IN MWORD ThreadCap,
 
 NTSTATUS KiInitBugCheck()
 {
+    C_ASSERT((ULONG)BUGCHECK_LEVEL == seL4_MaxPrio);
     extern CNODE MiNtosCNode;
     KiBugCheckThread = (PSYSTEM_THREAD)ExAllocatePoolWithTag(sizeof(SYSTEM_THREAD),
 							     NTOS_KE_TAG);
@@ -158,8 +172,9 @@ NTSTATUS KiInitBugCheck()
     }
     RET_ERR(PsCreateSystemThread(KiBugCheckThread, "NTOS Bugcheck", KiBugCheckSystem, TRUE));
     RET_ERR(KeCreateEndpoint(&KiExecutiveThreadFaultHandler));
-    RET_ERR(KiSetThreadSpace(seL4_CapInitThreadTCB, KiExecutiveThreadFaultHandler.TreeNode.Cap,
+    RET_ERR(KiSetThreadSpace(NTOS_TCB_CAP, KiExecutiveThreadFaultHandler.TreeNode.Cap,
 			     &MiNtosCNode, seL4_CapInitThreadVSpace));
+    RET_ERR(PsSetSystemThreadPriority(KiBugCheckThread, BUGCHECK_LEVEL));
     RET_ERR(PsResumeSystemThread(KiBugCheckThread));
     return STATUS_SUCCESS;
 }

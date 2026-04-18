@@ -53,9 +53,7 @@ static VOID IopProcessDpcQueue()
 	IopAcquireDpcMutex();
 	goto check;
     done:
-	if (Badge & TIMER_NOTIFICATION_BADGE) {
-	    IopProcessTimerList();
-	}
+	IopProcessTimerList();
 	WdmNotifyMainThread();
     }
 }
@@ -80,7 +78,8 @@ VOID IopInitializeDpcThread()
 	NTSTATUS Status = WdmCreateDpcThread(IopProcessDpcQueue,
 					     &IopDpcThreadHandle,
 					     &IopDpcThreadWdmServiceCap,
-					     &IopDpcNotificationCap);
+					     &IopDpcNotificationCap,
+					     &KiTimerServiceCap);
 	if (!NT_SUCCESS(Status)) {
 	    RtlRaiseStatus(Status);
 	    return;

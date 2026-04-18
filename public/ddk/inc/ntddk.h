@@ -1419,7 +1419,7 @@ typedef struct POINTER_ALIGNMENT _KTIMER {
     };
     PIO_WORKITEM_ROUTINE WorkerRoutine;
     PVOID WorkerContext;
-    ULONGLONG AbsoluteDueTime;
+    ULONG64 DueTime;	 /* The timestamp counter value at due time */
     LONG Period;
     BOOLEAN State;
     BOOLEAN LowPriority;    /* If TRUE, the union is a PIO_WORKITEM */
@@ -1439,12 +1439,12 @@ NTAPI NTSYSAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,
 				    IN LONG Period,
 				    IN OPTIONAL PKDPC Dpc);
 
-NTAPI BOOLEAN KeSetLowPriorityTimer(IN OUT PKTIMER Timer,
-				    IN LARGE_INTEGER DueTime,
-				    IN LONG Period,
-				    IN PIO_WORKITEM WorkItem,
-				    IN PIO_WORKITEM_ROUTINE WorkerRoutine,
-				    IN OPTIONAL PVOID WorkerContext);
+NTAPI NTSYSAPI BOOLEAN KeSetLowPriorityTimer(IN OUT PKTIMER Timer,
+					     IN LARGE_INTEGER DueTime,
+					     IN LONG Period,
+					     IN PIO_WORKITEM WorkItem,
+					     IN PIO_WORKITEM_ROUTINE WorkerRoutine,
+					     IN OPTIONAL PVOID WorkerContext);
 
 NTAPI NTSYSAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer);
 

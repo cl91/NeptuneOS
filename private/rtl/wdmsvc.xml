@@ -83,17 +83,7 @@
     <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />
     <parameter annotation="out" type="ptr::MWORD" name="WdmServiceCap" />
     <parameter annotation="out" type="ptr::MWORD" name="DpcNotificationCap" />
-  </svc>
-
-  <svc name="WdmCreateTimer">
-    <parameter annotation="in" type="BOOLEAN" name="OneTime" />
-    <parameter annotation="out" type="ptr::GLOBAL_HANDLE" name="GlobalHandle" />
-  </svc>
-
-  <svc name="WdmSetTimer">
-    <parameter annotation="in" type="GLOBAL_HANDLE" name="GlobalHandle" />
-    <parameter annotation="in" type="ptr::ULARGE_INTEGER" name="AbsoluteDueTime" />
-    <parameter annotation="in" type="LONG" name="Period" />
+    <parameter annotation="out" type="ptr::MWORD" name="TimerServiceCap" />
   </svc>
 
   <svc name="WdmCreateCoroutineStack">

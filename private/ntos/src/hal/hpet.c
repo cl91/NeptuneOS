@@ -97,6 +97,7 @@ enum {
 
 extern ULONG HalpNumHpetTables;
 extern HAL_HPET HalpHpetTable[];
+static PHAL_HPET HalpSystemTimer;
 
 FORCEINLINE volatile ULONG64 *HalpHpetGetGeneralConfig(MWORD VirtBase)
 {
@@ -120,14 +121,9 @@ FORCEINLINE PHPET_MMIO_REGISTERS HalpHpetGetTimerRegisters(MWORD VirtBase,
 }
 
 /*
- * Enable the system timer and configure it to fire with the given period.
- * The specified period is in unit of 100ns.
- *
- * This routine assumes that the page at EX_DYN_VSPACE_START is unmapped.
- * It can only be called once, during system startup.
+ * Enable the system timer.
  */
-NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
-			IN ULONG64 Period)
+NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler)
 {
     for (ULONG i = 0; i < HalpNumHpetTables; i++) {
 	assert(!HalpHpetTable[i].SystemTimer);
@@ -149,11 +145,6 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	for (UCHAR j = 0; j < NumComparators; j++) {
 	    PHPET_MMIO_REGISTERS Timer = HalpHpetGetTimerRegisters(VirtBase, j);
 	    ULONG64 ConfigBits = Timer->Config;
-	    /* Skip the timer if it cannot be in periodic mode */
-	    if (!(ConfigBits & (1ULL << TN_PER_INT_CAP))) {
-		DbgTrace("Skipping HPET %d because it cannot be in periodic mode.\n", j);
-		continue;
-	    }
 	    /* Skip this timer if it is 32 bit */
 	    if (!(ConfigBits & (1ULL << TN_SIZE_CAP))) {
 		DbgTrace("Skipping HPET %d because it is 32-bit.\n", j);
@@ -244,32 +235,25 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 		    goto out;
 		}
 	    }
-	    /* Disable the main counter as we will be resetting it */
+	    /* Disable the main counter so it won't generate an IRQ unless we later
+	     * asks it to (in HalpSetHpet). */
 	    *HalpHpetGetGeneralConfig(VirtBase) &= ~(1ULL << ENABLE_CNF);
 	    /* Reset the main counter to zero */
 	    *HalpHpetGetMainCounter(VirtBase) = 0;
-	    /* Set the timer to periodic mode and edge-triggered. */
-	    Timer->Config |= (1ULL << TN_TYPE_CNF) | (1ULL << TN_VAL_SET_CNF) |
-		(1ULL << TN_INT_ENB_CNF);
-	    Timer->Config &= ~(1ULL << TN_INT_TYPE_CNF);
+	    /* Set the timer to non-periodic mode and edge-triggered. */
+	    Timer->Config &= ~((1ULL << TN_TYPE_CNF) | (1ULL << TN_INT_TYPE_CNF));
+	    Timer->Config |= (1ULL << TN_INT_ENB_CNF);
 	    COMPILER_MEMORY_RELEASE();
-	    /* Convert the period (in 100ns) to units of femtoseconds (1e-15s) */
-	    Period *= 100000000ULL;
-	    HalpHpetTable[i].Period = Period;
-	    /* Read the timer tick in units of femtoseconds (1e-15s) */
-	    HalpHpetTable[i].TimerTick = *HalpHpetGetCapId(VirtBase) >> 32;
-	    DbgTrace("Setting HPET period %llde-15s. Timer tick is %de-15s\n",
-		     HalpHpetTable[i].Period, HalpHpetTable[i].TimerTick);
-	    /* Convert the period to units of timer ticks */
-	    Period /= HalpHpetTable[i].TimerTick;
-	    /* Write the period to the comparator so interrupt will be generated
-	     * whenever the main counter hits a multiple of the period. */
-	    Timer->Comparator = Period;
-	    /* Enable the main counter */
-	    *HalpHpetGetGeneralConfig(VirtBase) |= 1ULL << ENABLE_CNF;
-	    MmUnmapIoSpace(VirtBase);
+	    /* Read the timer tick period in units of femtoseconds (1e-15s) */
+	    ULONG TimerTickPeriod = *HalpHpetGetCapId(VirtBase) >> 32;
+	    HalpHpetTable[i].Multiplier =
+		(100000000ULL << TIME_MULTIPLIER_SHIFT) / TimerTickPeriod;
+	    DbgTrace("HPET timer tick period is %de-15s (multiplier 0x%llx, shift %d)\n",
+		     TimerTickPeriod, HalpHpetTable[i].Multiplier, TIME_MULTIPLIER_SHIFT);
+	    HalpHpetTable[i].MappedBase = VirtBase;
 	    HalpHpetTable[i].SystemTimer = TRUE;
 	    HalpHpetTable[i].ComparatorId = j;
+	    HalpSystemTimer = HalpHpetTable + i;
 	    return STATUS_SUCCESS;
 	}
 	if (TryMsi) {
@@ -280,6 +264,31 @@ NTSTATUS HalpEnableHpet(OUT PIRQ_HANDLER IrqHandler,
 	MmUnmapIoSpace(VirtBase);
     }
     return STATUS_DEVICE_DOES_NOT_EXIST;
+}
+
+/*
+ * Program the HPET to generate an IRQ after the given relative due time (in 100ns).
+ */
+VOID HalpSetHpet(IN ULONG64 RelativeDueTime)
+{
+    /* Convert the due time to number of timer ticks */
+    RelativeDueTime = RtlMultiplyShift64(RelativeDueTime, HalpSystemTimer->Multiplier,
+					 TIME_MULTIPLIER_SHIFT);
+    if (!RelativeDueTime) {
+	RelativeDueTime = 1;
+    }
+    /* Disable the main counter so we can set it safely */
+    MWORD VirtBase = HalpSystemTimer->MappedBase;
+    *HalpHpetGetGeneralConfig(VirtBase) &= ~(1ULL << ENABLE_CNF);
+    /* Reset the main counter to zero */
+    *HalpHpetGetMainCounter(VirtBase) = 0;
+    /* Set the comparator to the number of timer ticks computed above so
+     * interrupt will be generated whenever the main counter hits that value. */
+    PHPET_MMIO_REGISTERS Timer = HalpHpetGetTimerRegisters(VirtBase,
+							   HalpSystemTimer->ComparatorId);
+    Timer->Comparator = RelativeDueTime;
+    /* Enable the main counter so it will fire at the given time */
+    *HalpHpetGetGeneralConfig(VirtBase) |= 1ULL << ENABLE_CNF;
 }
 
 #endif	/* defined(_M_AMD64) */

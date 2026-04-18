@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <image.h>
 #include <util.h>
+#include <timesvc.h>
 
 #define CDECL		__cdecl
 
@@ -34,6 +35,9 @@
 #define ROUND_UP(x, align)	ALIGN_UP_BY(x, align)
 
 #define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
+
+/* ke/time.c */
+VOID KiInitTime(VOID);
 
 /* rtl/exception.c */
 #if DBG

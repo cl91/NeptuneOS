@@ -197,7 +197,11 @@ static NTSTATUS MiRetypeIntoPagingStructure(PPAGING_STRUCTURE Page)
 
 static VOID MiFreePagingStructure(PPAGING_STRUCTURE Page)
 {
-    MiCapTreeRemoveFromParent(&Page->TreeNode);
+    if (Page->TreeNode.Cap) {
+	MmCapTreeDeleteNode(&Page->TreeNode);
+    } else {
+	MmUninitializeCapTreeNode(&Page->TreeNode);
+    }
     assert(AvlTreeIsEmpty(&Page->SubStructureTree));
     if (Page->SuperStructure) {
 	AvlTreeRemoveNode(&Page->SuperStructure->SubStructureTree, &Page->AvlNode);
@@ -525,15 +529,15 @@ static NTSTATUS MiCreateInitializedPage(IN PAGING_STRUCTURE_TYPE Type,
     /* Copy the data buffer into the new page */
     memcpy((PVOID)HyperspaceAddr, DataStart, DataSize);
 
-    /* Unmap the page and modify the paging structure to have the new parameters */
+    /* We need to save the page cap because MmUninitializeCapTreeNode zeros it. */
+    MWORD PageCap = Page->TreeNode.Cap;
+    /* Unmap the page and modify the paging structure to have the new parameters. */
     RET_ERR_EX(MiUnmapPagingStructure(Page), MiFreePagingStructure(Page));
-    /* This is necessary because MmCapTreeNodeSetParent requires empty parent */
-    MiCapTreeRemoveFromParent(&Page->TreeNode);
-    /* Detach the page cap node from its CNode because MmInitializeCapTreeNode
-     * requires so (see comments therein). */
-    MiRemoveNodeFromCNode(&Page->TreeNode);
+    /* We must call MmUninitializeCapTreeNode because MiInitializePagingStructure
+     * calls MmInitializeCapTreeNode */
+    MmUninitializeCapTreeNode(&Page->TreeNode);
     MiInitializePagingStructure(Page, &Untyped->TreeNode, ParentPaging, VSpaceCap,
-				Page->TreeNode.Cap, VirtAddr, Type, FALSE, Rights,
+				PageCap, VirtAddr, Type, FALSE, Rights,
 				Attributes);
 
     *pPaging = Page;

@@ -116,8 +116,10 @@ typedef struct _KUSER_SHARED_DATA {
     ULONG CryptoExponent;
     ULONG TimeZoneId;
     ULONG LargePageMinimum;
-    ULONGLONG TickTimeIncrement;
-    ULONG Reserved2[5];
+    ULONGLONG InitialSystemTime; /* System time at the time of booting */
+    ULONGLONG InitialTsc;	 /* TSC at the time of booting */
+    ULONG TscFrequencyInMHz;
+    volatile LONG TimeZoneBiasStamp;
     NT_PRODUCT_TYPE NtProductType;
     BOOLEAN ProductTypeIsValid;
     ULONG NtMajorVersion;

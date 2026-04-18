@@ -246,41 +246,6 @@ typedef struct _CNODE {
 C_ASSERT(PROCESS_SHARED_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
 C_ASSERT(THREAD_PRIVATE_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
 
-FORCEINLINE VOID MiCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
-					IN PCAP_TREE_NODE Parent)
-{
-    assert(Self != NULL);
-    assert(Self != Parent);
-    assert(Self->Parent == NULL);
-    Self->Parent = Parent;
-    if (Parent != NULL) {
-	InsertTailList(&Parent->ChildrenList, &Self->SiblingLink);
-    }
-}
-
-/*
- * You cannot call this routine on a cap tree node that has already been initialized,
- * unless you detach the node from its parent as well as its CNode prior to calling.
- */
-FORCEINLINE VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
-					 IN CAP_TREE_NODE_TYPE Type,
-					 IN MWORD Cap,
-					 IN PCNODE CSpace,
-					 IN OPTIONAL PCAP_TREE_NODE Parent)
-{
-    assert(Self != NULL);
-    assert(Cap < (1ULL << CSpace->Log2Size));
-    assert(!Self->CNode);
-    assert(!CSpace->Deleted);
-    Self->Type = Type;
-    Self->Cap = Cap;
-    Self->CNode = CSpace;
-    InitializeListHead(&Self->ChildrenList);
-    InitializeListHead(&Self->SiblingLink);
-    MiCapTreeNodeSetParent(Self, Parent);
-    InsertTailList(&CSpace->NodeList, &Self->CNodeLink);
-}
-
 /*
  * Get the depth of the CPtr traversal needed for a capability in the given
  * CNode. This equals the radix of the CNode plus its number of guard bits.
@@ -783,7 +748,6 @@ NTSTATUS MmAllocateCapRange(IN PCNODE CNode,
 			    IN LONG NumberRequested);
 VOID MmDeallocateCap(IN PCNODE CNode,
 		     IN MWORD Cap);
-VOID MmCapTreeDeallocateNode(IN PCAP_TREE_NODE Node);
 NTSTATUS MmCreateCNode(IN ULONG Log2Size,
 		       OUT PCNODE *pCNode);
 VOID MmDeleteCNode(IN PCNODE CNode);
@@ -805,6 +769,80 @@ FORCEINLINE NTSTATUS MmAllocateCap(IN PCNODE CNode,
 				   OUT MWORD *Cap)
 {
     return MmAllocateCapRange(CNode, Cap, 1);
+}
+
+FORCEINLINE VOID MiCapTreeNodeSetParent(IN PCAP_TREE_NODE Self,
+					IN PCAP_TREE_NODE Parent)
+{
+    assert(Self != NULL);
+    assert(Self != Parent);
+    assert(Self->Parent == NULL);
+    Self->Parent = Parent;
+    if (Parent != NULL) {
+	assert(!ListHasEntry(&Parent->ChildrenList, &Self->SiblingLink));
+	InsertTailList(&Parent->ChildrenList, &Self->SiblingLink);
+    }
+}
+
+/*
+ * If you are cleaning up a node manually (rather than calling MmCapTreeDeleteNode),
+ * you MUST call MmUninitializeCapTreeNode to detach the node from both its parent
+ * node and the CNode it has been inserted into.
+ *
+ * You cannot call MmInitializeCapTreeNode on a cap tree node that has already been
+ * initialized. You must call MmUninitializeCapTreeNode before doing so.
+ */
+FORCEINLINE VOID MmInitializeCapTreeNode(IN PCAP_TREE_NODE Self,
+					 IN CAP_TREE_NODE_TYPE Type,
+					 IN MWORD Cap,
+					 IN PCNODE CSpace,
+					 IN OPTIONAL PCAP_TREE_NODE Parent)
+{
+    assert(Self != NULL);
+    assert(Cap < (1ULL << CSpace->Log2Size));
+    assert(!Self->CNode);
+    assert(!CSpace->Deleted);
+    Self->Type = Type;
+    Self->Cap = Cap;
+    Self->CNode = CSpace;
+    InitializeListHead(&Self->ChildrenList);
+    InitializeListHead(&Self->SiblingLink);
+    MiCapTreeNodeSetParent(Self, Parent);
+    assert(!ListHasEntry(&CSpace->NodeList, &Self->CNodeLink));
+    InsertTailList(&CSpace->NodeList, &Self->CNodeLink);
+}
+
+static inline VOID MiCapTreeRemoveFromParent(IN PCAP_TREE_NODE Node)
+{
+    assert(Node->SiblingLink.Flink != NULL);
+    assert(Node->SiblingLink.Blink != NULL);
+    assert(!IsListEmpty(&Node->SiblingLink));
+    RemoveEntryList(&Node->SiblingLink);
+    Node->Parent = NULL;
+}
+
+static inline VOID MiRemoveNodeFromCNode(IN PCAP_TREE_NODE Node)
+{
+    assert(Node->CNode);
+    assert(ListHasEntry(&Node->CNode->NodeList, &Node->CNodeLink));
+    RemoveEntryList(&Node->CNodeLink);
+    InvalidateListEntry(&Node->CNodeLink);
+    if (Node->CNode->Deleted) {
+	MmDeleteCNode(Node->CNode);
+    }
+    Node->CNode = NULL;
+}
+
+static inline VOID MmUninitializeCapTreeNode(IN PCAP_TREE_NODE Node)
+{
+    if (Node->Parent) {
+	MiCapTreeRemoveFromParent(Node);
+    }
+    if (Node->CNode) {
+	MiRemoveNodeFromCNode(Node);
+    }
+    Node->Cap = 0;
+    Node->Badge = 0;
 }
 
 /* untyped.c */

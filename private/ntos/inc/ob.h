@@ -131,11 +131,12 @@ FORCEINLINE LONGLONG ObGetObjectRefCount(IN POBJECT Object)
  * below the start of ExPool.
  */
 typedef enum _SERVICE_TYPE {
+    SERVICE_TYPE_TIMER_NOTIFICATION, /* This must be zero as the timer
+				      * notification is unbadged. */
     SERVICE_TYPE_SYSTEM_SERVICE,
     SERVICE_TYPE_WDM_SERVICE,
     SERVICE_TYPE_FAULT_HANDLER,
     SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER,
-    SERVICE_TYPE_NOTIFICATION,
     NUM_SERVICE_TYPES
 } SERVICE_TYPE;
 

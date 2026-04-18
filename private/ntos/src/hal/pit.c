@@ -107,8 +107,7 @@ NTSTATUS HalpInitPit()
     return STATUS_SUCCESS;
 }
 
-NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
-		       IN ULONG64 Period)
+NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler)
 {
     ULONG TableIndex = 0;
     while (TableIndex < HalpNumInterruptSourceOverride) {
@@ -140,26 +139,6 @@ NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
 	return Status;
     }
     assert(Vector != ULONG_MAX);
-    /*
-     * Program the PIT for binary mode, periodic, low-high byte writing, and on channel 0
-     */
-    TIMER_CONTROL_PORT_REGISTER TimerControl = {
-	.BcdMode = FALSE,
-	.OperatingMode = PitOperatingMode2,
-	.AccessMode = PitAccessModeLowHigh,
-	.Channel = PitChannel0
-    };
-    assert(TimerControl.Bits == 0x34);
-    ULONG ReloadValue = Period * PIT_FREQUENCY / 10000000;
-    if (ReloadValue < 1) {
-	ReloadValue = 1;
-    }
-    if (ReloadValue > 0xFFFF) {
-	ReloadValue = 0xFFFF;
-    }
-    __outbyte(TIMER_CONTROL_PORT, TimerControl.Bits);
-    __outbyte(TIMER_CHANNEL0_DATA_PORT, ReloadValue & 0xFF);
-    __outbyte(TIMER_CHANNEL0_DATA_PORT, (ReloadValue >> 8) & 0xFF);
 
     IrqHandler->Irq = PitGlobalInterrupt;
     IrqHandler->Vector = Vector;
@@ -167,7 +146,37 @@ NTSTATUS HalpEnablePit(OUT PIRQ_HANDLER IrqHandler,
     IrqHandler->Config.Level = HalpInterruptSourceOverrideTable[TableIndex].LevelSensitive;
     IrqHandler->Config.Polarity = HalpInterruptSourceOverrideTable[TableIndex].ActiveLow;
     IrqHandler->Message = 0;
+
+    /* Program the timer to fire once, "immediately", so it won't fire again unless
+     * we ask it to. */
+    HalpSetPit(0);
     return STATUS_SUCCESS;
+}
+
+/*
+ * Program the PIT to generate an IRQ after the given relative due time (in 100ns).
+ */
+VOID HalpSetPit(IN ULONG64 RelativeDueTime)
+{
+    TIMER_CONTROL_PORT_REGISTER TimerControl = {
+	.BcdMode = FALSE,
+	.OperatingMode = PitOperatingMode0,
+	.AccessMode = PitAccessModeLowHigh,
+	.Channel = PitChannel0
+    };
+    assert(TimerControl.Bits == 0x30);
+    ULONG ReloadValue = RtlMultiplyShift64(RelativeDueTime, PIT_MULTIPLIER,
+					   TIME_MULTIPLIER_SHIFT);
+    if (ReloadValue < 1) {
+	ReloadValue = 1;
+    }
+    if (ReloadValue > 0xFFFF) {
+	DbgTrace("Reload value overflow, setting 0x%X to 0xFFFF\n", ReloadValue);
+	ReloadValue = 0xFFFF;
+    }
+    __outbyte(TIMER_CONTROL_PORT, TimerControl.Bits);
+    __outbyte(TIMER_CHANNEL0_DATA_PORT, ReloadValue & 0xFF);
+    __outbyte(TIMER_CHANNEL0_DATA_PORT, (ReloadValue >> 8) & 0xFF);
 }
 
 #else

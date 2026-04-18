@@ -3,6 +3,7 @@
 #if defined(_M_IX86) || defined(_M_AMD64)
 
 static LIST_ENTRY HalpX86IoPortList;
+static BOOLEAN HalpHpetEnabled;
 
 NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count)
 {
@@ -63,19 +64,35 @@ VOID __outbyte(IN USHORT PortNum,
     }
 }
 
-NTSTATUS HalEnableSystemTimer(OUT PIRQ_HANDLER IrqHandler,
-			      IN ULONG64 Period)
+NTSTATUS HalEnableSystemTimer(OUT PIRQ_HANDLER IrqHandler)
 {
 #ifdef _M_AMD64
     /* On amd64, we try HPET first and if that fails, try PIT.
      * On i386 we always use PIT because we always use 64-bit timers
      * for HPET, and 32-bit processors have memory ordering issues
      * setting up these 64-bit timers. */
-    if (NT_SUCCESS(HalpEnableHpet(IrqHandler, Period))) {
+    if (NT_SUCCESS(HalpEnableHpet(IrqHandler))) {
+	HalpHpetEnabled = TRUE;
+	/* Program the PIT to fire once, "immediately", so it won't fire again
+	 * ever. This effectively disables the PIT. */
+	HalpSetPit(0);
 	return STATUS_SUCCESS;
     }
 #endif
-    return HalpEnablePit(IrqHandler, Period);
+    return HalpEnablePit(IrqHandler);
+}
+
+VOID HalSetSystemTimer(ULONG64 RelativeDueTimeIn100ns)
+{
+#ifdef _M_AMD64
+    if (HalpHpetEnabled) {
+	HalpSetHpet(RelativeDueTimeIn100ns);
+    } else {
+#endif
+	HalpSetPit(RelativeDueTimeIn100ns);
+#ifdef _M_AMD64
+    }
+#endif
 }
 
 #endif	/* defined(_M_IX86) || defined(_M_AMD64) */
