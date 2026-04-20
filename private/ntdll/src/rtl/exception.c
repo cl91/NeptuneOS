@@ -253,6 +253,9 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	PULONG_PTR Frame = (PULONG_PTR)ContextRecord->Ebp;
 
 	for (UINT i = 0; i < 16; i++) {
+	    if (!RtlpIsStackPtrOk(Frame)) {
+		break;
+	    }
 	    if (Frame[1] == 0) {
 		DbgPrinter("   <invalid address>\n");
 	    } else {
