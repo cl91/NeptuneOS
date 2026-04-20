@@ -9,9 +9,8 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
     assert(Thread->InitInfo.StackTop);
     assert(Context != NULL);
     MWORD TibClientAddr = Thread->IpcBufferClientAddr + NT_TIB_OFFSET;
-    Context->_FASTCALL_FIRST_PARAM = TibClientAddr;
     Context->eip = Thread->Process->UserExceptionDispatcher;
-    Context->esp = Thread->InitInfo.StackTop;
+    Context->esp = Thread->InitInfo.StackTop - GCC_STACK_ALIGNMENT;
     Context->ebp = Thread->InitInfo.StackTop;
     Context->fs_base = TibClientAddr;
 }
@@ -30,7 +29,7 @@ VOID PspInitializeSystemThreadContext(IN PSYSTEM_THREAD Thread,
      * instruction and that the stack is 16-byte aligned before such an
      * instruction (leaving it 16-byte aligned + 1 word from the
      * implicit push when the function is entered). */
-    PPVOID StackTop = (PPVOID)(Thread->StackTop - 16);
+    PPVOID StackTop = (PPVOID)(Thread->StackTop - GCC_STACK_ALIGNMENT);
     StackTop[1] = EntryPoint;
     StackTop[0] = Thread->IpcBuffer;
     /* Set the return address to NULL since PspSystemThreadStartup never returns */

@@ -1,7 +1,7 @@
 #include <ntdll.h>
 
-VOID KiDispatchUserException(IN PEXCEPTION_RECORD ExceptionRecord,
-			     IN PCONTEXT Context)
+VOID KiDispatchUserException(IN PCONTEXT Context,
+			     IN PEXCEPTION_RECORD ExceptionRecord)
 {
     DbgTrace("ExceptionRecord %p Context %p\n", ExceptionRecord, Context);
     while (1) ;

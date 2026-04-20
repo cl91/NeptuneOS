@@ -21,5 +21,5 @@ FORCEINLINE VOID RtlRaiseStatus(NTSTATUS Status)
 #define RtlFreeHeap(...)
 
 /* except.c */
-VOID KiDispatchUserException(IN PEXCEPTION_RECORD ExceptionRecord,
-			     IN PCONTEXT Context);
+VOID KiDispatchUserException(IN PCONTEXT Context,
+			     IN PEXCEPTION_RECORD ExceptionRecord);

@@ -3,10 +3,9 @@
 _start:
     /*
      * SysV abi passes the first two parameters in rdi and rsi
-     * MSCV uses rcx and rdx, so fix this up before we call the C entry point
      */
-    mov %rcx, %rdi
-    mov %rdx, %rsi
+    mov (%rsp), %rdi
+    mov 8(%rsp), %rsi
     call LdrInitializeThunk
 
     /* Should not return. */

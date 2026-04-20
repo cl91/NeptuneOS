@@ -9,9 +9,8 @@ VOID PspInitializeThreadContext(IN PTHREAD Thread,
     assert(Thread->InitInfo.StackTop);
     assert(Context != NULL);
     MWORD TibClientAddr = Thread->IpcBufferClientAddr + NT_TIB_OFFSET;
-    Context->_FASTCALL_FIRST_PARAM = TibClientAddr;
     Context->pc = Thread->Process->UserExceptionDispatcher;
-    Context->sp = Thread->InitInfo.StackTop;
+    Context->sp = Thread->InitInfo.StackTop - GCC_STACK_ALIGNMENT;
     Context->x29 = Thread->InitInfo.StackTop;
     Context->x18 = TibClientAddr;
 }

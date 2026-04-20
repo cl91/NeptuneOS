@@ -848,7 +848,7 @@ static NTSTATUS LdrpInitializeThread()
  * of IpcBuffer. Likewise, on thread startup, NTDLL_THREAD_INIT_INFO is
  * placed at the beginning of IpcBuffer.
  */
-FASTCALL VOID LdrpInitialize(PNT_TIB NtTib)
+VOID LdrpInitialize(PNT_TIB NtTib)
 {
     NtTib->Self = NtTib;
     PTHREAD_START_ROUTINE EntryPoint = NULL;

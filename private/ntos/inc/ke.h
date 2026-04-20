@@ -12,6 +12,10 @@
 /* Size of the TLS section of the NTOS root task image */
 #define NTOS_TLS_AREA_SIZE		(64)
 
+/* GCC assumes that stack is always 16-byte aligned before calling a function
+ * (before the return address is pushed onto the stack). Do not change this. */
+#define GCC_STACK_ALIGNMENT		(16)
+
 struct _THREAD;
 struct _SYSTEM_THREAD;
 

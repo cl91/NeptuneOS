@@ -2,14 +2,10 @@
 .global _start
 _start:
     /*
-     * %ecx : Argument0
-     * %edx : Argument1
-     * cdecl pushes arguments from right to left (rightmost is pushed first)
-     * gcc requires stack to be 16-byte aligned before the call
+     * The server sets up the correct stack alignment and pushes the
+     * parameters before this entry point is entered, so we simply
+     * call the C language entry point.
      */
-    sub  $0x8, %esp
-    push %edx
-    push %ecx
     call LdrInitializeThunk
 
     /* Should not return. */

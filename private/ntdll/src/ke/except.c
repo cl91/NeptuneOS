@@ -1,9 +1,9 @@
 #include <ntdll.h>
 
-FASTCALL VOID KiDispatchUserException(IN PEXCEPTION_RECORD ExceptionRecord,
-				      IN PCONTEXT Context)
+VOID KiDispatchUserException(IN PCONTEXT Context,
+			     IN PEXCEPTION_RECORD ExceptionRecord)
 {
-    DbgTrace("ExceptionRecord %p Context %p\n", ExceptionRecord, Context);
+    DbgTrace("Context %p ExceptionRecord %p\n", Context, ExceptionRecord);
     /* NTDLL is compiled with SIMD enabled so we might modify FPU registers
      * when handling an exception. Therefore the user space entry point saves
      * the FPU state before calling us. Mark the context as so.  */
@@ -53,7 +53,7 @@ NTAPI NTSTATUS NtRaiseException(IN PEXCEPTION_RECORD ExceptionRecord,
     if (FirstChance) {
 	/* This should never return. If it did, we fall through
 	 * and terminate the process. */
-	KiDispatchUserException(ExceptionRecord, Context);
+	KiDispatchUserException(Context, ExceptionRecord);
     }
 
     EXCEPTION_POINTERS ExceptionInfo = {

@@ -5,11 +5,20 @@
 .global LdrInitializeThunk
 .seh_proc LdrInitializeThunk
 LdrInitializeThunk:
+    /* Make sure we start with a valid rbp */
+    mov %rsp, %rbp
+
+    /* The server pushes two machine words (for the two parameters)
+     * before this is entered. */
+    .seh_stackalloc 0x10
+
     /*
      * This entry point serves both as the initial entry point for a
      * thread and as the entry point for an exception. The latter case
      * is distinguished by the second parameter being non-zero.
-     */
+    */
+    mov (%rsp), %rcx
+    mov 8(%rsp), %rdx
     test %rdx, %rdx
     jnz KiUserExceptionDispatcher
 
@@ -65,12 +74,7 @@ KiUserExceptionDispatcher:
     /* Capture the floating point context. The server does not modify any
      * FPU state when dispatching exceptions, so what we capture here is
      * what the program sees when the exception happens. */
-    mov %rcx, %rax
-    mov %rdx, %rcx
-    /* RtlpSaveFpuContext does not modify any registers, so there is no need
-     * to save any registers other than rcx */
     call RtlpSaveFpuContext
-    mov %rax, %rcx
     call KiDispatchUserException
     /* This should never return. If it did, just loop forever */
 1:  jmp 1b

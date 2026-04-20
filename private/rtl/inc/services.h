@@ -126,31 +126,22 @@ C_ASSERT(sizeof(KUSER_SHARED_DATA) < PAGE_SIZE);
 #define INSTRUCTION_POINTER	Eip
 #define STACK_POINTER		Esp
 #define FASTCALL_FIRST_PARAM	Ecx
-#define FASTCALL_SECOND_PARAM	Edx
 #define _INSTRUCTION_POINTER	eip
 #define _STACK_POINTER		esp
-#define _FASTCALL_FIRST_PARAM	ecx
-#define _FASTCALL_SECOND_PARAM	edx
 #elif defined(_M_AMD64)
 #define RETURN_VALUE		Rax
 #define INSTRUCTION_POINTER	Rip
 #define STACK_POINTER		Rsp
 #define FASTCALL_FIRST_PARAM	Rcx
-#define FASTCALL_SECOND_PARAM	Rdx
 #define _INSTRUCTION_POINTER	rip
 #define _STACK_POINTER		rsp
-#define _FASTCALL_FIRST_PARAM	rcx
-#define _FASTCALL_SECOND_PARAM	rdx
 #elif defined(_M_ARM64)
 #define RETURN_VALUE		X0
 #define INSTRUCTION_POINTER	Pc
 #define STACK_POINTER		Sp
 #define FASTCALL_FIRST_PARAM	X0
-#define FASTCALL_SECOND_PARAM	X1
 #define _INSTRUCTION_POINTER	pc
 #define _STACK_POINTER		sp
-#define _FASTCALL_FIRST_PARAM	x0
-#define _FASTCALL_SECOND_PARAM	x1
 #else
 #error "Unsupported architecture"
 #endif

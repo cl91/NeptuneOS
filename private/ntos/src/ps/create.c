@@ -363,6 +363,9 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     if (Ctx->InitialTeb &&
 	(!Ctx->InitialTeb->StackBase || !Ctx->InitialTeb->StackLimit ||
 	 !Ctx->InitialTeb->AllocatedStackBase ||
+	 !IS_PAGE_ALIGNED(Ctx->InitialTeb->AllocatedStackBase) ||
+	 !IS_PAGE_ALIGNED(Ctx->InitialTeb->StackBase) ||
+	 !IS_PAGE_ALIGNED(Ctx->InitialTeb->StackLimit) ||
 	 /* Stack reserve must be at least stack commit */
 	 Ctx->InitialTeb->AllocatedStackBase > Ctx->InitialTeb->StackLimit ||
 	 /* Stack commitment cannot be zero */
@@ -434,7 +437,13 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     if (Ctx->InitialTeb == NULL) {
 	PIMAGE_SECTION_OBJECT ImageSectionObject = Process->ImageSection->ImageSectionObject;
 	ULONG StackReserve = ImageSectionObject->ImageInformation.MaximumStackSize;
+	if (StackReserve < PAGE_SIZE) {
+	    StackReserve = PAGE_SIZE;
+	}
 	ULONG StackCommit = ImageSectionObject->ImageInformation.CommittedStackSize;
+	if (StackCommit < PAGE_SIZE) {
+	    StackCommit = PAGE_SIZE;
+	}
 	if (StackCommit > StackReserve) {
 	    StackCommit = StackReserve;
 	}
@@ -503,6 +512,17 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	/* Populate the thread init info used by ntdll on process startup */
 	*((PNTDLL_THREAD_INIT_INFO)Thread->IpcBufferServerAddr) = Thread->InitInfo;
     }
+
+    /* Map the stack top and write the parameter for LdrInitializeThunk. */
+    MWORD *Params = NULL;
+    RET_ERR(MmTryCommitWindowRW(&Process->VSpace,
+				Thread->InitInfo.StackTop - PAGE_SIZE, PAGE_SIZE));
+    RET_ERR(MmMapUserBuffer(&Process->VSpace, Thread->InitInfo.StackTop - GCC_STACK_ALIGNMENT,
+			    GCC_STACK_ALIGNMENT, (PPVOID)&Params));
+    assert(Params);
+    RtlZeroMemory(Params, GCC_STACK_ALIGNMENT);
+    Params[0] = Thread->IpcBufferClientAddr + NT_TIB_OFFSET;
+    MmUnmapServerRegion((MWORD)Params);
 
     if (!Ctx->CreateSuspended) {
 	RET_ERR(PspResumeThread(Thread->TreeNode.Cap));

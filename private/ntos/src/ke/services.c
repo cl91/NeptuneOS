@@ -1,9 +1,5 @@
 #include "ki.h"
 
-/* GCC assumes that stack is always 16-byte aligned before calling a function
- * (before the return address is pushed onto the stack). Do not change this. */
-#define GCC_STACK_ALIGNMENT		(16)
-
 #ifdef _M_IX86
 #define REDZONE_SIZE	(0)
 #elif defined(_M_AMD64)
@@ -781,7 +777,7 @@ NTSTATUS KeDispatchUserException(IN PTHREAD Thread,
     /* In addition to the CONTEXT and EXCEPTION_RECORD we also include the minimal stack
      * space needed to handle an exception and the redzone required by the ABI(s). */
     MWORD MinFreeUserStack = ContextSize + ExceptionRecordSize +
-	MIN_USER_EXCEPTION_STACK + REDZONE_SIZE;
+	MIN_USER_EXCEPTION_STACK + REDZONE_SIZE + GCC_STACK_ALIGNMENT;
 
     /* Check if the user stack is valid and has enough space. If ok,
      * map the user stack into server address space so we can copy the
@@ -815,22 +811,19 @@ NTSTATUS KeDispatchUserException(IN PTHREAD Thread,
     /*
      * The stack organization is as follows (left is lower address):
      *
-     * |------------------------|------------------------|---------|
-     * |MIN_USER_EXCEPTION_STACK|CONTEXT|EXCEPTION_RECORD| REDZONE |
-     * |------------------------|------------------------|---------|
-     * ^                        ^                                  ^
-     * ^                        NewStackPointer                    AlignedStackPointer
+     * |------------------------|--------|----------|-------|-------|----------------|---------|
+     * |MIN_USER_EXCEPTION_STACK|PCONTEXT|PEXCEPTION|PADDING|CONTEXT|EXCEPTION_RECORD| REDZONE |
+     * |------------------------|--------|----------|-------|-------|----------------|---------|
+     * ^                        ^                                                              ^
+     * ^                        NewStackPointer                              AlignedStackPointer
      * ^
      * MappedUserStack (in server address space)
-     *
-     * Pointer to ExceptionRecord is passed via FASTCALL_FIRST_PARAM (ecx/rcx).
-     * Pointer to Context is passed via FASTCALL_SECOND_PARAM (edx/rdx).
      */
-    PCONTEXT UserContext = (PCONTEXT)(MappedUserStack + MIN_USER_EXCEPTION_STACK);
+    MWORD *Params = (PVOID)(MappedUserStack + MIN_USER_EXCEPTION_STACK);
+    PCONTEXT UserContext = (PVOID)((MWORD)Params + GCC_STACK_ALIGNMENT);
     memset(UserContext, 0, ContextSize + ExceptionRecordSize);
     KiPopulateUserExceptionContext(UserContext, &Context);
-    PEXCEPTION_RECORD ExceptionRecord = (PEXCEPTION_RECORD)
-	(MappedUserStack + MIN_USER_EXCEPTION_STACK + ContextSize);
+    PEXCEPTION_RECORD ExceptionRecord = (PVOID)((MWORD)UserContext + ContextSize);
     ExceptionRecord->ExceptionCode = ExceptionCode;
     ExceptionRecord->ExceptionAddress = (PVOID)ExceptionAddress;
     ExceptionRecord->NumberParameters = NumberOfParameters;
@@ -838,18 +831,18 @@ NTSTATUS KeDispatchUserException(IN PTHREAD Thread,
 	ExceptionRecord->ExceptionInformation[i] = ExceptionParameters[i];
     }
 
-    /* Set the thread context to dispatch to KiUserExceptionDispatcher */
+    /* Set the thread context to dispatch to KiUserExceptionDispatcher. */
     MWORD NewStackPointer = AlignedStackPointer - ExceptionRecordSize -
-	ContextSize - REDZONE_SIZE;
-    Context._FASTCALL_FIRST_PARAM = AlignedStackPointer - REDZONE_SIZE - ExceptionRecordSize;
-    Context._FASTCALL_SECOND_PARAM = NewStackPointer;
+	ContextSize - REDZONE_SIZE - GCC_STACK_ALIGNMENT;
+    Params[0] = NewStackPointer + GCC_STACK_ALIGNMENT;
+    Params[1] = AlignedStackPointer - REDZONE_SIZE - ExceptionRecordSize;
+    MmUnmapUserBuffer(MappedUserStack);
     Context._STACK_POINTER = NewStackPointer;
     Context._INSTRUCTION_POINTER = Thread->Process->UserExceptionDispatcher;
-    RET_ERR_EX(KeSetThreadContext(Thread->TreeNode.Cap, &Context),
-	       MmUnmapUserBuffer(MappedUserStack));
-    MmUnmapUserBuffer(MappedUserStack);
-    DbgTrace("Dispatched thread %s to client address %p\n",
+    RET_ERR(KeSetThreadContext(Thread->TreeNode.Cap, &Context));
+    DbgTrace("Dispatched thread %s to client address %p with context:\n",
 	     Thread->DebugName, (PVOID)Thread->Process->UserExceptionDispatcher);
+    KiDumpThreadContext(&Context, DbgPrint);
     PsResumeThread(Thread);
     return STATUS_SUCCESS;
 }
@@ -957,7 +950,12 @@ static VOID KiHandleThreadFault(IN PTHREAD Thread,
 {
     assert(Thread != NULL);
 
-    NTSTATUS Status = STATUS_UNSUCCESSFUL;
+    ULONG ExceptionCode = 0;
+    MWORD ExceptionAddress = 0;
+    ULONG NumberParameters = 0;
+    MWORD ExceptionParameter = 0;
+    THREAD_CONTEXT Context = {};
+    NTSTATUS Status;
     switch (seL4_Fault_get_seL4_FaultType(Fault)) {
     case seL4_Fault_VMFault:
 	/* Call the MM page fault handler to try to handle the page fault.
@@ -969,32 +967,33 @@ static VOID KiHandleThreadFault(IN PTHREAD Thread,
 			      seL4_Fault_VMFault_get_FSR(Fault));
 	return;
     case seL4_Fault_UserException:
-    {
-	ULONG ExceptionCode = seL4_Fault_UserException_get_Number(Fault);
-	MWORD ExceptionAddress = seL4_Fault_UserException_get_FaultIP(Fault);
-	MWORD ExceptionParameter = seL4_Fault_UserException_get_Code(Fault);
+	ExceptionCode = seL4_Fault_UserException_get_Number(Fault);
+	ExceptionAddress = seL4_Fault_UserException_get_FaultIP(Fault);
+	NumberParameters = 1;
+	ExceptionParameter = seL4_Fault_UserException_get_Code(Fault);
 	ExceptionCode = KiConvertExceptionCode(ExceptionCode, Thread, ExceptionAddress);
-	Status = KeDispatchUserException(Thread, ExceptionCode,
-					 ExceptionAddress, 1, &ExceptionParameter);
-	if (!NT_SUCCESS(Status)) {
-	    goto err;
-	} else {
-	    return;
-	}
-    }
-    /* Anything other than user exception or vm fault will simply
-     * terminate the thread. */
-    case seL4_Fault_CapFault:
-	Status = STATUS_INVALID_HANDLE;
 	break;
+    case seL4_Fault_CapFault:
+	ExceptionCode = STATUS_INVALID_SYSTEM_SERVICE;
+	goto ctx;
     case seL4_Fault_UnknownSyscall:
-	Status = STATUS_INVALID_SYSTEM_SERVICE;
+	ExceptionCode = STATUS_INVALID_SYSTEM_SERVICE;
+    ctx:
+	IF_ERR_GOTO(fail, Status, KeLoadThreadContext(Thread->TreeNode.Cap, &Context));
+	ExceptionAddress = Context._INSTRUCTION_POINTER;
 	break;
     default:
-	break;
+	Status = STATUS_UNSUCCESSFUL;
+	goto fail;
     }
-err:
-    /* The fault cannot be handled. Print a message and terminate the thread. */
+
+    Status = KeDispatchUserException(Thread, ExceptionCode, ExceptionAddress,
+				     NumberParameters, &ExceptionParameter);
+    if (NT_SUCCESS(Status)) {
+	return;
+    }
+fail:
+    /* SEH dispatch failed. Print a message and terminate the thread. */
     KiDumpThreadFault(Fault, Thread, TRUE, HalVgaPrint);
     PsTerminateThread(Thread, Status);
 }
