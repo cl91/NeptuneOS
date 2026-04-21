@@ -290,6 +290,11 @@ NTAPI PDEVICE_OBJECT IoAttachDeviceToDeviceStack(IN PDEVICE_OBJECT SourceDevice,
     } else {
 	IopFreePool(OldTopDevice);
     }
+    /* Note here in both cases we want to increase the refcount of the lower device.
+     * IoDetachDevice will deref this device object, but it will not delete it, unless
+     * the lower driver has exited/crashed, or explicitly deleted the lower device via
+     * IoDeleteDevice. */
+    ObReferenceObject(RetVal);
     SourceDevice->StackSize = StackSize + 1;
     return RetVal;
 }
@@ -332,6 +337,8 @@ NTAPI PDEVICE_OBJECT IoGetAttachedDeviceReference(IN PDEVICE_OBJECT DeviceObject
 NTAPI VOID IoDetachDevice(IN PDEVICE_OBJECT TargetDevice)
 {
     PAGED_CODE();
+
+    ObDereferenceObject(TargetDevice);
 
     UNIMPLEMENTED;
 }
