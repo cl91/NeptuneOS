@@ -5,16 +5,21 @@ static volatile long LdrpLoaderLockAcquisitionCount;
 static inline BOOLEAN LdrpCheckModuleAddress(IN PLDR_DATA_TABLE_ENTRY Entry,
 					     PVOID Address)
 {
-    PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(Entry->DllBase);
-    if (NtHeader) {
-	/* Get the Image Base */
-	ULONG_PTR DllBase = (ULONG_PTR) Entry->DllBase;
-	ULONG_PTR DllEnd = DllBase + NtHeader->OptionalHeader.SizeOfImage;
+    if (Entry->Flags & LDRP_IMAGE_ELF) {
+	return (ULONG_PTR)Address >= (ULONG_PTR)Entry->DllBase &&
+	    ((ULONG_PTR)Address < (ULONG_PTR)Entry->DllBase + Entry->SizeOfImage);
+    } else {
+	PIMAGE_NT_HEADERS NtHeader = RtlImageNtHeader(Entry->DllBase);
+	if (NtHeader) {
+	    /* Get the Image Base */
+	    ULONG_PTR DllBase = (ULONG_PTR) Entry->DllBase;
+	    ULONG_PTR DllEnd = DllBase + NtHeader->OptionalHeader.SizeOfImage;
 
-	/* Check if they match */
-	return ((ULONG_PTR)Address >= DllBase) && ((ULONG_PTR)Address < DllEnd);
+	    /* Check if they match */
+	    return ((ULONG_PTR)Address >= DllBase) && ((ULONG_PTR)Address < DllEnd);
+	}
+	return FALSE;
     }
-    return FALSE;
 }
 
 FORCEINLINE ULONG_PTR LdrpMakeCookie(VOID)
@@ -304,4 +309,66 @@ NTAPI NTSTATUS LdrUnloadDll(IN PVOID BaseAddress)
 {
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
+}
+
+static NTSTATUS LdrpRegisterElfModule(IN PVOID BaseAddress,
+				      IN PVOID EntryPoint,
+				      IN ULONG SizeOfImage,
+				      IN OPTIONAL PCUNICODE_STRING ModulePath,
+				      IN OPTIONAL PCSTR BaseName)
+{
+    if (!BaseAddress || !SizeOfImage) {
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    PLDR_DATA_TABLE_ENTRY Entry = RtlAllocateHeap(LdrpHeap,
+						  HEAP_ZERO_MEMORY,
+						  sizeof(LDR_DATA_TABLE_ENTRY));
+    if (!Entry) {
+	return STATUS_NO_MEMORY;
+    }
+    NTSTATUS Status;
+    if (ModulePath) {
+	IF_ERR_GOTO(err, Status,
+		    RtlDuplicateUnicodeString(RTL_DUPLICATE_UNICODE_STRING_NULL_TERMINATE,
+					      ModulePath, &Entry->FullDllName));
+	LdrpSetBaseDllName(&Entry->FullDllName, &Entry->BaseDllName);
+    } else if (BaseName) {
+	IF_ERR_GOTO(err, Status, LdrpUtf8ToUnicodeString(BaseName, &Entry->FullDllName));
+	Entry->BaseDllName = Entry->FullDllName;
+    } else {
+	Status = STATUS_INVALID_PARAMETER;
+	goto err;
+    }
+
+    Entry->DllBase = BaseAddress;
+    Entry->EntryPoint = EntryPoint;
+    Entry->SizeOfImage = SizeOfImage;
+    Entry->Flags = LDRP_IMAGE_ELF;
+    InsertTailList(&NtCurrentPeb()->LdrData->InInitializationOrderModuleList,
+                   &Entry->InInitializationOrderLinks);
+    LdrpInsertMemoryTableEntry(Entry, BaseName);
+    return STATUS_SUCCESS;
+
+err:
+    if (Entry->FullDllName.Buffer) {
+	RtlFreeUnicodeString(&Entry->FullDllName);
+    }
+    RtlFreeHeap(LdrpHeap, 0, Entry);
+    return Status;
+}
+
+NTAPI NTSTATUS LdrRegisterElfModule(IN PVOID BaseAddress,
+				    IN PVOID EntryPoint,
+				    IN ULONG SizeOfImage,
+				    IN OPTIONAL PCUNICODE_STRING ModulePath,
+				    IN OPTIONAL PCSTR BaseName)
+{
+    ULONG_PTR Cookie;
+    LdrLockLoaderLock(LDR_LOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS, NULL, &Cookie);
+
+    NTSTATUS Status = LdrpRegisterElfModule(BaseAddress, EntryPoint, SizeOfImage,
+					    ModulePath, BaseName);
+    LdrUnlockLoaderLock(LDR_UNLOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS, Cookie);
+    return Status;
 }

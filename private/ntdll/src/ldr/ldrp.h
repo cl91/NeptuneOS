@@ -27,12 +27,28 @@ static inline VOID LdrpFreeUnicodeString(IN UNICODE_STRING String)
     return RtlpFreeUnicodeString(LdrpHeap, String);
 }
 
+/* Scan the FullDllName and find the base file name. */
+static inline VOID LdrpSetBaseDllName(IN PUNICODE_STRING FullDllName,
+				      OUT PUNICODE_STRING BaseDllName)
+{
+    ULONG BaseNameStart = 0;
+    for (LONG i = FullDllName->Length / sizeof(WCHAR); i > 0; i--) {
+	if (FullDllName->Buffer[i-1] == '\\') {
+	    BaseNameStart = i;
+	    break;
+	}
+    }
+    BaseDllName->Buffer = &FullDllName->Buffer[BaseNameStart];
+    BaseDllName->Length = FullDllName->Length - BaseNameStart * sizeof(WCHAR);
+    BaseDllName->MaximumLength = BaseDllName->Length;
+}
+
 /* nlsdata.c */
 extern UCHAR LdrpUnicodeCaseTableData[];
 
 /* dll.c */
 VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
-				IN PCSTR BaseDllName);
+				IN OPTIONAL PCSTR BaseDllName);
 PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress);
 BOOLEAN LdrpCheckForLoadedDll(IN PCSTR DllName,
 			      OUT OPTIONAL PLDR_DATA_TABLE_ENTRY *LdrEntry);

@@ -84,6 +84,7 @@
 @ stdcall LdrUnloadDll(ptr)
 @ stdcall LdrLockLoaderLock(long ptr ptr)
 @ stdcall LdrUnlockLoaderLock(long ptr)
+@ stdcall LdrRegisterElfModule(ptr ptr long ptr str)
 @ stdcall DbgBreakPoint()
 @ varargs DbgPrint(str)
 @ varargs DbgPrintEx(long long str)

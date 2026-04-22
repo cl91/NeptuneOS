@@ -30,12 +30,14 @@ PLDR_DATA_TABLE_ENTRY LdrpAllocateDataTableEntry(IN PVOID BaseAddress)
 }
 
 VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
-				IN PCSTR BaseDllName)
+				IN OPTIONAL PCSTR BaseDllName)
 {
     PPEB_LDR_DATA PebData = NtCurrentPeb()->LdrData;
 
-    ULONG i = LDRP_GET_HASH_ENTRY(BaseDllName);
-    InsertTailList(&LdrpHashTable[i], &LdrEntry->HashLinks);
+    if (BaseDllName) {
+	ULONG i = LDRP_GET_HASH_ENTRY(BaseDllName);
+	InsertTailList(&LdrpHashTable[i], &LdrEntry->HashLinks);
+    }
 
     InsertTailList(&PebData->InLoadOrderModuleList, &LdrEntry->InLoadOrderLinks);
 
@@ -53,8 +55,8 @@ VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
 	InsertTailList(&PebData->InMemoryOrderModuleList, &LdrEntry->InMemoryOrderLinks);
     }
 
-    /* Make sure the InMemoryOrderModuleList is actually ordered. */
 #if DBG
+    /* Make sure the InMemoryOrderModuleList is actually ordered. */
     ULONG_PTR BaseAddress = 0;
     LoopOverList(Entry, &PebData->InMemoryOrderModuleList,
 		 LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks) {

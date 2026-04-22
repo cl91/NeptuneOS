@@ -449,21 +449,6 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
     return STATUS_SUCCESS;
 }
 
-/* Scan the FullDllName and find the base file name. */
-static VOID LdrpSetBaseDllName(IN PUNICODE_STRING FullDllName,
-			       OUT PUNICODE_STRING BaseDllName)
-{
-    ULONG BaseNameStart = 0;
-    for (ULONG i = 0; i < FullDllName->Length / sizeof(WCHAR); i++) {
-	if (FullDllName->Buffer[i] == '\\') {
-	    BaseNameStart = i+1;
-	}
-    }
-    BaseDllName->Buffer = &FullDllName->Buffer[BaseNameStart];
-    BaseDllName->Length = FullDllName->Length - BaseNameStart * sizeof(WCHAR);
-    BaseDllName->MaximumLength = BaseDllName->Length;
-}
-
 static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 {
     LdrpDriverProcess = InitInfo->DriverProcess;

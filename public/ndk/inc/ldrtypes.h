@@ -34,6 +34,7 @@ typedef struct _LDR_ENUM_RESOURCE_INFO {
 #define LDRP_STATIC_LINK                        0x00000002
 #define LDRP_IMAGE_DLL                          0x00000004
 #define LDRP_SHIMENG_SUPPRESSED_ENTRY           0x00000008
+#define LDRP_IMAGE_ELF                          0x00000010
 #define LDRP_IMAGE_INTEGRITY_FORCED             0x00000020
 #define LDRP_LOAD_IN_PROGRESS                   0x00001000
 #define LDRP_UNLOAD_IN_PROGRESS                 0x00002000

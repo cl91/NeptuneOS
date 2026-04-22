@@ -2632,6 +2632,12 @@ NTAPI NTSTATUS LdrLoadDll(IN OPTIONAL PWSTR SearchPath,
 
 NTAPI NTSYSAPI NTSTATUS LdrUnloadDll(IN PVOID BaseAddress);
 
+NTAPI NTSYSAPI NTSTATUS LdrRegisterElfModule(IN PVOID BaseAddress,
+					     IN PVOID EntryPoint,
+					     IN ULONG SizeOfImage,
+					     IN OPTIONAL PCUNICODE_STRING ModulePath,
+					     IN OPTIONAL PCSTR BaseName);
+
 /*
  * LdrLockLoaderLock Flags
  */
