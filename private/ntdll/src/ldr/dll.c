@@ -38,7 +38,30 @@ VOID LdrpInsertMemoryTableEntry(IN PLDR_DATA_TABLE_ENTRY LdrEntry,
     InsertTailList(&LdrpHashTable[i], &LdrEntry->HashLinks);
 
     InsertTailList(&PebData->InLoadOrderModuleList, &LdrEntry->InLoadOrderLinks);
-    InsertTailList(&PebData->InMemoryOrderModuleList, &LdrEntry->InMemoryOrderLinks);
+
+    PLDR_DATA_TABLE_ENTRY NextEntry = NULL;
+    LoopOverList(Entry, &PebData->InMemoryOrderModuleList,
+		 LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks) {
+	if ((ULONG_PTR)Entry->DllBase > (ULONG_PTR)LdrEntry->DllBase) {
+	    NextEntry = Entry;
+	    break;
+	}
+    }
+    if (NextEntry) {
+	InsertTailList(&NextEntry->InMemoryOrderLinks, &LdrEntry->InMemoryOrderLinks);
+    } else {
+	InsertTailList(&PebData->InMemoryOrderModuleList, &LdrEntry->InMemoryOrderLinks);
+    }
+
+    /* Make sure the InMemoryOrderModuleList is actually ordered. */
+#if DBG
+    ULONG_PTR BaseAddress = 0;
+    LoopOverList(Entry, &PebData->InMemoryOrderModuleList,
+		 LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks) {
+	assert(BaseAddress < (ULONG_PTR)Entry->DllBase);
+	BaseAddress = (ULONG_PTR)Entry->DllBase;
+    }
+#endif
 }
 
 VOID LdrpFreeDataTableEntry(IN PLDR_DATA_TABLE_ENTRY Entry)
