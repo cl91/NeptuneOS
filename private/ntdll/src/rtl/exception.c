@@ -12,6 +12,7 @@
 /* INCLUDES *****************************************************************/
 
 #include "rtlp.h"
+#include <exceptstr.h>
 
 /* GLOBALS *****************************************************************/
 
@@ -170,33 +171,6 @@ static VOID RtlpDumpContextEx(IN PCONTEXT Ctx,
 		   Ctx->FltSave.XmmRegisters[2*i+1].Low);
     }
 #endif
-}
-
-/* TODO: We need to generated this from ntstatus.h */
-static PCSTR RtlpExceptionCodeToString(IN ULONG ExceptionCode)
-{
-    switch (ExceptionCode) {
-    case STATUS_INTEGER_DIVIDE_BY_ZERO:
-	return "STATUS_INTEGER_DIVIDE_BY_ZERO";
-    case STATUS_SINGLE_STEP:
-	return "STATUS_SINGLE_STEP";
-    case STATUS_UNSUCCESSFUL:
-	return "STATUS_UNSUCCESSFUL";
-    case STATUS_BREAKPOINT:
-	return "STATUS_BREAKPOINT";
-    case STATUS_INTEGER_OVERFLOW:
-	return "STATUS_INTEGER_OVERFLOW";
-    case STATUS_ARRAY_BOUNDS_EXCEEDED:
-	return "STATUS_ARRAY_BOUNDS_EXCEEDED";
-    case STATUS_ILLEGAL_INSTRUCTION:
-	return "STATUS_ILLEGAL_INSTRUCTION";
-    case STATUS_INVALID_LOCK_SEQUENCE:
-	return "STATUS_INVALID_LOCK_SEQUENCE";
-    case STATUS_ACCESS_VIOLATION:
-	return "STATUS_ACCESS_VIOLATION";
-    default:
-	return "???";
-    }
 }
 
 VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,

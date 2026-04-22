@@ -38,3 +38,10 @@ add_custom_target(
     VERBATIM
 )
 add_dependencies(rtl syssvc_gen_h)
+
+add_custom_target(
+    exceptstr_gen_h ALL
+    COMMAND python ${CMAKE_CURRENT_LIST_DIR}/exceptstr-gen.py ${CMAKE_CURRENT_LIST_DIR}/../../public/ndk/inc/ntstatus.h ${CMAKE_CURRENT_BINARY_DIR}/exceptstr.h
+    VERBATIM
+)
+add_dependencies(rtl exceptstr_gen_h)

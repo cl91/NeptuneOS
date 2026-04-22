@@ -974,7 +974,7 @@ static VOID KiHandleThreadFault(IN PTHREAD Thread,
 	ExceptionCode = KiConvertExceptionCode(ExceptionCode, Thread, ExceptionAddress);
 	break;
     case seL4_Fault_CapFault:
-	ExceptionCode = STATUS_INVALID_SYSTEM_SERVICE;
+	ExceptionCode = STATUS_INVALID_HANDLE;
 	goto ctx;
     case seL4_Fault_UnknownSyscall:
 	ExceptionCode = STATUS_INVALID_SYSTEM_SERVICE;
