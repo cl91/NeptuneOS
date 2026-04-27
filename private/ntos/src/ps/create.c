@@ -5,11 +5,6 @@
 
 extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
 
-/* For the client address space we reserve four pages and map the first page for the
- * IPC buffer and the third page as the thread information block. The second and
- * fourth pages are unmapped. */
-#define CLIENT_IPC_REGION_LOW_ZERO_BITS (PAGE_LOG2SIZE + 2)
-
 #define PEB_RESERVE	(16 * PAGE_SIZE)
 #define PEB_COMMIT	(PAGE_SIZE)
 
@@ -78,7 +73,7 @@ static NTSTATUS PspConfigureThread(IN MWORD Tcb,
     assert(CNode != NULL);
     assert(VaddrSpace != NULL);
     assert(IpcPage != NULL);
-    ULONG Radix = GuardValue ? THREAD_PRIVATE_CNODE_LOG2SIZE + PROCESS_SHARED_CNODE_LOG2SIZE :
+    ULONG Radix = GuardValue ? THREAD_OUTER_CNODE_LOG2SIZE + THREAD_INNER_CNODE_LOG2SIZE :
 	CNode->Log2Size;
     seL4_CNode_CapData_t CapData = seL4_CNode_CapData_new(GuardValue, MWORD_BITS - Radix);
     int Error = seL4_TCB_Configure(Tcb, FaultHandler, CNode->TreeNode.Cap, CapData.words[0],
@@ -259,11 +254,11 @@ static inline NTSTATUS PspSetThreadDebugName(IN PTHREAD Thread)
     return STATUS_SUCCESS;
 }
 
-
 static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
 				   IN PMMVAD ServerVad,
 				   IN OPTIONAL PMMVAD ClientVad,
 				   IN MWORD InitialCommitSize,
+				   IN MWORD InitialCommitOffset,
 				   IN BOOLEAN ClientReadOnly,
 				   OUT MWORD *pServerAddr,
 				   OUT MWORD *pClientAddr)
@@ -275,6 +270,7 @@ static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
     MWORD ReserveSize = 1ULL << ServerVad->CommitmentStatus.LowZeroBits;
+    assert(InitialCommitSize + InitialCommitOffset < ReserveSize);
     BOOLEAN DeleteClientVad = FALSE;
     NTSTATUS Status = STATUS_SUCCESS;
     MWORD ClientAddr = 0;
@@ -300,16 +296,18 @@ static NTSTATUS PspMapSharedRegion(IN PPROCESS ClientProcess,
     assert(ClientVad != NULL);
     assert(ClientAddr != 0);
 
-    IF_ERR_GOTO(Fail, Status, MmCommitOwnedMemory(ServerAddr, InitialCommitSize,
-						  MM_RIGHTS_RW, FALSE));
-    IF_ERR_GOTO(Fail, Status, MmMapMirroredMemory(&MiNtosVaddrSpace, ServerAddr,
-						  &ClientProcess->VSpace, ClientAddr,
+    IF_ERR_GOTO(Fail, Status, MmCommitOwnedMemory(ServerAddr + InitialCommitOffset,
+						  InitialCommitSize, MM_RIGHTS_RW, FALSE));
+    IF_ERR_GOTO(Fail, Status, MmMapMirroredMemory(&MiNtosVaddrSpace,
+						  ServerAddr + InitialCommitOffset,
+						  &ClientProcess->VSpace,
+						  ClientAddr + InitialCommitOffset,
 						  InitialCommitSize,
 						  ClientReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW,
 						  MM_ATTRIBUTES_DEFAULT, FALSE));
 
-    *pServerAddr = ServerAddr;
-    *pClientAddr = ClientAddr;
+    *pServerAddr = ServerAddr + InitialCommitOffset;
+    *pClientAddr = ClientAddr + InitialCommitOffset;
     return STATUS_SUCCESS;
 Fail:
     if (DeleteClientVad) {
@@ -374,7 +372,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 				  seL4_TCBBits, &Thread->TreeNode),
 	       MmReleaseUntyped(TcbUntyped));
 
-    RET_ERR(MmCreateCNode(THREAD_PRIVATE_CNODE_LOG2SIZE, &Thread->CSpace));
+    RET_ERR(MmCreateCNode(THREAD_OUTER_CNODE_LOG2SIZE, &Thread->CSpace));
     /* Copy the process shared CNode into the zeroth slot of the thread private CNode.
      * Note we don't track the cap tree derivation of this cap in a CAP_TREE_NODE, since
      * it is only used as a pointer into the process-wide shared CNode. Deleting the
@@ -400,7 +398,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     /* Allocate and map the IPC buffer page */
     assert(Process->IpcRegionVad);
     RET_ERR(PspMapSharedRegion(Process, PspClientRegionServerVad, Process->IpcRegionVad,
-			       PAGE_SIZE, FALSE, &Thread->IpcBufferServerAddr,
+			       PAGE_SIZE, 0, FALSE, &Thread->IpcBufferServerAddr,
 			       &Thread->IpcBufferClientAddr));
     assert(Thread->IpcBufferServerAddr);
     assert(Thread->IpcBufferClientAddr);
@@ -414,16 +412,20 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     /* Note the TCB cap is in the NT Executive CSpace while the fault handler cap is
      * in the client thread's CSpace. */
     MWORD FaultHandlerCap = PsThreadCNodeIndexToGuardedCap(Thread->FaultEndpoint->TreeNode.Cap,
-							   Thread);
+							   0, Thread);
     RET_ERR(PspConfigureThread(Thread->TreeNode.Cap, FaultHandlerCap,
 			       Thread->CSpace, &Process->VSpace, IpcBufferClientPage,
 			       PsGetThreadId(Thread) >> EX_POOL_BLOCK_SHIFT));
 
     /* Allocate the subsystem-independent Thread Information Block for the client */
-    RET_ERR(MmCommitOwnedMemoryEx(&Process->VSpace,
-				  Thread->IpcBufferClientAddr + NT_TIB_OFFSET,
-				  PAGE_SIZE, MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT,
-				  FALSE, NULL, 0));
+    RET_ERR(MmCommitOwnedMemory(Thread->IpcBufferServerAddr + NT_TIB_OFFSET,
+				NT_TIB_COMMIT, MM_RIGHTS_RW, FALSE));
+    RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace,
+				Thread->IpcBufferServerAddr + NT_TIB_OFFSET,
+				&Process->VSpace,
+				Thread->IpcBufferClientAddr + NT_TIB_OFFSET,
+				NT_TIB_COMMIT, MM_RIGHTS_RW,
+				MM_ATTRIBUTES_DEFAULT, FALSE));
 
     if (Ctx->InitialTeb == NULL) {
 	PIMAGE_SECTION_OBJECT ImageSectionObject = Process->ImageSection->ImageSectionObject;
@@ -572,7 +574,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     Process->ImageSection = Section;
     KeInitializeDispatcherHeader(&Process->Header, NotificationEvent);
 
-    RET_ERR(MmCreateCNode(PROCESS_SHARED_CNODE_LOG2SIZE, &Process->SharedCNode));
+    RET_ERR(MmCreateCNode(THREAD_INNER_CNODE_LOG2SIZE, &Process->SharedCNode));
     RET_ERR(MmCreateVSpace(&Process->VSpace));
     /* Reserve the memory before THREAD_STACK_START so we can catch stack underflow. */
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, 0, THREAD_STACK_START,
@@ -674,7 +676,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
     /* Reserve the client address space dedicated for IPC buffers and TEBs. */
     RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, IPC_BUFFER_START,
 				     IPC_BUFFER_END, IPC_BUFFER_END - IPC_BUFFER_START,
-				     CLIENT_IPC_REGION_LOW_ZERO_BITS, 0,
+				     IPC_REGION_LOW_ZERO_BITS, 0,
 				     MEM_RESERVE_BITMAP_MANAGED, &Process->IpcRegionVad));
 
     /* Map the KUSER_SHARED_DATA into the client address space (read-only). */
@@ -691,27 +693,49 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     if (DriverObject) {
 	RET_ERR(PspMapSharedRegion(Process, PspDriverRegionServerVad, NULL,
+				   DRIVER_IO_PACKET_BUFFER_COMMIT,
 				   DRIVER_IO_PACKET_BUFFER_COMMIT, TRUE,
 				   &DriverObject->IncomingIoPacketsServerAddr,
 				   &DriverObject->IncomingIoPacketsClientAddr));
+	RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace,
+				    DriverObject->IncomingIoPacketsServerAddr,
+				    &MiNtosVaddrSpace,
+				    DriverObject->IncomingIoPacketsServerAddr +
+				    DRIVER_IO_PACKET_BUFFER_COMMIT,
+				    DRIVER_IO_PACKET_BUFFER_COMMIT,
+				    MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT, FALSE));
+	RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace,
+				    DriverObject->IncomingIoPacketsServerAddr,
+				    &Process->VSpace,
+				    DriverObject->IncomingIoPacketsClientAddr +
+				    DRIVER_IO_PACKET_BUFFER_COMMIT,
+				    DRIVER_IO_PACKET_BUFFER_COMMIT,
+				    MM_RIGHTS_RO, MM_ATTRIBUTES_DEFAULT, FALSE));
 	RET_ERR(PspMapSharedRegion(Process, PspDriverRegionServerVad, NULL,
+				   DRIVER_IO_PACKET_BUFFER_COMMIT,
 				   DRIVER_IO_PACKET_BUFFER_COMMIT, FALSE,
 				   &DriverObject->OutgoingIoPacketsServerAddr,
 				   &DriverObject->OutgoingIoPacketsClientAddr));
+	RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace,
+				    DriverObject->OutgoingIoPacketsServerAddr,
+				    &MiNtosVaddrSpace,
+				    DriverObject->OutgoingIoPacketsServerAddr +
+				    DRIVER_IO_PACKET_BUFFER_COMMIT,
+				    DRIVER_IO_PACKET_BUFFER_COMMIT,
+				    MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT, FALSE));
+	RET_ERR(MmMapMirroredMemory(&MiNtosVaddrSpace,
+				    DriverObject->OutgoingIoPacketsServerAddr,
+				    &Process->VSpace,
+				    DriverObject->OutgoingIoPacketsClientAddr +
+				    DRIVER_IO_PACKET_BUFFER_COMMIT,
+				    DRIVER_IO_PACKET_BUFFER_COMMIT,
+				    MM_RIGHTS_RW, MM_ATTRIBUTES_DEFAULT, FALSE));
 	PNTDLL_DRIVER_INIT_INFO DriverInitInfo = &Process->InitInfo.DriverInitInfo;
 	DriverInitInfo->IncomingIoPacketBuffer = DriverObject->IncomingIoPacketsClientAddr;
 	DriverInitInfo->OutgoingIoPacketBuffer = DriverObject->OutgoingIoPacketsClientAddr;
 	MWORD InitialCoroutineStackTop = 0;
 	RET_ERR(PsMapDriverCoroutineStack(Process, &InitialCoroutineStackTop));
 	Process->InitInfo.DriverInitInfo.InitialCoroutineStackTop = InitialCoroutineStackTop;
-	RET_ERR(KeCreateNotificationEx(&Process->DpcMutex, Process->SharedCNode));
-	Process->InitInfo.DriverInitInfo.DpcMutexCap = Process->DpcMutex.TreeNode.Cap;
-	RET_ERR(KeCreateNotificationEx(&Process->WorkItemMutex, Process->SharedCNode));
-	Process->InitInfo.DriverInitInfo.WorkItemMutexCap = Process->WorkItemMutex.TreeNode.Cap;
-#if defined(_M_IX86) || defined(_M_AMD64)
-	RET_ERR(KeCreateNotificationEx(&Process->X86PortMutex, Process->SharedCNode));
-	Process->InitInfo.DriverInitInfo.X86PortMutexCap = Process->X86PortMutex.TreeNode.Cap;
-#endif
     }
 
     /* Create the Event objects used by the NTDLL ldr component. Note if creation of

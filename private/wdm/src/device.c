@@ -22,8 +22,13 @@ C_ASSERT(sizeof(L"{01234567-89ab-cdef-0123-456789abcdef}") ==
 LIST_ENTRY IopDeviceList;
 
 /*
- * Search the list of all cached device objects and return
- * the one matching the given GLOBAL_HANDLE. Returns NULL if not found.
+ * Search the list of all cached device objects and return the one matching
+ * the given GLOBAL_HANDLE. Returns NULL if not found.
+ *
+ * Note: if this linear search becomes a bottleneck, we can replace the list
+ * with an AVL tree or RB tree. However, we don't expect that a client driver
+ * needs to deal with a ton of device objects, since it only needs to know
+ * about device object it creates or it refers to.
  */
 PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
 {
@@ -36,8 +41,7 @@ PDEVICE_OBJECT IopGetDeviceObject(IN GLOBAL_HANDLE Handle)
 }
 
 /*
- * Search the list of all cached device objects and return the global
- * handle of the given device object pointer.
+ * Return the global, system-wide handle of the given device object.
  */
 GLOBAL_HANDLE IopGetDeviceHandle(IN PDEVICE_OBJECT Device)
 {

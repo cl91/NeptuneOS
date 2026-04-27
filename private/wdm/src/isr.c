@@ -27,7 +27,7 @@ static VOID IopProcessDpcQueue()
     PLIST_ENTRY Entry;
     while (TRUE) {
 	MWORD Badge = 0;
-	seL4_Wait(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap), &Badge);
+	seL4_Wait(RtlProcessCNodeIndexToGuardedCap(IopDpcNotificationCap), &Badge);
 	if (Badge & BUGCHECK_NOTIFICATION_BADGE) {
 	    KiNotifyBugcheck();
 	}
@@ -54,7 +54,8 @@ static VOID IopProcessDpcQueue()
 	goto check;
     done:
 	IopProcessTimerList();
-	WdmNotifyMainThread();
+	assert(PsCapIsProcessShared(IopEventLoopNotification));
+	seL4_Signal(RtlProcessCNodeIndexToGuardedCap(IopEventLoopNotification));
     }
 }
 
@@ -67,7 +68,7 @@ VOID IopSignalDpcNotification()
 	Teb->Wdm.DpcQueued = FALSE;
 	Teb->Wdm.IoWorkItemQueued = FALSE;
 	Teb->Wdm.EventSignaled = FALSE;
-	seL4_Signal(RtlGetGuardedCapInProcessCNode(IopDpcNotificationCap));
+	seL4_Signal(RtlProcessCNodeIndexToGuardedCap(IopDpcNotificationCap));
     }
 }
 

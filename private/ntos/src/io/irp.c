@@ -1,11 +1,56 @@
 #include "iop.h"
-
-LIST_ENTRY IopNtosPendingIrpList;
+#include <memaccess.h>
 
 #define SERVER_OBJECT_TO_CLIENT_HANDLE(o)				\
     ((POBJECT)(o) == IOP_PAGING_IO_REQUESTOR ? (GLOBAL_HANDLE)(o) : OBJECT_TO_GLOBAL_HANDLE(o))
 #define CLIENT_HANDLE_TO_SERVER_OBJECT(o)				\
     ((o) == (MWORD)IOP_PAGING_IO_REQUESTOR ? (PVOID)(o) : GLOBAL_HANDLE_TO_OBJECT(o))
+
+/*
+ * Each driver is assigned a bit in the badge word of the Executive notification so
+ * when the NT Executive event loop gets a notification message, it knows which driver
+ * is signaling. Since the number of usable bits in the badge word is limited (26 bits
+ * on 32-bit systems and 62 bits on 64-bit systems, we will group multiple drivers into
+ * the same IOP_DRIVER_SIGNAL_GROUP when there are more drivers than available badge bits.
+ */
+typedef struct _IOP_DRIVER_SIGNAL_GROUP {
+    LIST_ENTRY List;
+} IOP_DRIVER_SIGNAL_GROUP, *PIOP_DRIVER_SIGNAL_GROUP;
+
+/* We need to subtract two bits since the LSB of the Executive service badge is used to
+ * distinguish notification from endpoint messages, and the second-to-least significant
+ * bit is used for the expired timer notification. */
+#define IOP_DRIVER_SIGNAL_GROUP_COUNT	(seL4_BadgeBits - 2)
+
+static LIST_ENTRY IopNtosPendingIrpList;
+static IOP_DRIVER_SIGNAL_GROUP IopDriverSignalGroups[IOP_DRIVER_SIGNAL_GROUP_COUNT];
+static LIST_ENTRY IopPendingDriverList;
+
+VOID IopInitIrpProcessing(VOID)
+{
+    InitializeListHead(&IopNtosPendingIrpList);
+    for (ULONG i = 0; i < IOP_DRIVER_SIGNAL_GROUP_COUNT; i++) {
+	InitializeListHead(&IopDriverSignalGroups[i].List);
+    }
+    InitializeListHead(&IopPendingDriverList);
+}
+
+VOID IopAssignSignalGroupForDriver(IN PIO_DRIVER_OBJECT DriverObject)
+{
+    assert(!DriverObject->DriverUnloading);
+    ULONG DriverCount = ~0U;
+    ULONG Index = 0;
+    for (ULONG i = 0; i < IOP_DRIVER_SIGNAL_GROUP_COUNT; i++) {
+	ULONG ListLength = GetListLength(&IopDriverSignalGroups[i].List);
+	if (ListLength < DriverCount) {
+	    DriverCount = ListLength;
+	    Index = i;
+	}
+    }
+    assert(Index < IOP_DRIVER_SIGNAL_GROUP_COUNT);
+    InsertTailList(&IopDriverSignalGroups[Index].List, &DriverObject->SignalGroupLink);
+    DriverObject->SignalGroupIndex = Index;
+}
 
 static VOID IopFreeIoPacket(IN PIO_PACKET IoPacket)
 {
@@ -502,13 +547,30 @@ static VOID IopUnmapDriverIrpBuffers(IN PPENDING_IRP PendingIrp)
     }
 }
 
+VOID IopQueueIoPacketToDriver(IN PIO_DRIVER_OBJECT DriverObject,
+			      IN PIO_PACKET IoPacket)
+{
+    /* If the driver is being unloaded, do nothing. */
+    if (DriverObject->DriverUnloading) {
+	return;
+    }
+    /* Add the IO packet to the driver's IO packet queue */
+    InsertTailList(&DriverObject->IoPacketQueue, &IoPacket->IoPacketLink);
+    /* Add the driver to the pending driver list so later in the Executive event
+     * loop, the IO packet will be copied to the incoming IO packet buffer of
+     * the driver object, and its IoPacketNotification will be signaled. */
+    if (!DriverObject->PendingDriverLink.Blink) {
+	InsertTailList(&IopPendingDriverList, &DriverObject->PendingDriverLink);
+    }
+}
+
 static VOID IopQueueIoPacketEx(IN PPENDING_IRP PendingIrp,
 			       IN PIO_DRIVER_OBJECT Driver,
 			       IN PTHREAD Thread)
 {
     assert(Thread == IOP_PAGING_IO_REQUESTOR || ObObjectIsType(Thread, OBJECT_TYPE_THREAD));
     /* Queue the IRP to the driver */
-    InsertTailList(&Driver->IoPacketQueue, &PendingIrp->IoPacket->IoPacketLink);
+    IopQueueIoPacketToDriver(Driver, PendingIrp->IoPacket);
     PIO_REQUEST_PARAMETERS Irp = &PendingIrp->IoPacket->Request;
     Irp->OriginalRequestor = SERVER_OBJECT_TO_CLIENT_HANDLE(Thread);
     /* Use the GLOBAL_HANDLE of the IoPacket as the Identifier */
@@ -518,7 +580,6 @@ static VOID IopQueueIoPacketEx(IN PPENDING_IRP PendingIrp,
     } else {
 	InsertTailList(&Thread->PendingIrpList, &PendingIrp->Link);
     }
-    KeSetEvent(&Driver->IoPacketQueuedEvent);
 }
 
 static VOID IopQueueIoPacket(IN PPENDING_IRP PendingIrp,
@@ -609,6 +670,12 @@ NTSTATUS IopCallDriverEx(IN PTHREAD Thread,
     assert(Irp);
     assert(pPendingIrp);
     assert(Thread == IOP_PAGING_IO_REQUESTOR || ObObjectIsType(Thread, OBJECT_TYPE_THREAD));
+    if (DriverObject && DriverObject->DriverUnloading) {
+	return STATUS_DRIVER_PROCESS_TERMINATED;
+    }
+    if (Irp->Device.Object && Irp->Device.Object->Removed) {
+	return STATUS_DEVICE_REMOVED;
+    }
     *pPendingIrp = NULL;
     ULONG IoPacketSize = IopGetIoPacketSizeFromIrp(Thread, Irp);
     PIO_PACKET IoPacket = NULL;
@@ -789,9 +856,7 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
 	}
 
 	/* Add the server message IO packet to the driver IO packet queue */
-	InsertTailList(&RequestorDriver->IoPacketQueue, &SrvMsg->IoPacketLink);
-	/* Signal the driver that an IO packet has been queued */
-	KeSetEvent(&RequestorDriver->IoPacketQueuedEvent);
+	IopQueueIoPacketToDriver(RequestorDriver, SrvMsg);
     free:
 	/* Detach the PENDING_IRP from the driver's ForwardedIrpList */
 	RemoveEntryList(&PendingIrp->Link);
@@ -1038,8 +1103,7 @@ static NTSTATUS IopHandleForwardIrpClientMessage(IN PIO_PACKET Msg,
 
     /* Move the original IO_PACKET from SourceDriver to ForwardedTo and wake the
      * target driver up */
-    InsertTailList(&ForwardedTo->DriverObject->IoPacketQueue, &Irp->IoPacketLink);
-    KeSetEvent(&ForwardedTo->DriverObject->IoPacketQueuedEvent);
+    IopQueueIoPacketToDriver(ForwardedTo->DriverObject, Irp);
     return STATUS_SUCCESS;
 
     IO_STATUS_BLOCK IoStatus;
@@ -1231,8 +1295,7 @@ static NTSTATUS IopHandleIoRequestMessage(IN PIO_PACKET Src,
 	       });
 
     InsertTailList(&DriverObject->ForwardedIrpList, &PendingIrp->Link);
-    InsertTailList(&DeviceObject->DriverObject->IoPacketQueue, &IoPacket->IoPacketLink);
-    KeSetEvent(&DeviceObject->DriverObject->IoPacketQueuedEvent);
+    IopQueueIoPacketToDriver(DeviceObject->DriverObject, IoPacket);
 
     return STATUS_SUCCESS;
 }
@@ -1283,9 +1346,7 @@ static VOID IopCacheFlushedCallback(IN PIO_DEVICE_OBJECT VolumeDevice,
     SrvMsg->ServerMsg.CacheFlushed.IoStatus = IoStatus;
 
     /* Add the server message IO packet to the driver IO packet queue */
-    InsertTailList(&DriverObject->IoPacketQueue, &SrvMsg->IoPacketLink);
-    /* Signal the driver that an IO packet has been queued */
-    KeSetEvent(&DriverObject->IoPacketQueuedEvent);
+    IopQueueIoPacketToDriver(DriverObject, SrvMsg);
 }
 
 static NTSTATUS IopHandleFlushCacheMessage(IN PIO_PACKET Msg,
@@ -1310,47 +1371,62 @@ static NTSTATUS IopHandleFlushCacheMessage(IN PIO_PACKET Msg,
     return STATUS_SUCCESS;
 }
 
+#define MASK_PTR(x) ((ULONG)(x) & (DRIVER_IO_PACKET_BUFFER_COMMIT - 1))
+
 /*
- * Handler function for the WDM service IopRequestIoPackets. This service should
- * only be called in the main event loop thread of the driver process.
- *
- * Check the previous batch of incoming IO packets first and see if any of them
- * errored out, and then process the driver's outgoing IO packet buffer. Once that
- * is done, process the driver's IO packet queue and forward them to the driver's
- * incoming IO packet buffer.
+ * When the system service notification is signaled, the system service event loop
+ * check the corresponding driver's outgoing IO packet queue and process the packets
+ * therein. Here "outgoing" means IO packets sent by the driver to the NT Executive.
+ * This processing is done in this routine.
  */
-NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
-			     IN PTHREAD Thread,
-			     IN ULONG NumCliMsgs,
-			     OUT ULONG *pNumSrvMsgs,
-			     IN BOOLEAN MoreResponseToCome)
+static VOID IopReceiveIoPacketsFromDriver(IN PIO_DRIVER_OBJECT DriverObject)
 {
-    assert(Thread != NULL);
-    assert(pNumSrvMsgs != NULL);
-    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
-    NTSTATUS Status = STATUS_NTOS_BUG;
     assert(DriverObject != NULL);
-
-    ASYNC_BEGIN(State);
-    if (!Thread->InitialThread) {
-	ASYNC_RETURN(State, STATUS_INVALID_PARAMETER);
+    if (!DriverObject->DriverLoaded) {
+	KeSetEvent(&DriverObject->InitializationDoneEvent);
     }
-    KeSetEvent(&DriverObject->InitializationDoneEvent);
 
-    /* Process the driver's outgoing IO packet buffer first. This buffer
-     * contains the client driver's messages to the server. */
-    PIO_PACKET CliMsg = (PIO_PACKET)DriverObject->OutgoingIoPacketsServerAddr;
-    MWORD OutgoingPacketEnd = DriverObject->OutgoingIoPacketsServerAddr
-	+ DRIVER_IO_PACKET_BUFFER_COMMIT;
-    for (ULONG i = 0; i < NumCliMsgs; i++) {
+    /* Process the driver's outgoing IO packet buffer. This buffer contains the
+     * client driver's messages to the server. */
+    PIO_PACKET_BUFFER_POINTERS Ptrs = DriverObject->IoPacketBufferPointers;
+
+again:
+    assert(Ptrs);
+    BOOLEAN MoreOutgoingPackets = ReadAcquire8((PVOID)&Ptrs->MoreOutgoingPacketsToCome);
+    ULONG Head = ReadAcquire((PVOID)&Ptrs->OutgoingHead);
+    ULONG Tail = ReadAcquire((PVOID)&Ptrs->OutgoingTail);
+    DbgTrace("Driver %p (%s) outgoing IO packet buffer tail 0x%x head 0x%x\n",
+	     DriverObject, IODBG_DRIVER_FILENAME(DriverObject), Tail, Head);
+    if (Head == Tail) {
+	/* The ring buffer is empty. If we are here for the first time, this usually
+	 * means some other driver in the same signal group as ours has signaled the
+	 * server. If we are here again, this means the driver hasn't written anything
+	 * to the ring buffer yet. Both are normal, so do nothing and return. */
+	goto out;
+    }
+    if (Head - Tail > DRIVER_IO_PACKET_BUFFER_COMMIT) {
+	/* Either the client driver or us has messed up the head/tail pointer.
+	 * This is a bug. Bail out in this case. */
+	assert(FALSE);
+	goto out;
+    }
+    if (MASK_PTR(Head) <= MASK_PTR(Tail)) {
+	assert(MASK_PTR(Head) + DRIVER_IO_PACKET_BUFFER_COMMIT > MASK_PTR(Tail));
+    }
+    PIO_PACKET CliMsg = (PVOID)(DriverObject->OutgoingIoPacketsServerAddr + MASK_PTR(Tail));
+    MWORD OutgoingPacketEnd = DriverObject->OutgoingIoPacketsServerAddr +
+	(MASK_PTR(Head) > MASK_PTR(Tail) ? MASK_PTR(Head) :
+	 MASK_PTR(Head) + DRIVER_IO_PACKET_BUFFER_COMMIT);
+    while ((MWORD)CliMsg < OutgoingPacketEnd) {
 	if (CliMsg->Size < sizeof(IO_PACKET) ||
-	    ((MWORD)CliMsg + CliMsg->Size >= OutgoingPacketEnd)) {
+	    ((MWORD)CliMsg + CliMsg->Size > OutgoingPacketEnd)) {
 	    DbgTrace("Invalid IO packet size %d from driver %s. Processing halted.\n",
 		     CliMsg->Size, DriverObject->DriverImagePath);
 	    assert(FALSE);
 	    break;
 	}
 
+	NTSTATUS Status;
 	switch (CliMsg->Type) {
 	case IoPacketTypeClientMessage:
 	    switch (CliMsg->ClientMsg.Type) {
@@ -1407,19 +1483,72 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	 * other than simply ignoring the error and continue processing.
 	 * On debug build we will assert so we can know what's going on. */
 	assert(NT_SUCCESS(Status));
+	UNREFERENCED_PARAMETER(Status);
 	CliMsg = (PIO_PACKET)((MWORD)CliMsg + CliMsg->Size);
     }
 
-    /* Wait for other threads to queue an IO packet on this driver. Note if the
-     * client told us that it has more response packets to come, we do not wait. */
-    AWAIT_EX_IF(!MoreResponseToCome, Status, KeWaitForSingleObject, State, _, Thread,
-		&DriverObject->IoPacketQueuedEvent.Header, TRUE, NULL);
+    /* We always drain the buffer fully, so simply set the tail pointer to the head. */
+    DbgTrace("Updating driver %p (%s) outgoing IO packet buffer tail from 0x%x to 0x%x\n",
+	     DriverObject, IODBG_DRIVER_FILENAME(DriverObject), Tail, Head);
+    WriteRelease((PVOID)&Ptrs->OutgoingTail, Head);
 
-    /* Now process the driver's queued IO packets and send them to the driver's incoming
-     * IO packet buffer, which contains the server's messages to the client driver. */
-    ULONG NumSrvMsgs = 0;
+    /* We should check if the driver has updated the ring buffer in the mean time,
+     * so go back to the beginning and go through the whole progress again. */
+    goto again;
+
+out:
+    /* If the client said that there are more outgoing packets after this
+     * batch, signal the driver so it will start sending more IO packets. */
+    if (MoreOutgoingPackets) {
+	assert(DriverObject->IoPacketNotification.TreeNode.Cap);
+	seL4_Signal(DriverObject->IoPacketNotification.TreeNode.Cap);
+    }
+}
+
+/*
+ * The bitmask here is the badge word right shifted by two (for the two lowest
+ * bits that are not used for driver signals).
+ */
+VOID IoReceiveIoPacketsFromDrivers(IN MWORD Bitmask)
+{
+    ULONG Index = 0;
+    while (Bitmask) {
+	assert(Index < IOP_DRIVER_SIGNAL_GROUP_COUNT);
+	if (Bitmask & 1) {
+	    LoopOverList(DriverObject, &IopDriverSignalGroups[Index].List,
+			 IO_DRIVER_OBJECT, SignalGroupLink) {
+		assert(DriverObject->SignalGroupIndex == Index);
+		IopReceiveIoPacketsFromDriver(DriverObject);
+	    }
+	}
+	Index++;
+	Bitmask >>= 1;
+    }
+}
+
+/* Process the driver's queued IO packets and send them to the driver's incoming
+ * IO packet buffer, which contains the server's messages to the client driver. */
+static VOID IopSubmitIoPacketsToDriver(IN PIO_DRIVER_OBJECT DriverObject)
+{
+    PIO_PACKET_BUFFER_POINTERS Ptrs = DriverObject->IoPacketBufferPointers;
+    assert(Ptrs);
+    ULONG Head = ReadAcquire((PVOID)&Ptrs->IncomingHead);
+    ULONG Tail = ReadAcquire((PVOID)&Ptrs->IncomingTail);
+    DbgTrace("Driver %p (%s) incoming IO packet buffer tail 0x%x head 0x%x\n",
+	     DriverObject, IODBG_DRIVER_FILENAME(DriverObject), Tail, Head);
+    /* The IO packet buffer is full. In this case we will keep the driver
+     * in the pending driver list and set a bit in the  */
+    BOOLEAN MoreIncomingPackets = FALSE;
+    ULONG Used = Head - Tail;
+    assert(Used <= DRIVER_IO_PACKET_BUFFER_COMMIT);
     ULONG TotalSize = 0;
-    PIO_PACKET Dest = (PIO_PACKET)DriverObject->IncomingIoPacketsServerAddr;
+    if (Used > DRIVER_IO_PACKET_BUFFER_COMMIT - sizeof(IO_PACKET)) {
+	MoreIncomingPackets = !IsListEmpty(&DriverObject->IoPacketQueue);
+	goto out;
+    }
+    ULONG SizeLimit = DRIVER_IO_PACKET_BUFFER_COMMIT - Used;
+    assert(SizeLimit >= sizeof(IO_PACKET));
+    PIO_PACKET Dest = (PVOID)(DriverObject->IncomingIoPacketsServerAddr + MASK_PTR(Head));
     LoopOverList(Src, &DriverObject->IoPacketQueue, IO_PACKET, IoPacketLink) {
 	assert(Src->Size >= sizeof(IO_PACKET));
 	ULONG DestIoPacketSize = ALIGN_UP(Src->Size, MWORD);
@@ -1428,13 +1557,12 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	    DestIoPacketSize += sizeof(MWORD) * (Src->Request.InputBufferPfnCount +
 						 Src->Request.OutputBufferPfnCount);
 	}
-	TotalSize += DestIoPacketSize;
-	if (TotalSize > DRIVER_IO_PACKET_BUFFER_COMMIT) {
+	if (TotalSize + DestIoPacketSize > SizeLimit) {
 	    /* The driver's incoming IO packet buffer is full, so the rest of the
-	     * pending IO packets are skipped and left in the queue. Signal the
-	     * IoPacketQueued event of the driver object so next time it will
-	     * process the remaining IO packets. */
-	    KeSetEvent(&DriverObject->IoPacketQueuedEvent);
+	     * pending IO packets are skipped and left in the queue. Let the driver
+	     * object know so it will signal the server again to process the remaining
+	     * IO packets. */
+	    MoreIncomingPackets = TRUE;
 	    /* TODO: If this happens a lot, one should increase the driver's IO
 	     * packet buffer size. We need to profile this. */
 	    break;
@@ -1444,15 +1572,14 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	 * clean up when the device object is being deleted. */
 	GLOBAL_HANDLE DeviceHandle = 0;
 	if (Src->Type == IoPacketTypeRequest && Src->Request.Device.Object) {
-	    Status = IopGrantDeviceHandleToDriver(Src->Request.Device.Object,
-						  DriverObject, &DeviceHandle);
-	    if (!NT_SUCCESS(Status)) {
+	    if (!NT_SUCCESS(IopGrantDeviceHandleToDriver(Src->Request.Device.Object,
+							 DriverObject, &DeviceHandle))) {
 		/* We are out of memory. There isn't much we can do here so just stop. */
 		break;
 	    }
 	}
 	/* Ok to send this IO packet. */
-	NumSrvMsgs++;
+	TotalSize += DestIoPacketSize;
 	/* Copy this IoPacket to the driver's incoming IO packet buffer */
 	memcpy(Dest, Src, Src->Size);
 	Dest->Size = ALIGN_UP(Src->Size, MWORD);
@@ -1472,7 +1599,8 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	     * object indeed owns the file object. If it does not, the file object member
 	     * of the client-side IRP is set to NULL. */
 	    assert(!Src->Request.File.Object ||
-		   (Src->Request.File.Object->CloseMsg && Src->Request.File.Object->DeviceObject));
+		   (Src->Request.File.Object->CloseMsg &&
+		    Src->Request.File.Object->DeviceObject));
 	    if (!Src->Request.File.Object ||
 		Src->Request.File.Object->DeviceObject->DriverObject != DriverObject) {
 		Dest->Request.File.Handle = 0;
@@ -1512,8 +1640,25 @@ NTSTATUS WdmRequestIoPackets(IN ASYNC_STATE State,
 	    IopFreeIoPacket(Src);
 	}
     }
-    *pNumSrvMsgs = NumSrvMsgs;
+out:
+    assert(Head + TotalSize - Tail <= DRIVER_IO_PACKET_BUFFER_COMMIT);
+    DbgTrace("Updating driver %p (%s) incoming IO packet buffer tail from 0x%x to 0x%x%s\n",
+	     DriverObject, IODBG_DRIVER_FILENAME(DriverObject), Head, Head + TotalSize,
+	     MoreIncomingPackets ? " (with more packets to come)" : "");
+    WriteRelease((PVOID)&Ptrs->IncomingHead, Head + TotalSize);
+    WriteRelease((PVOID)&Ptrs->MoreIncomingPacketsToCome, MoreIncomingPackets);
+    if (!MoreIncomingPackets) {
+	RemoveEntryList(&DriverObject->PendingDriverLink);
+    }
+    if (TotalSize) {
+	assert(DriverObject->IoPacketNotification.TreeNode.Cap);
+	seL4_Signal(DriverObject->IoPacketNotification.TreeNode.Cap);
+    }
+}
 
-    /* Returns APC status if the alertable wait above returned APC status */
-    ASYNC_END(State, Status);
+VOID IoSubmitIoPacketsToDrivers(VOID)
+{
+    LoopOverList(Driver, &IopPendingDriverList, IO_DRIVER_OBJECT, PendingDriverLink) {
+	IopSubmitIoPacketsToDriver(Driver);
+    }
 }

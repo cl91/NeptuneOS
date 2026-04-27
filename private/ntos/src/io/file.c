@@ -429,8 +429,7 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
 	    assert(FileObj->DeviceObject);
 	    PIO_DRIVER_OBJECT Driver = FileObj->DeviceObject->DriverObject;
 	    /* The IO packet will be deleted later after it is sent to the driver. */
-	    InsertTailList(&Driver->IoPacketQueue, &FileObj->CloseMsg->IoPacketLink);
-	    KeSetEvent(&Driver->IoPacketQueuedEvent);
+	    IopQueueIoPacketToDriver(Driver, FileObj->CloseMsg);
 	}
     }
 

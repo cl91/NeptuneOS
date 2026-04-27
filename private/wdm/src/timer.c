@@ -52,7 +52,7 @@ static VOID KiSetGlobalTimer(IN ABSOLUTE_COUNTER_TIME DueTime)
 	seL4_SetMR(1, DueTime.CounterTime >> 32);
 #endif
 	assert(PsCapIsProcessShared(KiTimerServiceCap));
-	seL4_Call(RtlGetGuardedCapInProcessCNode(KiTimerServiceCap),
+	seL4_Call(RtlProcessCNodeIndexToGuardedCap(KiTimerServiceCap),
 		  seL4_MessageInfo_new(0, 0, 0, sizeof(ULONG64) / sizeof(MWORD)));
     }
 }

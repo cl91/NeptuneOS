@@ -23,7 +23,9 @@ struct _SYSTEM_THREAD;
 typedef enum _THREAD_PRIORITY {
     PASSIVE_LEVEL = 1,
     DISPATCH_LEVEL = 2,
-    SYSTEM_SERVICE_LEVEL = 3,
+    SYSTEM_SERVICE_LEVEL = 3,	/* The NT Executive service thread must run at a higher
+				 * level than all drivers and clients processes. The IRP
+				 * processing logic in wdm.dll requires this. */
     DEVICE_INTERRUPT_MIN_LEVEL = 4,
     IO_TIMER_SERVICE_LEVEL = 253,
     TIMER_INTERRUPT_LEVEL = 254,
@@ -74,6 +76,22 @@ static inline NTSTATUS KeCreateEndpoint(IN PIPC_ENDPOINT Endpoint)
     return KeCreateEndpointEx(Endpoint, &MiNtosCNode);
 }
 
+static inline NTSTATUS KeDeriveEndpoint(IN PIPC_ENDPOINT Endpoint,
+					IN PCNODE CNode,
+					IN PIPC_ENDPOINT Original,
+					IN seL4_CapRights_t Rights,
+					IN MWORD Badge)
+{
+    KeInitializeIpcEndpoint(Endpoint, CNode, 0, 0);
+    NTSTATUS Status = MmCapTreeDeriveBadgedNode(&Endpoint->TreeNode,
+						&Original->TreeNode,
+						Rights, Badge);
+    if (!NT_SUCCESS(Status)) {
+	KeUninitializeIpcEndpoint(Endpoint);
+    }
+    return Status;
+}
+
 VOID KeDestroyEndpoint(IN PIPC_ENDPOINT Endpoint);
 
 /*
@@ -105,7 +123,10 @@ static inline NTSTATUS KeCreateNotificationEx(IN PNOTIFICATION Notification,
     RET_ERR_EX(MmRetypeIntoObject(Untyped, seL4_NotificationObject,
 				  seL4_NotificationBits,
 				  &Notification->TreeNode),
-	       MmReleaseUntyped(Untyped));
+	       {
+		   MmReleaseUntyped(Untyped);
+		   MmUninitializeCapTreeNode(&Notification->TreeNode);
+	       });
     return STATUS_SUCCESS;
 }
 
@@ -113,6 +134,21 @@ static inline NTSTATUS KeCreateNotification(IN PNOTIFICATION Notification)
 {
     extern CNODE MiNtosCNode;
     return KeCreateNotificationEx(Notification, &MiNtosCNode);
+}
+
+static inline NTSTATUS KeDeriveNotification(IN PNOTIFICATION Notification,
+					    IN PCNODE CNode,
+					    IN PNOTIFICATION Original,
+					    IN MWORD Badge)
+{
+    KeInitializeNotification(Notification, CNode, 0, 0);
+    NTSTATUS Status = MmCapTreeDeriveBadgedNode(&Notification->TreeNode,
+						&Original->TreeNode,
+						seL4_AllRights, Badge);
+    if (!NT_SUCCESS(Status)) {
+	MmUninitializeCapTreeNode(&Notification->TreeNode);
+    }
+    return Status;
 }
 
 /*
@@ -857,6 +893,9 @@ NTSTATUS KeEnableWdmServices(IN struct _THREAD *Thread);
 NTSTATUS KeEnableThreadFaultHandler(IN struct _THREAD *Thread);
 NTSTATUS KeEnableSystemThreadFaultHandler(IN struct _SYSTEM_THREAD *Thread);
 VOID KeDisableThreadServices(IN struct _THREAD *Thread);
+NTSTATUS KeEnableDriverServiceNotification(IN PNOTIFICATION Notification,
+					   IN PCNODE CNode,
+					   IN ULONG SignalGroupIndex);
 VOID KeRemoveThreadFromReadyList(IN struct _THREAD *Thread);
 NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
 			     IN PTHREAD_CONTEXT Context);
@@ -934,6 +973,7 @@ struct _IO_TIMER;
 VOID KeAddIoTimer(IN struct _IO_TIMER *Timer);
 VOID KeRemoveIoTimer(IN struct _IO_TIMER *Timer);
 NTSTATUS KeEnableIoTimerService(IN PIPC_ENDPOINT Endpoint,
+				IN PCNODE CNode,
 				IN MWORD IpcBadge);
 SYSTEM_TIME KeQuerySystemTime(VOID);
 INTERRUPT_TIME KeQueryInterruptTime(VOID);

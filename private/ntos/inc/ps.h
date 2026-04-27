@@ -94,11 +94,6 @@ typedef struct _PROCESS {
     NTDLL_PROCESS_INIT_INFO InitInfo;
     NTSTATUS ExitStatus;	    /* Exit status of process */
     ULONG Cookie;
-    NOTIFICATION DpcMutex;
-    NOTIFICATION WorkItemMutex;
-#if defined(_M_IX86) || defined(_M_AMD64)
-    NOTIFICATION X86PortMutex;
-#endif
     ULONG_PTR AffinityMask;
     ULONG_PTR InheritedFromUniqueProcessId;
     ULONG_PTR BasePriority;
@@ -161,13 +156,15 @@ FORCEINLINE CLIENT_ID PsGetClientId(IN PTHREAD Thread)
     return Cid;
 }
 
-FORCEINLINE MWORD PsThreadCNodeIndexToGuardedCap(IN MWORD Cap,
+FORCEINLINE MWORD PsThreadCNodeIndexToGuardedCap(IN MWORD OuterIndex,
+						 IN MWORD InnerIndex,
 						 IN PTHREAD Thread)
 {
-    assert(Cap);
-    assert(Cap < (1ULL << THREAD_PRIVATE_CNODE_LOG2SIZE));
-    assert(!PsGetGuardValueOfCap(Cap));
-    return (Cap << PROCESS_SHARED_CNODE_LOG2SIZE) |
+    assert(InnerIndex < (1ULL << THREAD_INNER_CNODE_LOG2SIZE));
+    assert(OuterIndex);
+    assert(OuterIndex < (1ULL << THREAD_OUTER_CNODE_LOG2SIZE));
+    assert(!PsGetGuardValueOfCap(OuterIndex));
+    return InnerIndex | (OuterIndex << THREAD_INNER_CNODE_LOG2SIZE) |
 	PsThreadIdToCSpaceGuard(PsGetThreadId(Thread));
 }
 

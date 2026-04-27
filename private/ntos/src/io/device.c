@@ -536,8 +536,7 @@ VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
 	Msg->ServerMsg.CloseDevice.DeviceObject = OBJECT_TO_GLOBAL_HANDLE(DevObj);
 	/* The IO packet will be deleted later after it is sent to the driver. */
 	CloseMsg->Msg = NULL;
-	InsertTailList(&CloseMsg->DriverObject->IoPacketQueue, &Msg->IoPacketLink);
-	KeSetEvent(&CloseMsg->DriverObject->IoPacketQueuedEvent);
+	IopQueueIoPacketToDriver(CloseMsg->DriverObject, Msg);
 	/* Note despite the fact that we have increased the refcount of the device
 	 * object when granting the device handle to foreign driver processes, we
 	 * do NOT decrease the refcount here. Instead the client driver will call

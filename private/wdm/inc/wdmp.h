@@ -150,7 +150,7 @@ static inline VOID KeAcquireMutex(IN PKMUTEX Mutex)
     assert(Mutex != NULL);
     assert(Mutex->Notification != 0);
     if (InterlockedIncrement(&Mutex->Counter) != 1) {
-	seL4_Wait(RtlGetGuardedCapInProcessCNode(Mutex->Notification), NULL);
+	seL4_Wait(RtlProcessCNodeIndexToGuardedCap(Mutex->Notification), NULL);
     }
 }
 
@@ -166,7 +166,7 @@ static inline VOID KeReleaseMutex(IN PKMUTEX Mutex)
     LONG Counter = InterlockedDecrement(&Mutex->Counter);
     assert(Counter >= 0);
     if (Counter >= 1) {
-	seL4_Signal(RtlGetGuardedCapInProcessCNode(Mutex->Notification));
+	seL4_Signal(RtlProcessCNodeIndexToGuardedCap(Mutex->Notification));
     }
 }
 
@@ -228,8 +228,8 @@ NTSTATUS IopCreateFileObject(IN PIO_PACKET IoPacket,
 VOID IopDeleteFileObject(IN PFILE_OBJECT FileObject);
 
 /* irp.c */
-extern PIO_PACKET IopIncomingIoPacketBuffer;
-extern PIO_PACKET IopOutgoingIoPacketBuffer;
+extern MWORD IopIncomingIoPacketBuffer;
+extern MWORD IopOutgoingIoPacketBuffer;
 extern LIST_ENTRY IopSignaledObjectList;
 extern LIST_ENTRY IopExecEnvList;
 extern PIOP_EXEC_ENV IopCurrentEnv;
@@ -238,9 +238,8 @@ NTSTATUS IopAllocateMdl(IN PVOID Buffer,
 			IN PULONG_PTR PfnDb,
 			IN ULONG PfnCount,
 			OUT PMDL *pMdl);
-VOID IopInitIrpProcessing();
-BOOLEAN IopProcessIoPackets(OUT ULONG *pNumResponses,
-			    IN ULONG NumRequests);
+VOID IopInitIrpProcessing(VOID);
+VOID IopProcessIoPackets(VOID);
 VOID IoDbgDumpIrp(IN PIRP Irp);
 
 /* isr.c */
@@ -254,6 +253,10 @@ VOID IopReleaseDpcMutex();
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;
 extern KMUTEX IopX86PortMutex;
+
+/* main.c */
+extern MWORD IopEventLoopNotification;
+extern MWORD IopExecutiveNotification;
 
 /* timer.c */
 extern LIST_ENTRY IopPendingTimerList;

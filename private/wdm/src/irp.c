@@ -5,9 +5,10 @@
  *
  * This file implements driver IRP processing. There are several cases that we need
  * to handle here. In the following diagrams, IncomingIoPacket refers to an IO request
- * packet from the IopIncomingIoPacketBuffer. Arrow means we are detaching the IRP
- * from the source list and adding it to the destination list. OutgoingIoPacket refers
- * to the outgoing IO packet buffer.
+ * packet sent by the server, in the IopIncomingIoPacketBuffer. OutgoingIoPacket refers
+ * to an outgoing IO packet buffer sent by a client driver, in IopOutgoingIoPacketBuffer.
+ * Arrow means we are detaching the IRP from the source list and adding it to the
+ * destination list.
  *
  * Case 0 (processing a server-originated IRP, returning non-PENDING status):
  *
@@ -179,8 +180,8 @@
 #include <scsi.h>
 #include <srbhelper.h>
 
-PIO_PACKET IopIncomingIoPacketBuffer;
-PIO_PACKET IopOutgoingIoPacketBuffer;
+MWORD IopIncomingIoPacketBuffer;
+MWORD IopOutgoingIoPacketBuffer;
 
 /* List of all IRPs that can be processed immediately */
 static LIST_ENTRY IopIrpQueue;
@@ -1075,25 +1076,6 @@ static VOID IopDeleteIrp(PIRP Irp)
 	ObDereferenceObject(Irp->Private.LastIoStackFileObject);
     }
     IoFreeIrp(Irp);
-}
-
-static VOID IopPopulateIoCompleteMessageFromIoStatus(OUT PIO_PACKET Dest,
-						     IN NTSTATUS Status,
-						     IN GLOBAL_HANDLE OriginalRequestor,
-						     IN HANDLE IrpIdentifier)
-{
-    assert(Status != STATUS_ASYNC_PENDING);
-    assert(Status != STATUS_PENDING);
-    assert(Status != -1);
-    assert(OriginalRequestor != 0);
-    assert(IrpIdentifier != NULL);
-    memset(Dest, 0, sizeof(IO_PACKET));
-    Dest->Type = IoPacketTypeClientMessage;
-    Dest->Size = sizeof(IO_PACKET);
-    Dest->ClientMsg.Type = IoCliMsgIoCompleted;
-    Dest->ClientMsg.IoCompleted.OriginalRequestor = OriginalRequestor;
-    Dest->ClientMsg.IoCompleted.Identifier = IrpIdentifier;
-    Dest->ClientMsg.IoCompleted.IoStatus.Status = Status;
 }
 
 static ULONG IopGetQueryIdResponseDataSize(IN PWSTR String,
@@ -2447,73 +2429,94 @@ VOID IopInitIrpProcessing()
     InitializeListHead(&IopExecEnvList);
 }
 
+#define MASK_PTR(x) ((ULONG)(x) & (DRIVER_IO_PACKET_BUFFER_COMMIT - 1))
+
 /*
  * This is the main IO packet processing routine of the driver event loop. This
  * routine examines the incoming IO packet buffer and processes them, producing
  * the reply IO packets and sending them to the outgoing IO packet buffer. This
- * routine returns TRUE if at the end of the IO processing, there are remaining
+ * routine returns TRUE, if at the end of the IO processing there are remaining
  * outgoing IO packets waiting to be sent to the server (due to the finite size
  * of the outgoing IO packet buffer).
  */
-BOOLEAN IopProcessIoPackets(OUT ULONG *pNumResponses,
-			    IN ULONG NumRequests)
+VOID IopProcessIoPackets(VOID)
 {
-    ULONG ResponseCount = 0;
-    PIO_PACKET SrcIoPacket = IopIncomingIoPacketBuffer;
-    LONG RemainingBufferSize;
-    PIO_PACKET DestIrp;
+    PIO_PACKET_BUFFER_POINTERS Ptrs = (PVOID)((PUCHAR)NtCurrentTib() + NT_TIB_COMMIT
+					      - sizeof(IO_PACKET_BUFFER_POINTERS));
+    UCHAR MoreIncomingPackets = ReadAcquire8((PVOID)&Ptrs->MoreIncomingPacketsToCome);
+    ULONG IncomingHead = ReadAcquire((PVOID)&Ptrs->IncomingHead);
+    ULONG IncomingTail = ReadAcquire((PVOID)&Ptrs->IncomingTail);
+    DbgTrace("Incoming IO packet buffer tail 0x%x head 0x%x%s\n",
+	     IncomingTail, IncomingHead,
+	     MoreIncomingPackets ? " (with more incoming packets to come)" : "");
+    ULONG TotalRequestSize = IncomingHead - IncomingTail;
+    if (TotalRequestSize > DRIVER_IO_PACKET_BUFFER_COMMIT) {
+	/* Either the server or us has messed up the head/tail pointers. Bail out now. */
+	assert(FALSE);
+	RtlRaiseStatus(STATUS_INTERNAL_ERROR);
+    } else if (!TotalRequestSize) {
+	/* Incoming IO packet buffer is empty. This usually means we are being signaled
+	 * by a DPC or ISR thread. */
+	goto process;
+    }
+    if (MASK_PTR(IncomingHead) <= MASK_PTR(IncomingTail)) {
+	assert(MASK_PTR(IncomingHead) + DRIVER_IO_PACKET_BUFFER_COMMIT > MASK_PTR(IncomingTail));
+    }
+    PIO_PACKET SrvMsg = (PVOID)(IopIncomingIoPacketBuffer + MASK_PTR(IncomingTail));
+    MWORD IncomingPacketEnd = IopIncomingIoPacketBuffer +
+	(MASK_PTR(IncomingHead) > MASK_PTR(IncomingTail) ?
+	 MASK_PTR(IncomingHead) : MASK_PTR(IncomingHead) + DRIVER_IO_PACKET_BUFFER_COMMIT);
 
-    for (ULONG i = 0; i < NumRequests; i++) {
-	if (SrcIoPacket->Type == IoPacketTypeRequest) {
+    while ((MWORD)SrvMsg < IncomingPacketEnd) {
+	if (SrvMsg->Type == IoPacketTypeRequest) {
 	    /* Allocate, populate, and queue the driver-side IRP from server-side
 	     * IO packet in the incoming buffer. Once this is done, the information
 	     * stored in the incoming IRP buffer is copied into the IRP queue. */
-	    NTSTATUS Status = IopQueueRequestIoPacket(SrcIoPacket);
-	    /* If this IRP cannot be processed (due to say out-of-memory), we send
-	     * the IoCompleted message to inform the server now. We should never run
-	     * out of outgoing packet buffer here since the outgoing buffer has the
-	     * same size as the incoming buffer. */
+	    NTSTATUS Status = IopQueueRequestIoPacket(SrvMsg);
+	    /* This should not normally fail. If this fails, either the server has sent
+	     * us malformed IO packets (in which case we assert) or the system is in a
+	     * critically low memory state. In both case we will stop the processing
+	     * and just leave the IO packets in the buffer. In the low memory case, if
+	     * the system eventually recovers, these packets will be reprocessed. */
 	    if (!NT_SUCCESS(Status)) {
-		/* Since all response packet has the same size we can use the array syntax */
-		IopPopulateIoCompleteMessageFromIoStatus(IopOutgoingIoPacketBuffer+ResponseCount,
-							 Status,
-							 SrcIoPacket->Request.OriginalRequestor,
-							 SrcIoPacket->Request.Identifier);
-		ResponseCount++;
+		assert(Status == STATUS_INSUFFICIENT_RESOURCES || Status == STATUS_NO_MEMORY);
+		break;
 	    }
-	} else if (SrcIoPacket->Type == IoPacketTypeServerMessage) {
+	} else if (SrvMsg->Type == IoPacketTypeServerMessage) {
 	    DbgTrace("Got IoPacket type Server Message\n");
-	    IoDbgDumpIoPacket(SrcIoPacket, TRUE);
-	    if (SrcIoPacket->ServerMsg.Type == IoSrvMsgIoCompleted) {
-		IopHandleIoCompleteServerMessage(SrcIoPacket);
-	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgLoadDriver) {
-		IopHandleLoadDriverServerMessage(SrcIoPacket);
-	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCacheFlushed) {
-		CiHandleCacheFlushedServerMessage(SrcIoPacket);
-	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCloseFile) {
-		IopHandleCloseFileServerMessage(SrcIoPacket);
-	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgCloseDevice) {
-		IopHandleCloseDeviceServerMessage(SrcIoPacket);
-	    } else if (SrcIoPacket->ServerMsg.Type == IoSrvMsgForceDismount) {
-		IopHandleForceDismountServerMessage(SrcIoPacket);
+	    IoDbgDumpIoPacket(SrvMsg, TRUE);
+	    if (SrvMsg->ServerMsg.Type == IoSrvMsgIoCompleted) {
+		IopHandleIoCompleteServerMessage(SrvMsg);
+	    } else if (SrvMsg->ServerMsg.Type == IoSrvMsgLoadDriver) {
+		IopHandleLoadDriverServerMessage(SrvMsg);
+	    } else if (SrvMsg->ServerMsg.Type == IoSrvMsgCacheFlushed) {
+		CiHandleCacheFlushedServerMessage(SrvMsg);
+	    } else if (SrvMsg->ServerMsg.Type == IoSrvMsgCloseFile) {
+		IopHandleCloseFileServerMessage(SrvMsg);
+	    } else if (SrvMsg->ServerMsg.Type == IoSrvMsgCloseDevice) {
+		IopHandleCloseDeviceServerMessage(SrvMsg);
+	    } else if (SrvMsg->ServerMsg.Type == IoSrvMsgForceDismount) {
+		IopHandleForceDismountServerMessage(SrvMsg);
 	    } else {
-		DbgPrint("Invalid server message type %d\n", SrcIoPacket->ServerMsg.Type);
+		DbgPrint("Invalid server message type %d\n", SrvMsg->ServerMsg.Type);
 		assert(FALSE);
 	    }
 	} else {
-	    DbgPrint("Invalid IO packet type %d\n", SrcIoPacket->Type);
+	    DbgPrint("Invalid IO packet type %d\n", SrvMsg->Type);
 	    assert(FALSE);
 	}
-	SrcIoPacket = (PIO_PACKET)((MWORD)SrcIoPacket + SrcIoPacket->Size);
+	SrvMsg = (PIO_PACKET)((MWORD)SrvMsg + SrvMsg->Size);
     }
+    assert((MWORD)SrvMsg <= IncomingPacketEnd);
+    if ((MWORD)SrvMsg < IncomingPacketEnd) {
+	IncomingTail += (MWORD)SrvMsg - (IopIncomingIoPacketBuffer + MASK_PTR(IncomingTail));
+    } else {
+	IncomingTail = IncomingHead;
+    }
+    DbgTrace("Updating incoming IO packet tail to 0x%x\n", IncomingTail);
+    WriteRelease((PVOID)&Ptrs->IncomingTail, IncomingTail);
 
-    /* Since the incoming buffer and outgoing buffer have the same size we should never
-     * run out of outgoing buffer at this point. */
-    assert(ResponseCount <= DRIVER_IO_PACKET_BUFFER_COMMIT / sizeof(IO_PACKET));
-    RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - ResponseCount*sizeof(IO_PACKET);
-    DestIrp = IopOutgoingIoPacketBuffer + ResponseCount;
-
-again:
+process:
     /* Process all queued IRP now. Once processed, the IRPs may be moved to the
      * ReplyIrpList or the CleanupIrpList, or not be part of any list. */
     IopProcessIrpQueue();
@@ -2532,11 +2535,24 @@ again:
      * functions and work items are actually executed. */
     IopExecuteCoroutines();
 
+    /* Now look at the outgoing IO packet buffer and see how many IO packets we can
+     * send this time. */
+    ULONG OutgoingHead = ReadAcquire((PVOID)&Ptrs->OutgoingHead);
+    ULONG OutgoingTail = ReadAcquire((PVOID)&Ptrs->OutgoingTail);
+    DbgTrace("Outgoing IO packet buffer tail 0x%x head 0x%x\n",
+	     OutgoingTail, OutgoingHead);
+    assert(OutgoingHead >= OutgoingTail);
+    ULONG Used = OutgoingHead - OutgoingTail;
+    if (Used > DRIVER_IO_PACKET_BUFFER_COMMIT - sizeof(IO_PACKET)) {
+	goto delete;
+    }
+    ULONG RemainingBufferSize = DRIVER_IO_PACKET_BUFFER_COMMIT - Used;
+    PIO_PACKET DestIrp = (PVOID)(IopOutgoingIoPacketBuffer + MASK_PTR(OutgoingHead));
+
     /* Process the dirty buffer list and inform the server of them. */
     ULONG DirtyBufferMsgCount = CiProcessDirtyBufferList(RemainingBufferSize, DestIrp);
     RemainingBufferSize -= DirtyBufferMsgCount * sizeof(IO_PACKET);
     DestIrp += DirtyBufferMsgCount;
-    ResponseCount += DirtyBufferMsgCount;
     assert(RemainingBufferSize > 0);
     if (RemainingBufferSize < sizeof(IO_PACKET)) {
 	goto delete;
@@ -2546,15 +2562,14 @@ again:
     ULONG FlushCacheMsgCount = CiProcessFlushCacheRequestList(RemainingBufferSize, DestIrp);
     RemainingBufferSize -= FlushCacheMsgCount * sizeof(IO_PACKET);
     DestIrp += FlushCacheMsgCount;
-    ResponseCount += FlushCacheMsgCount;
     assert(RemainingBufferSize > 0);
     if (RemainingBufferSize < sizeof(IO_PACKET)) {
 	goto delete;
     }
 
     /* Move all associated IRPs to the back of the list so their master IRPs
-     * get processed first. This is so that the server is informed of the
-     * master IRP's identifier pair and any possible file size changes. */
+     * get processed first. This is so that the server is first informed of
+     * the master IRP's identifier pair and any possible file size changes. */
     LIST_ENTRY AssociatedIrps;
     InitializeListHead(&AssociatedIrps);
     LoopOverList(Irp, &IopReplyIrpList, IRP, Private.Link) {
@@ -2724,7 +2739,6 @@ reply:
 	DbgTrace("Processed the following IRP from the ReplyList\n");
 	IoDbgDumpIoPacket(DestIrp, TRUE);
 	RemainingBufferSize -= DestIrp->Size;
-	ResponseCount++;
 	DestIrp = (PIO_PACKET)((PCHAR)DestIrp + DestIrp->Size);
 	if (RemainingBufferSize < sizeof(IO_PACKET)) {
 	    break;
@@ -2744,6 +2758,28 @@ delete:
 	IopDeleteIrp(Irp);
     }
 
+    /* Let the server know if we have more outgoing packets after this batch.
+     * The server will signal us to send more IO packets once it has done
+     * processing the ones we have sent. */
+    UCHAR MoreOutgoingPackets = !IsListEmpty(&IopReplyIrpList);
+    WriteRelease((PVOID)&Ptrs->MoreOutgoingPacketsToCome, MoreOutgoingPackets);
+
+    /* Update the head of the outgoing IO packet buffer. If we have sent some
+     * packets, or if server has indicated that it has more incoming packets
+     * for us, signal the server so it can start processing. */
+    assert(RemainingBufferSize <= DRIVER_IO_PACKET_BUFFER_COMMIT - Used);
+    ULONG ResponseSize = DRIVER_IO_PACKET_BUFFER_COMMIT - Used - RemainingBufferSize;
+    assert((MWORD)DestIrp - (IopOutgoingIoPacketBuffer + MASK_PTR(OutgoingHead)) == ResponseSize);
+    if (ResponseSize) {
+	DbgTrace("Updating outgoing IO packet head to 0x%x\n", OutgoingHead + ResponseSize);
+	WriteRelease((PVOID)&Ptrs->OutgoingHead, OutgoingHead + ResponseSize);
+    }
+    if (ResponseSize || MoreIncomingPackets) {
+	assert(PsCapHasCorrectGuard(IopExecutiveNotification));
+	assert(PsCapIsThreadPrivate(IopExecutiveNotification));
+	seL4_Signal(IopExecutiveNotification);
+    }
+
     /* If there are IRPs requeued (due to them being forwarded to a local device
      * object) or waitable objects signaled, or work items queued, restart the
      * whole process again. */
@@ -2753,7 +2789,7 @@ delete:
     KeReleaseMutex(&IopWorkItemMutex);
 
     if (!IsListEmpty(&IopIrpQueue) || IopHasEnvToWakeUp() || WorkItemsQueued) {
-	goto again;
+	goto process;
     }
 
     /* If any of the IRP dispatch routine or work item queued DPC, now
@@ -2763,9 +2799,6 @@ delete:
     NtCurrentTeb()->Wdm.IoWorkItemQueued = FALSE;
     NtCurrentTeb()->Wdm.EventSignaled = FALSE;
     IopSignalDpcNotification();
-
-    *pNumResponses = ResponseCount;
-    return !IsListEmpty(&IopReplyIrpList);
 }
 
 /*

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <assert.h>
 #include <services.h>
+#include <wdmsvc.h>
 #include <avltree.h>
 
 #ifdef MMDBG
@@ -114,23 +115,24 @@ C_ASSERT(EX_POOL_MAX_SIZE <=
 C_ASSERT(((seL4_GuardBits + EX_POOL_BLOCK_SHIFT) >= MWORD_BITS) ||
 	 (EX_POOL_MAX_SIZE <= (1ULL << (seL4_GuardBits + EX_POOL_BLOCK_SHIFT))));
 #else
-C_ASSERT(PROCESS_SHARED_CNODE_LOG2SIZE + THREAD_PRIVATE_CNODE_LOG2SIZE + seL4_GuardBits <=
+C_ASSERT(THREAD_INNER_CNODE_LOG2SIZE + THREAD_OUTER_CNODE_LOG2SIZE + seL4_GuardBits <=
 	 MWORD_BITS);
 #endif
 
 /* Allocation granularity for the system thread region, the client region and
- * the driver region. For the client region we reserve two pages but only
- * map one, so any buffer overflow or underflow is caught immediately. */
+ * the driver region. For the IPC buffer page or the TIB page we reserve two
+ * pages for each but only map one page, so any buffer overflow or underflow
+ * (by either the client or the NT Executive server) is caught immediately. */
 #define SYSTEM_THREAD_REGION_LOW_ZERO_BITS	(PAGE_LOG2SIZE + 3)
-#define EX_CLIENT_REGION_LOW_ZERO_BITS		(PAGE_LOG2SIZE + 1)
-#define EX_DRIVER_REGION_LOW_ZERO_BITS		(PAGE_LOG2SIZE + 4)
+#define IPC_REGION_LOW_ZERO_BITS		(PAGE_LOG2SIZE + 2)
+#define DRIVER_REGION_LOW_ZERO_BITS		(PAGE_LOG2SIZE + 4)
 
-#if (1ULL << EX_CLIENT_REGION_LOW_ZERO_BITS) < IPC_BUFFER_RESERVE
-#error "Client region allocation granularity too small."
+#if (1ULL << IPC_REGION_LOW_ZERO_BITS) != (IPC_BUFFER_COMMIT + NT_TIB_COMMIT) * 2
+#error "IPC region allocation granularity is incorrect."
 #endif
 
-#if (1ULL << EX_DRIVER_REGION_LOW_ZERO_BITS) < DRIVER_IO_PACKET_BUFFER_RESERVE
-#error "Driver region allocation granularity too small."
+#if (1ULL << DRIVER_REGION_LOW_ZERO_BITS) != DRIVER_IO_PACKET_BUFFER_RESERVE
+#error "Driver region allocation granularity is incorrect."
 #endif
 
 /*
@@ -238,13 +240,13 @@ typedef struct _CNODE {
 
 #define TREE_NODE_TO_UNTYPED(Node) CONTAINING_RECORD(Node, UNTYPED, TreeNode)
 
-/* The sum of PROCESS_SHARED_CNODE_LOG2SIZE and THREAD_PRIVATE_CNODE_LOG2SIZE
+/* The sum of THREAD_INNER_CNODE_LOG2SIZE and THREAD_OUTER_CNODE_LOG2SIZE
  * cannot be less than MWORD_BIT_LOG2SIZE, because seL4 does not support guard
  * bits larger than MWORD_BITS - MWORD_BITS_LOG2SIZE. Additionally, our BitMap
  * implementation requires that the number of bits is divisible by MWORD_BITS.
  * Therefore we require that the smallest CNode has MWORD_BITS slots. */
-C_ASSERT(PROCESS_SHARED_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
-C_ASSERT(THREAD_PRIVATE_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
+C_ASSERT(THREAD_INNER_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
+C_ASSERT(THREAD_OUTER_CNODE_LOG2SIZE >= MWORD_BITS_LOG2SIZE);
 
 /*
  * Get the depth of the CPtr traversal needed for a capability in the given

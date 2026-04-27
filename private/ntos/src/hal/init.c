@@ -3,7 +3,10 @@
 #if defined(_M_IX86) || defined(_M_AMD64)
 
 static LIST_ENTRY HalpX86IoPortList;
+
+#ifdef _M_AMD64
 static BOOLEAN HalpHpetEnabled;
+#endif
 
 NTSTATUS HalpEnableIoPort(USHORT PortNum, USHORT Count)
 {

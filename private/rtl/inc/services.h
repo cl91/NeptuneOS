@@ -13,10 +13,8 @@
  * block. The last page is unmapped. The unmapped pages are intended
  * to catch buffer overflows and underflows.
  */
-#define IPC_BUFFER_RESERVE		(2 * PAGE_SIZE)
 #define IPC_BUFFER_COMMIT		(PAGE_SIZE)
-#define NT_TIB_OFFSET			(IPC_BUFFER_RESERVE)
-#define NT_TIB_RESERVE			(2 * PAGE_SIZE)
+#define NT_TIB_OFFSET			(2 * PAGE_SIZE)
 #define NT_TIB_COMMIT			(PAGE_SIZE)
 
 #include <sel4/sel4.h>
@@ -92,7 +90,7 @@ C_ASSERT(sizeof(KUSER_SHARED_DATA) < PAGE_SIZE);
  * potentially be enlarged but I don't see the point of having more than
  * a 64KB IPC buffer.
  */
-#if IPC_BUFFER_RESERVE > 0x10000
+#if IPC_BUFFER_COMMIT > 0x10000
 #error "IPC buffer too large"
 #endif
 
@@ -108,14 +106,19 @@ C_ASSERT(sizeof(KUSER_SHARED_DATA) < PAGE_SIZE);
  */
 #define IRP_DATA_BUFFER_SIZE	(512)
 
-/* Each client thread gets its own private CSpace, with the zeroth slot pointing
- * to the shared CNode for its process. We don't neeed a huge CNode for either
- * the private or the shared CNode, since we only use client-side cap slots for
- * IPC endpoints. Even the most heavy RPC services rarely need more than 20 LPC
- * connections per thread. Note the process shared CNode size is slightly larger
- * so drivers which access a lot of X86 ports can have enough cap slots there. */
-#define PROCESS_SHARED_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE + 3)
-#define THREAD_PRIVATE_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE + 1)
+/* Each client thread gets its own private CSpace with two layers of CNode.
+ * The outer CNode has the the zeroth slot pointing to the shared CNode,
+ * containing capabilities accessible by all threads of the same process.
+ * The rest of the slots in the outer CNode either contain an endpoint or
+ * notification capability, or point to a thread-private CNode containing
+ * further endpoint/notification capabilities. The capability pointers to
+ * these thread-private caps are computed by combining their slot indices
+ * in the outer CNode and in the inner CNode. Note the thread inner CNode
+ * size is slightly larger than the outer CNode, so drivers which access
+ * a lot of X86 ports can have enough cap slots in the process-wide shared
+ * CNode. */
+#define THREAD_INNER_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE + 3)
+#define THREAD_OUTER_CNODE_LOG2SIZE	(MWORD_BITS_LOG2SIZE + 1)
 
 /* Private heap reserved for the Ldr component of NTDLL */
 #define NTDLL_LOADER_HEAP_RESERVE	(16 * PAGE_SIZE)
@@ -183,6 +186,8 @@ typedef struct _NTDLL_THREAD_INIT_INFO {
 typedef struct _NTDLL_DRIVER_INIT_INFO {
     MWORD IncomingIoPacketBuffer;
     MWORD OutgoingIoPacketBuffer;
+    MWORD ExecutiveNotificationCap;
+    MWORD EventLoopNotificationCap;
     MWORD InitialCoroutineStackTop;
     MWORD DpcMutexCap;
     MWORD WorkItemMutexCap;

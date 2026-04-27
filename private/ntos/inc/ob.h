@@ -131,16 +131,26 @@ FORCEINLINE LONGLONG ObGetObjectRefCount(IN POBJECT Object)
  * below the start of ExPool.
  */
 typedef enum _SERVICE_TYPE {
-    SERVICE_TYPE_TIMER_NOTIFICATION, /* This must be zero as the timer
-				      * notification is unbadged. */
-    SERVICE_TYPE_SYSTEM_SERVICE,
-    SERVICE_TYPE_WDM_SERVICE,
-    SERVICE_TYPE_FAULT_HANDLER,
-    SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER,
+    SERVICE_TYPE_NOTIFICATION, /* The zeroth bit is used to distinguish whether
+				* the message recevied by the system service event
+				* loop is from a bound notification or an endpoint.
+				* If the bit is set, the message is for the system
+				* service endpoint, and can be one of the following
+				* four types. Otherwise, the message is from the
+				* bound notification, signaled by either the timer
+				* service (in which case the badge is zero), or
+				* client driver process (in which case the badge is
+				* the signal group of the client). */
+    SERVICE_TYPE_SYSTEM_SERVICE = 1,
+    SERVICE_TYPE_WDM_SERVICE = 3,
+    SERVICE_TYPE_FAULT_HANDLER = 5,
+    SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER = 7,
     NUM_SERVICE_TYPES
 } SERVICE_TYPE;
 
 compile_assert(TOO_MANY_SERVICE_TYPES, NUM_SERVICE_TYPES <= (1 << EX_POOL_BLOCK_SHIFT));
+
+#define SERVICE_TYPE_IS_NOTIFICATION(Badge) (!((ULONG_PTR)(Badge) & 1))
 
 /* We use the offset of the object pointer from the ExPool start address
  * as the globally unique (at one time) identifier of the object on the

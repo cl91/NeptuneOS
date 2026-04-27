@@ -3,7 +3,7 @@
 static PSYSTEM_THREAD KiTimerIrqThread;
 static IRQ_HANDLER KiTimerIrqHandler;
 static NOTIFICATION KiTimerIrqNotification;
-static NOTIFICATION KiSystemServiceNotification;
+static NOTIFICATION KiExpiredTimerNotification;
 
 static PCSTR KiWeekdayString[] = {
     "Sun",
@@ -164,8 +164,8 @@ static VOID KiTimerInterruptService()
 	    if (Timer->DueTime.CounterTime <= Time.CounterTime) {
 		RemoveEntryList(&Timer->Link);
 		InsertHeadList(&KiExpiredIoTimerList, &Timer->Link);
-		assert(Timer->Notification.Cap);
-		seL4_Signal(Timer->Notification.Cap);
+		assert(Timer->Notification.TreeNode.Cap);
+		seL4_Signal(Timer->Notification.TreeNode.Cap);
 	    } else if (Timer->DueTime.CounterTime < EarliestDueTime.CounterTime) {
 		EarliestDueTime.CounterTime = Timer->DueTime.CounterTime;
 	    }
@@ -173,7 +173,7 @@ static VOID KiTimerInterruptService()
 	KiReleaseIoTimerDatabaseLock();
 	if (TimerExpired) {
 	    /* Notify the main event loop to check the expired timer list */
-	    seL4_Signal(KiSystemServiceNotification.TreeNode.Cap);
+	    seL4_Signal(KiExpiredTimerNotification.TreeNode.Cap);
 	}
 	KiUpdateUserSharedTimeData();
 	/* If the earliest due time of the queued timers are less than that we had set
@@ -306,27 +306,11 @@ static VOID KiTimerService(VOID)
 }
 
 NTSTATUS KeEnableIoTimerService(IN PIPC_ENDPOINT Endpoint,
+				IN PCNODE CNode,
 				IN MWORD IpcBadge)
 {
-    return MmCapTreeDeriveBadgedNode(&Endpoint->TreeNode,
-				     &KiTimerServiceEndpoint.TreeNode,
-				     ENDPOINT_RIGHTS_SEND_GRANTREPLY,
-				     IpcBadge);
-}
-
-static inline NTSTATUS KiBindNotificationToThread(IN MWORD ThreadCap,
-						  IN MWORD NotificationCap)
-{
-    assert(ThreadCap != 0);
-    int Error = seL4_TCB_BindNotification(ThreadCap, NotificationCap);
-
-    if (Error != 0) {
-	DbgTrace("seL4_TCB_BindNotification(0x%zx, 0x%zx) failed with error %d\n",
-		 ThreadCap, NotificationCap, Error);
-	return SEL4_ERROR(Error);
-    }
-
-    return STATUS_SUCCESS;
+    return KeDeriveEndpoint(Endpoint, CNode, &KiTimerServiceEndpoint,
+			    ENDPOINT_RIGHTS_SEND_GRANTREPLY, IpcBadge);
 }
 
 NTSTATUS KiInitTimer()
@@ -374,10 +358,11 @@ NTSTATUS KiInitTimer()
     RET_ERR(KiBindNotificationToThread(KiTimerServiceThread->TreeNode.Cap,
 				       KiTimerServiceNotification.TreeNode.Cap));
 
-    /* Create the system service notification and bind it to the root task. */
-    RET_ERR(KeCreateNotification(&KiSystemServiceNotification));
-    RET_ERR(KiBindNotificationToThread(NTOS_TCB_CAP,
-				       KiSystemServiceNotification.TreeNode.Cap));
+    /* Derive the expired timer notification from the executive service notification.
+     * The expired timer notification badge has the first bit set. */
+    RET_ERR(KeDeriveNotification(&KiExpiredTimerNotification, &MiNtosCNode,
+				 &KiExecutiveServiceNotification,
+				 1UL << 1));
 
     /* Create the timer IRQ thread and set its priority. */
     KiTimerIrqThread = ExAllocatePoolWithTag(sizeof(SYSTEM_THREAD),

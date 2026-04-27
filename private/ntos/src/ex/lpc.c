@@ -388,19 +388,15 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 
     /* Mint the server communication endpoint with the specified badge and
      * place it into the thread-private CNode of the client thread. */
-    KeInitializeIpcEndpoint(&Locals.Connection->ClientEndpoint, Thread->CSpace, 0, 0);
-    Status = MmCapTreeDeriveBadgedNode(&Locals.Connection->ClientEndpoint.TreeNode,
-				       &Locals.PortObject->Endpoint.TreeNode,
-				       ENDPOINT_RIGHTS_SEND,
-				       Locals.Connection->PortContext);
-    if (!NT_SUCCESS(Status)) {
-	KeUninitializeIpcEndpoint(&Locals.Connection->ClientEndpoint);
-	goto err;
-    }
+    IF_ERR_GOTO(err, Status,
+		KeDeriveEndpoint(&Locals.Connection->ClientEndpoint,
+				 Thread->CSpace, &Locals.PortObject->Endpoint,
+				 ENDPOINT_RIGHTS_SEND,
+				 Locals.Connection->PortContext));
 
     *PortHandle =
 	(HANDLE)(PsThreadCNodeIndexToGuardedCap(Locals.Connection->ClientEndpoint.TreeNode.Cap,
-						Thread) | LOCAL_HANDLE_FLAG);
+						0, Thread) | LOCAL_HANDLE_FLAG);
     Status = STATUS_SUCCESS;
     goto out;
 

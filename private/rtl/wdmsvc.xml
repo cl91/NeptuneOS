@@ -50,12 +50,6 @@
     <parameter annotation="in" type="GLOBAL_HANDLE" name="GlobalHandle" />
   </svc>
 
-  <svc name="WdmRequestIoPackets">
-    <parameter annotation="in" type="ULONG" name="NumDriverResponsePackets" />
-    <parameter annotation="out" type="ptr::ULONG" name="NumRequestPackets" />
-    <parameter annotation="in" type="BOOLEAN" name="MoreResponseToCome" />
-  </svc>
-
   <svc name="WdmEnableX86Port">
     <parameter annotation="in" type="USHORT" name="PortNum" />
     <parameter annotation="in" type="USHORT" name="Count" />
@@ -88,9 +82,6 @@
 
   <svc name="WdmCreateCoroutineStack">
     <parameter annotation="out" type="ptr::PVOID" name="StackTop" />
-  </svc>
-
-  <svc name="WdmNotifyMainThread">
   </svc>
 
   <svc name="WdmRegisterFileSystem">

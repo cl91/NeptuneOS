@@ -25,10 +25,10 @@
 #if !defined(RC_INVOKED)
 
 #if defined(_M_IX86)
-__forceinline void MemoryBarrier(void)
+static inline __attribute__((always_inline)) void MemoryBarrier(void)
 {
-    long Barrier;
-    _InterlockedOr(&Barrier, 0);
+    volatile int Barrier;
+    InterlockedOr(&Barrier, 0);
 }
 #define PrefetchForWrite(p)
 #define ReadForWriteAccess(p)                 (*(p))
@@ -72,7 +72,6 @@ typedef enum _ARM64INTR_BARRIER_TYPE {
 #error Unsupported architecture
 #endif /* _M_ARM */
 
-#if defined(_M_IX86) || defined(_M_AMD64)
 #define __iso_volatile_load8(p) (*(volatile char*)(p))
 #define __iso_volatile_load16(p) (*(volatile short*)(p))
 #define __iso_volatile_load32(p) (*(volatile int*)(p))
@@ -81,9 +80,8 @@ typedef enum _ARM64INTR_BARRIER_TYPE {
 #define __iso_volatile_store16(p,v) (*(volatile short*)(p) = (v))
 #define __iso_volatile_store32(p,v) (*(volatile int*)(p) = (v))
 #define __iso_volatile_store64(p,v) (*(volatile __int64*)(p) = (v))
-#endif
 
-__forceinline
+static inline __attribute__((always_inline))
 char
 ReadRaw8 (
     _In_ _Interlocked_operand_ char const volatile *Source)
@@ -91,7 +89,7 @@ ReadRaw8 (
     return *(char *)Source;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteRaw8 (
     _Out_ _Interlocked_operand_ char volatile *Destination,
@@ -100,7 +98,7 @@ WriteRaw8 (
     *(char *)Destination = Value;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 short
 ReadRaw16 (
     _In_ _Interlocked_operand_ short const volatile *Source)
@@ -108,7 +106,7 @@ ReadRaw16 (
     return *(short *)Source;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteRaw16 (
     _Out_ _Interlocked_operand_ short volatile *Destination,
@@ -117,7 +115,7 @@ WriteRaw16 (
     *(short *)Destination = Value;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 long
 ReadRaw (
     _In_ _Interlocked_operand_ long const volatile *Source)
@@ -125,7 +123,7 @@ ReadRaw (
     return *(long *)Source;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteRaw (
     _Out_ _Interlocked_operand_ long volatile *Destination,
@@ -134,7 +132,7 @@ WriteRaw (
     *(long *)Destination = Value;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 __int64
 ReadRaw64 (
     _In_ _Interlocked_operand_ __int64 const volatile *Source)
@@ -142,7 +140,7 @@ ReadRaw64 (
     return *(__int64 *)Source;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteRaw64 (
     _Out_ _Interlocked_operand_ __int64 volatile *Destination,
@@ -151,7 +149,7 @@ WriteRaw64 (
     *(__int64 *)Destination = Value;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 char
 ReadNoFence8 (
     _In_ _Interlocked_operand_ char const volatile *Source)
@@ -159,7 +157,7 @@ ReadNoFence8 (
     return __iso_volatile_load8(Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteNoFence8 (
     _Out_ _Interlocked_operand_ char volatile *Destination,
@@ -168,7 +166,7 @@ WriteNoFence8 (
     __iso_volatile_store8(Destination, Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 short
 ReadNoFence16 (
     _In_ _Interlocked_operand_ short const volatile *Source)
@@ -176,7 +174,7 @@ ReadNoFence16 (
     return __iso_volatile_load16(Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteNoFence16 (
     _Out_ _Interlocked_operand_ short volatile *Destination,
@@ -185,7 +183,7 @@ WriteNoFence16 (
     __iso_volatile_store16(Destination, Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 long
 ReadNoFence (
     _In_ _Interlocked_operand_ long const volatile *Source)
@@ -193,7 +191,7 @@ ReadNoFence (
     return __iso_volatile_load32((const volatile int*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteNoFence (
     _Out_ _Interlocked_operand_ long volatile *Destination,
@@ -202,7 +200,7 @@ WriteNoFence (
     __iso_volatile_store32((volatile int*)Destination, Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 __int64
 ReadNoFence64 (
     _In_ _Interlocked_operand_ __int64 const volatile *Source)
@@ -210,7 +208,7 @@ ReadNoFence64 (
     return __iso_volatile_load64(Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteNoFence64 (
     _Out_ _Interlocked_operand_ __int64 volatile *Destination,
@@ -220,7 +218,7 @@ WriteNoFence64 (
 }
 
 
-__forceinline
+static inline __attribute__((always_inline))
 char
 ReadAcquire8 (
     _In_ _Interlocked_operand_ char const volatile *Source)
@@ -230,7 +228,7 @@ ReadAcquire8 (
     return Value;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteRelease8 (
     _Out_ _Interlocked_operand_ char volatile *Destination,
@@ -240,7 +238,7 @@ WriteRelease8 (
     __iso_volatile_store8(Destination, Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 short
 ReadAcquire16 (
     _In_ _Interlocked_operand_ short const volatile *Source)
@@ -250,7 +248,7 @@ ReadAcquire16 (
     return Value;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteRelease16 (
     _Out_ _Interlocked_operand_ short volatile *Destination,
@@ -260,7 +258,7 @@ WriteRelease16 (
     __iso_volatile_store16(Destination, Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 long
 ReadAcquire (
     _In_ _Interlocked_operand_ long const volatile *Source)
@@ -270,7 +268,7 @@ ReadAcquire (
     return Value;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteRelease (
     _Out_ _Interlocked_operand_ long volatile *Destination,
@@ -280,7 +278,7 @@ WriteRelease (
     __iso_volatile_store32((volatile int*)Destination, Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 __int64
 ReadAcquire64 (
     _In_ _Interlocked_operand_ __int64 const volatile *Source)
@@ -290,7 +288,7 @@ ReadAcquire64 (
     return Value;
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteRelease64 (
     _Out_ _Interlocked_operand_ __int64 volatile *Destination,
@@ -301,7 +299,7 @@ WriteRelease64 (
 }
 
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned char
 ReadUCharAcquire (
     _In_ _Interlocked_operand_ unsigned char const volatile *Source)
@@ -309,7 +307,7 @@ ReadUCharAcquire (
     return (unsigned char)ReadAcquire8((char*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned char
 ReadUCharNoFence (
     _In_ _Interlocked_operand_ unsigned char const volatile *Source)
@@ -317,7 +315,7 @@ ReadUCharNoFence (
     return (unsigned char)ReadNoFence8((char*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned char
 ReadUCharRaw (
     _In_ _Interlocked_operand_ unsigned char const volatile *Source)
@@ -325,7 +323,7 @@ ReadUCharRaw (
     return (unsigned char)ReadRaw8((char*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteUCharRelease (
     _Out_ _Interlocked_operand_ unsigned char volatile *Destination,
@@ -334,7 +332,7 @@ WriteUCharRelease (
     WriteRelease8((char*)Destination, (char)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteUCharNoFence (
     _Out_ _Interlocked_operand_ unsigned char volatile *Destination,
@@ -343,7 +341,7 @@ WriteUCharNoFence (
     WriteNoFence8((char*)Destination, (char)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteUCharRaw (
     _Out_ _Interlocked_operand_ unsigned char volatile *Destination,
@@ -352,7 +350,7 @@ WriteUCharRaw (
     WriteRaw8((char*)Destination, (char)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 BOOLEAN
 ReadBooleanAcquire (
     _In_ _Interlocked_operand_ BOOLEAN const volatile *Source)
@@ -360,7 +358,7 @@ ReadBooleanAcquire (
     return (BOOLEAN)ReadAcquire8((char*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned char
 ReadBooleanNoFence (
     _In_ _Interlocked_operand_ BOOLEAN const volatile *Source)
@@ -368,7 +366,7 @@ ReadBooleanNoFence (
     return (BOOLEAN)ReadNoFence8((char*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteBooleanRelease (
     _Out_ _Interlocked_operand_ BOOLEAN volatile *Destination,
@@ -377,7 +375,7 @@ WriteBooleanRelease (
     WriteRelease8((char*)Destination, (char)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteBooleanNoFence (
     _Out_ _Interlocked_operand_ BOOLEAN volatile *Destination,
@@ -386,7 +384,7 @@ WriteBooleanNoFence (
     WriteNoFence8((char*)Destination, (char)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned short
 ReadUShortAcquire (
     _In_ _Interlocked_operand_ unsigned short const volatile *Source)
@@ -394,7 +392,7 @@ ReadUShortAcquire (
     return (unsigned short)ReadAcquire16((short*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned short
 ReadUShortNoFence (
     _In_ _Interlocked_operand_ unsigned short const volatile *Source)
@@ -402,7 +400,7 @@ ReadUShortNoFence (
     return (unsigned short)ReadNoFence16((short*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned short
 ReadUShortRaw (
     _In_ _Interlocked_operand_ unsigned short const volatile *Source)
@@ -410,7 +408,7 @@ ReadUShortRaw (
     return (unsigned short)ReadRaw16((short*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteUShortRelease (
     _Out_ _Interlocked_operand_ unsigned short volatile *Destination,
@@ -419,7 +417,7 @@ WriteUShortRelease (
     WriteRelease16((short*)Destination, (short)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteUShortNoFence (
     _Out_ _Interlocked_operand_ unsigned short volatile *Destination,
@@ -428,7 +426,7 @@ WriteUShortNoFence (
     WriteNoFence16((short*)Destination, (short)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteUShortRaw (
     _Out_ _Interlocked_operand_ unsigned short volatile *Destination,
@@ -437,7 +435,7 @@ WriteUShortRaw (
     WriteRaw16((short*)Destination, (short)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned long
 ReadULongAcquire (
     _In_ _Interlocked_operand_ unsigned long const volatile *Source)
@@ -445,7 +443,7 @@ ReadULongAcquire (
     return (unsigned long)ReadAcquire((long*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned long
 ReadULongNoFence (
     _In_ _Interlocked_operand_ unsigned long const volatile *Source)
@@ -453,7 +451,7 @@ ReadULongNoFence (
     return (unsigned long)ReadNoFence((long*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned long
 ReadULongRaw (
     _In_ _Interlocked_operand_ unsigned long const volatile *Source)
@@ -461,7 +459,7 @@ ReadULongRaw (
     return (unsigned long)ReadRaw((long*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteULongRelease (
     _Out_ _Interlocked_operand_ unsigned long volatile *Destination,
@@ -470,7 +468,7 @@ WriteULongRelease (
     WriteRelease((long*)Destination, (long)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteULongNoFence (
     _Out_ _Interlocked_operand_ unsigned long volatile *Destination,
@@ -479,7 +477,7 @@ WriteULongNoFence (
     WriteNoFence((long*)Destination, (long)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteULongRaw (
     _Out_ _Interlocked_operand_ unsigned long volatile *Destination,
@@ -488,7 +486,7 @@ WriteULongRaw (
     WriteRaw((long*)Destination, (long)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned __int64
 ReadULong64Acquire (
     _In_ _Interlocked_operand_ unsigned __int64 const volatile *Source)
@@ -496,7 +494,7 @@ ReadULong64Acquire (
     return (unsigned __int64)ReadAcquire64((__int64*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned __int64
 ReadULong64NoFence (
     _In_ _Interlocked_operand_ unsigned __int64 const volatile *Source)
@@ -504,7 +502,7 @@ ReadULong64NoFence (
     return (unsigned __int64)ReadNoFence64((__int64*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 unsigned __int64
 ReadULong64Raw (
     _In_ _Interlocked_operand_ unsigned __int64 const volatile *Source)
@@ -512,7 +510,7 @@ ReadULong64Raw (
     return (unsigned __int64)ReadRaw64((__int64*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteULong64Release (
     _Out_ _Interlocked_operand_ unsigned __int64 volatile *Destination,
@@ -521,7 +519,7 @@ WriteULong64Release (
     WriteRelease64((__int64*)Destination, (__int64)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteULong64NoFence (
     _Out_ _Interlocked_operand_ unsigned __int64 volatile *Destination,
@@ -530,7 +528,7 @@ WriteULong64NoFence (
     WriteNoFence64((__int64*)Destination, (__int64)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WriteULong64Raw (
     _Out_ _Interlocked_operand_ unsigned __int64 volatile *Destination,
@@ -541,7 +539,7 @@ WriteULong64Raw (
 
 #ifdef _WIN64
 
-__forceinline
+static inline __attribute__((always_inline))
 void*
 ReadPointerAcquire (
     _In_ _Interlocked_operand_ void* const volatile *Source)
@@ -549,7 +547,7 @@ ReadPointerAcquire (
     return (void*)ReadAcquire64((__int64*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void*
 ReadPointerNoFence (
     _In_ _Interlocked_operand_ void* const volatile *Source)
@@ -557,7 +555,7 @@ ReadPointerNoFence (
     return (void*)ReadNoFence64((__int64*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void*
 ReadPointerRaw (
     _In_ _Interlocked_operand_ void* const volatile *Source)
@@ -565,7 +563,7 @@ ReadPointerRaw (
     return (void*)ReadRaw64((__int64*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WritePointerRelease (
     _Out_ _Interlocked_operand_ void* volatile *Destination,
@@ -574,7 +572,7 @@ WritePointerRelease (
     WriteRelease64((__int64*)Destination, (__int64)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WritePointerNoFence (
     _Out_ _Interlocked_operand_ void* volatile *Destination,
@@ -583,7 +581,7 @@ WritePointerNoFence (
     WriteNoFence64((__int64*)Destination, (__int64)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WritePointerRaw (
     _Out_ _Interlocked_operand_ void* volatile *Destination,
@@ -607,7 +605,7 @@ WritePointerRaw (
 
 #else // _WIN64
 
-__forceinline
+static inline __attribute__((always_inline))
 void*
 ReadPointerAcquire (
     _In_ _Interlocked_operand_ void* const volatile *Source)
@@ -615,7 +613,7 @@ ReadPointerAcquire (
     return (void*)ReadAcquire((long*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void*
 ReadPointerNoFence (
     _In_ _Interlocked_operand_ void* const volatile *Source)
@@ -623,7 +621,7 @@ ReadPointerNoFence (
     return (void*)ReadNoFence((long*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void*
 ReadPointerRaw (
     _In_ _Interlocked_operand_ void* const volatile *Source)
@@ -631,7 +629,7 @@ ReadPointerRaw (
     return (void*)ReadRaw((long*)Source);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WritePointerRelease (
     _Out_ _Interlocked_operand_ void* volatile *Destination,
@@ -640,7 +638,7 @@ WritePointerRelease (
     WriteRelease((long*)Destination, (long)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WritePointerNoFence (
     _Out_ _Interlocked_operand_ void* volatile *Destination,
@@ -649,7 +647,7 @@ WritePointerNoFence (
     WriteNoFence((long*)Destination, (long)Value);
 }
 
-__forceinline
+static inline __attribute__((always_inline))
 void
 WritePointerRaw (
     _Out_ _Interlocked_operand_ void* volatile *Destination,
@@ -685,7 +683,7 @@ WritePointerRaw (
 extern "C++" {
 
     template<typename T>
-    __forceinline
+    static inline __attribute__((always_inline))
     T
     ReadRaw (
         _In_ _Interlocked_operand_ T const volatile *Source)
@@ -694,7 +692,7 @@ extern "C++" {
     }
 
     template<typename T>
-    __forceinline
+    static inline __attribute__((always_inline))
     void
     WriteRaw (
         _Out_ _Interlocked_operand_ T volatile *Destination,
@@ -704,7 +702,7 @@ extern "C++" {
     }
 
     template<typename T>
-    __forceinline
+    static inline __attribute__((always_inline))
     T
     ReadNoFence (
         _In_ _Interlocked_operand_ T const volatile *Source)
@@ -719,7 +717,7 @@ extern "C++" {
     }
 
     template<typename T>
-    __forceinline
+    static inline __attribute__((always_inline))
     void
     WriteNoFence (
         _Out_ _Interlocked_operand_ T volatile *Destination,

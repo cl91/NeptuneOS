@@ -387,7 +387,9 @@ typedef struct _TEB {                                        /* win32/win64 */
 } TEB, *PTEB;
 #include <poppack.h>
 
-C_ASSERT(sizeof(TEB) < PAGE_SIZE);
+/* The driver process's IO packet buffer pointers are placed at the end of the TEB page,
+ * so the TEB structure cannot be too large. */
+C_ASSERT(sizeof(TEB) < (PAGE_SIZE - 2 * SYSTEM_CACHE_ALIGNMENT_SIZE));
 
 /*
  * End of Exception List

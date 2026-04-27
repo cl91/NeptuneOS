@@ -27,8 +27,8 @@ static VOID KiNotifyDrivers()
 {
     LoopOverList(Driver, &IoBugcheckNotificationList,
 		 IO_DRIVER_OBJECT, BugcheckNotificationLink) {
-	if (Driver->BugcheckNotification.Cap) {
-	    seL4_Signal(Driver->BugcheckNotification.Cap);
+	if (Driver->BugcheckNotification.TreeNode.Cap) {
+	    seL4_Signal(Driver->BugcheckNotification.TreeNode.Cap);
 	} else {
 	    char Buf[256];
 	    snprintf(Buf, sizeof(Buf),
@@ -37,7 +37,6 @@ static VOID KiNotifyDrivers()
 	    HalDisplayString(Buf);
 	}
     }
-
 }
 
 static VOID KiPrintHaltMsg(PCSTR Format, va_list arglist)

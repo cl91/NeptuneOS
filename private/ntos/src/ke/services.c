@@ -17,6 +17,7 @@
 #endif
 
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
+NOTIFICATION KiExecutiveServiceNotification;
 LIST_ENTRY KiReadyThreadList;
 
 /* If the thread is in the ready list, remove it so the system service
@@ -62,13 +63,33 @@ VOID KeDestroyEndpoint(IN PIPC_ENDPOINT Endpoint)
     MmCapTreeDeleteNode(&Endpoint->TreeNode);
 }
 
+NTSTATUS KiBindNotificationToThread(IN MWORD ThreadCap,
+				    IN MWORD NotificationCap)
+{
+    assert(ThreadCap != 0);
+    int Error = seL4_TCB_BindNotification(ThreadCap, NotificationCap);
+
+    if (Error != 0) {
+	DbgTrace("seL4_TCB_BindNotification(0x%zx, 0x%zx) failed with error %d\n",
+		 ThreadCap, NotificationCap, Error);
+	return SEL4_ERROR(Error);
+    }
+
+    return STATUS_SUCCESS;
+}
+
 /*
  * Create the IPC endpoint for the system services. This IPC endpoint
- * is then badged via seL4_CNode_Mint. Also initialize the ready thread list.
+ * is then badged via seL4_CNode_Mint and handed to NT clients. Next,
+ * create the system service notification and bind it to the root task.
+ * Finally, initialize the ready thread list.
  */
 NTSTATUS KiInitExecutiveServices()
 {
     RET_ERR(KeCreateEndpoint(&KiExecutiveServiceEndpoint));
+    RET_ERR(KeCreateNotification(&KiExecutiveServiceNotification));
+    RET_ERR(KiBindNotificationToThread(NTOS_TCB_CAP,
+				       KiExecutiveServiceNotification.TreeNode.Cap));
     InitializeListHead(&KiReadyThreadList);
     return STATUS_SUCCESS;
 }
@@ -103,14 +124,12 @@ static NTSTATUS KiEnableClientServiceEndpoint(IN PIPC_ENDPOINT ReplyEndpoint,
     }
 
     KiAllocatePool(ServiceEndpoint, IPC_ENDPOINT);
-    KeInitializeIpcEndpoint(ServiceEndpoint, CSpace, 0, 0);
-    RET_ERR_EX(MmCapTreeDeriveBadgedNode(&ServiceEndpoint->TreeNode,
-					 &KiExecutiveServiceEndpoint.TreeNode,
-					 ENDPOINT_RIGHTS_SEND_GRANTREPLY,
-					 IPCBadge),
+    RET_ERR_EX(KeDeriveEndpoint(ServiceEndpoint, CSpace,
+				&KiExecutiveServiceEndpoint,
+				ENDPOINT_RIGHTS_SEND_GRANTREPLY,
+				IPCBadge),
 	       {
 		   KiFreePool(ServiceEndpoint);
-		   KeUninitializeIpcEndpoint(ServiceEndpoint);
 		   KeDestroyEndpoint(ReplyEndpoint);
 	       });
 
@@ -125,7 +144,7 @@ static NTSTATUS KiEnableThreadServiceEndpoint(IN PTHREAD Thread,
     assert(Thread->Process != NULL);
     assert(Thread->CSpace != NULL);
     assert(ServiceType < NUM_SERVICE_TYPES);
-    assert(ServiceType != SERVICE_TYPE_TIMER_NOTIFICATION);
+    assert(!SERVICE_TYPE_IS_NOTIFICATION(ServiceType));
     assert(ServiceType != SERVICE_TYPE_SYSTEM_THREAD_FAULT_HANDLER);
 
     MWORD IPCBadge = OBJECT_TO_GLOBAL_HANDLE(Thread) | ServiceType;
@@ -139,11 +158,11 @@ static NTSTATUS KiEnableThreadServiceEndpoint(IN PTHREAD Thread,
     if (ServiceType == SERVICE_TYPE_SYSTEM_SERVICE) {
 	Thread->SystemServiceEndpoint = ServiceEndpoint;
 	Thread->InitInfo.SystemServiceCap =
-	    PsThreadCNodeIndexToGuardedCap(ServiceEndpoint->TreeNode.Cap, Thread);
+	    PsThreadCNodeIndexToGuardedCap(ServiceEndpoint->TreeNode.Cap, 0, Thread);
     } else if (ServiceType == SERVICE_TYPE_WDM_SERVICE) {
 	Thread->WdmServiceEndpoint = ServiceEndpoint;
 	Thread->InitInfo.WdmServiceCap =
-	    PsThreadCNodeIndexToGuardedCap(ServiceEndpoint->TreeNode.Cap, Thread);
+	    PsThreadCNodeIndexToGuardedCap(ServiceEndpoint->TreeNode.Cap, 0, Thread);
     } else {
 	/* Note the endpoint cap for the fault handler of a client thread is also
 	 * in the CSpace of the client thread. When configuring the thread TCB, we
@@ -216,6 +235,16 @@ NTSTATUS KeEnableSystemThreadFaultHandler(IN PSYSTEM_THREAD Thread)
     assert(Thread->FaultEndpoint != NULL);
 
     return STATUS_SUCCESS;
+}
+
+NTSTATUS KeEnableDriverServiceNotification(IN PNOTIFICATION Notification,
+					   IN PCNODE CNode,
+					   IN ULONG SignalGroupIndex)
+{
+    assert(SignalGroupIndex + 2 < seL4_BadgeBits);
+    return KeDeriveNotification(Notification, CNode,
+				&KiExecutiveServiceNotification,
+				1UL << (SignalGroupIndex + 2));
 }
 
 NTSTATUS KeLoadThreadContext(IN MWORD ThreadCap,
@@ -1031,7 +1060,26 @@ VOID KiDispatchExecutiveServices()
 	ULONG NumExtraCaps = seL4_MessageInfo_get_extraCaps(Request);
 	DbgTrace("Got message label 0x%x length %d unwrapped caps %d extra caps %d badge 0x%zx\n",
 		 SvcNum, ReqMsgLength, NumUnwrappedCaps, NumExtraCaps, Badge);
-	if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_FAULT_HANDLER) {
+	if (SERVICE_TYPE_IS_NOTIFICATION(Badge)) {
+	    Badge >>= 1;
+	    /* The service notification is bound to our TCB. The timer IRQ handler
+	     * thread signals this notification to wake us up and check the expired
+	     * timer list. A client driver process signals this notification to wake
+	     * us up to check its outgoing IO packet buffer. The badge we have received
+	     * here is a bitwise OR of the timer notification bit (bit 1) and the
+	     * signal group bits for each drivers that have signaled the notification. */
+	    if (Badge & 1) {
+		/* Check the expired timer list and wake up any thread that is waiting on them */
+		KiSignalExpiredTimerList();
+	    }
+	    Badge >>= 1;
+	    if (Badge) {
+		IoReceiveIoPacketsFromDrivers(Badge);
+	    }
+	    /* Although the message we got corresponds to a notification, we still need
+	     * to reply to the message. Otherwise the next Recv will block indefinitely. */
+	    seL4_Reply(seL4_MessageInfo_new(0, 0, 0, 0));
+	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_FAULT_HANDLER) {
 	    /* The thread has faulted. */
 	    PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
 	    assert(Thread);
@@ -1056,11 +1104,7 @@ VOID KiDispatchExecutiveServices()
 #endif
 	    KiDumpSystemThreadFault(Fault, Thread, HalVgaPrint);
 	    PsTerminateSystemThread(Thread);
-	} else if (GLOBAL_HANDLE_GET_FLAG(Badge) != SERVICE_TYPE_TIMER_NOTIFICATION) {
-	    /* The timer notification is bound to our TCB. The timer IRQ handler
-	     * thread signals this notification to wake us up and check the expired
-	     * timer list. In this case there is no service message from a client
-	     * thread, and we skip the message processing below. */
+	} else {
 	    ULONG MsgBufferEnd = 0;
 	    ULONG NumApc = 0;
 	    BOOLEAN MoreToCome = FALSE;
@@ -1105,8 +1149,6 @@ VOID KiDispatchExecutiveServices()
 		}
 	    }
 	}
-	/* Check the expired timer list and wake up any thread that is waiting on them */
-	KiSignalExpiredTimerList();
 	/* Check if any other thread is awaken and attempt to continue the execution of
 	 * its service handler from the saved context. */
 	while (!IsListEmpty(&KiReadyThreadList)) {
@@ -1137,6 +1179,8 @@ VOID KiDispatchExecutiveServices()
 		KiReplyThread(ReadyThread, Status, NumApc, MoreToCome);
 	    }
 	}
+	/* Check to see if any driver has IO packets queued on them, and send them. */
+	IoSubmitIoPacketsToDrivers();
 	KiUpdateUserSharedTimeData();
     }
 }

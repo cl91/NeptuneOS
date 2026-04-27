@@ -62,8 +62,8 @@ NTSTATUS IoInitSystemPhase0()
 {
     AvlInitializeTree(&IopDriverObjectTree);
     InitializeListHead(&IopShutdownNotificationList);
-    InitializeListHead(&IopNtosPendingIrpList);
     InitializeListHead(&IoBugcheckNotificationList);
+    IopInitIrpProcessing();
     RET_ERR(IopCreateFileType());
     RET_ERR(IopCreateDeviceType());
     RET_ERR(IopCreateDriverType());

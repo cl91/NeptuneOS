@@ -32,9 +32,6 @@ FORCEINLINE NTSTATUS IopAllocateIoPacket(IN IO_PACKET_TYPE Type,
  * This is used by the cache manager to generate the paging IO requests. */
 #define IOP_PAGING_IO_REQUESTOR		(PTHREAD)((MWORD)(~0ULL))
 
-/* List of PENDING_IRPs queued by the NTOS Executive for paging IO. */
-extern LIST_ENTRY IopNtosPendingIrpList;
-
 /*
  * The PENDING_IRP represents a pending IRP that is queued by either a THREAD object
  * or a DRIVER object. There are several possible scenarios when it comes to IRP
@@ -464,12 +461,16 @@ FORCEINLINE PIO_DEVICE_OBJECT IopGetPhyDevObj(IN PIO_DEVICE_OBJECT Device)
 }
 
 /* irp.c */
+VOID IopInitIrpProcessing(VOID);
+VOID IopAssignSignalGroupForDriver(IN PIO_DRIVER_OBJECT DriverObject);
 NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
 					 IN PTHREAD Thread,
 					 IN BOOLEAN Alertable,
 					 IN WAIT_TYPE WaitType,
 					 IN PPENDING_IRP *PendingIrps,
 					 IN ULONG IrpCount);
+VOID IopQueueIoPacketToDriver(IN PIO_DRIVER_OBJECT DriverObject,
+			      IN PIO_PACKET IoPacket);
 NTSTATUS IopCallDriverEx(IN PTHREAD Thread,
 			 IN PIO_REQUEST_PARAMETERS Irp,
 			 IN OPTIONAL PIO_DRIVER_OBJECT DriverObject,

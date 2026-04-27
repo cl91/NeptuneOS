@@ -7,20 +7,31 @@
 
 ULONG InitSafeBootMode = 0;
 
+/* Notification that our event loop sleeps on. Signaled by the NT Executive server and
+ * the DPC/ISR threads. Note this is in the process-wide shared CNode. */
+MWORD IopEventLoopNotification;
+/* Signaled by us to notify NT Executive server of outgoing IO packets to process */
+MWORD IopExecutiveNotification;
+
 /*
  * This is the main event loop of the driver process
  */
 static NTSTATUS IopDriverEventLoop()
 {
-    ULONG NumResponsePackets = 0;
-    BOOLEAN MoreResponseToCome = FALSE;
+    /* At driver startup, we need to call IopProcessIoPackets to process the IRPs
+     * and IO work items queued during driver startup (in DriverEntry) and then
+     * signal the NT Executive server to notify that driver startup has completed. */
+    IopProcessIoPackets();
+    assert(PsCapHasCorrectGuard(IopExecutiveNotification));
+    assert(PsCapIsThreadPrivate(IopExecutiveNotification));
+    seL4_Signal(IopExecutiveNotification);
+
     while (TRUE) {
-	ULONG NumRequestPackets = 0;
-	/* This should never return error. If it did, something is seriously
-	 * wrong and we should terminate the driver process. */
-	RET_ERR(WdmRequestIoPackets(NumResponsePackets, &NumRequestPackets,
-				    MoreResponseToCome));
-	MoreResponseToCome = IopProcessIoPackets(&NumResponsePackets, NumRequestPackets);
+	MWORD Badge = 0;
+	assert(IopEventLoopNotification);
+	assert(PsCapIsProcessShared(IopEventLoopNotification));
+	seL4_Wait(RtlProcessCNodeIndexToGuardedCap(IopEventLoopNotification), &Badge);
+	IopProcessIoPackets();
     }
 }
 
@@ -34,8 +45,10 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     assert(PsCapHasCorrectGuard(WdmServiceCap));
     NtCurrentTeb()->Wdm.ServiceCap = WdmServiceCap;
     NtCurrentTeb()->Wdm.IsMainThread = TRUE;
-    IopIncomingIoPacketBuffer = (PIO_PACKET)InitInfo->IncomingIoPacketBuffer;
-    IopOutgoingIoPacketBuffer = (PIO_PACKET)InitInfo->OutgoingIoPacketBuffer;
+    IopIncomingIoPacketBuffer = InitInfo->IncomingIoPacketBuffer;
+    IopOutgoingIoPacketBuffer = InitInfo->OutgoingIoPacketBuffer;
+    IopEventLoopNotification = InitInfo->EventLoopNotificationCap;
+    IopExecutiveNotification = InitInfo->ExecutiveNotificationCap;
     KiCoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;
     ULONG TscFreqInMHz = SharedUserData->TscFrequencyInMHz;
     KiCounterTimeMultiplier = (10ULL << TIME_MULTIPLIER_SHIFT) / TscFreqInMHz;

@@ -16,24 +16,24 @@ FORCEINLINE MWORD PsThreadIdToCSpaceGuard(IN ULONG_PTR ThreadId)
 {
     assert(IS_ALIGNED_BY(ThreadId, EX_POOL_SMALLEST_BLOCK));
     return (ThreadId >> EX_POOL_BLOCK_SHIFT) <<
-	(PROCESS_SHARED_CNODE_LOG2SIZE + THREAD_PRIVATE_CNODE_LOG2SIZE);
+	(THREAD_INNER_CNODE_LOG2SIZE + THREAD_OUTER_CNODE_LOG2SIZE);
 }
 
 FORCEINLINE MWORD PsGetGuardValueOfCap(IN MWORD Cap)
 {
-    ULONG Bits = PROCESS_SHARED_CNODE_LOG2SIZE + THREAD_PRIVATE_CNODE_LOG2SIZE;
+    ULONG Bits = THREAD_INNER_CNODE_LOG2SIZE + THREAD_OUTER_CNODE_LOG2SIZE;
     return (Cap >> Bits) << Bits;
 }
 
-FORCEINLINE MWORD PsGetThreadCNodeIndexOfCap(IN MWORD Cap)
+FORCEINLINE MWORD PsGetThreadOuterCNodeIndexOfCap(IN MWORD Cap)
 {
-    return (Cap >> PROCESS_SHARED_CNODE_LOG2SIZE) &
-	((1ULL << THREAD_PRIVATE_CNODE_LOG2SIZE) - 1);
+    return (Cap >> THREAD_INNER_CNODE_LOG2SIZE) &
+	((1ULL << THREAD_OUTER_CNODE_LOG2SIZE) - 1);
 }
 
 FORCEINLINE BOOLEAN PsCapIsProcessShared(IN MWORD Cap)
 {
-    BOOLEAN Value = !PsGetThreadCNodeIndexOfCap(Cap) && !PsGetGuardValueOfCap(Cap);
+    BOOLEAN Value = !PsGetThreadOuterCNodeIndexOfCap(Cap) && !PsGetGuardValueOfCap(Cap);
     if (Value) {
 	/* In this case the server should NOT have marked the cap with a guard value. */
 	assert(!PsGetGuardValueOfCap(Cap));
@@ -43,7 +43,7 @@ FORCEINLINE BOOLEAN PsCapIsProcessShared(IN MWORD Cap)
 
 FORCEINLINE BOOLEAN PsCapIsThreadPrivate(IN MWORD Cap)
 {
-    return !!PsGetThreadCNodeIndexOfCap(Cap);
+    return !!PsGetThreadOuterCNodeIndexOfCap(Cap);
 }
 
 #ifndef _NTOSKRNL_
@@ -56,9 +56,9 @@ FORCEINLINE MWORD RtlGetThreadCSpaceGuard()
 }
 
 /* This routine must only be called for the caps in the process-wide shared CNode */
-FORCEINLINE MWORD RtlGetGuardedCapInProcessCNode(IN MWORD Cap)
+FORCEINLINE MWORD RtlProcessCNodeIndexToGuardedCap(IN MWORD Cap)
 {
-    assert(!PsGetThreadCNodeIndexOfCap(Cap));
+    assert(!PsGetThreadOuterCNodeIndexOfCap(Cap));
     assert(!PsGetGuardValueOfCap(Cap));
     return Cap | RtlGetThreadCSpaceGuard();
 }

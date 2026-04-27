@@ -97,7 +97,10 @@ NTSTATUS KeSetThreadPriority(IN MWORD ThreadCap,
 
 /* services.c */
 IPC_ENDPOINT KiExecutiveServiceEndpoint;
+NOTIFICATION KiExecutiveServiceNotification;
 LIST_ENTRY KiReadyThreadList;
+NTSTATUS KiBindNotificationToThread(IN MWORD ThreadCap,
+				    IN MWORD NotificationCap);
 NTSTATUS KiInitExecutiveServices();
 VOID KiDispatchExecutiveServices();
 

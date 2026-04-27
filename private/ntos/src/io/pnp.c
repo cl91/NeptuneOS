@@ -395,9 +395,7 @@ static NTSTATUS IopQueueLoadDriverMsg(IN PIO_DRIVER_OBJECT TargetDriver,
     memcpy(SrvMsg->ServerMsg.LoadDriver.BaseName, BaseName, BaseNameLength);
 
     /* Add the server message IO packet to the driver IO packet queue */
-    InsertTailList(&TargetDriver->IoPacketQueue, &SrvMsg->IoPacketLink);
-    /* Signal the driver that an IO packet has been queued */
-    KeSetEvent(&TargetDriver->IoPacketQueuedEvent);
+    IopQueueIoPacketToDriver(TargetDriver, SrvMsg);
 
     return STATUS_SUCCESS;
 }

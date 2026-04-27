@@ -8,11 +8,44 @@
 
 compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
 
-#define DRIVER_IO_PACKET_BUFFER_RESERVE	(64 * 1024)
-#define DRIVER_IO_PACKET_BUFFER_COMMIT	(16 * 1024)
+/*
+ * A driver IO packet buffer (either incoming or outgoing) will be mapped (in
+ * both the NT Executive server address space and in client driver process) using
+ * the following scheme:
+ *
+ *  |----------|------------------|---------------------------------|----------|
+ *  |   16KB   |       16KB       |            16KB                 |   16KB   |
+ *  | UNMAPPED | IO PACKET BUFFER | IO PACKET BUFFER (MAPPED AGAIN) | UNMAPPED |
+ *  |----------|------------------|---------------------------------|----------|
+ *
+ * The same IO packet buffer is mapped twice so the ring buffer marked by the head
+ * and tail pointer is always contiguous in memory. The unmapped region is used
+ * for catching overflow and underflow.
+ */
+#define DRIVER_IO_PACKET_BUFFER_RESERVE	(16 * PAGE_SIZE)
+#define DRIVER_IO_PACKET_BUFFER_COMMIT	(4 * PAGE_SIZE)
 #define DRIVER_COROUTINE_STACK_RESERVE	(8 * PAGE_SIZE)
 #define DRIVER_COROUTINE_STACK_GUARD	(2 * PAGE_SIZE)
 #define DRIVER_COROUTINE_STACK_COMMIT	(4 * PAGE_SIZE)
+
+typedef struct _IO_PACKET_BUFFER_POINTERS {
+    /* Cacheline written by the NT Executive server */
+    DECLSPEC_CACHEALIGN ULONG IncomingHead;
+    ULONG Padding1;
+    ULONG OutgoingTail;
+    ULONG Padding2;
+    UCHAR MoreIncomingPacketsToCome;
+    UCHAR Padding3[SYSTEM_CACHE_ALIGNMENT_SIZE - 4 * sizeof(ULONG) - sizeof(UCHAR)];
+    /* Cacheline written by the client driver */
+    DECLSPEC_CACHEALIGN ULONG IncomingTail;
+    ULONG Padding4;
+    ULONG OutgoingHead;
+    ULONG Padding5;
+    UCHAR MoreOutgoingPacketsToCome;
+    UCHAR Padding6[SYSTEM_CACHE_ALIGNMENT_SIZE - 4 * sizeof(ULONG) - sizeof(UCHAR)];
+} IO_PACKET_BUFFER_POINTERS, *PIO_PACKET_BUFFER_POINTERS;
+
+C_ASSERT(sizeof(IO_PACKET_BUFFER_POINTERS) == 2 * SYSTEM_CACHE_ALIGNMENT_SIZE);
 
 #define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
 

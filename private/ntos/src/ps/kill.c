@@ -74,6 +74,15 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 	PspFreePool(Thread->DebugName);
     }
 
+    /* Since the drivers use the TEB page of the event loop thread to store the
+     * IO packet buffer pointers, we need to unlink the driver from the pending
+     * driver list and its signal group, so the Executive service loop will no
+     * longer try to access them. */
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+    if (DriverObject && Thread->InitialThread) {
+	IoUnlinkDriverFromServiceLoop(DriverObject);
+    }
+
     /* Release the IPC buffers and the TEB of the thread. Note that both the
      * client side frames and the server side frames are unmapped and then freed. */
     PspUnmapSharedRegion(Thread->IpcBufferServerAddr, Thread->Process,
@@ -109,12 +118,6 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     assert(IsListEmpty(&Process->ThreadList));
     KeDetachDispatcherObject(&Process->Header);
     ObDereferenceObject(Process->ImageSection);
-    if (Process->DpcMutex.TreeNode.Cap) {
-	KeDestroyNotification(&Process->DpcMutex);
-    }
-    if (Process->WorkItemMutex.TreeNode.Cap) {
-	KeDestroyNotification(&Process->WorkItemMutex);
-    }
 #define DESTROY_EVENT(ObjName)					\
     if (Process->ObjName) {					\
 	assert(ObGetObjectRefCount(Process->ObjName) == 1);	\
@@ -128,11 +131,6 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     DESTROY_EVENT(ProcessHeapLockSemaphore);
     DESTROY_EVENT(LoaderHeapLockSemaphore);
 #undef DESTROY_EVENT
-#if defined(_M_IX86) || defined(_M_AMD64)
-    if (Process->X86PortMutex.TreeNode.Cap) {
-	KeDestroyNotification(&Process->X86PortMutex);
-    }
-#endif
     MmDestroyVSpace(&Process->VSpace);
     MmDeleteCNode(Process->SharedCNode);
     RemoveEntryList(&Process->ProcessListEntry);

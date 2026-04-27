@@ -23,7 +23,7 @@ struct _CC_CACHE_SPACE;
  * is delivered through DPC and therefore has higher accuracy.
  */
 typedef struct _IO_TIMER {
-    CAP_TREE_NODE Notification;	/* Derived from the DPC notification cap */
+    NOTIFICATION Notification; /* Derived from the DPC notification cap */
     LIST_ENTRY Link;  /* List entry for KiIoTimerList */
     ABSOLUTE_COUNTER_TIME DueTime; /* The time stamp counter value at due time */
 } IO_TIMER, *PIO_TIMER;
@@ -36,10 +36,21 @@ typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverRegistryPath;
     AVL_NODE Node;	      /* Key is object address of driver process */
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
+    NOTIFICATION DpcMutex;
+    NOTIFICATION WorkItemMutex;
+#if defined(_M_IX86) || defined(_M_AMD64)
+    NOTIFICATION X86PortMutex;
+#endif
     NOTIFICATION DpcNotification; /* DPC notification cap (in the process shared CNode) */
     IO_TIMER IoTimer;		  /* Singleton timer object */
-    CAP_TREE_NODE BugcheckNotification; /* Derived from the DPC notification cap */
-    IPC_ENDPOINT TimerServiceEndpoint; /* Derived from the timer service endpoint */
+    NOTIFICATION BugcheckNotification; /* Derived from the DPC notification cap */
+    NOTIFICATION ServiceNotification;  /* Derived from the Executive service notification, in
+					* the outer CNode of the driver event loop thread */
+    NOTIFICATION EventLoopNotification; /* In the process shared CNode */
+    NOTIFICATION IoPacketNotification; /* Derived from the event loop notification, in the
+					* Executive service thread's outer level CNode */
+    IPC_ENDPOINT TimerServiceEndpoint; /* Derived from the timer service endpoint, in the
+					* process shared CNode. */
     struct _CC_CACHE_SPACE *CacheSpace; /* Non-NULL if the driver initialized cache support. */
     LIST_ENTRY IoPortList; /* List of all X86 IO ports enabled for this driver */
     LIST_ENTRY IoPacketQueue; /* IO packets queued on this driver object but has not
@@ -60,17 +71,21 @@ typedef struct _IO_DRIVER_OBJECT {
     LIST_ENTRY InterruptServiceList; /* List of INTERRUPT_SERVICE */
     LIST_ENTRY PlugPlayNotificationList; /* List of PLUG_PLAY_NOTIFICATION */
     LIST_ENTRY BugcheckNotificationLink; /* List link for IoBugcheckNotificationList */
+    LIST_ENTRY SignalGroupLink;		 /* List link for IOP_DRIVER_SIGNAL_GROUP */
+    LIST_ENTRY PendingDriverLink;	 /* List link for IopPendingDriverList */
     KEVENT InitializationDoneEvent; /* Signaled when the client process starts accepting
 				     * IO packet */
-    KEVENT IoPacketQueuedEvent;	    /* Signaled when an IO packet is queued on the driver
-				     * object. */
     MWORD IncomingIoPacketsServerAddr; /* IO Request Packets sent to the driver */
     MWORD IncomingIoPacketsClientAddr;
     MWORD OutgoingIoPacketsServerAddr; /* Driver's IO response packets */
     MWORD OutgoingIoPacketsClientAddr;
+    PIO_PACKET_BUFFER_POINTERS IoPacketBufferPointers; /* In NTOS server address space */
+    ULONG SignalGroupIndex; /* Index within the array IopDriverSignalGroups */
     BOOLEAN DriverLoaded;  /* TRUE if the driver loading succeeded. This is used by
 			    * PsTerminateProcess to determine whether we should
 			    * dereference the driver object. */
+    BOOLEAN DriverUnloading; /* TRUE if IoUnlinkDriverFromServiceLoop has been called
+			      * for the driver and no more IO packets should be queued. */
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;
 
 /*
@@ -293,6 +308,7 @@ FORCEINLINE NTSTATUS CcCopyWrite(IN PIO_FILE_CONTROL_BLOCK Fcb,
 /* driver.c */
 extern LIST_ENTRY IoBugcheckNotificationList;
 PIO_DRIVER_OBJECT IoGetDriverObjectFromProcess(IN struct _PROCESS *Process);
+VOID IoUnlinkDriverFromServiceLoop(IN PIO_DRIVER_OBJECT DriverObject);
 NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 			IN struct _THREAD *Thread,
 			IN PIO_DRIVER_OBJECT DriverObject,
@@ -317,6 +333,10 @@ NTSTATUS IoCreateDevicelessFile(IN OPTIONAL PCSTR FileName,
 /* init.c */
 NTSTATUS IoInitSystemPhase0();
 NTSTATUS IoInitSystemPhase1();
+
+/* irp.c */
+VOID IoReceiveIoPacketsFromDrivers(IN MWORD Bitmask);
+VOID IoSubmitIoPacketsToDrivers(VOID);
 
 /* pnp.c */
 NTSTATUS IoMaskInterruptVector(IN ULONG Vector);

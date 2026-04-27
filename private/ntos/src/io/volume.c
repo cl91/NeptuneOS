@@ -322,9 +322,9 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 	    Msg->Type = IoPacketTypeServerMessage;
 	    Msg->Size = sizeof(IO_PACKET);
 	    Msg->ServerMsg.Type = IoSrvMsgForceDismount;
-	    Msg->ServerMsg.ForceDismount.VolumeDevice = OBJECT_TO_GLOBAL_HANDLE(Vcb->VolumeDevice);
-	    InsertTailList(&Vcb->VolumeDevice->DriverObject->IoPacketQueue, &Msg->IoPacketLink);
-	    KeSetEvent(&Vcb->VolumeDevice->DriverObject->IoPacketQueuedEvent);
+	    Msg->ServerMsg.ForceDismount.VolumeDevice =
+		OBJECT_TO_GLOBAL_HANDLE(Vcb->VolumeDevice);
+	    IopQueueIoPacketToDriver(Vcb->VolumeDevice->DriverObject, Msg);
 	}
 	if (Vcb->Subobjects) {
 	    /* Detach the file objects of this volume from the volume control block.
