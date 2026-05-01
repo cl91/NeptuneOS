@@ -2784,9 +2784,9 @@ delete:
      * object) or waitable objects signaled, or work items queued, restart the
      * whole process again. */
     BOOLEAN WorkItemsQueued = FALSE;
-    KeAcquireMutex(&IopWorkItemMutex);
+    IoAcquireMutex(&IopWorkItemMutex);
     WorkItemsQueued = !IsListEmpty(&IopWorkItemQueue);
-    KeReleaseMutex(&IopWorkItemMutex);
+    IoReleaseMutex(&IopWorkItemMutex);
 
     if (!IsListEmpty(&IopIrpQueue) || IopHasEnvToWakeUp() || WorkItemsQueued) {
 	goto process;

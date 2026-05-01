@@ -36,11 +36,7 @@ typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverRegistryPath;
     AVL_NODE Node;	      /* Key is object address of driver process */
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
-    NOTIFICATION DpcMutex;
-    NOTIFICATION WorkItemMutex;
-#if defined(_M_IX86) || defined(_M_AMD64)
-    NOTIFICATION X86PortMutex;
-#endif
+    LIST_ENTRY IoMutexList;   /* List of all IO_MUTEX created by this driver */
     NOTIFICATION DpcNotification; /* DPC notification cap (in the process shared CNode) */
     IO_TIMER IoTimer;		  /* Singleton timer object */
     NOTIFICATION BugcheckNotification; /* Derived from the DPC notification cap */

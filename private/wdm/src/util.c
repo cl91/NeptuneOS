@@ -3,6 +3,51 @@
 
 LIST_ENTRY IopDmaPoolList;
 
+NTAPI PIO_MUTEX IoCreateMutex(VOID)
+{
+    PIO_MUTEX IoMutex = ExAllocatePool(NonPagedPool, sizeof(IO_MUTEX));
+    if (!IoMutex) {
+	return NULL;
+    }
+    MWORD Cap = 0;
+    if (!NT_SUCCESS(WdmCreateIoMutex(&Cap))) {
+	ExFreePool(IoMutex);
+	return NULL;
+    }
+    IoInitializeMutex(IoMutex, Cap);
+    return IoMutex;
+}
+
+/*
+ * Acquire the lock. If the lock is free, simply acquire the lock and return.
+ * If the lock has already been acquired by another thread, wait on the notification
+ * object.
+ */
+NTAPI VOID IoAcquireMutex(IN PIO_MUTEX Mutex)
+{
+    assert(Mutex != NULL);
+    assert(Mutex->Notification != 0);
+    if (InterlockedIncrement(&Mutex->Counter) != 1) {
+	seL4_Wait(RtlProcessCNodeIndexToGuardedCap(Mutex->Notification), NULL);
+    }
+}
+
+/*
+ * Release the mutex that is previously acquired. Note that you must only call
+ * this function after you have acquired the mutex (KeTryAcquireMutex returns TRUE).
+ * On debug build we assert if this has not been enforced.
+ */
+NTAPI VOID IoReleaseMutex(IN PIO_MUTEX Mutex)
+{
+    assert(Mutex != NULL);
+    assert(Mutex->Notification != 0);
+    LONG Counter = InterlockedDecrement(&Mutex->Counter);
+    assert(Counter >= 0);
+    if (Counter >= 1) {
+	seL4_Signal(RtlProcessCNodeIndexToGuardedCap(Mutex->Notification));
+    }
+}
+
 NTAPI VOID ObReferenceObject(IN PVOID Obj)
 {
     POBJECT_HEADER Header = Obj;

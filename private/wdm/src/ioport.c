@@ -4,7 +4,7 @@
 
 /* This list is accessed by both the ISR and non-ISR code, so we must synchronize access. */
 LIST_ENTRY IopX86PortList;
-KMUTEX IopX86PortMutex;
+IO_MUTEX IopX86PortMutex;
 
 /* Note: you must hold the IopX86PortMutex mutex when calling this routine. */
 static PX86_IOPORT IopGetIoPort(IN USHORT PortNum)
@@ -37,16 +37,16 @@ static NTSTATUS IopEnableIoPort(IN USHORT PortNum,
 				OUT PX86_IOPORT *pIoPort)
 {
     Len /= 8;
-    KeAcquireMutex(&IopX86PortMutex);
+    IoAcquireMutex(&IopX86PortMutex);
     PX86_IOPORT IoPort = IopGetIoPort(PortNum);
     if (IoPort && IoPort->PortNum == PortNum && IoPort->Count == Len) {
 	*pIoPort = IoPort;
-	KeReleaseMutex(&IopX86PortMutex);
+	IoReleaseMutex(&IopX86PortMutex);
 	return STATUS_SUCCESS;
     }
     if (!IoThreadIsAtPassiveLevel()) {
 	assert(FALSE);
-	KeReleaseMutex(&IopX86PortMutex);
+	IoReleaseMutex(&IopX86PortMutex);
 	return STATUS_INVALID_THREAD;
     }
     /* Remove the IO port range between PortNum and PortNum + Len (excluding). */
@@ -58,14 +58,14 @@ static NTSTATUS IopEnableIoPort(IN USHORT PortNum,
     }
     IoPort = ExAllocatePool(NonPagedPool, sizeof(X86_IOPORT));
     if (!IoPort) {
-	KeReleaseMutex(&IopX86PortMutex);
+	IoReleaseMutex(&IopX86PortMutex);
 	return STATUS_INSUFFICIENT_RESOURCES;
     }
     MWORD Cap = 0;
     NTSTATUS Status = WdmEnableX86Port(PortNum, Len, &Cap);
     if (!NT_SUCCESS(Status)) {
 	IopFreePool(IoPort);
-	KeReleaseMutex(&IopX86PortMutex);
+	IoReleaseMutex(&IopX86PortMutex);
 	return Status;
     }
     IoPort->Cap = Cap;
@@ -73,7 +73,7 @@ static NTSTATUS IopEnableIoPort(IN USHORT PortNum,
     IoPort->Count = Len;
     InsertTailList(&IopX86PortList, &IoPort->Link);
     *pIoPort = IoPort;
-    KeReleaseMutex(&IopX86PortMutex);
+    IoReleaseMutex(&IopX86PortMutex);
     return STATUS_SUCCESS;
 }
 

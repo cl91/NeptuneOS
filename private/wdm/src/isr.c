@@ -7,16 +7,16 @@ static ULONG_PTR IopDpcNotificationCap;
 static ULONG_PTR IopDpcThreadWdmServiceCap;
 static HANDLE IopDpcThreadHandle;
 /* Protects the pending timer list and signaled object list. */
-KMUTEX IopDpcMutex;
+IO_MUTEX IopDpcMutex;
 
 VOID IopAcquireDpcMutex()
 {
-    KeAcquireMutex(&IopDpcMutex);
+    IoAcquireMutex(&IopDpcMutex);
 }
 
 VOID IopReleaseDpcMutex()
 {
-    KeReleaseMutex(&IopDpcMutex);
+    IoReleaseMutex(&IopDpcMutex);
 }
 
 static VOID IopProcessDpcQueue()
@@ -249,7 +249,7 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
     assert(PsGetGuardValueOfCap(InterruptObject->NotificationCap) !=
 	   RtlGetThreadCSpaceGuard());
     assert(MutexCap != 0);
-    KeInitializeMutex(&InterruptObject->Mutex, MutexCap);
+    IoInitializeMutex(&InterruptObject->Mutex, MutexCap);
     /* The mutex cap should be in the process shared CNode. */
     assert(PsCapIsProcessShared(MutexCap));
 
@@ -276,7 +276,7 @@ NTAPI VOID IoAcquireInterruptMutex(IN PKINTERRUPT Interrupt)
 	assert(FALSE);
 	return;
     }
-    KeAcquireMutex(&Interrupt->Mutex);
+    IoAcquireMutex(&Interrupt->Mutex);
 }
 
 NTAPI VOID IoReleaseInterruptMutex(IN PKINTERRUPT Interrupt)
@@ -285,5 +285,5 @@ NTAPI VOID IoReleaseInterruptMutex(IN PKINTERRUPT Interrupt)
 	assert(FALSE);
 	return;
     }
-    KeReleaseMutex(&Interrupt->Mutex);
+    IoReleaseMutex(&Interrupt->Mutex);
 }

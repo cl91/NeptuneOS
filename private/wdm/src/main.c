@@ -62,12 +62,12 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     InitializeListHead(&IopPendingTimerList);
 #if defined(_M_IX86) || defined(_M_AMD64)
     InitializeListHead(&IopX86PortList);
-    KeInitializeMutex(&IopX86PortMutex, InitInfo->X86PortMutexCap);
+    IoInitializeMutex(&IopX86PortMutex, InitInfo->X86PortMutexCap);
 #endif
     InitializeListHead(&IopDpcQueue);
     InitializeListHead(&IopWorkItemQueue);
-    KeInitializeMutex(&IopDpcMutex, InitInfo->DpcMutexCap);
-    KeInitializeMutex(&IopWorkItemMutex, InitInfo->WorkItemMutexCap);
+    IoInitializeMutex(&IopDpcMutex, InitInfo->DpcMutexCap);
+    IoInitializeMutex(&IopWorkItemMutex, InitInfo->WorkItemMutexCap);
     IopInitIrpProcessing();
     HalpInitDma();
     CiInitialzeCacheManager();

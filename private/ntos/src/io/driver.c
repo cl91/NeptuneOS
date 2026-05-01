@@ -1,11 +1,38 @@
 #include "iop.h"
 
+typedef struct _IO_MUTEX {
+    LIST_ENTRY Link; /* List link for IO_DRIVER_OBJECT::IoMutexList */
+    NOTIFICATION Notification;
+} IO_MUTEX, *PIO_MUTEX;
+
 LIST_ENTRY IoBugcheckNotificationList;
 
 PIO_DRIVER_OBJECT IoGetDriverObjectFromProcess(IN PPROCESS Process)
 {
     return AVL_NODE_TO_DRIVER_OBJECT(AvlTreeFindNode(&IopDriverObjectTree,
 						     (ULONG_PTR)Process));
+}
+
+static NTSTATUS IopCreateIoMutex(IN PIO_DRIVER_OBJECT DriverObject,
+				 OUT MWORD *Cap)
+{
+    PPROCESS Process = IoDriverObjectToProcess(DriverObject);
+    assert(Process);
+    IopAllocatePool(IoMutex, IO_MUTEX);
+    RET_ERR_EX(KeCreateNotificationEx(&IoMutex->Notification, Process->SharedCNode),
+	       IopFreePool(IoMutex));
+    InsertTailList(&DriverObject->IoMutexList, &IoMutex->Link);
+    *Cap = IoMutex->Notification.TreeNode.Cap;
+    return STATUS_SUCCESS;
+}
+
+static VOID IopDeleteIoMutexList(IN PIO_DRIVER_OBJECT DriverObject)
+{
+    LoopOverList(IoMutex, &DriverObject->IoMutexList, IO_MUTEX, Link) {
+	RemoveEntryList(&IoMutex->Link);
+	KeDestroyNotification(&IoMutex->Notification);
+	IopFreePool(IoMutex);
+    }
 }
 
 /*
@@ -30,6 +57,7 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 	return STATUS_NO_MEMORY;
     }
     InitializeListHead(&Driver->DeviceList);
+    InitializeListHead(&Driver->IoMutexList);
     InitializeListHead(&Driver->IoPortList);
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
@@ -54,13 +82,10 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
     AvlTreeInsertNode(&IopDriverObjectTree, Parent, &Driver->Node);
     ObReferenceObjectByPointer(Process);
 
-    RET_ERR(KeCreateNotificationEx(&Driver->DpcMutex, Process->SharedCNode));
-    Process->InitInfo.DriverInitInfo.DpcMutexCap = Driver->DpcMutex.TreeNode.Cap;
-    RET_ERR(KeCreateNotificationEx(&Driver->WorkItemMutex, Process->SharedCNode));
-    Process->InitInfo.DriverInitInfo.WorkItemMutexCap = Driver->WorkItemMutex.TreeNode.Cap;
+    RET_ERR(IopCreateIoMutex(Driver, &Process->InitInfo.DriverInitInfo.DpcMutexCap));
+    RET_ERR(IopCreateIoMutex(Driver, &Process->InitInfo.DriverInitInfo.WorkItemMutexCap));
 #if defined(_M_IX86) || defined(_M_AMD64)
-    RET_ERR(KeCreateNotificationEx(&Driver->X86PortMutex, Process->SharedCNode));
-    Process->InitInfo.DriverInitInfo.X86PortMutexCap = Driver->X86PortMutex.TreeNode.Cap;
+    RET_ERR(IopCreateIoMutex(Driver, &Process->InitInfo.DriverInitInfo.X86PortMutexCap));
 #endif
 
     /* Create the init thread of driver process, which is the event loop thread. */
@@ -210,23 +235,13 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     }
     KeUninitializeEvent(&Driver->InitializationDoneEvent);
 
-    if (Driver->DpcMutex.TreeNode.Cap) {
-	KeDestroyNotification(&Driver->DpcMutex);
-    }
-    if (Driver->WorkItemMutex.TreeNode.Cap) {
-	KeDestroyNotification(&Driver->WorkItemMutex);
-    }
-#if defined(_M_IX86) || defined(_M_AMD64)
-    if (Driver->X86PortMutex.TreeNode.Cap) {
-	KeDestroyNotification(&Driver->X86PortMutex);
-    }
-#endif
+    IopDeleteIoMutexList(Driver);
 
-    if (Driver->DpcNotification.TreeNode.Cap) {
-	KeDestroyNotification(&Driver->DpcNotification);
-    }
     if (Driver->BugcheckNotification.TreeNode.Cap) {
 	KeDestroyNotification(&Driver->BugcheckNotification);
+    }
+    if (Driver->DpcNotification.TreeNode.Cap) {
+	KeDestroyNotification(&Driver->DpcNotification);
     }
     if (Driver->ServiceNotification.TreeNode.Cap) {
 	KeDestroyNotification(&Driver->ServiceNotification);
@@ -560,6 +575,18 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
 		      IN PCSTR DriverServicePath)
 {
     return IopLoadDriver(State, Thread, DriverServicePath);
+}
+
+NTSTATUS WdmCreateIoMutex(IN ASYNC_STATE AsyncState,
+                          IN PTHREAD Thread,
+                          OUT MWORD *Cap)
+{
+    assert(Thread != NULL);
+    assert(Cap != NULL);
+    PPROCESS Process = Thread->Process;
+    assert(Process != NULL);
+    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Process);
+    return IopCreateIoMutex(DriverObject, Cap);
 }
 
 NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,

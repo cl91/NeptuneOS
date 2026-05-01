@@ -1464,6 +1464,23 @@ NTAPI NTSYSAPI ULONG KeQueryTimeIncrement(VOID);
 NTAPI NTSYSAPI VOID KeStallExecutionProcessor(ULONG MicroSeconds);
 
 /*
+ * Lightweight mutex, used to synchronize data shared between two driver threads.
+ * Note unlike KMUTEX on Windows, this lock cannot be acquired recursively.
+ *
+ * This is used to implement what the Windows driver model calls the "interrupt
+ * spinlock", which protects data structures accessed by both the dispatch routines
+ * and the interrupt service routines. We don't want to use spinlocks here since our
+ * drivers runs in a userspace process (and may get scheduled out).
+ *
+ * This is an opaque object.
+ */
+typedef struct _IO_MUTEX IO_MUTEX, *PIO_MUTEX;
+
+NTAPI NTSYSAPI PIO_MUTEX IoCreateMutex(VOID);
+NTAPI NTSYSAPI VOID IoAcquireMutex(IN PIO_MUTEX Mutex);
+NTAPI NTSYSAPI VOID IoReleaseMutex(IN PIO_MUTEX Mutex);
+
+/*
  * Interrupt Object. We keep the name KINTERRUPT to remain compatible
  * with Windows/ReactOS. This is an opaque object.
  */

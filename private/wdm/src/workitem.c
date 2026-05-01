@@ -3,7 +3,7 @@
 
 /* The IO work item queue is protected by the IO work item mutex below. */
 LIST_ENTRY IopWorkItemQueue;
-KMUTEX IopWorkItemMutex;
+IO_MUTEX IopWorkItemMutex;
 
 /*
  * @implemented
@@ -58,12 +58,12 @@ static VOID IopQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
 {
     DbgTrace("Queuing workitem %p worker routine %p\n", IoWorkItem, WorkerRoutine);
     assert(IoWorkItem != NULL);
-    KeAcquireMutex(&IopWorkItemMutex);
+    IoAcquireMutex(&IopWorkItemMutex);
     if (IoWorkItem->Queued) {
 	/* We want to make sure the same worker routine and context are used. */
 	assert(IoWorkItem->WorkerRoutine == WorkerRoutine);
 	assert(IoWorkItem->Context == Context);
-	KeReleaseMutex(&IopWorkItemMutex);
+	IoReleaseMutex(&IopWorkItemMutex);
 	return;
     }
     IoWorkItem->WorkerRoutine = WorkerRoutine;
@@ -71,7 +71,7 @@ static VOID IopQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
     IoWorkItem->ExtendedRoutine = ExtendedRoutine;
     IoWorkItem->Queued = TRUE;
     InsertTailList(&IopWorkItemQueue, &IoWorkItem->QueueEntry);
-    KeReleaseMutex(&IopWorkItemMutex);
+    IoReleaseMutex(&IopWorkItemMutex);
     NtCurrentTeb()->Wdm.IoWorkItemQueued = TRUE;
 }
 
@@ -81,15 +81,15 @@ static VOID IopQueueWorkItem(IN OUT PIO_WORKITEM IoWorkItem,
 VOID IopRemoveWorkItem(IN PIO_WORKITEM WorkItem)
 {
     if (WorkItem->Queued) {
-	KeAcquireMutex(&IopWorkItemMutex);
+	IoAcquireMutex(&IopWorkItemMutex);
 	assert(ListHasEntry(&IopWorkItemQueue, &WorkItem->QueueEntry));
 	RemoveEntryList(&WorkItem->QueueEntry);
-	KeReleaseMutex(&IopWorkItemMutex);
+	IoReleaseMutex(&IopWorkItemMutex);
     } else {
 #if DBG
-	KeAcquireMutex(&IopWorkItemMutex);
+	IoAcquireMutex(&IopWorkItemMutex);
 	assert(!ListHasEntry(&IopWorkItemQueue, &WorkItem->QueueEntry));
-	KeReleaseMutex(&IopWorkItemMutex);
+	IoReleaseMutex(&IopWorkItemMutex);
 #endif
     }
 }
@@ -132,19 +132,19 @@ FASTCALL NTSTATUS IopCallWorkItemRoutine(IN PVOID Context) /* %ecx/%rcx */
 VOID IopProcessWorkItemQueue()
 {
     PLIST_ENTRY Entry;
-    KeAcquireMutex(&IopWorkItemMutex);
+    IoAcquireMutex(&IopWorkItemMutex);
     Entry = IopWorkItemQueue.Flink;
 
 check:
     if (Entry == &IopWorkItemQueue) {
-	KeReleaseMutex(&IopWorkItemMutex);
+	IoReleaseMutex(&IopWorkItemMutex);
 	goto done;
     }
     PIO_WORKITEM WorkItem = CONTAINING_RECORD(Entry, IO_WORKITEM, QueueEntry);
     WorkItem->Queued = FALSE;
     Entry = WorkItem->QueueEntry.Flink;
     RemoveEntryList(&WorkItem->QueueEntry);
-    KeReleaseMutex(&IopWorkItemMutex);
+    IoReleaseMutex(&IopWorkItemMutex);
 
     /* Allocate an execution environment for this IO work item. If we run out of
      * memory here, not much can be done, so we just stop. */
@@ -157,7 +157,7 @@ check:
     Env->EntryPoint = IopCallWorkItemRoutine;
     InsertTailList(&IopExecEnvList, &Env->QueueListEntry);
 
-    KeAcquireMutex(&IopWorkItemMutex);
+    IoAcquireMutex(&IopWorkItemMutex);
     goto check;
 done:
     return;
