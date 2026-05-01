@@ -272,9 +272,7 @@ typedef NTSTATUS (*OBJECT_PARSE_METHOD)(IN POBJECT Self,
  * The object manager will assign the handle.
  *
  * The open procedure can be NULL, in which case the object does not
- * support being opened (for instance, FILE object cannot be opened.
- * since it represents an opened instance of a DEVICE. Only DEVICE
- * object can be opened). For object types where the opened instance
+ * support being opened. For object types where the opened instance
  * of an object is simply itself, the object type should supply a
  * trivial open procedure (but not NULL).
  *

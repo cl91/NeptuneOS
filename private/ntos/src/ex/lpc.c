@@ -23,6 +23,34 @@ static NTSTATUS EiPortObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS EiPortObjectOpenProc(IN ASYNC_STATE State,
+				     IN PTHREAD Thread,
+				     IN POBJECT Self,
+				     IN PCSTR SubPath,
+				     IN ACCESS_MASK DesiredAccess,
+				     IN ULONG Attributes,
+				     IN POB_OPEN_CONTEXT Context,
+				     OUT POBJECT *pOpenedInstance,
+				     OUT PCSTR *pRemainingPath)
+{
+    /* LPC port objects do not have sub-objects, so return error here */
+    if (SubPath[0]) {
+	return STATUS_OBJECT_TYPE_MISMATCH;
+    }
+    ObReferenceObjectByPointer(Self);
+    *pOpenedInstance = Self;
+    *pRemainingPath = SubPath;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS EiPortObjectCloseProc(IN ASYNC_STATE State,
+				      IN PTHREAD Thread,
+				      IN POBJECT Self)
+{
+    /* Do nothing */
+    return STATUS_SUCCESS;
+}
+
 static VOID EiPortObjectDeleteProc(IN POBJECT Self)
 {
     assert(ObObjectIsType(Self, OBJECT_TYPE_LPC_PORT));
@@ -43,8 +71,8 @@ static NTSTATUS EiCreatePortType()
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = EiPortObjectCreateProc,
 	.ParseProc = NULL,
-	.OpenProc = NULL,
-	.CloseProc = NULL,
+	.OpenProc = EiPortObjectOpenProc,
+	.CloseProc = EiPortObjectCloseProc,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.QueryNameProc = NULL,
@@ -88,18 +116,12 @@ VOID ExClosePortConnection(IN PLPC_PORT_CONNECTION Connection,
     }
 }
 
-NTSTATUS ExCloseLocalHandle(IN PTHREAD Thread,
-			    IN HANDLE Handle)
-{
-    return STATUS_NOT_IMPLEMENTED;
-}
-
 NTSTATUS NtCreatePort(IN ASYNC_STATE AsyncState,
-                      IN PTHREAD Thread,
-                      OUT HANDLE *PortHandle,
-                      OUT HANDLE *CommPortHandle,
-                      IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
-                      IN ULONG MaxMessageLength)
+		      IN PTHREAD Thread,
+		      OUT HANDLE *PortHandle,
+		      OUT LOCAL_HANDLE *CommPortHandle,
+		      IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
+		      IN ULONG MaxMessageLength)
 {
     POBJECT RootDirectory = NULL;
     if (ObjectAttributes.RootDirectory) {
@@ -129,8 +151,7 @@ NTSTATUS NtCreatePort(IN ASYNC_STATE AsyncState,
      * it is still a temporary object. */
     ObMakeTemporaryObject(Port);
 
-    *CommPortHandle = (HANDLE)((Port->Endpoint.TreeNode.Cap << LOCAL_HANDLE_SHIFT) |
-			       LOCAL_HANDLE_FLAG);
+    *CommPortHandle = Port->Endpoint.TreeNode.Cap;
     Status = STATUS_SUCCESS;
 
 out:
@@ -145,13 +166,26 @@ out:
     return Status;
 }
 
+/*
+ * Opens the named LPC port for connection.
+ */
+NTSTATUS NtOpenPort(IN ASYNC_STATE AsyncState,
+		    IN PTHREAD Thread,
+		    OUT HANDLE *PortHandle,
+		    IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
+		    IN ACCESS_MASK DesiredAccess)
+{
+    return ObOpenObjectByName(AsyncState, Thread, ObjectAttributes,
+			      OBJECT_TYPE_LPC_PORT, DesiredAccess, NULL, PortHandle);
+}
+
 NTSTATUS NtListenPort(IN ASYNC_STATE State,
-                      IN PTHREAD Thread,
-                      IN HANDLE PortHandle,
-                      OUT CLIENT_ID *ClientId,
-                      OUT OPTIONAL PVOID ConnectionInformation,
-                      IN ULONG MaxConnectionInfoLength,
-                      OUT OPTIONAL ULONG *ConnectionInformationLength)
+		      IN PTHREAD Thread,
+		      IN HANDLE PortHandle,
+		      OUT CLIENT_ID *ClientId,
+		      OUT OPTIONAL PVOID ConnectionInformation,
+		      IN ULONG MaxConnectionInfoLength,
+		      OUT OPTIONAL ULONG *ConnectionInformationLength)
 {
     assert(Thread);
     assert(PortHandle);
@@ -231,14 +265,14 @@ out:
 }
 
 NTSTATUS NtAcceptPort(IN ASYNC_STATE AsyncState,
-                      IN PTHREAD Thread,
+		      IN PTHREAD Thread,
 		      OUT OPTIONAL HANDLE *EventHandle,
-                      IN HANDLE PortHandle,
-                      IN ULONG_PTR PortContext,
-                      IN PCLIENT_ID ClientId,
-                      IN BOOLEAN AcceptConnection,
-                      IN OUT OPTIONAL PPORT_VIEW ServerView,
-                      OUT OPTIONAL REMOTE_PORT_VIEW *ClientView)
+		      IN HANDLE PortHandle,
+		      IN ULONG_PTR PortContext,
+		      IN PCLIENT_ID ClientId,
+		      IN BOOLEAN AcceptConnection,
+		      IN OUT OPTIONAL PPORT_VIEW ServerView,
+		      OUT OPTIONAL REMOTE_PORT_VIEW *ClientView)
 {
     if (EventHandle) {
 	*EventHandle = NULL;
@@ -271,7 +305,6 @@ NTSTATUS NtAcceptPort(IN ASYNC_STATE AsyncState,
     /* Create an event object if the server has requested so. Note if an error has
      * occurred here, the system is likely in a very low memory state, so we refuse
      * the connection. */
-    PAVL_NODE Parent = NULL;
     if (EventHandle) {
 	IF_ERR_GOTO(refuse, Status,
 		    ExCreateEvent(Thread->Process, SynchronizationEvent,
@@ -299,40 +332,37 @@ out:
 }
 
 /*
- * Connect to the specified LPC port.
+ * Connect to the specified LPC port. This routine is called by a client of
+ * an LPC connection.
  *
- * If PortName is given, this routine will lookup the named port in the NT
- * namespace. Otherwise, *PortHandle is assumed to be the NT handle of the
- * LPC connection port object. On success, *PortHandle will contain the local
- * handle of the communication port.
+ * PortHandle is the NT handle of the LPC connection port object. On success,
+ * *CommPortHandle will contain the local handle of the communication port.
+ *
+ * Note here SecurityQos specifies how the server can impersonate the client,
+ * which is different from the SecurityQos in the OBJECT_ATTRIBUTES of the
+ * port object used in NtCreatePort. The latter specifies how the client can
+ * impersonate the server when opening the port object.
  */
 NTSTATUS NtConnectPort(IN ASYNC_STATE State,
-                       IN PTHREAD Thread,
-                       IN OUT PHANDLE PortHandle,
-                       IN OPTIONAL PCSTR PortName,
-                       IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
+		       IN PTHREAD Thread,
+		       IN HANDLE PortHandle,
+		       IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
+		       OUT LOCAL_HANDLE *CommPortHandle,
 		       OUT OPTIONAL HANDLE *EventHandle,
-                       IN OUT OPTIONAL PPORT_VIEW ClientView,
-                       OUT OPTIONAL REMOTE_PORT_VIEW *ServerView,
-                       OUT OPTIONAL ULONG *MaxMessageLength,
-                       IN OPTIONAL PVOID ConnectionInformation,
-                       IN ULONG ConnectionInformationLength)
+		       IN OUT OPTIONAL PPORT_VIEW ClientView,
+		       OUT OPTIONAL REMOTE_PORT_VIEW *ServerView,
+		       OUT OPTIONAL ULONG *MaxMessageLength,
+		       IN OPTIONAL PVOID ConnectionInformation,
+		       IN ULONG ConnectionInformationLength)
 {
     NTSTATUS Status = STATUS_NTOS_BUG;
     ASYNC_BEGIN(State, Locals, {
 	    PLPC_PORT_OBJECT PortObject;
 	    PLPC_PORT_CONNECTION Connection;
 	});
-    if (PortName) {
-	IF_ERR_GOTO(out, Status, ObReferenceObjectByName(PortName,
-							 OBJECT_TYPE_LPC_PORT,
-							 NULL, TRUE,
-							 (POBJECT *)&Locals.PortObject));
-    } else {
-	IF_ERR_GOTO(out, Status, ObReferenceObjectByHandle(Thread, *PortHandle,
-							   OBJECT_TYPE_LPC_PORT,
-							   (POBJECT *)&Locals.PortObject));
-    }
+    IF_ERR_GOTO(out, Status, ObReferenceObjectByHandle(Thread, PortHandle,
+						       OBJECT_TYPE_LPC_PORT,
+						       (POBJECT *)&Locals.PortObject));
 
     /* Check if we already have established a connection. In this case we deny the
      * new connection request. */
@@ -386,7 +416,7 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 						FALSE, EventHandle, &Entry));
     }
 
-    /* Mint the server communication endpoint with the specified badge and
+    /* Derive the server communication endpoint with the specified badge and
      * place it into the thread-private CNode of the client thread. */
     IF_ERR_GOTO(err, Status,
 		KeDeriveEndpoint(&Locals.Connection->ClientEndpoint,
@@ -394,9 +424,9 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 				 ENDPOINT_RIGHTS_SEND,
 				 Locals.Connection->PortContext));
 
-    *PortHandle =
-	(HANDLE)(PsThreadCNodeIndexToGuardedCap(Locals.Connection->ClientEndpoint.TreeNode.Cap,
-						0, Thread) | LOCAL_HANDLE_FLAG);
+    *CommPortHandle =
+	PsThreadCNodeIndexToGuardedCap(Locals.Connection->ClientEndpoint.TreeNode.Cap,
+				       0, Thread);
     Status = STATUS_SUCCESS;
     goto out;
 

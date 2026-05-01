@@ -71,15 +71,11 @@ NTAPI NTSTATUS NtReplyPort(IN PPORT_MESSAGE ReplyMessage,
 /*
  * Port receive (client and server)
  */
-NTAPI NTSTATUS NtReceivePort(IN HANDLE CommPort,
+NTAPI NTSTATUS NtReceivePort(IN LOCAL_HANDLE CommPort,
 			     OUT OPTIONAL ULONG_PTR *PortContext,
 			     OUT PPORT_MESSAGE ReceivedMessage,
 			     IN OPTIONAL PPORT_VIEW LocalView)
 {
-    if (!IS_LOCAL_HANDLE(CommPort)) {
-	assert(FALSE);
-	return STATUS_INVALID_PORT_HANDLE;
-    }
     MWORD Badge = 0;
     seL4_MessageInfo_t Msg = seL4_Recv(LOCAL_HANDLE_TO_CAP(CommPort), &Badge);
     return KiUnmarshalPortMessage(Msg, Badge, PortContext, ReceivedMessage, LocalView);
@@ -88,17 +84,12 @@ NTAPI NTSTATUS NtReceivePort(IN HANDLE CommPort,
 /*
  * Reply and receive message from port (server)
  */
-NTAPI NTSTATUS NtReplyWaitReceivePort(IN HANDLE CommPort,
+NTAPI NTSTATUS NtReplyWaitReceivePort(IN LOCAL_HANDLE CommPort,
 				      IN OUT PPORT_MESSAGE ReplyMessage,
 				      OUT OPTIONAL ULONG_PTR *PortContext,
 				      OUT PPORT_MESSAGE ReceivedMessage,
 				      IN OPTIONAL PPORT_VIEW ServerView)
 {
-    if (!IS_LOCAL_HANDLE(CommPort)) {
-	assert(FALSE);
-	return STATUS_INVALID_PORT_HANDLE;
-    }
-
     seL4_MessageInfo_t MsgInfo;
     RET_ERR(KiMarshalPortMessage(ReplyMessage, ServerView, &MsgInfo));
     MWORD Badge = 0;
@@ -109,15 +100,10 @@ NTAPI NTSTATUS NtReplyWaitReceivePort(IN HANDLE CommPort,
 /*
  * Send message through port (client)
  */
-NTAPI NTSTATUS NtRequestPort(IN HANDLE CommPort,
+NTAPI NTSTATUS NtRequestPort(IN LOCAL_HANDLE CommPort,
 			     IN PPORT_MESSAGE RequestMessage,
 			     IN OPTIONAL PPORT_VIEW ClientView)
 {
-    if (!IS_LOCAL_HANDLE(CommPort)) {
-	assert(FALSE);
-	return STATUS_INVALID_PORT_HANDLE;
-    }
-
     seL4_MessageInfo_t MsgInfo;
     RET_ERR(KiMarshalPortMessage(RequestMessage, ClientView, &MsgInfo));
     seL4_Send(LOCAL_HANDLE_TO_CAP(CommPort), MsgInfo);
@@ -127,16 +113,11 @@ NTAPI NTSTATUS NtRequestPort(IN HANDLE CommPort,
 /*
  * Send message through port and wait for reply (client)
  */
-NTAPI NTSTATUS NtRequestWaitReceivePort(IN HANDLE CommPort,
+NTAPI NTSTATUS NtRequestWaitReceivePort(IN LOCAL_HANDLE CommPort,
 					IN PPORT_MESSAGE RequestMessage,
 					OUT PPORT_MESSAGE ReceivedMessage,
 					IN OPTIONAL PPORT_VIEW ClientView)
 {
-    if (!IS_LOCAL_HANDLE(CommPort)) {
-	assert(FALSE);
-	return STATUS_INVALID_PORT_HANDLE;
-    }
-
     seL4_MessageInfo_t MsgInfo;
     RET_ERR(KiMarshalPortMessage(RequestMessage, ClientView, &MsgInfo));
     MsgInfo = seL4_Call(LOCAL_HANDLE_TO_CAP(CommPort), MsgInfo);

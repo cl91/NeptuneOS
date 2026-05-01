@@ -747,7 +747,8 @@ static inline VOID KeUninitializeEvent(IN PKEVENT Event)
 
 /*
  * Lightweight mutex, mainly used for protecting concurrent access to data
- * structures by multiple seL4 threads within the NT Executive process.
+ * structures by multiple seL4 threads within the NT Executive process. Unlike
+ * in Windows, this mutex cannot be taken recursively.
  *
  * Description:
  *
@@ -814,8 +815,8 @@ static inline VOID KeAcquireMutex(IN PKMUTEX Mutex)
 
 /*
  * Release the mutex that is previously acquired. Note that you must only call
- * this function after you have acquired the mutex (KeTryAcquireMutex returns TRUE).
- * On debug build we assert if this has not been enforced.
+ * this function after you have acquired the mutex. On debug build we assert if
+ * this has not been enforced.
  */
 static inline VOID KeReleaseMutex(IN PKMUTEX Mutex)
 {

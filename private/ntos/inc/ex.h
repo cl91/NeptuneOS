@@ -111,8 +111,6 @@ NTSTATUS ExInitSystemPhase1();
 /* lpc.c */
 VOID ExClosePortConnection(IN PLPC_PORT_CONNECTION Connection,
 			   IN BOOLEAN ThreadIsTerminating);
-NTSTATUS ExCloseLocalHandle(IN struct _THREAD *Thread,
-			    IN HANDLE Handle);
 
 /* pool.c */
 NTSTATUS ExInitializePool(IN MWORD HeapStart, IN LONG NumPages);

@@ -11,7 +11,7 @@
     }
 
 static NTSTATUS PsxCreatePort(OUT PHANDLE PortHandle,
-			      OUT PHANDLE CommPortHandle)
+			      OUT PLOCAL_HANDLE CommPortHandle)
 {
     UNICODE_STRING ObjectPath;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -120,7 +120,7 @@ out:
 NTAPI VOID NtProcessStartup(PPEB Peb)
 {
     HANDLE PortHandle = NULL;
-    HANDLE CommPortHandle = NULL;
+    LOCAL_HANDLE CommPortHandle = 0;
     NTSTATUS Status = PsxCreatePort(&PortHandle, &CommPortHandle);
     CHECK_STATUS(Status, "PsxCreatePort");
 

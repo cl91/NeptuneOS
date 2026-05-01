@@ -35,7 +35,7 @@ typedef struct _REMOTE_PORT_VIEW {
  * Port creation (server)
  */
 NTAPI NTSYSAPI NTSTATUS NtCreatePort(OUT PHANDLE PortHandle,
-				     OUT PHANDLE CommPortHandle,
+				     OUT PLOCAL_HANDLE CommPortHandle,
 				     IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
 				     IN ULONG MaxMessageLength);
 
@@ -60,28 +60,29 @@ NTAPI NTSYSAPI NTSTATUS NtAcceptPort(OUT OPTIONAL HANDLE *EventHandle,
 				     OUT OPTIONAL PREMOTE_PORT_VIEW ClientView);
 
 /*
- * Port connection (client)
+ * Port opening (client)
  */
 #ifdef _MSC_VER
-NTAPI NTSYSAPI NTSTATUS NtConnectPort(IN OUT PHANDLE PortHandle,
-				      IN OPTIONAL PUNICODE_STRING PortName,
+NTAPI NTSYSAPI NTSTATUS NtOpenPort(OUT HANDLE *PortHandle,
+				   IN POBJECT_ATTRIBUTES ObjectAttributes,
+				   IN ACCESS_MASK DesiredAccess);
+#endif
+NTAPI NTSYSAPI NTSTATUS NtOpenPortA(OUT HANDLE *PortHandle,
+				    IN POBJECT_ATTRIBUTES_ANSI ObjectAttributes,
+				    IN ACCESS_MASK DesiredAccess);
+
+/*
+ * Port connection (client)
+ */
+NTAPI NTSYSAPI NTSTATUS NtConnectPort(IN HANDLE PortHandle,
 				      IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
+				      OUT LOCAL_HANDLE *CommPortHandle,
 				      OUT OPTIONAL HANDLE *EventHandle,
 				      IN OUT OPTIONAL PPORT_VIEW ClientView,
 				      IN OUT OPTIONAL PREMOTE_PORT_VIEW ServerView,
 				      OUT OPTIONAL PULONG MaxMessageLength,
 				      IN OPTIONAL PVOID ConnectionInformation,
 				      IN OPTIONAL ULONG ConnectionInformationLength);
-#endif
-NTAPI NTSYSAPI NTSTATUS NtConnectPortA(IN OUT PHANDLE PortHandle,
-				       IN OPTIONAL PCSTR PortName,
-				       IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
-				       OUT OPTIONAL HANDLE *EventHandle,
-				       IN OUT OPTIONAL PPORT_VIEW ClientView,
-				       IN OUT OPTIONAL PREMOTE_PORT_VIEW ServerView,
-				       OUT OPTIONAL PULONG MaxMessageLength,
-				       IN OPTIONAL PVOID ConnectionInformation,
-				       IN OPTIONAL ULONG ConnectionInformationLength);
 
 /*
  * Port reply (server)
@@ -92,7 +93,7 @@ NTAPI NTSYSAPI NTSTATUS NtReplyPort(IN PPORT_MESSAGE ReplyMessage,
 /*
  * Port receive (client and server)
  */
-NTAPI NTSYSAPI NTSTATUS NtReceivePort(IN HANDLE CommPortHandle,
+NTAPI NTSYSAPI NTSTATUS NtReceivePort(IN LOCAL_HANDLE CommPortHandle,
 				      OUT OPTIONAL ULONG_PTR *PortContext,
 				      OUT PPORT_MESSAGE ReceivedMessage,
 				      IN OPTIONAL PPORT_VIEW LocalView);
@@ -100,7 +101,7 @@ NTAPI NTSYSAPI NTSTATUS NtReceivePort(IN HANDLE CommPortHandle,
 /*
  * Reply and receive message from port (server)
  */
-NTAPI NTSYSAPI NTSTATUS NtReplyWaitReceivePort(IN HANDLE CommPortHandle,
+NTAPI NTSYSAPI NTSTATUS NtReplyWaitReceivePort(IN LOCAL_HANDLE CommPortHandle,
 					       IN OUT PPORT_MESSAGE ReplyMessage,
 					       OUT OPTIONAL ULONG_PTR *PortContext,
 					       OUT PPORT_MESSAGE ReceivedMessage,
@@ -109,14 +110,14 @@ NTAPI NTSYSAPI NTSTATUS NtReplyWaitReceivePort(IN HANDLE CommPortHandle,
 /*
  * Send message through port (client)
  */
-NTAPI NTSYSAPI NTSTATUS NtRequestPort(IN HANDLE CommPortHandle,
+NTAPI NTSYSAPI NTSTATUS NtRequestPort(IN LOCAL_HANDLE CommPortHandle,
 				      IN PPORT_MESSAGE RequestMessage,
 				      IN OPTIONAL PPORT_VIEW ClientView);
 
 /*
  * Send message through port and wait for reply (client)
  */
-NTAPI NTSYSAPI NTSTATUS NtRequestWaitReceivePort(IN HANDLE CommPortHandle,
+NTAPI NTSYSAPI NTSTATUS NtRequestWaitReceivePort(IN LOCAL_HANDLE CommPortHandle,
 						 IN PPORT_MESSAGE RequestMessage,
 						 OUT PPORT_MESSAGE ReceivedMessage,
 						 IN OPTIONAL PPORT_VIEW ClientView);

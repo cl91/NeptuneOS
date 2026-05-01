@@ -213,6 +213,8 @@ typedef uint64_t UINT64,  *PUINT64;
 typedef PVOID HANDLE, HMODULE, HINSTANCE;
 #define DECLARE_HANDLE(name) typedef HANDLE name
 typedef HANDLE *PHANDLE;
+/* A LOCAL_HANDLE is an seL4 capability pointer in the current thread's CSpace */
+typedef ULONG_PTR LOCAL_HANDLE, *PLOCAL_HANDLE;
 typedef LONG HRESULT;
 
 #define HandleToUlong(h) ((ULONG)(ULONG_PTR)(h))

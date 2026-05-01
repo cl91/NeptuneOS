@@ -22,7 +22,7 @@ NTAPI VOID KeInitializeEvent(OUT PKEVENT Event,
  * Set the given waitable object to the signaled state.
  *
  * This routine can be called at any IRQL. You must not have acquired the
- * DPC mutex before calling this routine.
+ * DPC mutex before calling this routine if AcquireLock is TRUE.
  */
 BOOLEAN KiSignalWaitableObject(IN PWAITABLE_OBJECT_HEADER Object,
 			       IN BOOLEAN AcquireLock)

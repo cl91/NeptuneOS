@@ -115,9 +115,15 @@
 
   <svc name="NtCreatePort">
     <parameter annotation="out" type="ptr::HANDLE" name="PortHandle" />
-    <parameter annotation="out" type="ptr::HANDLE" name="CommPortHandle" />
+    <parameter annotation="out" type="ptr::LOCAL_HANDLE" name="CommPortHandle" />
     <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
     <parameter annotation="in" type="ULONG" name="MaxMessageLength" />
+  </svc>
+
+  <svc name="NtOpenPort">
+    <parameter annotation="out" type="ptr::HANDLE" name="PortHandle" />
+    <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+    <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
   </svc>
 
   <svc name="NtListenPort">
@@ -139,9 +145,9 @@
   </svc>
 
   <svc name="NtConnectPort">
-    <parameter annotation="in out" type="ptr::HANDLE" name="PortHandle" />
-    <parameter annotation="in opt" type="UnicodeString" name="PortName" />
+    <parameter annotation="in" type="HANDLE" name="PortHandle" />
     <parameter annotation="in" type="ptr::SECURITY_QUALITY_OF_SERVICE" name="SecurityQos" />
+    <parameter annotation="out" type="ptr::LOCAL_HANDLE" name="CommPortHandle" />
     <parameter annotation="out opt" type="ptr::HANDLE" name="EventHandle" />
     <parameter annotation="in out opt" type="ptr::PORT_VIEW" name="ClientView" />
     <parameter annotation="out opt" type="ptr::REMOTE_PORT_VIEW" name="ServerView" />

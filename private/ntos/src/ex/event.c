@@ -18,6 +18,34 @@ static NTSTATUS EiEventObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
+static NTSTATUS EiEventObjectOpenProc(IN ASYNC_STATE State,
+				      IN PTHREAD Thread,
+				      IN POBJECT Self,
+				      IN PCSTR SubPath,
+				      IN ACCESS_MASK DesiredAccess,
+				      IN ULONG Attributes,
+				      IN POB_OPEN_CONTEXT Context,
+				      OUT POBJECT *pOpenedInstance,
+				      OUT PCSTR *pRemainingPath)
+{
+    /* Event objects do not have sub-objects, so return error here */
+    if (SubPath[0]) {
+	return STATUS_OBJECT_TYPE_MISMATCH;
+    }
+    ObReferenceObjectByPointer(Self);
+    *pOpenedInstance = Self;
+    *pRemainingPath = SubPath;
+    return STATUS_SUCCESS;
+}
+
+static NTSTATUS EiEventObjectCloseProc(IN ASYNC_STATE State,
+				       IN PTHREAD Thread,
+				       IN POBJECT Self)
+{
+    /* Do nothing */
+    return STATUS_SUCCESS;
+}
+
 static VOID EiEventObjectDeleteProc(IN POBJECT Self)
 {
     assert(ObObjectIsType(Self, OBJECT_TYPE_EVENT));
@@ -31,8 +59,8 @@ static NTSTATUS EiCreateEventType()
     OBJECT_TYPE_INITIALIZER TypeInfo = {
 	.CreateProc = EiEventObjectCreateProc,
 	.ParseProc = NULL,
-	.OpenProc = NULL,
-	.CloseProc = NULL,
+	.OpenProc = EiEventObjectOpenProc,
+	.CloseProc = EiEventObjectCloseProc,
 	.InsertProc = NULL,
 	.RemoveProc = NULL,
 	.QueryNameProc = NULL,

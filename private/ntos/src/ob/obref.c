@@ -338,11 +338,7 @@ NTSTATUS NtClose(IN ASYNC_STATE State,
 		 IN PTHREAD Thread,
 		 IN HANDLE Handle)
 {
-    if (IS_LOCAL_HANDLE(Handle)) {
-	return ExCloseLocalHandle(Thread, Handle);
-    } else {
-	return ObpCloseHandle(State, Thread, Thread->Process, Handle);
-    }
+    return ObpCloseHandle(State, Thread, Thread->Process, Handle);
 }
 
 NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
