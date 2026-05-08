@@ -2080,7 +2080,7 @@ NTSTATUS PciSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	ULONG TableOffset = PdoExtension->MsiInfo.ExtendedMessageInfo.MessageTable;
 	UCHAR TableIndex = TableOffset & PCI_MSIX_MESSAGE_TABLE_BAR_INDEX_MASK;
 	TableOffset &= PCI_MSIX_MESSAGE_TABLE_OFFSET_MASK;
-	PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = PdoExtension->Resources[TableIndex].Current;
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = &PdoExtension->Resources->Current[TableIndex];
 	assert(Res);
 	assert(Res->Type == CmResourceTypeMemory);
 	assert(Res->Memory.Start.QuadPart);

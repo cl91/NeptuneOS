@@ -109,7 +109,7 @@ VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
     Current = Context->Current;
     PciData = Context->PciData;
 
-    /* And get the array of bARs */
+    /* And get the array of BARs */
     BarArray = PciData->Type0.BaseAddresses;
 
     /* First, check for IDE controllers that are not in native mode */
