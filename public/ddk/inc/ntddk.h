@@ -18,11 +18,8 @@ FORCEINLINE BOOLEAN IoThreadIsAtPassiveLevel()
     return Val;
 }
 
-/* This routines asserts that we are at PASSIVE_LEVEL. */
-FORCEINLINE VOID PAGED_CODE()
-{
-    assert(IoThreadIsAtPassiveLevel());
-}
+/* This macro asserts that we are at PASSIVE_LEVEL. */
+#define PAGED_CODE() assert(IoThreadIsAtPassiveLevel())
 
 /*
  * Returned by IO completion routines to indicate that the system
