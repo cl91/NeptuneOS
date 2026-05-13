@@ -31,6 +31,7 @@ static VOID IopProcessDpcQueue()
 	if (Badge & BUGCHECK_NOTIFICATION_BADGE) {
 	    KiNotifyBugcheck();
 	}
+	IopProcessTimerList();
 	IopAcquireDpcMutex();
 	Entry = IopDpcQueue.Flink;
     check:
@@ -53,7 +54,6 @@ static VOID IopProcessDpcQueue()
 	IopAcquireDpcMutex();
 	goto check;
     done:
-	IopProcessTimerList();
 	assert(PsCapIsProcessShared(IopEventLoopNotification));
 	seL4_Signal(RtlProcessCNodeIndexToGuardedCap(IopEventLoopNotification));
     }
@@ -108,17 +108,15 @@ NTAPI VOID KeInitializeDpc(IN PKDPC Dpc,
     Dpc->DeferredContext = DeferredContext;
 }
 
-/*
- * As is in Windows/ReactOS you cannot queue DPC objects multiple
- * times. This routine returns false if the DPC object has already
- * been queued.
- */
-NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
-			       IN PVOID SystemArgument1,
-			       IN PVOID SystemArgument2)
+BOOLEAN KiInsertQueueDpc(IN PKDPC Dpc,
+			 IN PVOID SystemArgument1,
+			 IN PVOID SystemArgument2,
+			 IN BOOLEAN AcquireLock)
 {
     BOOLEAN Queued = FALSE;
-    IopAcquireDpcMutex();
+    if (AcquireLock) {
+	IopAcquireDpcMutex();
+    }
     if (!Dpc->Queued) {
 	DbgTrace("Inserting DPC %p args %p %p\n",
 		 Dpc, SystemArgument1, SystemArgument2);
@@ -131,8 +129,22 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
     } else {
 	DbgTrace("DPC %p already inserted. Not inserting\n", Dpc);
     }
-    IopReleaseDpcMutex();
+    if (AcquireLock) {
+	IopReleaseDpcMutex();
+    }
     return Queued;
+}
+
+/*
+ * As is in Windows/ReactOS you cannot queue DPC objects multiple
+ * times. This routine returns false if the DPC object has already
+ * been queued.
+ */
+NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
+			       IN PVOID SystemArgument1,
+			       IN PVOID SystemArgument2)
+{
+    return KiInsertQueueDpc(Dpc, SystemArgument1, SystemArgument2, FALSE);
 }
 
 static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,

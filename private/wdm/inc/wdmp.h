@@ -211,6 +211,10 @@ VOID IopSignalDpcNotification();
 VOID IopInitializeDpcThread();
 VOID IopAcquireDpcMutex();
 VOID IopReleaseDpcMutex();
+BOOLEAN KiInsertQueueDpc(IN PKDPC Dpc,
+			 IN PVOID SystemArgument1,
+			 IN PVOID SystemArgument2,
+			 IN BOOLEAN AcquireLock);
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;

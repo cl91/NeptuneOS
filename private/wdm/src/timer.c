@@ -75,23 +75,13 @@ VOID IopProcessTimerList()
 	    Timer->State = FALSE;
 	    RemoveEntryList(&Timer->Header.QueueListEntry);
 	    KiSignalWaitableObject(&Timer->Header, FALSE);
-	    if (Timer->LowPriority) {
+	    if (Timer->LowPriority && Timer->WorkItem && Timer->WorkerRoutine) {
 		/* If the timer is a low priority timer, queue the IO work item. */
-		if (Timer->WorkItem && Timer->WorkerRoutine) {
-		    IoQueueWorkItem(Timer->WorkItem, Timer->WorkerRoutine,
-				    DelayedWorkQueue, Timer->WorkerContext);
-		}
-	    } else {
-		if (Timer->Dpc && Timer->Dpc->DeferredRoutine) {
-		    /* DPC routines are called with the DPC mutex released (since it
-		     * may call functions that try to acquire the DPC mutex). */
-		    IopReleaseDpcMutex();
-		    Timer->Dpc->DeferredRoutine(Timer->Dpc,
-						Timer->Dpc->DeferredContext,
-						Timer->Dpc->SystemArgument1,
-						Timer->Dpc->SystemArgument2);
-		    IopAcquireDpcMutex();
-		}
+		IoQueueWorkItem(Timer->WorkItem, Timer->WorkerRoutine,
+				DelayedWorkQueue, Timer->WorkerContext);
+	    } else if (Timer->Dpc && Timer->Dpc->DeferredRoutine) {
+		KiInsertQueueDpc(Timer->Dpc, Timer->Dpc->SystemArgument1,
+				 Timer->Dpc->SystemArgument2, FALSE);
 	    }
 	} else if (Timer->DueTime < NewDueTime.CounterTime) {
 	    NewDueTime.CounterTime = Timer->DueTime;
