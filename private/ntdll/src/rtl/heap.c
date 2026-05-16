@@ -1284,9 +1284,8 @@ static VOID RtlpDestroyHeapSegment(PHEAP_SEGMENT Segment)
 				 &BaseAddress, &Size, MEM_RELEASE);
 
     if (!NT_SUCCESS(Status)) {
-	DPRINT1
-	    ("HEAP: Failed to release segment's memory with status 0x%08X\n",
-	     Status);
+	DPRINT1("HEAP: Failed to release segment's memory with status 0x%08X\n",
+		Status);
     }
 }
 
@@ -2832,10 +2831,7 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
 
 		if (Size > (OldSize + RemainderBytes)) {
 		    /* Calculate actual amount of extra bytes to fill */
-		    ExtraSize =
-			(Size -
-			 (OldSize + RemainderBytes)) & ~(sizeof(ULONG) -
-							 1);
+		    ExtraSize = (Size - (OldSize + RemainderBytes)) & ~(sizeof(ULONG)-1);
 
 		    /* Fill them if there are any */
 		    if (ExtraSize != 0) {
@@ -2860,9 +2856,8 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
 
 	    if (FreeFlags & HEAP_ENTRY_VIRTUAL_ALLOC) {
 		/* This is a virtual block allocation */
-		VirtualAllocBlock =
-		    CONTAINING_RECORD(InUseEntry, HEAP_VIRTUAL_ALLOC_ENTRY,
-				      BusyBlock);
+		VirtualAllocBlock = CONTAINING_RECORD(InUseEntry, HEAP_VIRTUAL_ALLOC_ENTRY,
+						      BusyBlock);
 
 		// FIXME Tagging!
 
@@ -2876,9 +2871,8 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
 					     &DecommitSize, MEM_RELEASE);
 
 		if (!NT_SUCCESS(Status)) {
-		    DPRINT1
-			("HEAP: Unable to release memory (pointer %p, size 0x%zx), Status %08x\n",
-			 DecommitBase, DecommitSize, Status);
+		    DPRINT1("HEAP: Unable to release memory (pointer %p, size 0x%zx), "
+			    "Status %08x\n", DecommitBase, DecommitSize, Status);
 		} else {
 		    /* Otherwise reduce the commit size */
 		    VirtualAllocBlock->CommitSize -= DecommitSize;
@@ -3394,17 +3388,13 @@ BOOLEAN RtlpValidateHeapSegment(PHEAP Heap,
 			ByteSize -= sizeof(HEAP_FREE_ENTRY_EXTRA);
 		    }
 
-		    Result =
-			RtlCompareMemoryUlong((PCHAR)
-					      ((PHEAP_FREE_ENTRY)
-					       CurrentEntry + 1), ByteSize,
-					      ARENA_FREE_FILLER);
+		    Result = RtlCompareMemoryUlong((PCHAR)((PHEAP_FREE_ENTRY)
+							   CurrentEntry + 1), ByteSize,
+						   ARENA_FREE_FILLER);
 
 		    if (Result != ByteSize) {
-			DPRINT1
-			    ("HEAP: Free heap block %p modified at %p after it was freed\n",
-			     CurrentEntry,
-			     (PCHAR) (CurrentEntry + 1) + Result);
+			DPRINT1("HEAP: Free heap block %p modified at %p after it was freed\n",
+				CurrentEntry, (PCHAR)(CurrentEntry + 1) + Result);
 
 			return FALSE;
 		    }
@@ -3412,10 +3402,9 @@ BOOLEAN RtlpValidateHeapSegment(PHEAP Heap,
 	    }
 
 	    if (CurrentEntry->CommonEntry.SegmentOffset != SegmentOffset) {
-		DPRINT1
-		    ("HEAP: Heap entry %p SegmentOffset is incorrect %x (should be %x)\n",
-		     CurrentEntry, SegmentOffset,
-		     CurrentEntry->CommonEntry.SegmentOffset);
+		DPRINT1("HEAP: Heap entry %p SegmentOffset is incorrect %x (should be %x)\n",
+			CurrentEntry, SegmentOffset,
+			CurrentEntry->CommonEntry.SegmentOffset);
 		return FALSE;
 	    }
 
@@ -3426,25 +3415,21 @@ BOOLEAN RtlpValidateHeapSegment(PHEAP Heap,
 		if (!UcrDescriptor) {
 		    /* Check if it's not really the last one */
 		    if (CurrentEntry != Segment->LastValidEntry) {
-			DPRINT1
-			    ("HEAP: Heap entry %p is not last block in segment (%p)\n",
-			     CurrentEntry, Segment->LastValidEntry);
+			DPRINT1("HEAP: Heap entry %p is not last block in segment (%p)\n",
+				CurrentEntry, Segment->LastValidEntry);
 			return FALSE;
 		    }
 		} else if (CurrentEntry != UcrDescriptor->Address) {
-		    DPRINT1
-			("HEAP: Heap entry %p does not match next uncommitted address (%p)\n",
-			 CurrentEntry, UcrDescriptor->Address);
+		    DPRINT1("HEAP: Heap entry %p does not match next uncommitted address (%p)\n",
+			    CurrentEntry, UcrDescriptor->Address);
 
 		    return FALSE;
 		} else {
-		    UnCommittedPages +=
-			(ULONG) (UcrDescriptor->Size / PAGE_SIZE);
+		    UnCommittedPages += (ULONG)(UcrDescriptor->Size / PAGE_SIZE);
 		    UnCommittedRanges++;
 
-		    CurrentEntry =
-			(PHEAP_ENTRY) ((PCHAR) UcrDescriptor->Address +
-				       UcrDescriptor->Size);
+		    CurrentEntry = (PHEAP_ENTRY)((PCHAR)UcrDescriptor->Address +
+						 UcrDescriptor->Size);
 
 		    /* Go to the next UCR descriptor */
 		    UcrEntry = UcrEntry->Flink;
@@ -3463,7 +3448,7 @@ BOOLEAN RtlpValidateHeapSegment(PHEAP Heap,
 	    }
 
 	    /* Advance to the next entry */
-	    CurrentEntry = (PHEAP_ENTRY) ((PCHAR) CurrentEntry + Size);
+	    CurrentEntry = (PHEAP_ENTRY)((PCHAR)CurrentEntry + Size);
 	}
     }
 
@@ -3585,8 +3570,9 @@ BOOLEAN RtlpValidateHeap(PHEAP Heap, BOOLEAN ForceValidation)
 
 		if (FreeEntry->FreeList.Blink != &Heap->FreeLists) {
 		    /* The entry right before the hint must be smaller. */
-		    PHEAP_FREE_ENTRY PreviousFreeEntry = CONTAINING_RECORD(FreeEntry->FreeList.Blink,
-									   HEAP_FREE_ENTRY, FreeList);
+		    PHEAP_FREE_ENTRY PreviousFreeEntry =
+			CONTAINING_RECORD(FreeEntry->FreeList.Blink,
+					  HEAP_FREE_ENTRY, FreeList);
 		    if (PreviousFreeEntry->CommonEntry.Size >= FreeEntry->CommonEntry.Size) {
 			DPRINT1("Free entry hint %p of size %u is larger than the entry "
 				"before it %p, which is of size %u.\n",
@@ -3784,8 +3770,7 @@ BOOLEAN NTAPI RtlSetUserValueHeap(IN PVOID HeapHandle,
 
     /* If it's a free entry - return error */
     if (!(HeapEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY)) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-	    (STATUS_INVALID_PARAMETER);
+	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 
 	/* Release the heap lock if it was acquired */
 	if (HeapLocked)
