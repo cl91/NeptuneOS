@@ -132,6 +132,12 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 
     /* Start looping */
     while (TRUE) {
+	if (!UnwindContext.INSTRUCTION_POINTER) {
+	    DbgTrace("Hit end of stack. Stop unwinding. Unwind context is:\n");
+	    RtlpDumpContext(&UnwindContext);
+	    return FALSE;
+	}
+
 	ULONG64 ImageBase;
 	/* Lookup the FunctionEntry for the current RIP */
 	PRUNTIME_FUNCTION FunctionEntry =
