@@ -577,8 +577,9 @@ static VOID RtlpRemoveFreeBlock(PHEAP Heap,
 				       RealSize, ARENA_FREE_FILLER);
 
 	if (Result != RealSize) {
-	    DPRINT1("Free heap block %p modified at %p after it was freed\n",
+	    DPRINT1("ERROR: Free heap block %p modified at %p after it was freed\n",
 		    FreeEntry, (PCHAR) (FreeEntry + 1) + Result);
+	    RtlRaiseStatus(STATUS_INTERNAL_ERROR);
 	}
     }
 }
