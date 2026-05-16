@@ -173,6 +173,23 @@ static VOID RtlpDumpContextEx(IN PCONTEXT Ctx,
 #endif
 }
 
+static VOID RtlpPrintAddressWithModuleName(IN PVOID Addr,
+					   IN RTLP_DBG_PRINTER DbgPrinter)
+{
+    UNICODE_STRING BaseDllName = {};
+    PVOID StartAddr = NULL;
+    RtlZeroMemory(&BaseDllName, sizeof(UNICODE_STRING));
+    RtlpGetModuleNameFromAddr(Addr, &StartAddr, &BaseDllName);
+    if (BaseDllName.Buffer) {
+	DbgPrinter("%p+%.8x   %wZ\n", (PVOID)StartAddr,
+		   (ULONG_PTR)Addr - (ULONG_PTR)StartAddr, &BaseDllName);
+    } else {
+	DbgPrinter("%p\n", Addr);
+    }
+}
+
+#define NUM_BACKTRACE_LINES 16
+
 VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 			   IN BOOLEAN Unhandled,
 			   IN RTLP_DBG_PRINTER DbgPrinter)
@@ -206,32 +223,16 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	}
 
 	RtlpDumpContextEx(ContextRecord, DbgPrinter);
-	PVOID StartAddr = NULL;
-	UNICODE_STRING BaseDllName = {};
-	RtlpGetModuleNameFromAddr(ExceptionRecord->ExceptionAddress, &StartAddr, &BaseDllName);
-	if (BaseDllName.Buffer) {
-	    DbgPrinter("Address:\n   %p+%08zx   %wZ\n", (PVOID)StartAddr,
-		       (ULONG_PTR)ExceptionRecord->ExceptionAddress - (ULONG_PTR)StartAddr,
-		       &BaseDllName);
-	} else {
-	    DbgPrinter("Address:\n   %p\n", ExceptionRecord->ExceptionAddress);
-	}
+	DbgPrinter("Address:\n   ");
+	RtlpPrintAddressWithModuleName(ExceptionRecord->ExceptionAddress, DbgPrinter);
 
 	/* Don't print the stack content on screen due to screen size limitation. */
 	if (DbgPrinter != RtlpVgaPrint) {
 	    DbgPrinter("Stack:\n");
 	    PPVOID Stack = (PPVOID)ContextRecord->STACK_POINTER;
 	    for (INT i = 0; i < 32; i++) {
-		StartAddr = NULL;
-		RtlZeroMemory(&BaseDllName, sizeof(UNICODE_STRING));
-		RtlpGetModuleNameFromAddr(Stack[i], &StartAddr, &BaseDllName);
-		if (BaseDllName.Buffer) {
-		    DbgPrinter("   %p: %p    (%p+%08zx   %wZ)\n", &Stack[i], Stack[i],
-			       StartAddr, (ULONG_PTR)Stack[i] - (ULONG_PTR)StartAddr,
-			       &BaseDllName);
-		} else {
-		    DbgPrinter("   %p: %p\n", &Stack[i], Stack[i]);
-		}
+		DbgPrinter("   %p:    ", &Stack[i]);
+		RtlpPrintAddressWithModuleName(Stack[i], DbgPrinter);
 	    }
 	}
 
@@ -239,22 +240,15 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 #ifdef _M_IX86
 	PULONG_PTR Frame = (PULONG_PTR)ContextRecord->Ebp;
 
-	for (UINT i = 0; i < 16; i++) {
+	for (UINT i = 0; i < NUM_BACKTRACE_LINES; i++) {
 	    if (!RtlpIsStackPtrOk(Frame)) {
 		break;
 	    }
 	    if (Frame[1] == 0) {
 		DbgPrinter("   <invalid address>\n");
 	    } else {
-		StartAddr = NULL;
-		RtlZeroMemory(&BaseDllName, sizeof(UNICODE_STRING));
-		RtlpGetModuleNameFromAddr((PVOID)Frame[1], &StartAddr, &BaseDllName);
-		if (BaseDllName.Buffer) {
-		    DbgPrinter("   %p+%.8x   %wZ\n", (PVOID)StartAddr,
-			       Frame[1] - (ULONG_PTR)StartAddr, &BaseDllName);
-		} else {
-		    DbgPrinter("   %p\n", Frame[1]);
-		}
+		DbgPrinter("   ");
+		RtlpPrintAddressWithModuleName((PVOID)Frame[1], DbgPrinter);
 	    }
 
 	    if (Frame[0] == 0)
@@ -263,7 +257,49 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	    Frame = (PULONG_PTR) Frame[0];
 	}
 #else
-	DbgPrinter("   NOT IMPLEMENTED YET\n");
+	CONTEXT UnwindContext = *ContextRecord;
+	ULONG64 ImageBase = 0;
+	PRUNTIME_FUNCTION FunctionEntry;
+	PVOID HandlerData;
+	ULONG64 EstablisherFrame;
+	INT FrameCount = 0;
+
+	while (FrameCount < NUM_BACKTRACE_LINES) {
+	    ULONG64 ControlPc = UnwindContext.Rip;
+	    if (ControlPc == 0)
+		break;
+
+	    /* Lookup unwind metadata for this PC */
+	    FunctionEntry = RtlLookupFunctionEntry(ControlPc, &ImageBase, NULL);
+
+	    if (FunctionEntry) {
+		/* Use metadata to unwind */
+		RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+				 ImageBase,
+				 ControlPc,
+				 FunctionEntry,
+				 &UnwindContext,
+				 &HandlerData,
+				 &EstablisherFrame,
+				 NULL);
+	    } else {
+		/* Leaf function: simulate a return */
+		if (!RtlpIsStackPtrOk((PVOID)UnwindContext.Rsp))
+		    break;
+
+		UnwindContext.Rip = *(ULONG64*)UnwindContext.Rsp;
+		UnwindContext.Rsp += sizeof(ULONG64);
+	    }
+
+	    if (UnwindContext.Rip == 0)
+		break;
+
+	    /* Print frame */
+	    DbgPrinter("   ");
+	    RtlpPrintAddressWithModuleName((PVOID)UnwindContext.Rip, DbgPrinter);
+
+	    FrameCount++;
+	}
 #endif
 
 	if (NtCurrentPeb()->LdrData && NtCurrentPeb()->LdrData->Initialized) {

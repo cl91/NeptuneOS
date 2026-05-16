@@ -9,6 +9,15 @@
 
 #include "../rtlp.h"
 
+/* Uncomment this to enable debugging logs for stack unwinding. */
+/* #define UNWIND_DEBUG */
+
+#if UNWIND_DEBUG
+#define UNWIND_DPRINT(...) DbgTrace(__VA_ARGS__)
+#else
+#define UNWIND_DPRINT(...)
+#endif
+
 #define UWOP_PUSH_NONVOL 0
 #define UWOP_ALLOC_LARGE 1
 #define UWOP_ALLOC_SMALL 2
@@ -319,9 +328,11 @@ PEXCEPTION_ROUTINE NTAPI RtlVirtualUnwind(IN ULONG HandlerType,
 					  OUT PULONG64 EstablisherFrame,
 					  IN OUT OPTIONAL PKNONVOLATILE_CONTEXT_POINTERS CtxPtrs)
 {
-    DbgTrace("HandlerType %d ImageBase %p ControlPc %p FunctionEntry %p. Context is\n",
-	     HandlerType, (PVOID)ImageBase, (PVOID)ControlPc, FunctionEntry);
+    UNWIND_DPRINT("HandlerType %d ImageBase %p ControlPc %p FunctionEntry %p. Context is\n",
+		  HandlerType, (PVOID)ImageBase, (PVOID)ControlPc, FunctionEntry);
+#ifdef UNWIND_DEBUG
     RtlpDumpContext(Context);
+#endif
 
     /* Get relative virtual address */
     ULONG_PTR ControlRva = ControlPc - ImageBase;
@@ -333,7 +344,7 @@ PEXCEPTION_ROUTINE NTAPI RtlVirtualUnwind(IN ULONG HandlerType,
 
     /* Get a pointer to the unwind info */
     PUNWIND_INFO UnwindInfo = RVA(ImageBase, FunctionEntry->UnwindData);
-    DbgTrace("UnwindInfo %p\n", UnwindInfo);
+    UNWIND_DPRINT("UnwindInfo %p\n", UnwindInfo);
 
     /* The language specific handler data follows the unwind info */
     PULONG LanguageHandler = ALIGN_UP_POINTER_BY(&UnwindInfo->UnwindCode[UnwindInfo->CountOfCodes],
@@ -437,16 +448,16 @@ RepeatChainedInfo:
 	    break;
 
 	case UWOP_PUSH_MACHFRAME:
-	    DbgTrace("UWOP_PUSH_MACHFRAME  Old RSP %p  NumberOfErrorCode %d\n",
-		     (PVOID)Context->Rsp, UnwindCode.OpInfo);
+	    UNWIND_DPRINT("UWOP_PUSH_MACHFRAME  Old RSP %p  NumberOfErrorCode %d\n",
+			  (PVOID)Context->Rsp, UnwindCode.OpInfo);
 	    /* OpInfo is 1, when an error code was pushed, otherwise 0. */
 	    Context->Rsp += UnwindCode.OpInfo * sizeof(ULONG64);
 
 	    /* Now pop the MACHINE_FRAME (RIP/RSP only. Yes, "magic numbers", deal with it) */
 	    Context->Rip = *(PULONG64)(Context->Rsp + 0x00);
 	    Context->Rsp = *(PULONG64)(Context->Rsp + 0x18);
-	    DbgTrace("New RIP %p EFlags 0x%x RSP %p\n",
-		     (PVOID)Context->Rip, Context->EFlags, (PVOID)Context->Rsp);
+	    UNWIND_DPRINT("New RIP %p EFlags 0x%x RSP %p\n",
+			  (PVOID)Context->Rip, Context->EFlags, (PVOID)Context->Rsp);
 	    ASSERT((i + 1) == UnwindInfo->CountOfCodes);
 	    goto Exit;
 	}
