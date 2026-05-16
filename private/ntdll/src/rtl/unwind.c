@@ -148,6 +148,9 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 	     * an infinite recursion until the stack space of the thread is exhausted.
 	     */
 #ifdef _M_AMD64
+	    if (!RtlpIsStackPtrOk((PVOID)UnwindContext.Rsp)) {
+		return FALSE;
+	    }
 	    UnwindContext.Rip = *(PULONG64)UnwindContext.Rsp;
 	    UnwindContext.Rsp += sizeof(ULONG64);
 #elif defined(_M_ARM64)
@@ -155,9 +158,10 @@ BOOLEAN RtlpUnwindInternal(IN OPTIONAL PVOID TargetFrame,
 #else
 #error "Unsupported architecture"
 #endif
-	    DbgTrace("Got leaf function with new IP %p and SP %p\n",
+	    DbgTrace("Got leaf function with new IP %p and SP %p. Unwind context:\n",
 		     (PVOID)ContextRecord->INSTRUCTION_POINTER,
 		     (PVOID)ContextRecord->STACK_POINTER);
+	    RtlpDumpContext(&UnwindContext);
 
             if (HandlerType == UNW_FLAG_UHANDLER) {
                 /* Copy the context back for the next iteration */
