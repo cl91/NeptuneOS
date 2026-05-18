@@ -564,7 +564,12 @@ typedef struct DECLSPEC_ALIGN(MEMORY_ALLOCATION_ALIGNMENT) _IRP {
 			    * unique up to the original requestor. */
 	PVOID OutputBuffer; /* Output buffer provided by the client
 			     * process, mapped here */
-	PFILE_OBJECT LastIoStackFileObject;
+	PFILE_OBJECT TopMostFileObject; /* The file object of the top-most IO stack.
+					 * This member is needed because we clear the
+					 * FILE_OBJECT pointer when calling the IO
+					 * completion routines during completion of the
+					 * IRP, but need the file object in order to reply
+					 * to the server with file size information. */
 	LIST_ENTRY Link;    /* List entry for IrpQueue, PendingIrpList,
 			     * CleanupIrpList, and ReplyIrpList */
 	LIST_ENTRY MasterPendingList; /* For master IRP, this is the list of

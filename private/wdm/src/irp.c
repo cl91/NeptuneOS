@@ -968,6 +968,9 @@ NTAPI VOID IoFreeIrp(IN PIRP Irp)
 	}
     }
 
+    if (Irp->Private.TopMostFileObject) {
+	ObDereferenceObject(Irp->Private.TopMostFileObject);
+    }
     IoFreeMdl(Irp->MdlAddress);
     ExFreePool(Irp);
 }
@@ -1072,9 +1075,6 @@ static VOID IopDeleteIrp(PIRP Irp)
     default:
 	break;
     }
-    if (Irp->Private.LastIoStackFileObject) {
-	ObDereferenceObject(Irp->Private.LastIoStackFileObject);
-    }
     IoFreeIrp(Irp);
 }
 
@@ -1112,21 +1112,20 @@ static BOOLEAN IopPopulateIoCompleteMessageFromLocalIrp(OUT PIO_PACKET Dest,
     ULONG Size = sizeof(IO_PACKET);
     PIO_STACK_LOCATION IoSp = IoGetNextIrpStackLocation(Irp);
     assert(!IoSp->FileObject);
-    PFILE_OBJECT LastIoStackFileObject = Irp->Private.LastIoStackFileObject;
+    PFILE_OBJECT TopMostFileObject = Irp->Private.TopMostFileObject;
     ULONG64 FileSize = 0;
     ULONG64 AllocationSize = 0;
     ULONG64 ValidDataLength = 0;
-    PFSRTL_COMMON_FCB_HEADER Fcb = LastIoStackFileObject ?
-	LastIoStackFileObject->FsContext : NULL;
+    PFSRTL_COMMON_FCB_HEADER Fcb = TopMostFileObject ? TopMostFileObject->FsContext : NULL;
     if (Fcb) {
 	FileSize = Fcb->FileSizes.FileSize.QuadPart;
 	AllocationSize = Fcb->FileSizes.AllocationSize.QuadPart;
 	ValidDataLength = Fcb->FileSizes.ValidDataLength.QuadPart;
     }
-    if (LastIoStackFileObject) {
-	ObDereferenceObject(LastIoStackFileObject);
+    if (TopMostFileObject) {
+	ObDereferenceObject(TopMostFileObject);
     }
-    Irp->Private.LastIoStackFileObject = NULL;
+    Irp->Private.TopMostFileObject = NULL;
 
     switch (IoSp->MajorFunction) {
     case IRP_MJ_CREATE:
@@ -1984,11 +1983,11 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
 	     Irp->UserIosb, Irp->UserEvent);
     DbgPrint("    MasterIrp %p\n", Irp->MasterIrp);
     DbgPrint("    PRIV OriginalRequestor %p Identifier %p "
-	     "OutputBuffer %p NotifyCompletion %s LastIoStackFileObject %p\n",
+	     "OutputBuffer %p NotifyCompletion %s TopMostFileObject %p\n",
 	     (PVOID)Irp->Private.OriginalRequestor,
 	     Irp->Private.Identifier, Irp->Private.OutputBuffer,
 	     Irp->Private.NotifyCompletion ? "TRUE" : "FALSE",
-	     Irp->Private.LastIoStackFileObject);
+	     Irp->Private.TopMostFileObject);
     DbgPrint("    PRIV AssociatedIrpCount %d MasterPendingList FL %p BL %p "
 	     "AssociatedIrpLink FL %p BL %p MasterCompleted %d MasterIrpSent %d\n",
 	     Irp->Private.AssociatedIrpCount, Irp->Private.MasterPendingList.Flink,
@@ -2079,6 +2078,14 @@ static VOID IopCompleteIrp(IN PIRP Irp)
 	IoStack->DeviceObject = NULL;
 	IoStack->FileObject = NULL;
 	IoSkipCurrentIrpStackLocation(Irp);
+	/* If we are the last IO stack (ie. the top-most IO stack, set up by the
+	 * highest-level driver or the IO manger) of the IRP, record the file object
+	 * before clearing the file object pointer in the IO stack. This is needed
+	 * so we can send the file size information to the server later when we reply
+	 * with the IO completion message. */
+	if (LastStack) {
+	    Irp->Private.TopMostFileObject = FileObject;
+	}
 	NTSTATUS Status = STATUS_CONTINUE_COMPLETION;
 	if (IoStack->CompletionRoutine) {
 	    Status = IoStack->CompletionRoutine(DeviceObject, Irp,
@@ -2087,9 +2094,7 @@ static VOID IopCompleteIrp(IN PIRP Irp)
 	if (DeviceObject) {
 	    ObDereferenceObject(DeviceObject);
 	}
-	if (LastStack) {
-	    Irp->Private.LastIoStackFileObject = FileObject;
-	} else if (FileObject) {
+	if (!LastStack && FileObject) {
 	    ObDereferenceObject(FileObject);
 	}
 	if (Status == StopCompletion) {
@@ -2709,8 +2714,8 @@ reply:
 		     * location pointer as if we had implicitly completed the IRP, so
 		     * IopDeleteIrp can free the full IRP correctly. */
 		    if (!Irp->Completed) {
-			/* LastIoStackFileObject is only set if the IRP has been completed. */
-			assert(!Irp->Private.LastIoStackFileObject);
+			/* TopMostFileObject is only set if the IRP has been completed. */
+			assert(!Irp->Private.TopMostFileObject);
 			PIO_STACK_LOCATION IoStack = IoGetCurrentIrpStackLocation(Irp);
 			PDEVICE_OBJECT DeviceObject = IoStack->DeviceObject;
 			if (DeviceObject) {
