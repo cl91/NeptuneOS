@@ -10,7 +10,7 @@ NTAPI PIO_MUTEX IoCreateMutex(VOID)
 	return NULL;
     }
     MWORD Cap = 0;
-    if (!NT_SUCCESS(WdmCreateIoMutex(&Cap))) {
+    if (!NT_SUCCESS(NtCreateNotification(&Cap, FALSE))) {
 	ExFreePool(IoMutex);
 	return NULL;
     }

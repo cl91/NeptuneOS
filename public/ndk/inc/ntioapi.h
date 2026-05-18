@@ -1398,7 +1398,8 @@ NTAPI NTSYSAPI NTSTATUS NtFlushBuffersFile(IN HANDLE FileHandle,
 #define IRP_MJ_SET_QUOTA                  0x1a
 #define IRP_MJ_PNP                        0x1b
 #define IRP_MJ_PNP_POWER                  0x1b
-#define IRP_MJ_MAXIMUM_FUNCTION           0x1b
+#define IRP_MJ_IO_RING                    0x1c
+#define IRP_MJ_MAXIMUM_FUNCTION           0x1c
 
 /* IRP minor code for IRP_MJ_READ */
 #define IRP_MN_MDL                        0x01
@@ -1461,6 +1462,10 @@ NTAPI NTSYSAPI NTSTATUS NtFlushBuffersFile(IN HANDLE FileHandle,
 #define IRP_MN_LOAD_FILE_SYSTEM           0x03
 #define IRP_MN_TRACK_LINK                 0x04
 #define IRP_MN_KERNEL_CALL                0x04
+
+/* Minor codes for IRP_MJ_IO_RING */
+#define IRP_MN_CREATE_IO_RING             0x00
+#define IRP_MN_DELETE_IO_RING             0x01
 
 /* FILE_OBJECT.Flags */
 #define FO_FILE_OPEN                 0x00000001

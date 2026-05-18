@@ -36,6 +36,7 @@ typedef struct _THREAD {
 			      * the APCs here may or may not be queued (this depends on
 			      * whether they have expired). */
     LIST_ENTRY LpcConnectionList; /* List of all queued or connected LPC port connections. */
+    LIST_ENTRY NotificationList;  /* List of all thread-private EX_NOTIFICATION */
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT WdmServiceEndpoint;
     PIPC_ENDPOINT FaultEndpoint;
@@ -84,6 +85,7 @@ typedef struct _PROCESS {
     MWORD UserExceptionDispatcher; /* Address to dispatch to when an exception occurs. */
     MWORD PebClientAddr;
     LIST_ENTRY ProcessListEntry;
+    LIST_ENTRY NotificationList; /* List of all process-wide EX_NOTIFICATION */
     PEVENT_OBJECT CriticalSectionLockSemaphore;
     PEVENT_OBJECT LoaderLockSemaphore;
     PEVENT_OBJECT FastPebLockSemaphore;

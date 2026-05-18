@@ -60,6 +60,23 @@ typedef struct _LPC_PORT_CONNECTION {
 } LPC_PORT_CONNECTION, *PLPC_PORT_CONNECTION;
 
 /*
+ * Executive Notification Object. This is an seL4 notification object
+ * exposed to a client process or thread.
+ */
+typedef struct _EX_NOTIFICATION {
+    LIST_ENTRY Link; /* List link for {PROCESS,THREAD}::NotificationList */
+    NOTIFICATION Notification;
+    PVOID Object; /* Object type must be THREAD if ThreadPrivate is TRUE, and
+		   * PROCESS if ThreadPrivate is FALSE. */
+    LIST_ENTRY DeriveList; /* List of derived EX_NOTIFICATIONs */
+    LIST_ENTRY DeriveLink; /* List link for EX_NOTIFICATION::DeriveList. The parent
+			    * node is obtained from the cap derivation tree. */
+    BOOLEAN ThreadPrivate;
+    BOOLEAN Deleted; /* Set to TRUE if a parent notification has been deleted by
+		      * a client but its derived notifications have not. */
+} EX_NOTIFICATION, *PEX_NOTIFICATION;
+
+/*
  * This can only be called in non-async functions
  */
 #define ExAllocatePoolEx(Var, Type, Size, Tag, OnError)			\
@@ -111,6 +128,12 @@ NTSTATUS ExInitSystemPhase1();
 /* lpc.c */
 VOID ExClosePortConnection(IN PLPC_PORT_CONNECTION Connection,
 			   IN BOOLEAN ThreadIsTerminating);
+
+/* notification.c */
+NTSTATUS ExCreateNotification(IN PVOID ThreadOrProcessObject,
+			      OUT LOCAL_HANDLE *Cap,
+			      IN BOOLEAN ThreadLocal);
+VOID ExDeleteNotification(IN PEX_NOTIFICATION Notification);
 
 /* pool.c */
 NTSTATUS ExInitializePool(IN MWORD HeapStart, IN LONG NumPages);

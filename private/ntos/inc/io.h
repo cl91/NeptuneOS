@@ -36,15 +36,15 @@ typedef struct _IO_DRIVER_OBJECT {
     PCSTR DriverRegistryPath;
     AVL_NODE Node;	      /* Key is object address of driver process */
     LIST_ENTRY DeviceList;    /* All devices created by this driver */
-    LIST_ENTRY IoMutexList;   /* List of all IO_MUTEX created by this driver */
     NOTIFICATION DpcNotification; /* DPC notification cap (in the process shared CNode) */
     IO_TIMER IoTimer;		  /* Singleton timer object */
-    NOTIFICATION BugcheckNotification; /* Derived from the DPC notification cap */
+    NOTIFICATION BugcheckNotification; /* Derived from the DPC notification cap, in NT
+					* Executive's CNode */
     NOTIFICATION ServiceNotification;  /* Derived from the Executive service notification, in
 					* the outer CNode of the driver event loop thread */
     NOTIFICATION EventLoopNotification; /* In the process shared CNode */
-    NOTIFICATION IoPacketNotification; /* Derived from the event loop notification, in the
-					* Executive service thread's outer level CNode */
+    NOTIFICATION IoPacketNotification; /* Derived from the event loop notification, in NT
+					* Executive's CNode */
     IPC_ENDPOINT TimerServiceEndpoint; /* Derived from the timer service endpoint, in the
 					* process shared CNode. */
     struct _CC_CACHE_SPACE *CacheSpace; /* Non-NULL if the driver initialized cache support. */

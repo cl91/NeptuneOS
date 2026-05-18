@@ -17,6 +17,21 @@ static VOID PspUnmapSharedRegion(IN MWORD ServerStart,
     }
 }
 
+static VOID PspDeleteNotificationObjects(IN PVOID ParentObject)
+{
+    PLIST_ENTRY List = NULL;
+    if (ObObjectIsType(ParentObject, OBJECT_TYPE_THREAD)) {
+	List = &((PTHREAD)ParentObject)->NotificationList;
+    } else if (ObObjectIsType(ParentObject, OBJECT_TYPE_PROCESS)) {
+	List = &((PPROCESS)ParentObject)->NotificationList;
+    } else {
+	assert(FALSE);
+    }
+    LoopOverList(Notification, List, EX_NOTIFICATION, Link) {
+	ExDeleteNotification(Notification);
+    }
+}
+
 /*
  * Note that since this is called when THREAD object creation fails, it
  * must be able to clean up partially created objects.
@@ -74,6 +89,13 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 	PspFreePool(Thread->DebugName);
     }
 
+    /* Since we increased the refcount of the thread object when creating the
+     * executive notification object, at this point the list of executive notification
+     * objects must be empty. We assert if this is not the case. In release build
+     * we will try emptying the list. */
+    assert(IsListEmpty(&Thread->NotificationList));
+    PspDeleteNotificationObjects(Thread);
+
     /* Since the drivers use the TEB page of the event loop thread to store the
      * IO packet buffer pointers, we need to unlink the driver from the pending
      * driver list and its signal group, so the Executive service loop will no
@@ -116,6 +138,12 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     assert(!Process->HandleTable.Tree.BalancedRoot);
     /* The thread list should be empty as well. */
     assert(IsListEmpty(&Process->ThreadList));
+    /* Since we increased the refcount of the thread object when creating the
+     * executive notification object, at this point the list of executive notification
+     * objects must be empty. We assert if this is not the case. In release build
+     * we will try emptying the list. */
+    assert(IsListEmpty(&Process->NotificationList));
+    PspDeleteNotificationObjects(Process);
     KeDetachDispatcherObject(&Process->Header);
     ObDereferenceObject(Process->ImageSection);
 #define DESTROY_EVENT(ObjName)					\
@@ -182,6 +210,7 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
      * the dereference below does not yet delete the THREAD object). */
     RET_ERR(PspSuspendThread(Thread->TreeNode.Cap));
     KeRemoveThreadFromReadyList(Thread);
+    PspDeleteNotificationObjects(Thread);
     /* Dereference the THREAD object so the object manager will delete it
      * (if no one else is referring to it) */
     ObDereferenceObject(Thread);
@@ -196,7 +225,6 @@ NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread)
     assert(FALSE);
     return PspSuspendThread(Thread->TreeNode.Cap);
 }
-
 
 NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
 			   IN PTHREAD Thread,
@@ -261,6 +289,7 @@ close:
     goto close;
 
 out:
+    PspDeleteNotificationObjects(Process);
     LoopOverList(ThreadToTerminate, &Process->ThreadList, THREAD, ThreadListEntry) {
 	PsTerminateThread(ThreadToTerminate, ExitStatus);
     }

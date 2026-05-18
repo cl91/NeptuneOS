@@ -1,10 +1,5 @@
 #include "iop.h"
 
-typedef struct _IO_MUTEX {
-    LIST_ENTRY Link; /* List link for IO_DRIVER_OBJECT::IoMutexList */
-    NOTIFICATION Notification;
-} IO_MUTEX, *PIO_MUTEX;
-
 LIST_ENTRY IoBugcheckNotificationList;
 
 PIO_DRIVER_OBJECT IoGetDriverObjectFromProcess(IN PPROCESS Process)
@@ -18,21 +13,7 @@ static NTSTATUS IopCreateIoMutex(IN PIO_DRIVER_OBJECT DriverObject,
 {
     PPROCESS Process = IoDriverObjectToProcess(DriverObject);
     assert(Process);
-    IopAllocatePool(IoMutex, IO_MUTEX);
-    RET_ERR_EX(KeCreateNotificationEx(&IoMutex->Notification, Process->SharedCNode),
-	       IopFreePool(IoMutex));
-    InsertTailList(&DriverObject->IoMutexList, &IoMutex->Link);
-    *Cap = IoMutex->Notification.TreeNode.Cap;
-    return STATUS_SUCCESS;
-}
-
-static VOID IopDeleteIoMutexList(IN PIO_DRIVER_OBJECT DriverObject)
-{
-    LoopOverList(IoMutex, &DriverObject->IoMutexList, IO_MUTEX, Link) {
-	RemoveEntryList(&IoMutex->Link);
-	KeDestroyNotification(&IoMutex->Notification);
-	IopFreePool(IoMutex);
-    }
+    return ExCreateNotification(Process, (MWORD *)Cap, FALSE);
 }
 
 /*
@@ -44,11 +25,11 @@ typedef struct _DRIVER_OBJ_CREATE_CONTEXT {
     PSECTION ImageSection;
 } DRIVER_OBJ_CREATE_CONTEXT, *PDRIVER_OBJ_CREATE_CONTEXT;
 
-NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
-				   IN PVOID CreaCtx)
+static NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
+					  IN PVOID CreaCtx)
 {
-    PIO_DRIVER_OBJECT Driver = (PIO_DRIVER_OBJECT)Object;
-    PDRIVER_OBJ_CREATE_CONTEXT Ctx = (PDRIVER_OBJ_CREATE_CONTEXT)CreaCtx;
+    PIO_DRIVER_OBJECT Driver = Object;
+    PDRIVER_OBJ_CREATE_CONTEXT Ctx = CreaCtx;
     assert(Ctx->ImageSection);
     PCSTR DriverToLoad = Ctx->DriverImagePath;
     Driver->DriverImagePath = RtlDuplicateString(DriverToLoad, NTOS_IO_TAG);
@@ -57,7 +38,6 @@ NTSTATUS IopDriverObjectCreateProc(IN POBJECT Object,
 	return STATUS_NO_MEMORY;
     }
     InitializeListHead(&Driver->DeviceList);
-    InitializeListHead(&Driver->IoMutexList);
     InitializeListHead(&Driver->IoPortList);
     InitializeListHead(&Driver->IoPacketQueue);
     InitializeListHead(&Driver->PendingIoPacketList);
@@ -165,7 +145,7 @@ VOID IoUnlinkDriverFromServiceLoop(IN PIO_DRIVER_OBJECT DriverObject)
     }
 }
 
-VOID IopDriverObjectDeleteProc(IN POBJECT Self)
+static VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 {
     PIO_DRIVER_OBJECT Driver = Self;
     DbgTrace("Deleting driver object %p (%s)\n", Driver, Driver->DriverImagePath);
@@ -238,8 +218,6 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
     }
     KeUninitializeEvent(&Driver->InitializationDoneEvent);
 
-    IopDeleteIoMutexList(Driver);
-
     if (Driver->BugcheckNotification.TreeNode.Cap) {
 	KeDestroyNotification(&Driver->BugcheckNotification);
     }
@@ -287,6 +265,24 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 	IopFreePool(IoPort);
     }
 #endif
+}
+
+NTSTATUS IopCreateDriverType()
+{
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.CreateProc = IopDriverObjectCreateProc,
+	.ParseProc = NULL,
+	.OpenProc = NULL,
+	.CloseProc = NULL,
+	.InsertProc = NULL,
+	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
+	.DeleteProc = IopDriverObjectDeleteProc
+    };
+    return ObCreateObjectType(OBJECT_TYPE_DRIVER,
+			      "Driver",
+			      sizeof(IO_DRIVER_OBJECT),
+			      TypeInfo);
 }
 
 /*
@@ -604,18 +600,6 @@ NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
     return IopLoadDriver(State, Thread, DriverServicePath);
 }
 
-NTSTATUS WdmCreateIoMutex(IN ASYNC_STATE AsyncState,
-                          IN PTHREAD Thread,
-                          OUT MWORD *Cap)
-{
-    assert(Thread != NULL);
-    assert(Cap != NULL);
-    PPROCESS Process = Thread->Process;
-    assert(Process != NULL);
-    PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Process);
-    return IopCreateIoMutex(DriverObject, Cap);
-}
-
 NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
                           IN PTHREAD Thread,
                           IN USHORT PortNum,
@@ -895,7 +879,8 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
     IF_ERR_GOTO(err, Status,
 		PsSetThreadPriority(DpcThread, DISPATCH_LEVEL));
 
-    /* Create a notification for DPC thread to synchronize access with the main thread */
+    /* Create a notification for the DPC thread so the main thread can signal the DPC
+     * thread when a DPC is queued. */
     IF_ERR_GOTO(err, Status,
 		KeCreateNotificationEx(&DriverObject->DpcNotification,
 				       Thread->Process->SharedCNode));

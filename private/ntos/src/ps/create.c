@@ -388,6 +388,7 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Thread->QueuedApcList);
     InitializeListHead(&Thread->TimerApcList);
     InitializeListHead(&Thread->LpcConnectionList);
+    InitializeListHead(&Thread->NotificationList);
     KeInitializeTimer(&Thread->WaitTimer, SynchronizationTimer);
 
     Thread->InitialThread = !Process->Initialized;
@@ -583,6 +584,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     InitializeListHead(&Process->ThreadList);
     InitializeListHead(&Process->ProcessListEntry);
+    InitializeListHead(&Process->NotificationList);
     ObInitializeHandleTable(&Process->HandleTable);
 
     /* Assign an ASID for the virtual address space just created */

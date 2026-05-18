@@ -465,6 +465,37 @@
     <parameter annotation="out" type="ptr::IO_STATUS_BLOCK" name="IoStatusBlock" />
   </svc>
 
+  <svc name="NtCreateNotification">
+    <parameter annotation="out" type="ptr::LOCAL_HANDLE" name="NotificationHandle" />
+    <parameter annotation="in" type="BOOLEAN" name="ThreadPrivate" />
+  </svc>
+
+  <svc name="NtDeleteNotification">
+    <parameter annotation="in" type="LOCAL_HANDLE" name="NotificationHandle" />
+  </svc>
+
+  <svc name="NtCreateIoRing">
+    <parameter annotation="out" type="ptr::HANDLE" name="IoRingHandle" />
+    <parameter annotation="in" type="HANDLE" name="FileHandle" />
+    <parameter annotation="in" type="HANDLE" name="SubmissionQueueHandle" />
+    <parameter annotation="in" type="SIZE_T" name="SubmissionQueueSize" />
+    <parameter annotation="out opt" type="ptr::LOCAL_HANDLE" name="SubmissionNotification" />
+    <parameter annotation="in" type="BOOLEAN" name="SubmissionNotificationIsThreadPrivate" />
+    <parameter annotation="out" type="ptr::HANDLE" name="CompletionQueueHandle" />
+    <parameter annotation="out" type="ptr::SIZE_T" name="CompletionQueueSize" />
+    <parameter annotation="in opt" type="ptr::LOCAL_HANDLE" name="CompletionNotification" />
+    <parameter annotation="in" type="ULONG_PTR" name="CompletionNotificationBadge" />
+    <parameter annotation="in" type="PIO_APC_ROUTINE" name="ApcRoutine" />
+    <parameter annotation="in" type="PVOID" name="ApcContext" />
+  </svc>
+
+  <svc name="NtRegisterBuffersForIoRing">
+    <parameter annotation="in" type="HANDLE" name="IoRingHandle" />
+    <parameter annotation="in" type="buf::BufferPtrs" name="Buffers" />
+    <parameter annotation="in" type="bufsize::ULONG" name="BufferCount" />
+    <parameter annotation="in" type="ULONG" name="Flags" />
+  </svc>
+
   <svc name="NtLoadDriver">
     <parameter annotation="in" type="UnicodeString" name="DriverServiceName" />
   </svc>

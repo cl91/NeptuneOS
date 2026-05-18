@@ -4,60 +4,6 @@
 AVL_TREE IopDriverObjectTree;
 LIST_ENTRY IopShutdownNotificationList;
 
-static NTSTATUS IopCreateFileType()
-{
-    OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = IopFileObjectCreateProc,
-	.ParseProc = IopFileObjectParseProc,
-	.OpenProc = IopFileObjectOpenProc,
-	.CloseProc = IopFileObjectCloseProc,
-	.InsertProc = NULL,
-	.RemoveProc = NULL,
-	.QueryNameProc = NULL,
-	.DeleteProc = IopFileObjectDeleteProc
-    };
-    return ObCreateObjectType(OBJECT_TYPE_FILE,
-			      "File",
-			      sizeof(IO_FILE_OBJECT),
-			      TypeInfo);
-}
-
-static NTSTATUS IopCreateDeviceType()
-{
-    OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = IopDeviceObjectCreateProc,
-	.ParseProc = IopDeviceObjectParseProc,
-	.OpenProc = IopDeviceObjectOpenProc,
-	.CloseProc = IopDeviceObjectCloseProc,
-	.InsertProc = IopDeviceObjectInsertProc,
-	.RemoveProc = IopDeviceObjectRemoveProc,
-	.QueryNameProc = IopDeviceObjectQueryNameProc,
-	.DeleteProc = IopDeviceObjectDeleteProc
-    };
-    return ObCreateObjectType(OBJECT_TYPE_DEVICE,
-			      "Device",
-			      sizeof(IO_DEVICE_OBJECT),
-			      TypeInfo);
-}
-
-static NTSTATUS IopCreateDriverType()
-{
-    OBJECT_TYPE_INITIALIZER TypeInfo = {
-	.CreateProc = IopDriverObjectCreateProc,
-	.ParseProc = NULL,
-	.OpenProc = NULL,
-	.CloseProc = NULL,
-	.InsertProc = NULL,
-	.RemoveProc = NULL,
-	.QueryNameProc = NULL,
-	.DeleteProc = IopDriverObjectDeleteProc
-    };
-    return ObCreateObjectType(OBJECT_TYPE_DRIVER,
-			      "Driver",
-			      sizeof(IO_DRIVER_OBJECT),
-			      TypeInfo);
-}
-
 NTSTATUS IoInitSystemPhase0()
 {
     AvlInitializeTree(&IopDriverObjectTree);

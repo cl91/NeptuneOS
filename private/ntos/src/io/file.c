@@ -75,12 +75,30 @@ FORCEINLINE BOOLEAN DeleteAccessDesired(IN ACCESS_MASK DesiredAccess)
     return DesiredAccess & DELETE;
 }
 
-NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
-				 IN PVOID CreaCtx)
+/*
+ * Creation context for the file object creation routine
+ */
+typedef struct _FILE_OBJ_CREATE_CONTEXT {
+    PIO_DEVICE_OBJECT DeviceObject;
+    PCSTR FileName;
+    ULONG64 FileSize;
+    PIO_FILE_CONTROL_BLOCK Fcb;
+    PIO_VOLUME_CONTROL_BLOCK Vcb;
+    PIO_FILE_OBJECT MasterFileObject;
+    ULONG FileAttributes;
+    ACCESS_MASK DesiredAccess;
+    ULONG ShareAccess;
+    BOOLEAN NoFcb;
+    BOOLEAN AllocateCloseMsg;
+    BOOLEAN DirectIo;
+} FILE_OBJ_CREATE_CONTEXT, *PFILE_OBJ_CREATE_CONTEXT;
+
+static NTSTATUS IopFileObjectCreateProc(IN POBJECT Object,
+					IN PVOID CreaCtx)
 {
     assert(CreaCtx);
-    PIO_FILE_OBJECT File = (PIO_FILE_OBJECT)Object;
-    PFILE_OBJ_CREATE_CONTEXT Ctx = (PFILE_OBJ_CREATE_CONTEXT)CreaCtx;
+    PIO_FILE_OBJECT File = Object;
+    PFILE_OBJ_CREATE_CONTEXT Ctx = CreaCtx;
     PIO_PACKET CloseMsg = NULL;
 
     if (Ctx->MasterFileObject) {
@@ -172,11 +190,11 @@ NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopFileObjectParseProc(IN POBJECT Self,
-				IN PCSTR Path,
-				IN BOOLEAN CaseInsensitive,
-				OUT POBJECT *FoundObject,
-				OUT PCSTR *RemainingPath)
+static NTSTATUS IopFileObjectParseProc(IN POBJECT Self,
+				       IN PCSTR Path,
+				       IN BOOLEAN CaseInsensitive,
+				       OUT POBJECT *FoundObject,
+				       OUT PCSTR *RemainingPath)
 {
     DbgTrace("Parsing file obj %p path %s\n", Self, Path);
     PIO_FILE_OBJECT FileObj = Self;
@@ -193,15 +211,15 @@ FORCEINLINE BOOLEAN DispositionIsOverwrite(IN ULONG Disposition)
 	Disposition == FILE_OVERWRITE_IF;
 }
 
-NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
-			       IN POBJECT Self,
-			       IN PCSTR SubPath,
-			       IN ACCESS_MASK DesiredAccess,
-			       IN ULONG Attributes,
-			       IN POB_OPEN_CONTEXT Context,
-			       OUT POBJECT *pOpenedInstance,
-			       OUT PCSTR *pRemainingPath)
+static NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
+				      IN PTHREAD Thread,
+				      IN POBJECT Self,
+				      IN PCSTR SubPath,
+				      IN ACCESS_MASK DesiredAccess,
+				      IN ULONG Attributes,
+				      IN POB_OPEN_CONTEXT Context,
+				      OUT POBJECT *pOpenedInstance,
+				      OUT PCSTR *pRemainingPath)
 {
     assert(Thread != NULL);
     assert(Self != NULL);
@@ -318,9 +336,9 @@ out:
     ASYNC_END(State, Status);
 }
 
-NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
-				IN PTHREAD Thread,
-				IN POBJECT Self)
+static NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
+				       IN PTHREAD Thread,
+				       IN POBJECT Self)
 {
     assert(Thread != NULL);
     assert(Self != NULL);
@@ -408,7 +426,7 @@ out:
     ASYNC_END(State, Status);
 }
 
-VOID IopFileObjectDeleteProc(IN POBJECT Self)
+static VOID IopFileObjectDeleteProc(IN POBJECT Self)
 {
     PIO_FILE_OBJECT FileObj = Self;
     DbgTrace("Releasing file object %p from memory\n", FileObj);
@@ -451,6 +469,24 @@ VOID IopFileObjectDeleteProc(IN POBJECT Self)
 	RemoveEntryList(&FileObj->DeviceLink);
 	ObDereferenceObject(FileObj->DeviceObject);
     }
+}
+
+NTSTATUS IopCreateFileType()
+{
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.CreateProc = IopFileObjectCreateProc,
+	.ParseProc = IopFileObjectParseProc,
+	.OpenProc = IopFileObjectOpenProc,
+	.CloseProc = IopFileObjectCloseProc,
+	.InsertProc = NULL,
+	.RemoveProc = NULL,
+	.QueryNameProc = NULL,
+	.DeleteProc = IopFileObjectDeleteProc
+    };
+    return ObCreateObjectType(OBJECT_TYPE_FILE,
+			      "File",
+			      sizeof(IO_FILE_OBJECT),
+			      TypeInfo);
 }
 
 /*
@@ -1042,6 +1078,10 @@ NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE State,
     ULONG DataSize = FileName ? strlen(FileName) + 1 : 0;
     Locals.Irp = ExAllocatePoolWithTag(sizeof(IO_REQUEST_PARAMETERS) + DataSize*2,
 				       NTOS_IO_TAG);
+    if (!Locals.Irp) {
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto out;
+    }
     Locals.Irp->MajorFunction = IRP_MJ_DIRECTORY_CONTROL;
     Locals.Irp->MinorFunction = IRP_MN_QUERY_DIRECTORY;
     Locals.Irp->Device.Object = Locals.FileObject->DeviceObject;

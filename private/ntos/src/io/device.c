@@ -9,11 +9,11 @@ typedef struct _DEVICE_OBJ_CREATE_CONTEXT {
     BOOLEAN Exclusive;
 } DEVICE_OBJ_CREATE_CONTEXT, *PDEVICE_OBJ_CREATE_CONTEXT;
 
-NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
-				   IN PVOID CreaCtx)
+static NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
+					  IN PVOID CreaCtx)
 {
-    PIO_DEVICE_OBJECT Device = (PIO_DEVICE_OBJECT)Object;
-    PDEVICE_OBJ_CREATE_CONTEXT Ctx = (PDEVICE_OBJ_CREATE_CONTEXT)CreaCtx;
+    PIO_DEVICE_OBJECT Device = Object;
+    PDEVICE_OBJ_CREATE_CONTEXT Ctx = CreaCtx;
     PIO_DRIVER_OBJECT DriverObject = Ctx->DriverObject;
     IO_DEVICE_INFO DeviceInfo = Ctx->DeviceInfo;
     BOOLEAN Exclusive = Ctx->Exclusive;
@@ -34,11 +34,11 @@ NTSTATUS IopDeviceObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
-				  IN PCSTR Path,
-				  IN BOOLEAN CaseInsensitive,
-				  OUT POBJECT *FoundObject,
-				  OUT PCSTR *RemainingPath)
+static NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
+					 IN PCSTR Path,
+					 IN BOOLEAN CaseInsensitive,
+					 OUT POBJECT *FoundObject,
+					 OUT PCSTR *RemainingPath)
 {
     assert(Self != NULL);
     assert(Path != NULL);
@@ -82,9 +82,9 @@ NTSTATUS IopDeviceObjectParseProc(IN POBJECT Self,
     return STATUS_SUCCESS;
 }
 
-NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
-				   IN POBJECT Object,
-				   IN PCSTR Path)
+static NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
+					  IN POBJECT Object,
+					  IN PCSTR Path)
 {
     PIO_DEVICE_OBJECT DevObj = Self;
     PIO_FILE_OBJECT FileObj = Object;
@@ -146,16 +146,16 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
     return ObDirectoryObjectInsertPath(DevObj->Vcb->Subobjects, Object, Path, ".", TRUE);
 }
 
-NTSTATUS IopDeviceObjectCloseProc(IN ASYNC_STATE State,
-				  IN PTHREAD Thread,
-				  IN POBJECT Object)
+static NTSTATUS IopDeviceObjectCloseProc(IN ASYNC_STATE State,
+					 IN PTHREAD Thread,
+					 IN POBJECT Object)
 {
     /* We don't have to do anything here since the close routine for file objects
      * will take care of closing a file handle. */
     return STATUS_SUCCESS;
 }
 
-VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
+static VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
 {
     POBJECT_DIRECTORY ParentDir = ObGetParentDirectory(Subobject);
     if (ParentDir) {
@@ -177,10 +177,10 @@ VOID IopDeviceObjectRemoveProc(IN POBJECT Subobject)
     }
 }
 
-NTSTATUS IopDeviceObjectQueryNameProc(IN POBJECT Self,
-				      IN POBJECT Object,
-				      OUT PCHAR Path,
-				      IN OUT ULONG *BufferLength)
+static NTSTATUS IopDeviceObjectQueryNameProc(IN POBJECT Self,
+					     IN POBJECT Object,
+					     OUT PCHAR Path,
+					     IN OUT ULONG *BufferLength)
 {
     UNIMPLEMENTED;
 }
@@ -365,15 +365,15 @@ out:
     ASYNC_END(State, Status);
 }
 
-NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
-				 IN PTHREAD Thread,
-				 IN POBJECT Object,
-				 IN PCSTR SubPath,
-				 IN ACCESS_MASK DesiredAccess,
-				 IN ULONG Attributes,
-				 IN POB_OPEN_CONTEXT Context,
-				 OUT POBJECT *pOpenedInstance,
-				 OUT PCSTR *pRemainingPath)
+static NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
+					IN PTHREAD Thread,
+					IN POBJECT Object,
+					IN PCSTR SubPath,
+					IN ACCESS_MASK DesiredAccess,
+					IN ULONG Attributes,
+					IN POB_OPEN_CONTEXT Context,
+					OUT POBJECT *pOpenedInstance,
+					OUT PCSTR *pRemainingPath)
 {
     assert(Thread != NULL);
     assert(Object != NULL);
@@ -421,7 +421,7 @@ out:
     ASYNC_END(State, Status);
 }
 
-VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
+static VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 {
     PIO_DEVICE_OBJECT DevObj = Self;
     DbgTrace("Deleting device object %p\n", DevObj);
@@ -474,6 +474,24 @@ VOID IopDeviceObjectDeleteProc(IN POBJECT Self)
 	DevObj->DeviceNode->PhyDevObj = NULL;
 	IopDeviceNodeSetCurrentState(DevObj->DeviceNode, DeviceNodeDeleted);
     }
+}
+
+NTSTATUS IopCreateDeviceType()
+{
+    OBJECT_TYPE_INITIALIZER TypeInfo = {
+	.CreateProc = IopDeviceObjectCreateProc,
+	.ParseProc = IopDeviceObjectParseProc,
+	.OpenProc = IopDeviceObjectOpenProc,
+	.CloseProc = IopDeviceObjectCloseProc,
+	.InsertProc = IopDeviceObjectInsertProc,
+	.RemoveProc = IopDeviceObjectRemoveProc,
+	.QueryNameProc = IopDeviceObjectQueryNameProc,
+	.DeleteProc = IopDeviceObjectDeleteProc
+    };
+    return ObCreateObjectType(OBJECT_TYPE_DEVICE,
+			      "Device",
+			      sizeof(IO_DEVICE_OBJECT),
+			      TypeInfo);
 }
 
 /*

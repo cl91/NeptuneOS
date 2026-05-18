@@ -343,6 +343,11 @@ typedef struct POINTER_ALIGNMENT _IO_REQUEST_PARAMETERS {
 	    MAILSLOT_CREATE_PARAMETERS Parameters;
 	} CreateMailslot;
 	struct {
+	    HANDLE SubmissionQueueHandle;
+	    SIZE_T SubmissionQueueSize;
+	    MWORD CompletionNotification;
+	} CreateIoRing;
+	struct {
 	    ULONG Key;
 	    LARGE_INTEGER ByteOffset;
 	} Read;
