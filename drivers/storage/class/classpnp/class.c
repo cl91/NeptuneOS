@@ -3520,7 +3520,7 @@ NTAPI NTSTATUS ClassSendSrbSynchronous(IN PDEVICE_OBJECT Fdo,
     // Sense buffer is in cached DMA pool.
     //
 
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
 
     //
     // ARM has specific alignment requirements, although this will not have a
@@ -11032,7 +11032,7 @@ VOID ClasspGetInquiryVpdSupportInfo(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExten
     UCHAR srbExBuffer[CLASS_SRBEX_SCSI_CDB16_BUFFER_SIZE] = { 0 };
     PSTORAGE_REQUEST_BLOCK srb = (PSTORAGE_REQUEST_BLOCK)srbExBuffer;
 
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
     //
     // ARM has specific alignment requirements, although this will not have a functional
     // impact on x86 or amd64 based platforms. We are taking the conservative approach here.
@@ -11308,7 +11308,7 @@ NTSTATUS ClasspGetBlockDeviceTokenLimitsInfo(IN OUT PDEVICE_OBJECT DeviceObject)
 	goto Exit;
     }
 
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
     //
     // ARM has specific alignment requirements, although this will not have a
     // functional impact on x86 or amd64 based platforms. We are taking the

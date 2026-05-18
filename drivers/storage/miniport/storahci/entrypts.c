@@ -101,7 +101,7 @@ NTAPI NTSTATUS DriverEntry(IN PDRIVER_OBJECT DriverObject,
     // Miniport uses flag to indicate storport to query/override the interface type
     // reported here.
     //
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
     hwInitializationData.FeatureSupport |= STOR_FEATURE_SET_ADAPTER_INTERFACE_TYPE;
     hwInitializationData.AdapterInterfaceType = InterfaceTypeUndefined;
 #else
@@ -792,7 +792,7 @@ ULONG AhciHwFindAdapter(_In_ PVOID AdapterExtension, _In_ PVOID HwContext,
 
     // 4.2.2 Configure DMA 64 bit support settings.
     if (adapterExtension->CAP.S64A) {
-#if defined(_ARM64_)
+#ifdef _M_ARM64
 	ConfigInfo->Dma64BitAddresses =
 	    SCSI_DMA64_MINIPORT_FULL64BIT_NO_BOUNDARY_REQ_SUPPORTED;
 #else

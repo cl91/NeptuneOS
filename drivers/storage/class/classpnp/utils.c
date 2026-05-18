@@ -1373,7 +1373,7 @@ NTSTATUS ClassReadCapacity16(IN OUT PFUNCTIONAL_DEVICE_EXTENSION FdoExtension,
 	return STATUS_NOT_IMPLEMENTED;
     }
 
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
     //
     // ARM has specific alignment requirements, although this will not have a
     // functional impact on x86 or amd64-based platforms. We are taking the
@@ -1836,7 +1836,7 @@ NTSTATUS ClasspDeviceGetBlockDeviceCharacteristicsVPDPage(IN PFUNCTIONAL_DEVICE_
     ULONG allocationBufferLength = bufferLength;
     PVPD_BLOCK_DEVICE_CHARACTERISTICS_PAGE dataBuffer = NULL;
 
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
     //
     // ARM has specific alignment requirements, although this will not have a
     // functional impact on x86 or amd64-based platforms. We are taking the
@@ -2123,7 +2123,7 @@ NTSTATUS ClasspDeviceGetLBProvisioningVPDPage(IN PDEVICE_OBJECT DeviceObject,
     //
     if (fdoExtension->FunctionSupportInfo->ValidInquiryPages.LBProvisioning == TRUE &&
 	Srb != NULL) {
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
 	//
 	// ARM has specific alignment requirements, although this will not have a
 	// functional impact on x86 or amd64-based platforms. We are taking the
@@ -2295,7 +2295,7 @@ NTSTATUS ClasspDeviceGetBlockLimitsVPDPage(IN PFUNCTIONAL_DEVICE_EXTENSION FdoEx
     // Try to get the Block Limits VPD page (0xB0), if it is supported.
     //
     if (FdoExtension->FunctionSupportInfo->ValidInquiryPages.BlockLimits == TRUE) {
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
 	//
 	// ARM has specific alignment requirements, although this will not have a
 	// functional impact on x86 or amd64-based platforms. We are taking the
@@ -3007,7 +3007,7 @@ NTSTATUS DeviceProcessDsmTrimRequest(IN PFUNCTIONAL_DEVICE_EXTENSION FdoExtensio
     // Finally, allocate the buffer we'll use to send the UNMAP command.
     //
 
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
     //
     // ARM has specific alignment requirements, although this will not have a
     // functional impact on x86 or amd64-based platforms. We are taking the
@@ -3980,7 +3980,7 @@ NTSTATUS ClasspDeviceGetLBAStatusWorker(IN PDEVICE_OBJECT DeviceObject,
     //
     lbaStatusSize = (ULONG)(sizeof(LBA_STATUS_LIST_HEADER) +
 			    (slabsPerCommand * sizeof(LBA_STATUS_DESCRIPTOR)));
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
     //
     // ARM has specific alignment requirements, although this will not have a
     // functional impact on x86 or amd64-based platforms. We are taking the
@@ -4599,7 +4599,7 @@ NTSTATUS ClassGetLBProvisioningResources(IN PDEVICE_OBJECT DeviceObject,
     logPageSize = sizeof(LOG_PAGE_LOGICAL_BLOCK_PROVISIONING) +
 		  (2 * sizeof(LOG_PARAMETER_THRESHOLD_RESOURCE_COUNT));
 
-#if defined(_ARM_) || defined(_ARM64_)
+#ifdef _M_ARM64
     //
     // ARM has specific alignment requirements, although this will not have a
     // functional impact on x86 or amd64-based platforms. We are taking the
