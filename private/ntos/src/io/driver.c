@@ -181,7 +181,9 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
 	RemoveEntryList(&Msg->DeviceLink);
 	RemoveEntryList(&Msg->DriverLink);
 	ObDereferenceObject(Msg->DeviceObject);
-	IopFreePool(Msg->Msg);
+	if (Msg->Msg) {
+	    IopFreePool(Msg->Msg);
+	}
 	IopFreePool(Msg);
     }
 
