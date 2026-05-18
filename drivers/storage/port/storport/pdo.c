@@ -142,6 +142,9 @@ VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb,
 	}
 	return;
     }
+    if (Ctx->SgList) {
+	HalPutScatterGatherList(Ctx->DmaAdapter, Ctx->SgList, Ctx->WriteToDevice);
+    }
     PIRP Irp = Ctx->Irp;
     assert(Irp);
     Irp->IoStatus.Status = SrbStatusToNtStatus(Srb->SrbStatus);
@@ -156,9 +159,6 @@ VOID PortCompleteRequest(IN PSTORAGE_REQUEST_BLOCK Srb,
     if (Ctx->DeallocateMdl) {
 	assert(Ctx->Mdl);
 	IoFreeMdl(Ctx->Mdl);
-    }
-    if (Ctx->SgList) {
-	HalPutScatterGatherList(Ctx->DmaAdapter, Ctx->SgList, Ctx->WriteToDevice);
     }
     ExFreePoolWithTag(Ctx, TAG_PORT_CONTEXT);
 }
