@@ -1037,18 +1037,25 @@ static VOID IopDeleteIrp(PIRP Irp)
 	     * that we have allocated before. However if the mount succeeded, the VPB
 	     * should not be deleted as it has been linked with the volume devices. */
 	    if (!NT_SUCCESS(Irp->IoStatus.Status) && IoStack->Parameters.MountVolume.Vpb) {
-		/* Unlink the VPB from the volume device objects, if needed. */
-		if (IoStack->Parameters.MountVolume.Vpb->DeviceObject) {
-		    IoStack->Parameters.MountVolume.Vpb->DeviceObject->Vpb = NULL;
-		    /* In this case we should dereference the DeviceObject in the VPB
-		     * because we increased it when creating the IRP. Note if the mount
-		     * succeeded, we should not do this as the FS driver now needs it. */
-		    ObDereferenceObject(IoStack->Parameters.MountVolume.DeviceObject);
+		/* Unlink the VPB from the volume device and the storage device object.
+		 * We should always check the DeviceObject in the IO stack parameters
+		 * (which corresponds to the RealDevice in the VPB, ie. the storage
+		 * device object of the underlying storage driver stack) because we
+		 * increased its refcount when creating the IRP, so this device will
+		 * never go away at this point. The volume device can go away before
+		 * we hit this point. */
+		PDEVICE_OBJECT RealDevice = IoStack->Parameters.MountVolume.DeviceObject;
+		PVPB Vpb = RealDevice->Vpb;
+		if (Vpb) {
+		    assert(Vpb == IoStack->Parameters.MountVolume.Vpb);
+		    assert(Vpb->RealDevice == RealDevice);
+		    if (Vpb->DeviceObject) {
+			Vpb->DeviceObject->Vpb = NULL;
+		    }
+		    RealDevice->Vpb = NULL;
+		    IopFreePool(Vpb);
 		}
-		if (IoStack->Parameters.MountVolume.Vpb->RealDevice) {
-		    IoStack->Parameters.MountVolume.Vpb->RealDevice->Vpb = NULL;
-		}
-		IopFreePool(IoStack->Parameters.MountVolume.Vpb);
+		ObDereferenceObject(RealDevice);
 	    }
 	    break;
 	}
