@@ -259,6 +259,7 @@ typedef struct _PCI_PDO_EXTENSION {
 
     PCI_SLOT_NUMBER Slot;
     PDEVICE_OBJECT PhysicalDeviceObject;
+    volatile CHAR *MappedConfigSpace;
     PPCI_FDO_EXTENSION ParentFdoExtension;
     SINGLE_LIST_ENTRY SecondaryExtension;
     LONG BusInterfaceReferenceCount;
