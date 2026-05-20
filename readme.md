@@ -228,13 +228,12 @@ Sequential 1MB Reads: 3200.00 MB/s (0.080 seconds)
 When compiled for Neptune OS, the tool will benchmark disk and file system IO for the first
 harddrive and its first volume, respectively. The disk IO is sent to the storage driver stack
 directly, and the volume IO is sent to the file system driver, which then forwards the IO to
-the storage drivers. Consequently, the volume IO is significantly slower than the file system
-driver due to the overhead of context switches and IRP serialization and deserialization. It
-is expected that caching will improve overall system IO performance, but this remains to be
-tested. For the raw disk reads, we seem to be able to saturate the AHCI bandwidth without any
-problem, but getting the full NVME speed is a work-in-progress (see issue
-[#40](https://github.com/cl91/NeptuneOS/issues/40)). If you have run any performance benchmarks
-on your own machine, it would be appreciated if you could report them in the issue linked above.
+the storage drivers. Consequently, the volume IO is slower than the file system driver due to
+the overhead of context switches and IRP serialization and deserialization. For sequential
+raw disk reads, we seem to be able to achieve the maximum performance offered by some SATA 3.0
+and PCIE 3.0 nVME drives without any problem, but performances under more non-trivial IO
+scenarios remain to be tested. If you have run any performance benchmarks on your own machine,
+it would be appreciated if you could report them in issue [#40](https://github.com/cl91/NeptuneOS/issues/40).
 
 ### Cross-compiling
 We use the LLVM toolchain so cross-compiling in theory should simply work without any
