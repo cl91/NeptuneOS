@@ -155,7 +155,12 @@ static BOOLEAN KiSetTimer(IN OUT PKTIMER Timer,
     return PreviousState;
 }
 
-NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
+/*
+ * If Remove is TRUE, the queued IO work item or DPC that have not been scheduled
+ * yet will also be removed.
+ */
+NTAPI BOOLEAN KeCancelTimerEx(IN OUT PKTIMER Timer,
+			      IN BOOLEAN Remove)
 {
     IopAcquireDpcMutex();
     /* If the timer has been signaled (but the main event loop has not processed
@@ -172,8 +177,22 @@ NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
 	RemoveEntryList(&Timer->Header.QueueListEntry);
 	Timer->State = FALSE;
     }
+    if (Remove) {
+	/* If the timer has a DPC routine or IO work item associated with it, cancel
+	 * them as well. */
+	if (Timer->LowPriority && Timer->WorkItem) {
+	    IopRemoveWorkItem(Timer->WorkItem);
+	} else if (Timer->Dpc) {
+	    KeRemoveQueueDpc(Timer->Dpc);
+	}
+    }
     IopReleaseDpcMutex();
     return PreviousState;
+}
+
+NTAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer)
+{
+    return KeCancelTimerEx(Timer, FALSE);
 }
 
 NTAPI BOOLEAN KeSetTimerEx(IN OUT PKTIMER Timer,

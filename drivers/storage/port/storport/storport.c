@@ -840,7 +840,7 @@ static ULONG StorExtFreeTimer(IN PVOID HwDeviceExtension,
 	return STOR_STATUS_INVALID_PARAMETER;
     }
     PSTORPORT_TIMER Timer = TimerHandle;
-    KeCancelTimer(&Timer->Timer);
+    KeCancelTimerEx(&Timer->Timer, TRUE);
     ExFreePool(Timer);
     return STOR_STATUS_SUCCESS;
 }

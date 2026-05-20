@@ -147,6 +147,23 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
     return KiInsertQueueDpc(Dpc, SystemArgument1, SystemArgument2, FALSE);
 }
 
+NTAPI BOOLEAN KeRemoveQueueDpc(IN OUT PKDPC Dpc)
+{
+    BOOLEAN Queued = Dpc->Queued;
+    IopAcquireDpcMutex();
+    if (Queued) {
+	DbgTrace("Removing DPC %p\n", Dpc);
+	RemoveEntryList(&Dpc->QueueEntry);
+	Dpc->SystemArgument1 = NULL;
+	Dpc->SystemArgument2 = NULL;
+	Dpc->Queued = FALSE;
+    } else {
+	DbgTrace("DPC %p not queued. Not removing\n", Dpc);
+    }
+    IopReleaseDpcMutex();
+    return Queued;
+}
+
 static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,
 					 IN MWORD NotificationCap)
 {

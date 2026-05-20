@@ -385,6 +385,11 @@ NTAPI NTSYSAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 					IN PVOID SystemArgument2);
 
 /*
+ * Remove the DPC from the DPC queue
+ */
+NTAPI NTSYSAPI BOOLEAN KeRemoveQueueDpc(IN OUT PKDPC Dpc);
+
+/*
  * Device queue. Used for queuing an IRP for serialized IO processing
  */
 typedef struct _KDEVICE_QUEUE {
@@ -1449,6 +1454,9 @@ NTAPI NTSYSAPI BOOLEAN KeSetLowPriorityTimer(IN OUT PKTIMER Timer,
 					     IN OPTIONAL PVOID WorkerContext);
 
 NTAPI NTSYSAPI BOOLEAN KeCancelTimer(IN OUT PKTIMER Timer);
+
+NTAPI NTSYSAPI BOOLEAN KeCancelTimerEx(IN OUT PKTIMER Timer,
+				       IN BOOLEAN Remove);
 
 /*
  * System time and interrupt time routines
