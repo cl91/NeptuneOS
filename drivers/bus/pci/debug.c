@@ -196,3 +196,15 @@ VOID PciDebugDumpQueryCapabilities(IN PDEVICE_CAPABILITIES DeviceCaps)
     /* Finish the dump */
     DbgPrint(" ]\n");
 }
+
+VOID PciDebugDumpResources(IN PPCI_PDO_EXTENSION PdoExt)
+{
+    DPRINT("Resource limits:\n");
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
+	IoDbgPrintResourceDescriptor(&PdoExt->Resources->Limit[i]);
+    }
+    DPRINT("Current resource settings:\n");
+    for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
+	CmDbgPrintResourceDescriptor(&PdoExt->Resources->Current[i]);
+    }
+}

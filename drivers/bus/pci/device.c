@@ -12,25 +12,61 @@
 
 /* FUNCTIONS ******************************************************************/
 
-VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
+VOID Device_MassageHeaderForLimitsDetermination(OUT PPCI_COMMON_HEADER Cfg)
 {
-    PPCI_COMMON_HEADER PciData;
-    PIO_RESOURCE_DESCRIPTOR IoDescriptor;
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDescriptor;
-    PPCI_FUNCTION_RESOURCES Resources;
-    PULONG BarArray;
-    ULONG Bar, BarMask;
+    /* Set all the bits on, which will allow us to find the BAR limits */
+    RtlFillMemory(Cfg->Type0.BaseAddresses, sizeof(Cfg->Type0.BaseAddresses), 0xFF);
 
-    /* Get variables from context */
-    PciData = Context->Current;
-    Resources = Context->PdoExtension->Resources;
+    /* Do the same for the PCI ROM BAR */
+    Cfg->Type0.ROMBaseAddress = PCI_ADDRESS_ROM_ADDRESS_MASK;
+}
+
+VOID Device_ReadResources(IN PPCI_PDO_EXTENSION PdoExt,
+			  OUT PPCI_COMMON_HEADER Cfg)
+{
+    PCI_READ_CONFIG(PdoExt, Cfg, Type0.BaseAddresses);
+    PCI_READ_CONFIG(PdoExt, Cfg, Type0.ROMBaseAddress);
+}
+
+VOID Device_WriteResources(IN PPCI_PDO_EXTENSION PdoExt,
+			   IN PPCI_COMMON_HEADER Cfg)
+{
+    PCI_WRITE_CONFIG(PdoExt, Cfg, Type0.BaseAddresses);
+    PCI_WRITE_CONFIG(PdoExt, Cfg, Type0.ROMBaseAddress);
+}
+
+VOID Device_SaveLimits(IN PPCI_PDO_EXTENSION PdoExtension,
+		       IN PPCI_COMMON_HEADER Cfg)
+{
+    PULONG BarArray = Cfg->Type0.BaseAddresses;
+
+    PIO_RESOURCE_DESCRIPTOR Limit = PdoExtension->Resources->Limit;
+    for (ULONG i = 0; i < PCI_TYPE0_ADDRESSES; i++) {
+	/* And build them based on the BARs */
+	if (PciCreateIoDescriptorFromBarLimit(PdoExtension, &Limit[i], &BarArray[i], FALSE)) {
+	    /* This function returns TRUE if the BAR was 64-bit, handle this */
+	    ASSERT((i + 1) < PCI_TYPE0_ADDRESSES);
+	    i++;
+	    Limit[i].Type = CmResourceTypeNull;
+	}
+    }
+
+    /* Create the last descriptor based on the ROM address */
+    PciCreateIoDescriptorFromBarLimit(PdoExtension, &Limit[PCI_TYPE0_ADDRESSES],
+				      &Cfg->Type0.ROMBaseAddress, TRUE);
+}
+
+VOID Device_SaveCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
+				IN PPCI_COMMON_HEADER Cfg)
+{
+    PPCI_FUNCTION_RESOURCES Resources = PdoExtension->Resources;
 
     /* Loop all the PCI BARs */
-    BarArray = PciData->Type0.BaseAddresses;
+    PULONG BarArray = Cfg->Type0.BaseAddresses;
     for (ULONG i = 0; i < PCI_MAX_RESOURCE_COUNT; i++) {
 	/* Get the resource descriptor and limit descriptor for this BAR */
-	CmDescriptor = &Resources->Current[i];
-	IoDescriptor = &Resources->Limit[i];
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR CmDescriptor = &Resources->Current[i];
+	PIO_RESOURCE_DESCRIPTOR IoDescriptor = &Resources->Limit[i];
 
 	/* Build the resource descriptor based on the limit descriptor */
 	CmDescriptor->Type = IoDescriptor->Type;
@@ -42,6 +78,7 @@ VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	CmDescriptor->Generic.Length = IoDescriptor->Generic.Length;
 
 	/* Check if we're handling PCI BARs, or the ROM BAR */
+	ULONG Bar, BarMask;
 	if (i < PCI_TYPE0_ADDRESSES) {
 	    /* Read the actual BAR value */
 	    Bar = BarArray[i];
@@ -67,7 +104,7 @@ VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	    }
 	} else {
 	    /* Actually a ROM BAR, so read the correct register */
-	    Bar = PciData->Type0.ROMBaseAddress;
+	    Bar = Cfg->Type0.ROMBaseAddress;
 
 	    /* Apply the correct mask for ROM BARs */
 	    BarMask = PCI_ADDRESS_ROM_ADDRESS_MASK;
@@ -84,195 +121,83 @@ VOID Device_SaveCurrentSettings(IN PPCI_CONFIGURATOR_CONTEXT Context)
 	Bar &= BarMask;
 	CmDescriptor->Memory.Start.LowPart = Bar;
 
-	/* And check for invalid BAR addresses */
-	if (!(CmDescriptor->Memory.Start.HighPart | Bar)) {
+	/* If address is zero, do not write a valid resource descriptor */
+	if (!(CmDescriptor->Memory.Start.HighPart || Bar)) {
 	    /* Skip these descriptors */
 	    CmDescriptor->Type = CmResourceTypeNull;
 	    DPRINT1("Invalid BAR\n");
 	}
     }
-
-    /* Also save the sub-IDs that came directly from the PCI header */
-    Context->PdoExtension->SubsystemVendorId = PciData->Type0.SubVendorID;
-    Context->PdoExtension->SubsystemId = PciData->Type0.SubSystemID;
 }
 
-VOID Device_SaveLimits(IN PPCI_CONFIGURATOR_CONTEXT Context)
-{
-    PPCI_COMMON_HEADER Current, PciData;
-    PPCI_PDO_EXTENSION PdoExtension;
-    PULONG BarArray;
-    PIO_RESOURCE_DESCRIPTOR Limit;
-
-    /* Get pointers from the context */
-    PdoExtension = Context->PdoExtension;
-    Current = Context->Current;
-    PciData = Context->PciData;
-
-    /* And get the array of BARs */
-    BarArray = PciData->Type0.BaseAddresses;
-
-    /* First, check for IDE controllers that are not in native mode */
-    if ((PdoExtension->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
-	(PdoExtension->SubClass == PCI_SUBCLASS_MSC_IDE_CTLR) &&
-	(PdoExtension->ProgIf & 5) != 5) {
-	/* They should not be using any non-legacy resources */
-	BarArray[0] = 0;
-	BarArray[1] = 0;
-	BarArray[2] = 0;
-	BarArray[3] = 0;
-    } else if ((PdoExtension->VendorId == 0x5333) &&
-	       ((PdoExtension->DeviceId == 0x88F0) ||
-		(PdoExtension->DeviceId == 0x8880))) {
-	/*
-         * The problem is caused by the S3 Vision 968/868 video controller which
-         * is used on the Diamond Stealth 64 Video 3000 series, Number Nine 9FX
-         * motion 771, and other popular video cards, all containing a memory bug.
-         * The 968/868 claims to require 32 MB of memory, but it actually decodes
-         * 64 MB of memory.
-         */
-	for (ULONG i = 0; i < PCI_TYPE0_ADDRESSES; i++) {
-	    /* Find its 32MB RAM BAR */
-	    if (BarArray[i] == 0xFE000000) {
-		/* Increase it to 64MB to make sure nobody touches the buffer */
-		BarArray[i] = 0xFC000000;
-		DPRINT1("PCI - Adjusted broken S3 requirement from 32MB to 64MB\n");
-	    }
-	}
-    }
-
-    /* Check for Cirrus Logic GD5430/5440 cards */
-    if ((PdoExtension->VendorId == 0x1013) && (PdoExtension->DeviceId == 0xA0)) {
-	/* Check for the I/O port requirement */
-	if (BarArray[1] == 0xFC01) {
-	    /* Check for completely bogus BAR */
-	    if (Current->Type0.BaseAddresses[1] == 1) {
-		/* Ignore it */
-		BarArray[1] = 0;
-		DPRINT1("PCI - Ignored Cirrus GD54xx broken IO requirement (400 "
-			"ports)\n");
-	    } else {
-		/* Otherwise, this BAR seems okay */
-		DPRINT1("PCI - Cirrus GD54xx 400 port IO requirement has a valid setting "
-			"(%08x)\n",
-			Current->Type0.BaseAddresses[1]);
-	    }
-	} else if (BarArray[1]) {
-	    /* Strange, the I/O BAR was not found as expected (or at all) */
-	    DPRINT1("PCI - Warning Cirrus Adapter 101300a0 has unexpected resource "
-		    "requirement (%08x)\n",
-		    BarArray[1]);
-	}
-    }
-
-    /* Finally, process all the limit descriptors */
-    Limit = PdoExtension->Resources->Limit;
-    for (ULONG i = 0; i < PCI_TYPE0_ADDRESSES; i++) {
-	/* And build them based on the BARs */
-	if (PciCreateIoDescriptorFromBarLimit(&Limit[i], &BarArray[i], FALSE)) {
-	    /* This function returns TRUE if the BAR was 64-bit, handle this */
-	    ASSERT((i + 1) < PCI_TYPE0_ADDRESSES);
-	    i++;
-	    Limit[i].Type = CmResourceTypeNull;
-	}
-    }
-
-    /* Create the last descriptor based on the ROM address */
-    PciCreateIoDescriptorFromBarLimit(&Limit[PCI_TYPE0_ADDRESSES],
-				      &PciData->Type0.ROMBaseAddress, TRUE);
-}
-
-VOID Device_MassageHeaderForLimitsDetermination(IN PPCI_CONFIGURATOR_CONTEXT Context)
-{
-    PPCI_COMMON_HEADER PciData;
-    PPCI_PDO_EXTENSION PdoExtension;
-    PULONG BarArray;
-    ULONG i = 0;
-
-    /* Get pointers from context data */
-    PdoExtension = Context->PdoExtension;
-    PciData = Context->PciData;
-
-    /* Get the array of BARs */
-    BarArray = PciData->Type0.BaseAddresses;
-
-    /* Check for IDE controllers that are not in native mode */
-    if ((PdoExtension->BaseClass == PCI_CLASS_MASS_STORAGE_CTLR) &&
-	(PdoExtension->SubClass == PCI_SUBCLASS_MSC_IDE_CTLR) &&
-	(PdoExtension->ProgIf & 5) != 5) {
-	/* These controllers only use legacy resources */
-	i = 4;
-    }
-
-    /* Set all the bits on, which will allow us to recover the limit data */
-    do {
-	BarArray[i] = 0xFFFFFFFF;
-	i++;
-    } while (i < PCI_TYPE0_ADDRESSES);
-
-    /* Do the same for the PCI ROM BAR */
-    PciData->Type0.ROMBaseAddress = PCI_ADDRESS_ROM_ADDRESS_MASK;
-}
-
-VOID Device_RestoreCurrent(IN PPCI_CONFIGURATOR_CONTEXT Context)
-{
-    /* Nothing to do for devices */
-    UNREFERENCED_PARAMETER(Context);
-}
-
-VOID Device_GetAdditionalResourceDescriptors(IN PPCI_CONFIGURATOR_CONTEXT Context,
-					     IN PPCI_COMMON_HEADER PciData,
+VOID Device_GetAdditionalResourceDescriptors(IN PPCI_PDO_EXTENSION PdoExt,
 					     IN PIO_RESOURCE_DESCRIPTOR IoDescriptor)
 {
     /* Nothing to do for devices */
-    UNREFERENCED_PARAMETER(Context);
-    UNREFERENCED_PARAMETER(PciData);
     UNREFERENCED_PARAMETER(IoDescriptor);
 }
 
-VOID Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension,
-			IN PPCI_COMMON_HEADER PciData)
+VOID Device_ResetDevice(IN PPCI_PDO_EXTENSION PdoExtension)
 {
     /* Nothing to do for devices */
     UNREFERENCED_PARAMETER(PdoExtension);
-    UNREFERENCED_PARAMETER(PciData);
 }
 
 VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
-				   IN PPCI_COMMON_HEADER PciData)
+				   OUT USHORT *CommandEnables)
 {
     if (!PdoExtension->Resources) {
         return;
     }
 
-    PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = PdoExtension->Resources->Current;
-    PULONG BaseAddress = PciData->Type0.BaseAddresses;
+    if ((PdoExtension->BaseClass == PCI_CLASS_DISPLAY_CTLR) &&
+	(PdoExtension->SubClass == PCI_SUBCLASS_VID_VGA_CTLR)) {
+	/* Always force IO and memory decoding on */
+	*CommandEnables |= PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE;
+    }
 
-    for (ULONG i = 0; i <= PCI_TYPE0_ADDRESSES; i++, Res++, BaseAddress++) {
+    /* The last resource is the ROM */
+    for (ULONG i = 0; i <= PCI_TYPE0_ADDRESSES; i++) {
+	PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = &PdoExtension->Resources->Current[i];
         if (Res->Type == CmResourceTypeNull) {
             continue;
         }
 
 	ULONG LowPart = Res->Generic.Start.LowPart;
-	ULONG Bar = *BaseAddress;
         if (i == PCI_TYPE0_ADDRESSES) {
             ASSERT(Res->Type == CmResourceTypeMemory);
-            Bar = PciData->Type0.ROMBaseAddress;
+	    *CommandEnables |= PCI_ENABLE_MEMORY_SPACE;
+	    ULONG Bar = 0;
+	    PciReadDeviceConfig(PdoExtension, &Bar,
+				FIELD_OFFSET(PCI_COMMON_HEADER, Type0.ROMBaseAddress),
+				sizeof(ULONG));
             Bar &= ~PCI_ADDRESS_ROM_ADDRESS_MASK;
             Bar |= (LowPart & PCI_ADDRESS_ROM_ADDRESS_MASK);
-            PciData->Type0.ROMBaseAddress = Bar;
-        } else if (Bar & PCI_ADDRESS_IO_SPACE) {
-            ASSERT(Res->Type == CmResourceTypePort);
-            *BaseAddress = LowPart;
+	    PciWriteDeviceConfig(PdoExtension, &Bar,
+				 FIELD_OFFSET(PCI_COMMON_HEADER, Type0.ROMBaseAddress),
+				 sizeof(ULONG));
         } else {
-            ASSERT(Res->Type == CmResourceTypeMemory);
-            *BaseAddress = LowPart;
+            ULONG Bar = 0;
+	    PciReadDeviceConfig(PdoExtension, &Bar,
+				FIELD_OFFSET(PCI_COMMON_HEADER, Type0.BaseAddresses[i]),
+				sizeof(ULONG));
+	    if (Bar & PCI_ADDRESS_IO_SPACE) {
+		ASSERT(Res->Type == CmResourceTypePort);
+		*CommandEnables |= PCI_ENABLE_IO_SPACE;
+	    } else {
+		ASSERT(Res->Type == CmResourceTypeMemory);
+		*CommandEnables |= PCI_ENABLE_MEMORY_SPACE;
+	    }
+            Bar &= ~PCI_ADDRESS_MEMORY_ADDRESS_MASK;
+            Bar |= (LowPart & PCI_ADDRESS_MEMORY_ADDRESS_MASK);
+	    PciWriteDeviceConfig(PdoExtension, &Bar,
+				 FIELD_OFFSET(PCI_COMMON_HEADER, Type0.BaseAddresses[i]),
+				 sizeof(ULONG));
             if ((Bar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_64BIT) {
 		/* A 64-bit address consumes two 32-bit bars. */
-                BaseAddress++;
-                *BaseAddress = Res->Generic.Start.HighPart;
-                i++;
-                Res++;
+		PciWriteDeviceConfig(PdoExtension, &Res->Generic.Start.HighPart,
+				     FIELD_OFFSET(PCI_COMMON_HEADER, Type0.BaseAddresses[++i]),
+				     sizeof(ULONG));
             } else if ((Bar & PCI_ADDRESS_MEMORY_TYPE_MASK) == PCI_TYPE_20BIT) {
 		ASSERT((LowPart & 0xfff00000) == 0);
             }

@@ -68,6 +68,14 @@ NTAPI NTSTATUS PciDispatchIrp(IN PDEVICE_OBJECT DeviceObject, IN PIRP Irp)
 	    MaxMinor = 0xFFFF;
 	    break;
 
+	case IRP_MJ_DEVICE_CONTROL:
+	    if (DeviceExtension->ExtensionType == PciFdoExtensionType) {
+		return PciPassIrpFromFdoToPdo(DeviceExtension, Irp);
+	    } else {
+		PPCI_PDO_EXTENSION PdoExt = (PPCI_PDO_EXTENSION)DeviceExtension;
+		return PciPassIrpFromFdoToPdo(PdoExt->ParentFdoExtension, Irp);
+	    }
+
 	default:
 	    /* Unrecognized IRPs */
 	    DispatchFunction = IrpDispatchTable->OtherIrpDispatchFunction;
