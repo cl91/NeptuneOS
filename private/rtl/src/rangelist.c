@@ -554,6 +554,9 @@ NTAPI NTSTATUS RtlIsRangeAvailable(IN PRTL_RANGE_LIST RangeList, IN ULONGLONG St
 				   IN PRTL_CONFLICT_RANGE_CALLBACK Callback OPTIONAL,
 				   OUT PBOOLEAN Available)
 {
+    if (Start > End) {
+	return STATUS_INVALID_PARAMETER;
+    }
     PRTL_RANGE_ENTRY Current;
     PLIST_ENTRY Entry;
 
@@ -562,15 +565,15 @@ NTAPI NTSTATUS RtlIsRangeAvailable(IN PRTL_RANGE_LIST RangeList, IN ULONGLONG St
     Entry = RangeList->ListHead.Flink;
     while (Entry != &RangeList->ListHead) {
 	Current = CONTAINING_RECORD(Entry, RTL_RANGE_ENTRY, Entry);
-
-	if (!((Current->Range.Start >= End && Current->Range.End > End) ||
-	      (Current->Range.Start <= Start && Current->Range.End < Start &&
-	       (!(Flags & RTL_RANGE_SHARED) ||
-		!(Current->Range.Flags & RTL_RANGE_SHARED))))) {
+	assert(Current->Range.Start <= Current->Range.End);
+	BOOLEAN Overlap = !(Current->Range.Start > End || Current->Range.End < Start);
+	if (Overlap && !((Flags & RTL_RANGE_SHARED) &&
+			 (Current->Range.Flags & RTL_RANGE_SHARED))) {
 	    if (Callback != NULL) {
 		*Available = Callback(Context, &Current->Range);
 	    } else {
 		*Available = FALSE;
+		return STATUS_SUCCESS;
 	    }
 	}
 
