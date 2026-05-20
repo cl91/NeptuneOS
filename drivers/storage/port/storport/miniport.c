@@ -32,6 +32,9 @@ static NTSTATUS InitializeConfiguration(IN PPORT_CONFIGURATION_INFORMATION PortC
 
     PortConfig->SpecificLuExtensionSize = InitData->SpecificLuExtensionSize;
     PortConfig->SrbExtensionSize = InitData->SrbExtensionSize;
+#ifdef _WIN64
+    PortConfig->Dma64BitAddresses = SCSI_DMA64_SYSTEM_SUPPORTED;
+#endif
     PortConfig->MaximumNumberOfLogicalUnits = SCSI_MAXIMUM_LOGICAL_UNITS;
     PortConfig->WmiDataProvider = TRUE;
 
