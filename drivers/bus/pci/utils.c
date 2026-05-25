@@ -63,8 +63,8 @@ NTSTATUS PciSendIoctl(IN PDEVICE_OBJECT DeviceObject, IN ULONG IoControlCode,
     return Status;
 }
 
-static VOID PcipReadWriteConfig(IN volatile CHAR *MappedCfg,
-				IN PCHAR Buffer,
+static VOID PcipReadWriteConfig(IN volatile UCHAR *MappedCfg,
+				IN PUCHAR Buffer,
 				IN ULONG Offset,
 				IN ULONG Length,
 				IN BOOLEAN Read)
@@ -81,7 +81,7 @@ static VOID PcipReadWriteConfig(IN volatile CHAR *MappedCfg,
     if (!Read) {
 	DbgPrint("Buffer content:");
 	for (ULONG i = 0; i < Length; i++) {
-	    DbgPrint(" %02x", (UCHAR)Buffer[i]);
+	    DbgPrint(" %02x", Buffer[i]);
 	}
 	DbgPrint("\n");
     }
@@ -98,23 +98,23 @@ static VOID PcipReadWriteConfig(IN volatile CHAR *MappedCfg,
     if (Read) {
 	DbgPrint("Got data:");
 	for (ULONG i = 0; i < Length; i++) {
-	    DbgPrint(" %02x", (UCHAR)Buffer[i]);
+	    DbgPrint(" %02x", Buffer[i]);
 	}
 	DbgPrint("\n");
     }
 #endif
 }
 
-static volatile CHAR *PcipMapConfigSpace(IN PPCI_FDO_EXTENSION BusRootFdoExtension,
-					 IN ULONG BaseBus,
-					 IN PCI_SLOT_NUMBER Slot)
+static volatile UCHAR *PcipMapConfigSpace(IN PPCI_FDO_EXTENSION BusRootFdoExtension,
+					  IN ULONG BaseBus,
+					  IN PCI_SLOT_NUMBER Slot)
 {
     /* Only the root FDO can access configuration space */
     ASSERT(PCI_IS_ROOT_FDO(BusRootFdoExtension));
     PHYSICAL_ADDRESS PhyAddr = BusRootFdoExtension->ConfigBase;
     PhyAddr.QuadPart += ((BaseBus << 8) | (Slot.Bits.DeviceNumber << 3) |
 			 Slot.Bits.FunctionNumber) * PCI_EXTENDED_CONFIG_LENGTH;
-    volatile CHAR *Ptr = MmMapIoSpace(PhyAddr, PCI_EXTENDED_CONFIG_LENGTH, MmNonCached);
+    volatile UCHAR *Ptr = MmMapIoSpace(PhyAddr, PCI_EXTENDED_CONFIG_LENGTH, MmNonCached);
     DPRINT("PCI Config Base 0x%llx BaseBus 0x%x Dev 0x%x Func 0x%x Mapped %p\n",
 	   BusRootFdoExtension->ConfigBase.QuadPart, BaseBus,
 	   Slot.Bits.DeviceNumber, Slot.Bits.FunctionNumber, Ptr);
@@ -122,12 +122,12 @@ static volatile CHAR *PcipMapConfigSpace(IN PPCI_FDO_EXTENSION BusRootFdoExtensi
 }
 
 static VOID PciReadWriteConfigSpace(IN PPCI_PDO_EXTENSION DeviceExtension,
-				    IN PCHAR Buffer,
+				    IN PUCHAR Buffer,
 				    IN ULONG Offset,
 				    IN ULONG Length,
 				    IN BOOLEAN Read)
 {
-    volatile CHAR *Ptr = DeviceExtension->MappedConfigSpace;
+    volatile UCHAR *Ptr = DeviceExtension->MappedConfigSpace;
     if (!Ptr) {
 	assert(DeviceExtension->ParentFdoExtension);
 	Ptr = PcipMapConfigSpace(DeviceExtension->ParentFdoExtension->BusRootFdoExtension,
@@ -163,8 +163,8 @@ VOID PciReadSlotConfig(IN PPCI_FDO_EXTENSION DeviceExtension,
 		       IN PCI_SLOT_NUMBER Slot, IN PVOID Buffer, IN ULONG Offset,
 		       IN ULONG Length)
 {
-    volatile CHAR *Ptr = PcipMapConfigSpace(DeviceExtension->BusRootFdoExtension,
-					    DeviceExtension->BaseBus, Slot);
+    volatile UCHAR *Ptr = PcipMapConfigSpace(DeviceExtension->BusRootFdoExtension,
+					     DeviceExtension->BaseBus, Slot);
     if (!Ptr) {
 	RtlRaiseStatus(STATUS_ACCESS_DENIED);
     }
@@ -230,7 +230,7 @@ UCHAR PciReadDeviceCapability(IN PPCI_PDO_EXTENSION DeviceExtension,
 
 		/* Now read the whole capability data into the buffer */
 		PciReadDeviceConfig(DeviceExtension,
-				    (PCHAR)Buffer + sizeof(PCI_CAPABILITIES_HEADER),
+				    (PUCHAR)Buffer + sizeof(PCI_CAPABILITIES_HEADER),
 				    Offset + sizeof(PCI_CAPABILITIES_HEADER),
 				    Length - sizeof(PCI_CAPABILITIES_HEADER));
 	    }

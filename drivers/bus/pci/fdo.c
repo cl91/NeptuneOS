@@ -140,8 +140,8 @@ static NTSTATUS PciFdoCancelStopDevice(IN PIRP Irp,
     return STATUS_NOT_SUPPORTED;
 }
 
-static VOID PciGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
-				       IN PPCI_COMMON_HEADER PciData)
+static VOID PcipGetEnhancedCapabilities(IN PPCI_PDO_EXTENSION PdoExtension,
+					IN PPCI_COMMON_HEADER PciData)
 {
     PAGED_CODE();
 
@@ -439,6 +439,9 @@ static NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
     if (!PdoExtension->Resources)
 	return STATUS_INSUFFICIENT_RESOURCES;
 
+    /* Before we disable decodes, save the initial command so we can later restore it. */
+    USHORT InitialCommand = InitialConfig->Command;
+
     /* Disable all decodes before we probe the BAR limits */
     PciSetCommand(PdoExtension,
 		  PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE | PCI_ENABLE_BUS_MASTER,
@@ -471,6 +474,11 @@ static NTSTATUS PciGetFunctionLimits(IN PPCI_PDO_EXTENSION PdoExtension,
 	ExFreePoolWithTag(PdoExtension->Resources, 'BicP');
 	PdoExtension->Resources = NULL;
     }
+
+    /* Restore the initial command of the device */
+    PciWriteDeviceConfig(PdoExtension, &InitialCommand,
+			 FIELD_OFFSET(PCI_COMMON_HEADER, Command),
+			 sizeof(InitialCommand));
 
     /* Return success here, even if the device has no assigned resources */
     return STATUS_SUCCESS;
@@ -553,10 +561,7 @@ static NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    }
 
 	    /* Check if a PDO has already been created for this device */
-	    PPCI_PDO_EXTENSION PdoExtension = PciFindPdoByFunction(DeviceExtension,
-								   PciSlot.AsULONG,
-								   PciData);
-	    if (PdoExtension) {
+	    if (PciFindPdoByFunction(DeviceExtension, PciSlot.AsULONG, PciData)) {
 		/* Rescan scenarios are not yet implemented */
 		UNIMPLEMENTED_DBGBREAK();
 	    }
@@ -609,7 +614,7 @@ static NTSTATUS PciScanBus(IN PPCI_FDO_EXTENSION DeviceExtension)
 	    }
 
 	    /* Get power, AGP, and other capability data */
-	    PciGetEnhancedCapabilities(NewExtension, PciData);
+	    PcipGetEnhancedCapabilities(NewExtension, PciData);
 #if DBG
 	    PciDumpCapabilities(NewExtension);
 #endif

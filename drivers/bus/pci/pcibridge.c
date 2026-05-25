@@ -146,7 +146,7 @@ VOID PCIBridge_WriteResources(IN PPCI_PDO_EXTENSION PdoExt,
     PCI_WRITE_CONFIG(PdoExt, Cfg, Type1.ROMBaseAddress);
 }
 
-VOID PCIBridge_MassageHeaderForLimitsDetermination(IN PPCI_COMMON_HEADER Cfg)
+VOID PCIBridge_MassageHeaderForLimitsDetermination(OUT PPCI_COMMON_HEADER Cfg)
 {
     /*
      * Write FFh everywhere so that the PCI bridge ignores what it can't handle.

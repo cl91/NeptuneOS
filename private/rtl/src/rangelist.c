@@ -61,7 +61,6 @@ NTAPI NTSTATUS RtlAddRange(IN OUT PRTL_RANGE_LIST RangeList, IN ULONGLONG Start,
 			   IN PVOID UserData OPTIONAL, IN PVOID Owner OPTIONAL)
 {
     PRTL_RANGE_ENTRY RangeEntry;
-    //PRTL_RANGE_ENTRY Previous;
     PRTL_RANGE_ENTRY Current;
     PLIST_ENTRY Entry;
 
@@ -91,7 +90,6 @@ NTAPI NTSTATUS RtlAddRange(IN OUT PRTL_RANGE_LIST RangeList, IN ULONGLONG Start,
 	RangeList->Stamp++;
 	return STATUS_SUCCESS;
     } else {
-	//Previous = NULL;
 	Entry = RangeList->ListHead.Flink;
 	while (Entry != &RangeList->ListHead) {
 	    Current = CONTAINING_RECORD(Entry, RTL_RANGE_ENTRY, Entry);
@@ -104,7 +102,6 @@ NTAPI NTSTATUS RtlAddRange(IN OUT PRTL_RANGE_LIST RangeList, IN ULONGLONG Start,
 		return STATUS_SUCCESS;
 	    }
 
-	    //Previous = Current;
 	    Entry = Entry->Flink;
 	}
 
@@ -573,6 +570,8 @@ NTAPI NTSTATUS RtlIsRangeAvailable(IN PRTL_RANGE_LIST RangeList, IN ULONGLONG St
 		*Available = Callback(Context, &Current->Range);
 	    } else {
 		*Available = FALSE;
+	    }
+	    if (!*Available) {
 		return STATUS_SUCCESS;
 	    }
 	}

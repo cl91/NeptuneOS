@@ -936,6 +936,14 @@ static inline ULONG IopGetPartialResourceCount(IN PIO_RESOURCE_DESCRIPTOR List,
     return Count;
 }
 
+static NTAPI BOOLEAN IopFindRangeForResource(PVOID Context,
+					     PRTL_RANGE Range)
+{
+    PRTL_RANGE *pRange = Context;
+    *pRange = Range;
+    return FALSE;
+}
+
 FORCEINLINE NTSTATUS IopAllocateResource(IN PRTL_RANGE_LIST RangeList,
 					 IN PIO_RESOURCE_DESCRIPTOR Desc,
 					 IN PDEVICE_NODE DevNode,
@@ -974,10 +982,39 @@ FORCEINLINE NTSTATUS IopAllocateResource(IN PRTL_RANGE_LIST RangeList,
 		ULONG RangeLength = Partial->Generic.Length;
 		ULONGLONG RangeEnd = RangeStart + RangeLength;
 		if (Partial->Type == Desc->Type && Minimum >= RangeStart &&
-		    Maximum + 1 <= RangeEnd && Length <= RangeLength) {
-		    *Start = Minimum;
-		    return STATUS_SUCCESS;
+		    Maximum < RangeEnd && Length <= RangeLength) {
+		    /* Find the range entry of this bus resource */
+		    PRTL_RANGE Range = NULL;
+		    BOOLEAN Available = FALSE;
+		    RtlIsRangeAvailable(RangeList, RangeStart, RangeStart + 1, 0, 0,
+					(PVOID)&Range, IopFindRangeForResource, &Available);
+		    if (Range && Range->Owner == DevNode->Parent) {
+			/* Allocate the resource from the sub-range list. */
+			if (!Range->UserData) {
+			    Range->UserData = ExAllocatePoolWithTag(sizeof(RTL_RANGE_LIST),
+								    NTOS_IO_TAG);
+			    if (!Range->UserData) {
+				return STATUS_INSUFFICIENT_RESOURCES;
+			    }
+			    RtlInitializeRangeList(Range->UserData);
+			}
+			Status = RtlFindRange(Range->UserData, Minimum, Maximum, Length,
+					      Alignment ? Alignment : 1, 0,
+					      0, NULL, NULL, Start);
+			if (NT_SUCCESS(Status)) {
+			    Status = RtlAddRange(Range->UserData, *Start, *Start + Length - 1,
+						 0, 0, NULL, DevNode);
+			    assert(NT_SUCCESS(Status));
+			    return Status;
+			} else {
+			    return STATUS_CONFLICTING_ADDRESSES;
+			}
+		    } else {
+			/* This is a programming error. */
+			assert(FALSE);
+		    }
 		}
+		Partial = CmGetNextPartialDescriptor(Partial);
 	    }
 	    FullDesc = CmGetNextResourceDescriptor(FullDesc);
 	}
