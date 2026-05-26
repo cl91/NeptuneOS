@@ -6,7 +6,7 @@
 #endif
 #endif
 
-#ifdef __x86_64
+#ifdef __x86_64__
 #ifndef _M_AMD64
 #define _M_AMD64
 #define _WIN64
