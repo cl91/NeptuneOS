@@ -76,6 +76,10 @@
     <parameter annotation="out" type="ptr::MWORD" name="InterruptMutex" />
   </svc>
 
+  <svc name="WdmDisconnectInterrupt">
+    <parameter annotation="in" type="ULONG" name="Vector" />
+  </svc>
+
   <svc name="WdmCreateDpcThread">
     <parameter annotation="in" type="PVOID" name="EntryPoint" />
     <parameter annotation="out" type="ptr::HANDLE" name="ThreadHandle" />

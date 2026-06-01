@@ -297,6 +297,8 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
 NTAPI VOID IoDisconnectInterrupt(IN PKINTERRUPT InterruptObject)
 {
     PAGED_CODE();
+    WdmDisconnectInterrupt(InterruptObject->Vector);
+    IopFreePool(InterruptObject);
 }
 
 NTAPI VOID IoAcquireInterruptMutex(IN PKINTERRUPT Interrupt)

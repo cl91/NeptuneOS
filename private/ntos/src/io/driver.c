@@ -795,6 +795,45 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS WdmDisconnectInterrupt(IN ASYNC_STATE State,
+				IN PTHREAD Thread,
+				IN ULONG Vector)
+{
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Locals, {
+	    PIO_DRIVER_OBJECT DriverObject;
+	    PINTERRUPT_SERVICE Svc;
+	    PTHREAD IsrThread;
+	});
+    assert(Thread != NULL);
+    assert(Thread->Process != NULL);
+    Locals.DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+    assert(Locals.DriverObject != NULL);
+    assert(Thread->InitialThread);
+    LoopOverList(Entry, &Locals.DriverObject->InterruptServiceList,
+		 INTERRUPT_SERVICE, Link) {
+	if (Vector == Entry->Vector) {
+	    Locals.Svc = Entry;
+	    break;
+	}
+    }
+    if (!Locals.Svc) {
+	ASYNC_RETURN(State, STATUS_NOT_FOUND);
+    }
+    Status = ObReferenceObjectByHandle(Thread, Locals.Svc->ThreadHandle, OBJECT_TYPE_THREAD,
+				       (POBJECT *)&Locals.IsrThread);
+    if (!NT_SUCCESS(Status)) {
+	assert(FALSE);
+	ASYNC_RETURN(State, Status);
+    }
+    PsTerminateThread(Locals.IsrThread, STATUS_SUCCESS);
+    AWAIT(NtClose, State, Locals, Thread, Locals.Svc->ThreadHandle);
+    ObDereferenceObject(Locals.IsrThread);
+    Locals.Svc->ThreadHandle = NULL;
+    IopDeleteInterruptService(Locals.Svc);
+    ASYNC_END(State, STATUS_SUCCESS);
+}
+
 NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 			    IN PTHREAD Thread,
 			    IN PVOID EntryPoint,
