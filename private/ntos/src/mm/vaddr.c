@@ -1449,6 +1449,8 @@ NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
     if (ReadOnly) {
 	Flags |= MEM_RESERVE_READ_ONLY;
     }
+    BOOLEAN Retry = FALSE;
+retry:
     RET_ERR(MmReserveVirtualMemoryEx(VSpace, WindowStart, WindowEnd, WindowSize,
 				     LowZeroBits, 0, Flags, &Vad));
     Vad->PhysicalSectionView.PhysicalBase = PhyAddr;
@@ -1457,11 +1459,23 @@ NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
     PAGING_ATTRIBUTES Attributes = MiGetPagingAttributesFromCacheType(CacheType);
     MWORD VirtAddr = Vad->AvlNode.Key;
     PAGING_RIGHTS PagingRights = ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
-    BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhyAddr) &&
-	IS_LARGE_PAGE_ALIGNED(VirtAddr) && IS_LARGE_PAGE_ALIGNED(WindowSize);
-    RET_ERR_EX(MiMapIoMemory(VSpace, PhyAddr, VirtAddr, WindowSize, PagingRights,
-			     Attributes, UseLargePage),
-	       MmDeleteVad(Vad));
+    BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhyAddr) && IS_LARGE_PAGE_ALIGNED(VirtAddr);
+    NTSTATUS Status = MiMapIoMemory(VSpace, PhyAddr, VirtAddr, WindowSize, PagingRights,
+				    Attributes, UseLargePage);
+    if (!NT_SUCCESS(Status)) {
+	MmDeleteVad(Vad);
+	/* If we failed to map the IO page due to the physical region having already
+	 * been mapped using large pages, retry with a larger region size. */
+	if (Status == STATUS_RESOURCE_IN_USE && !Retry) {
+	    Retry = TRUE;
+	    PageOffset += PhyAddr - LARGE_PAGE_ALIGN(PhyAddr);
+	    PhyAddr = LARGE_PAGE_ALIGN(PhyAddr);
+	    WindowSize = LARGE_PAGE_ALIGN_UP(WindowSize + PageOffset);
+	    assert(IS_LARGE_PAGE_ALIGNED(WindowStart));
+	    assert(IS_LARGE_PAGE_ALIGNED(WindowEnd));
+	    goto retry;
+	}
+    }
     *pVirtAddr = VirtAddr + PageOffset;
     if (pVad) {
 	*pVad = Vad;

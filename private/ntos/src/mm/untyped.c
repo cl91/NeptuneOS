@@ -305,7 +305,15 @@ NTSTATUS MiGetUntypedAtPhyAddr(IN PPHY_MEM_DESCRIPTOR PhyMem,
     *Untyped = RootUntyped;
     LONG NumSplits = RootUntyped->Log2Size - Log2Size;
     for (LONG i = NumSplits-1; i >= 0; i--) {
-	if (!MmCapTreeNodeHasChildren(&(*Untyped)->TreeNode)) {
+	if (MmCapTreeNodeHasChildren(&(*Untyped)->TreeNode)) {
+	    /* If the cap tree node has children that are not untyped, deny the request */
+	    LoopOverList(Child, &(*Untyped)->TreeNode.ChildrenList,
+			 CAP_TREE_NODE, SiblingLink) {
+		if (Child->Type != CAP_TREE_NODE_UNTYPED) {
+		    return STATUS_RESOURCE_IN_USE;
+		}
+	    }
+	} else {
 	    /* Note since MmAllocatePhysicallyContiguousMemory calls
 	     * MmRequestUntypedEx before calling us, (*Untyped)->Requested
 	     * may be TRUE without the untyped having any children. This
