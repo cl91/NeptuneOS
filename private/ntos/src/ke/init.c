@@ -140,7 +140,9 @@ static VOID KiRecordMachineInformation(seL4_BootInfo *bootinfo)
 	    HalAcpiRegisterRsdp((PHAL_ACPI_RSDP)(BootInfoHeader+1));
 	    break;
 	case SEL4_BOOTINFO_HEADER_X86_FRAMEBUFFER:
-	    HalRegisterFramebuffer((PHAL_FRAMEBUFFER)(BootInfoHeader+1));
+	    /* seL4 does not provide us with pixel format information, so we have
+	     * to assume BGR. */
+	    HalRegisterBootFrameBuffer((PHAL_FRAMEBUFFER_INFO)(BootInfoHeader+1), 0, 1, 2);
 	    break;
 	case SEL4_BOOTINFO_HEADER_X86_TSC_FREQ:
 	    KiX86TscFreqInMHz = *((uint32_t *)(BootInfoHeader+1));

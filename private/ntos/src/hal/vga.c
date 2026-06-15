@@ -24,21 +24,12 @@
 #define FRAMEBUFFER_FOREGROUND_COLOR_G	(0xFF)
 #define FRAMEBUFFER_FOREGROUND_COLOR_B	(0xFF)
 
-typedef struct _VGA_FONT {
-    ULONG Width;
-    ULONG Height;
-    PCSTR FontData;
-} VGA_FONT, *PVGA_FONT;
-
-static ULONG HalpVgaCursorPositionColumn;
-static ULONG HalpVgaCursorPositionRow;
-static ULONG HalpVgaCursorMaxColumns;
-static ULONG HalpVgaCursorMaxRows;
 static BOOLEAN HalpVgaInitialized;
-static BOOLEAN HalpHasFramebuffer;
-static HAL_FRAMEBUFFER HalpFramebuffer;
-static PVGA_FONT HalpVgaFont;
-static CHAR HalpVgaConsoleBuffer[16 * 1024];
+static HAL_FRAMEBUFFER_INFO HalpBootFrameBufferInfo;
+static UCHAR HalpBootFrameBufferBlueIndex;
+static UCHAR HalpBootFrameBufferGreenIndex;
+static UCHAR HalpBootFrameBufferRedIndex;
+static LIST_ENTRY HalpFrameBuffers;
 
 static CONST CHAR HalpVgaFontData8x13[] =
 {
@@ -2351,7 +2342,7 @@ static CONST CHAR HalpVgaFontData16x32[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,	/* 255 */
 };
 
-static VGA_FONT HalpVgaFonts[] = {
+static HAL_VGA_FONT HalpVgaFonts[] = {
     { 8, 13, HalpVgaFontData8x13 },
     { 16, 32, HalpVgaFontData16x32 }
 };
@@ -2360,26 +2351,11 @@ static VGA_FONT HalpVgaFonts[] = {
 #define HAL_VGA_FONT_8	(0)
 #define HAL_VGA_FONT_16	(1)
 
-/*
- * Some x86 clamshell design devices use portrait tablet screens and a display
- * engine which cannot rotate in hardware, so we need to rotate the fbcon to
- * compensate. Unfortunately these (cheap) devices also typically have quite
- * generic DMI data, so we match on a combination of DMI data, screen resolution
- * and a list of known BIOS dates to avoid false positives.
- */
-typedef enum _PANEL_ORIENTATION {
-    PANEL_ORIENTATION_DEFAULT,
-    PANEL_ORIENTATION_RIGHT_UP,	/* Screen should be rotated 90 degrees counterclockwise */
-    PANEL_ORIENTATION_LEFT_UP,	/* Screen should be rotated 90 degrees clockwise */
-} PANEL_ORIENTATION;
-
-static PANEL_ORIENTATION HalpVgaPanelOrientation;
-
 typedef const struct _DMI_PANEL_ORIENTATION_DATA {
     ULONG Width;
     ULONG Height;
     const char *const *BiosDates;
-    PANEL_ORIENTATION Orientation;
+    HAL_PANEL_ORIENTATION Orientation;
 } DMI_PANEL_ORIENTATION_DATA, *PDMI_PANEL_ORIENTATION_DATA;
 
 static DMI_PANEL_ORIENTATION_DATA GpdMicropc = {
@@ -2909,7 +2885,7 @@ static DMI_PANEL_ORIENTATION_QUIRK HalpVgaOrientationQuirks[] = {
  * A PANEL_ORIENTATION_* value if there is a quirk for this system,
  * or PANEL_ORIENTATION_DEFAULT if there is no quirk.
  */
-PANEL_ORIENTATION HalpVgaGetPanelOrientation(ULONG Width, ULONG Height)
+HAL_PANEL_ORIENTATION HalpVgaGetPanelOrientation(ULONG Width, ULONG Height)
 {
     for (ULONG i = 0; i < _ARRAYSIZE(HalpVgaOrientationQuirks); i++) {
 	ULONG j;
@@ -2950,88 +2926,139 @@ PANEL_ORIENTATION HalpVgaGetPanelOrientation(ULONG Width, ULONG Height)
 }
 
 
-FORCEINLINE ULONG HalpGetFrameBufferSize()
+FORCEINLINE ULONG HalpGetFrameBufferSize(IN PHAL_FRAMEBUFFER_INFO Info)
 {
-    return HalpFramebuffer.Pitch * HalpFramebuffer.Height;
+    return Info->Pitch * Info->Height;
 }
 
-FORCEINLINE ULONG HalpGetFrameBufferPixels()
+FORCEINLINE ULONG HalpGetFrameBufferPixels(IN PHAL_FRAMEBUFFER_INFO Info)
 {
-    return HalpGetFrameBufferSize() * 8 / HalpFramebuffer.BitsPerPixel;
+    return HalpGetFrameBufferSize(Info) * 8 / Info->BitsPerPixel;
 }
 
-static VOID HalpVgaBlitCharEx(IN CHAR Chr,
+static VOID HalpVgaBlitCharEx(IN PHAL_FRAMEBUFFER FrameBuffer,
+			      IN CHAR Chr,
 			      IN ULONG Row,
 			      IN ULONG Column)
 {
-    ULONG Pos = HalpVgaCursorMaxColumns * Row + Column;
-    HalpVgaConsoleBuffer[Pos] = Chr;
-    if (HalpHasFramebuffer) {
-	ULONG BytesPerChar = HalpVgaFont->Height * HalpVgaFont->Width / 8;
-	PCSTR Glyph = HalpVgaFont->FontData + BytesPerChar * Chr;
-	ULONG StartHeight = Row * HalpVgaFont->Height;
-	ULONG StartWidth = Column * HalpVgaFont->Width;
-	ULONG BytesPerPixel = HalpFramebuffer.BitsPerPixel / 8;
-	volatile CHAR *Video = (volatile CHAR *)(FRAMEBUFFER_VADDR_START);
-	for (ULONG Height = 0; Height < HalpVgaFont->Height; Height++) {
-	    for (ULONG Width = 0; Width < HalpVgaFont->Width; Width++) {
-		volatile CHAR *Pixel = Video;
-		switch (HalpVgaPanelOrientation) {
-		case PANEL_ORIENTATION_DEFAULT:
-		    Pixel += (StartHeight + Height) * HalpFramebuffer.Pitch
-			+ (StartWidth + Width) * BytesPerPixel;
-		    break;
-		case PANEL_ORIENTATION_RIGHT_UP:
-		    assert(StartHeight + Height < HalpFramebuffer.Width);
-		    Pixel += (StartWidth + Width) * HalpFramebuffer.Pitch
-			+ (HalpFramebuffer.Width - StartHeight - Height - 1) * BytesPerPixel;
-		    break;
-		case PANEL_ORIENTATION_LEFT_UP:
-		    Pixel += (StartWidth + Width) * HalpFramebuffer.Pitch
-			+ (StartHeight + Height) * BytesPerPixel;
-		    break;
-		default:
-		    assert(FALSE);
-		}
-		UCHAR Byte = Glyph[(Height * HalpVgaFont->Width + Width) / 8];
-		UCHAR BitIndex = (Height * HalpVgaFont->Width + Width) % 8;
-		if (Byte & (1UL << (7 - BitIndex))) {
-		    Pixel[0] = FRAMEBUFFER_FOREGROUND_COLOR_B;
-		    Pixel[1] = FRAMEBUFFER_FOREGROUND_COLOR_G;
-		    Pixel[2] = FRAMEBUFFER_FOREGROUND_COLOR_R;
-		} else {
-		    Pixel[0] = FRAMEBUFFER_BACKGROUND_COLOR_B;
-		    Pixel[1] = FRAMEBUFFER_BACKGROUND_COLOR_G;
-		    Pixel[2] = FRAMEBUFFER_BACKGROUND_COLOR_R;
-		}
-	    }
-	}
-    } else {
-	volatile CHAR *Video = (volatile CHAR *)(FRAMEBUFFER_VADDR_START + Pos * 2);
+    ULONG Pos = FrameBuffer->CursorMaxColumns * Row + Column;
+    FrameBuffer->ConsoleBuffer[Pos] = Chr;
+    if (FrameBuffer->TextMode) {
+	volatile CHAR *Video = (volatile CHAR *)(FrameBuffer->VirtualBase + Pos * 2);
 	Video[0] = Chr;
 	Video[1] = VGA_TEXT_COLOR;
+	return;
     }
-}
 
-static VOID HalpVgaBlitChar(IN CHAR Chr)
-{
-    HalpVgaBlitCharEx(Chr, HalpVgaCursorPositionRow, HalpVgaCursorPositionColumn);
-}
-
-static VOID HalpVgaScrollLine()
-{
-    for (ULONG Row = 0; Row < HalpVgaCursorPositionRow; Row++) {
-	for (ULONG Column = 0; Column < HalpVgaCursorMaxColumns; Column++) {
-	    ULONG Pos = HalpVgaCursorMaxColumns * Row + Column;
-	    ULONG PosBelow = HalpVgaCursorMaxColumns * (Row + 1) + Column;
-	    if (HalpVgaConsoleBuffer[Pos] != HalpVgaConsoleBuffer[PosBelow]) {
-		HalpVgaBlitCharEx(HalpVgaConsoleBuffer[PosBelow], Row, Column);
+    ULONG BytesPerChar = FrameBuffer->VgaFont->Height * FrameBuffer->VgaFont->Width / 8;
+    PCSTR Glyph = FrameBuffer->VgaFont->FontData + BytesPerChar * Chr;
+    ULONG StartHeight = Row * FrameBuffer->VgaFont->Height;
+    ULONG StartWidth = Column * FrameBuffer->VgaFont->Width;
+    ULONG BytesPerPixel = FrameBuffer->Info.BitsPerPixel / 8;
+    UCHAR BlueIndex = FrameBuffer->BlueIndex;
+    UCHAR GreenIndex = FrameBuffer->GreenIndex;
+    UCHAR RedIndex = FrameBuffer->RedIndex;
+    volatile CHAR *Video = (volatile CHAR *)FrameBuffer->VirtualBase;
+    for (ULONG Height = 0; Height < FrameBuffer->VgaFont->Height; Height++) {
+	for (ULONG Width = 0; Width < FrameBuffer->VgaFont->Width; Width++) {
+	    volatile CHAR *Pixel = Video;
+	    switch (FrameBuffer->PanelOrientation) {
+	    case PANEL_ORIENTATION_DEFAULT:
+		Pixel += (StartHeight + Height) * FrameBuffer->Info.Pitch
+		    + (StartWidth + Width) * BytesPerPixel;
+		break;
+	    case PANEL_ORIENTATION_RIGHT_UP:
+		assert(StartHeight + Height < FrameBuffer->Info.Width);
+		Pixel += (StartWidth + Width) * FrameBuffer->Info.Pitch
+		    + (FrameBuffer->Info.Width - StartHeight - Height - 1) * BytesPerPixel;
+		break;
+	    case PANEL_ORIENTATION_LEFT_UP:
+		Pixel += (StartWidth + Width) * FrameBuffer->Info.Pitch
+		    + (StartHeight + Height) * BytesPerPixel;
+		break;
+	    default:
+		assert(FALSE);
+	    }
+	    UCHAR Byte = Glyph[(Height * FrameBuffer->VgaFont->Width + Width) / 8];
+	    UCHAR BitIndex = (Height * FrameBuffer->VgaFont->Width + Width) % 8;
+	    if (Byte & (1UL << (7 - BitIndex))) {
+		Pixel[BlueIndex] = FRAMEBUFFER_FOREGROUND_COLOR_B;
+		Pixel[GreenIndex] = FRAMEBUFFER_FOREGROUND_COLOR_G;
+		Pixel[RedIndex] = FRAMEBUFFER_FOREGROUND_COLOR_R;
+	    } else {
+		Pixel[BlueIndex] = FRAMEBUFFER_BACKGROUND_COLOR_B;
+		Pixel[GreenIndex] = FRAMEBUFFER_BACKGROUND_COLOR_G;
+		Pixel[RedIndex] = FRAMEBUFFER_BACKGROUND_COLOR_R;
 	    }
 	}
     }
-    for (ULONG Column = 0; Column < HalpVgaCursorMaxColumns; Column++) {
-	HalpVgaBlitCharEx(' ', HalpVgaCursorPositionRow, Column);
+
+}
+
+static VOID HalpVgaBlitChar(IN PHAL_FRAMEBUFFER FrameBuffer,
+			    IN CHAR Chr)
+{
+    HalpVgaBlitCharEx(FrameBuffer, Chr,
+		      FrameBuffer->CursorPositionRow,
+		      FrameBuffer->CursorPositionColumn);
+}
+
+static VOID HalpVgaScrollLine(IN PHAL_FRAMEBUFFER FrameBuffer)
+{
+    for (ULONG Row = 0; Row < FrameBuffer->CursorPositionRow; Row++) {
+	for (ULONG Column = 0; Column < FrameBuffer->CursorMaxColumns; Column++) {
+	    ULONG Pos = FrameBuffer->CursorMaxColumns * Row + Column;
+	    ULONG PosBelow = FrameBuffer->CursorMaxColumns * (Row + 1) + Column;
+	    if (FrameBuffer->ConsoleBuffer[Pos] != FrameBuffer->ConsoleBuffer[PosBelow]) {
+		HalpVgaBlitCharEx(FrameBuffer,
+				  FrameBuffer->ConsoleBuffer[PosBelow], Row, Column);
+	    }
+	}
     }
+    for (ULONG Column = 0; Column < FrameBuffer->CursorMaxColumns; Column++) {
+	HalpVgaBlitCharEx(FrameBuffer, ' ', FrameBuffer->CursorPositionRow, Column);
+    }
+}
+
+static VOID HalpDisplayString(IN PHAL_FRAMEBUFFER FrameBuffer,
+			      IN PCSTR String)
+{
+    while (*String != 0) {
+	UCHAR Chr = *String;
+	if (isprint(Chr)) {
+	    HalpVgaBlitChar(FrameBuffer, Chr);
+	    FrameBuffer->CursorPositionColumn++;
+	} else if (Chr == '\t') {
+	    FrameBuffer->CursorPositionColumn += 8;
+	    FrameBuffer->CursorPositionColumn >>= 3;
+	    FrameBuffer->CursorPositionColumn <<= 3;
+	} else if (Chr == '\n') {
+	    if (FrameBuffer->CursorPositionColumn < FrameBuffer->CursorMaxColumns) {
+		FrameBuffer->CursorPositionRow++;
+	    }
+	    FrameBuffer->CursorPositionColumn = 0;
+	} else if (Chr == '\b') {
+	    if (FrameBuffer->CursorPositionColumn == 0) {
+		FrameBuffer->CursorPositionRow--;
+		FrameBuffer->CursorPositionColumn = FrameBuffer->CursorMaxColumns - 1;
+	    } else {
+		FrameBuffer->CursorPositionColumn--;
+	    }
+	    HalpVgaBlitChar(FrameBuffer, ' ');
+	}
+	String++;
+	if (FrameBuffer->CursorPositionColumn >= FrameBuffer->CursorMaxColumns) {
+	    FrameBuffer->CursorPositionRow++;
+	    FrameBuffer->CursorPositionColumn = 0;
+	}
+	assert(FrameBuffer->CursorPositionRow <= FrameBuffer->CursorMaxRows);
+	if (FrameBuffer->CursorPositionRow >= FrameBuffer->CursorMaxRows) {
+	    FrameBuffer->CursorPositionRow--;
+	    HalpVgaScrollLine(FrameBuffer);
+	}
+    }
+    assert(FrameBuffer->CursorPositionColumn < FrameBuffer->CursorMaxColumns);
+    assert(FrameBuffer->CursorPositionRow < FrameBuffer->CursorMaxRows);
 }
 
 VOID HalDisplayString(PCSTR String)
@@ -3060,62 +3087,32 @@ VOID HalDisplayString(PCSTR String)
 	    Data->BugcheckMsgLength = sizeof(Data->BugcheckMsg);
 	}
     }
-    while (*String != 0) {
-	UCHAR Chr = *String;
-	if (isprint(Chr)) {
-	    HalpVgaBlitChar(Chr);
-	    HalpVgaCursorPositionColumn++;
-	} else if (Chr == '\t') {
-	    HalpVgaCursorPositionColumn += 8;
-	    HalpVgaCursorPositionColumn >>= 3;
-	    HalpVgaCursorPositionColumn <<= 3;
-	} else if (Chr == '\n') {
-	    if (HalpVgaCursorPositionColumn < HalpVgaCursorMaxColumns) {
-		HalpVgaCursorPositionRow++;
-	    }
-	    HalpVgaCursorPositionColumn = 0;
-	} else if (Chr == '\b') {
-	    if (HalpVgaCursorPositionColumn == 0) {
-		HalpVgaCursorPositionRow--;
-		HalpVgaCursorPositionColumn = HalpVgaCursorMaxColumns - 1;
-	    } else {
-		HalpVgaCursorPositionColumn--;
-	    }
-	    HalpVgaBlitChar(' ');
-	}
-	String++;
-	if (HalpVgaCursorPositionColumn >= HalpVgaCursorMaxColumns) {
-	    HalpVgaCursorPositionRow++;
-	    HalpVgaCursorPositionColumn = 0;
-	}
-	assert(HalpVgaCursorPositionRow <= HalpVgaCursorMaxRows);
-	if (HalpVgaCursorPositionRow >= HalpVgaCursorMaxRows) {
-	    HalpVgaCursorPositionRow--;
-	    HalpVgaScrollLine();
-	}
+    LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
+	HalpDisplayString(FrameBuffer, String);
     }
-    assert(HalpVgaCursorPositionColumn < HalpVgaCursorMaxColumns);
-    assert(HalpVgaCursorPositionRow < HalpVgaCursorMaxRows);
 }
 
-static inline VOID HalpVgaClearScreen()
+static inline VOID HalpVgaClearScreen(IN PHAL_FRAMEBUFFER FrameBuffer)
 {
-    volatile PUCHAR Video = (volatile PUCHAR)(FRAMEBUFFER_VADDR_START);
-    if (HalpHasFramebuffer) {
-	ULONG BytesPerPixel = HalpFramebuffer.BitsPerPixel / 8;
-	for (ULONG i = 0; i < HalpGetFrameBufferPixels(); i++) {
-	    PUCHAR Pixel = Video + i * BytesPerPixel;
-	    Pixel[0] = FRAMEBUFFER_BACKGROUND_COLOR_B;
-	    Pixel[1] = FRAMEBUFFER_BACKGROUND_COLOR_G;
-	    Pixel[2] = FRAMEBUFFER_BACKGROUND_COLOR_R;
-	}
-    } else {
+    volatile PUCHAR Video = (volatile PUCHAR)FrameBuffer->VirtualBase;
+    memset(FrameBuffer->ConsoleBuffer, ' ', FrameBuffer->ConsoleBufferSize);
+    if (FrameBuffer->TextMode) {
 	for (ULONG i = 0; i < PAGE_SIZE/2; i++) {
 	    *Video++ = 0;
 	    *Video++ = VGA_BG_COLOR;
 	}
+	return;
     }
-    memset(HalpVgaConsoleBuffer, ' ', sizeof(HalpVgaConsoleBuffer));
+    ULONG BytesPerPixel = FrameBuffer->Info.BitsPerPixel / 8;
+    UCHAR BlueIndex = FrameBuffer->BlueIndex;
+    UCHAR GreenIndex = FrameBuffer->GreenIndex;
+    UCHAR RedIndex = FrameBuffer->RedIndex;
+    for (ULONG i = 0; i < HalpGetFrameBufferPixels(&FrameBuffer->Info); i++) {
+	PUCHAR Pixel = Video + i * BytesPerPixel;
+	Pixel[BlueIndex] = FRAMEBUFFER_BACKGROUND_COLOR_B;
+	Pixel[GreenIndex] = FRAMEBUFFER_BACKGROUND_COLOR_G;
+	Pixel[RedIndex] = FRAMEBUFFER_BACKGROUND_COLOR_R;
+    }
 }
 
 #if defined(_M_IX86) || defined(_M_AMD64)
@@ -3133,73 +3130,130 @@ static inline NTSTATUS HalpInitVgaIoPort()
 }
 #endif
 
-NTSTATUS HalpInitVga()
+static NTSTATUS HalpCreateFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Info,
+				      IN UCHAR BlueIndex,
+				      IN UCHAR GreenIndex,
+				      IN UCHAR RedIndex,
+				      IN BOOLEAN FixOrientation)
 {
-    MWORD VirtBase = 0;
-    if (HalpHasFramebuffer) {
-	ULONG FrameBufferSize = HalpGetFrameBufferSize();
-	if (FrameBufferSize > FRAMEBUFFER_MAX_SIZE) {
-	    HalpHasFramebuffer = FALSE;
-	    goto TryVga;
-	}
-	RET_ERR(MmMapIoSpace(FRAMEBUFFER_VADDR_START, 0, FrameBufferSize,
-			     HalpFramebuffer.PhysicalAddress, MmWriteCombined,
-			     FALSE, &VirtBase));
-	assert(VirtBase == FRAMEBUFFER_VADDR_START);
-	HalpVgaPanelOrientation = HalpVgaGetPanelOrientation(HalpFramebuffer.Width,
-							     HalpFramebuffer.Height);
-	if (HalpFramebuffer.Width >= 1280 || HalpFramebuffer.Height >= 1280) {
-	    HalpVgaFont = &HalpVgaFonts[HAL_VGA_FONT_16];
-	} else {
-	    HalpVgaFont = &HalpVgaFonts[HAL_VGA_FONT_8];
-	}
-	ULONG RotatedWidth = HalpVgaPanelOrientation == PANEL_ORIENTATION_DEFAULT ?
-	    HalpFramebuffer.Width : HalpFramebuffer.Height;
-	ULONG RotatedHeight = HalpVgaPanelOrientation == PANEL_ORIENTATION_DEFAULT ?
-	    HalpFramebuffer.Height : HalpFramebuffer.Width;
-	HalpVgaCursorMaxColumns = RotatedWidth / HalpVgaFont->Width;
-	HalpVgaCursorMaxRows = RotatedHeight / HalpVgaFont->Height;
+    HAL_PANEL_ORIENTATION PanelOrientation = PANEL_ORIENTATION_DEFAULT;
+    if (FixOrientation) {
+	PanelOrientation = HalpVgaGetPanelOrientation(Info->Width, Info->Height);
+    }
+    PHAL_VGA_FONT VgaFont;
+    if (Info->Width >= 1280 || Info->Height >= 1280) {
+	VgaFont = &HalpVgaFonts[HAL_VGA_FONT_16];
     } else {
-    TryVga:
-#if defined(_M_IX86) || defined(_M_AMD64)
-	RET_ERR(MmMapIoSpace(FRAMEBUFFER_VADDR_START, 0, PAGE_SIZE,
-			     VGA_VIDEO_PAGE_PADDR, MmWriteCombined, FALSE, &VirtBase));
-	assert(VirtBase == FRAMEBUFFER_VADDR_START);
-	RET_ERR(HalpInitVgaIoPort());
-	HalpVgaDisableCursor();
-	HalpVgaCursorMaxColumns = VGA_MODE_COLUMNS;
-	HalpVgaCursorMaxRows = VGA_MODE_ROWS;
-#else
-	return STATUS_NOT_SUPPORTED;
-#endif
+	VgaFont = &HalpVgaFonts[HAL_VGA_FONT_8];
     }
-    ULONG BufferSize = HalpVgaCursorMaxColumns * HalpVgaCursorMaxRows;
-    if (BufferSize > sizeof(HalpVgaConsoleBuffer)) {
-	HalpVgaCursorMaxRows = sizeof(HalpVgaConsoleBuffer) / HalpVgaCursorMaxColumns;
+    ULONG RotatedWidth = PanelOrientation == PANEL_ORIENTATION_DEFAULT ?
+	Info->Width : Info->Height;
+    ULONG RotatedHeight = PanelOrientation == PANEL_ORIENTATION_DEFAULT ?
+	Info->Height : Info->Width;
+    ULONG CursorMaxColumns = RotatedWidth / VgaFont->Width;
+    ULONG CursorMaxRows = RotatedHeight / VgaFont->Height;
+    ULONG ConsoleBufferSize = sizeof(UCHAR) * CursorMaxColumns * CursorMaxRows;
+    ULONG Size = ConsoleBufferSize + sizeof(HAL_FRAMEBUFFER);
+    PHAL_FRAMEBUFFER FrameBuffer = ExAllocatePoolWithTag(Size, NTOS_HAL_TAG);
+    if (!FrameBuffer) {
+	return STATUS_INSUFFICIENT_RESOURCES;
     }
-    HalpVgaClearScreen();
-    HalpVgaInitialized = TRUE;
+    ULONG FrameBufferSize = HalpGetFrameBufferSize(Info);
+    NTSTATUS Status = MmMapIoSpace(FRAMEBUFFER_VADDR_START,
+				   FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE,
+				   FrameBufferSize, Info->PhysicalAddress, MmWriteCombined,
+				   FALSE, &FrameBuffer->VirtualBase);
+    if (!NT_SUCCESS(Status)) {
+	/* Try the dynamic virtual region if there isn't enough space in the reserved
+	 * framebuffer mapping space. */
+	Status = MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, FrameBufferSize,
+			      Info->PhysicalAddress, MmWriteCombined, FALSE,
+			      &FrameBuffer->VirtualBase);
+	if (!NT_SUCCESS(Status)) {
+	    ExFreePoolWithTag(FrameBuffer, NTOS_HAL_TAG);
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+    }
+    InsertTailList(&HalpFrameBuffers, &FrameBuffer->Link);
+    FrameBuffer->VgaFont = VgaFont;
+    FrameBuffer->CursorMaxColumns = CursorMaxColumns;
+    FrameBuffer->CursorMaxRows = CursorMaxRows;
+    FrameBuffer->ConsoleBufferSize = ConsoleBufferSize;
+    FrameBuffer->Info = *Info;
+    FrameBuffer->PanelOrientation = PanelOrientation;
+    FrameBuffer->BlueIndex = BlueIndex;
+    FrameBuffer->GreenIndex = GreenIndex;
+    FrameBuffer->RedIndex = RedIndex;
+    HalpVgaClearScreen(FrameBuffer);
     return STATUS_SUCCESS;
 }
 
-VOID HalRegisterFramebuffer(IN PHAL_FRAMEBUFFER Fb)
+NTSTATUS HalpInitVga()
+{
+    InitializeListHead(&HalpFrameBuffers);
+    if (HalpBootFrameBufferInfo.PhysicalAddress &&
+	HalpBootFrameBufferInfo.BitsPerPixel && HalpBootFrameBufferInfo.Pitch &&
+	HalpBootFrameBufferInfo.Width && HalpBootFrameBufferInfo.Height &&
+	HalpBootFrameBufferInfo.Type == MULTIBOOT_FRAMEBUFFER_TYPE_RGB) {
+	if (NT_SUCCESS(HalpCreateFrameBuffer(&HalpBootFrameBufferInfo,
+					     HalpBootFrameBufferBlueIndex,
+					     HalpBootFrameBufferGreenIndex,
+					     HalpBootFrameBufferRedIndex, TRUE))) {
+	    HalpVgaInitialized = TRUE;
+	    return STATUS_SUCCESS;
+	}
+    }
+
+#if defined(_M_IX86) || defined(_M_AMD64)
+    RET_ERR(HalpInitVgaIoPort());
+    HalpVgaDisableCursor();
+    ULONG ConsoleBufferSize = VGA_MODE_COLUMNS * VGA_MODE_ROWS * sizeof(UCHAR);
+    ULONG Size = sizeof(HAL_FRAMEBUFFER) + ConsoleBufferSize;
+    PHAL_FRAMEBUFFER FrameBuffer = ExAllocatePoolWithTag(Size, NTOS_HAL_TAG);
+    RET_ERR_EX(MmMapIoSpace(FRAMEBUFFER_VADDR_START, 0, PAGE_SIZE,
+			    VGA_VIDEO_PAGE_PADDR, MmWriteCombined, FALSE,
+			    &FrameBuffer->VirtualBase),
+	       ExFreePoolWithTag(FrameBuffer, NTOS_HAL_TAG));
+    InsertTailList(&HalpFrameBuffers, &FrameBuffer->Link);
+    FrameBuffer->CursorMaxColumns = VGA_MODE_COLUMNS;
+    FrameBuffer->CursorMaxRows = VGA_MODE_ROWS;
+    FrameBuffer->ConsoleBufferSize = ConsoleBufferSize;
+    FrameBuffer->TextMode = TRUE;
+    HalpVgaClearScreen(FrameBuffer);
+    HalpVgaInitialized = TRUE;
+    return STATUS_SUCCESS;
+#else
+    return STATUS_NOT_SUPPORTED;
+#endif
+}
+
+VOID HalRegisterBootFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Fb,
+				IN UCHAR BlueIndex,
+				IN UCHAR GreenIndex,
+				IN UCHAR RedIndex)
 {
     assert(Fb);
-    if (HalpHasFramebuffer) {
+    if (Fb->Type != MULTIBOOT_FRAMEBUFFER_TYPE_RGB) {
 	return;
     }
-    if (Fb->Type == MULTIBOOT_FRAMEBUFFER_TYPE_RGB) {
-	HalpFramebuffer = *Fb;
-	HalpHasFramebuffer = TRUE;
-    }
+    HalpBootFrameBufferInfo = *Fb;
+    HalpBootFrameBufferBlueIndex = BlueIndex;
+    HalpBootFrameBufferGreenIndex = GreenIndex;
+    HalpBootFrameBufferRedIndex = RedIndex;
 }
 
 ULONG HalGetConsoleMaxColumns()
 {
-    return HalpVgaCursorMaxColumns;
+    LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
+	return FrameBuffer->CursorMaxColumns;
+    }
+    return 0;
 }
 
 ULONG HalGetConsoleMaxRows()
 {
-    return HalpVgaCursorMaxRows;
+    LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
+	return FrameBuffer->CursorMaxRows;
+    }
+    return 0;
 }

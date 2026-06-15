@@ -186,7 +186,7 @@ out:
 
 	/* This is the framebuffer entry we want. */
 	PCB_ENTRY_FRAMEBUFFER Framebuffer = (PVOID)Entry;
-	HAL_FRAMEBUFFER HalFb = {
+	HAL_FRAMEBUFFER_INFO HalFb = {
 	    .PhysicalAddress = Framebuffer->PhysicalAddress,
 	    .Pitch = Framebuffer->BytesPerLine,
 	    .Width = Framebuffer->XResolution,
@@ -198,7 +198,9 @@ out:
 		 "pitch 0x%x, width %d, height %d, bits per pixel %d.\n",
 		 HalFb.PhysicalAddress, HalFb.Pitch, HalFb.Width,
 		 HalFb.Height, HalFb.BitsPerPixel);
-	HalRegisterFramebuffer(&HalFb);
+	HalRegisterBootFrameBuffer(&HalFb, Framebuffer->BlueMaskPos / 8,
+				   Framebuffer->GreenMaskPos / 8,
+				   Framebuffer->RedMaskPos / 8);
     }
 
 done:
