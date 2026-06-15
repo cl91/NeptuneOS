@@ -270,7 +270,7 @@ static inline BOOLEAN MiUntypedContainsPhyAddr(IN PUNTYPED Untyped,
 					       IN MWORD PhyAddr)
 {
     return AvlNodeContainsAddr(&Untyped->AvlNode,
-				 1ULL << Untyped->Log2Size, PhyAddr);
+			       1ULL << Untyped->Log2Size, PhyAddr);
 }
 
 static PUNTYPED MiFindRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
@@ -299,6 +299,9 @@ NTSTATUS MiGetUntypedAtPhyAddr(IN PPHY_MEM_DESCRIPTOR PhyMem,
     assert(Untyped != NULL);
     PUNTYPED RootUntyped = MiFindRootUntyped(PhyMem, PhyAddr);
     if (RootUntyped == NULL || RootUntyped->Log2Size < Log2Size) {
+	MmDbg("Unable to find untyped with physical address %zx (log2size %d)\n",
+	      PhyAddr, Log2Size);
+	MmDbgDumpUntypedForest();
 	return STATUS_INVALID_PARAMETER;
     }
 
@@ -379,11 +382,11 @@ NTSTATUS MiInsertRootUntyped(IN PPHY_MEM_DESCRIPTOR PhyMem,
 VOID MmReleaseUntyped(IN PUNTYPED Untyped)
 {
     assert(Untyped != NULL);
+    MmDbg("Releasing untyped cap 0x%zx\n", Untyped->TreeNode.Cap);
     assert(Untyped->Requested);
     assert(!MmCapTreeNodeHasChildren(&Untyped->TreeNode));
     assert(MmCapTreeNodeSiblingCount(&Untyped->TreeNode) <= 2);
     assert(!MiUntypedIsInFreeLists(Untyped));
-    MmDbg("Releasing untyped cap 0x%zx\n", Untyped->TreeNode.Cap);
     MmDbgDumpCapTree(&Untyped->TreeNode, 0);
     /* It appears that we have to call Revoke on the untyped cap, regardless
      * of whether the children of the untyped have been deleted (we always
