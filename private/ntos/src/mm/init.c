@@ -139,6 +139,7 @@ static NTSTATUS MiInitAddUntypedAndLargePage(IN PMI_INIT_INFO InitInfo)
     MiInitializeUntyped(RootUntyped, &MiNtosCNode, NULL, InitInfo->InitUntypedCap,
 			InitInfo->InitUntypedPhyAddr,
 			InitInfo->InitUntypedLog2Size, FALSE);
+    MiInsertRootUntyped(&MiPhyMemDescriptor, RootUntyped);
 
     PUNTYPED ParentUntyped = RootUntyped;
     LONG NumSplits = InitInfo->InitUntypedLog2Size - LARGE_PAGE_LOG2SIZE;
