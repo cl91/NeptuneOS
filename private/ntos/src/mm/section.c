@@ -587,8 +587,40 @@ static NTSTATUS MiCreateImageFileMap(IN PIO_FILE_OBJECT File,
 	assert(SubSection->SubSectionBase <= Next->SubSectionBase);
 	MWORD VirtualEnd = SubSection->SubSectionBase + SubSection->SubSectionSize;
 	if (VirtualEnd > Next->SubSectionBase) {
+	    /* PE image files cannot have overlapping sections. */
+	    assert(ImageSection->Type == ElfImageSection);
 	    SubSection->SubSectionSize = Next->SubSectionBase - SubSection->SubSectionBase;
-	    SubSection->RawDataSize = min(SubSection->RawDataSize, SubSection->SubSectionSize);
+	    MWORD NewRawDataSize = min(SubSection->RawDataSize, SubSection->SubSectionSize);
+	    /* In case where the file offset of the next subsection is zero, point it
+	     * to the end of this subsection. The reason is for bss segments, which
+	     * has an on-disk-size of zero, linkers usually uses either the file offset
+	     * for the previous non-bss segment, ie.
+	     *
+	     *   LOAD off    0x000ec000 vaddr 0x180eb000 paddr 0x180eb000 align 2**12
+	     *        filesz 0x0000438c memsz 0x0000438c flags rw-
+	     *   LOAD off    0x000f03a0 vaddr 0x180ef3a0 paddr 0x180ef3a0 align 2**12
+	     *        filesz 0x00000000 memsz 0x0000284d flags rw-
+	     *
+	     * or point it to the first page of the ELF file, ie:
+	     *
+	     *   LOAD off    0x000ec000 vaddr 0x180eb000 paddr 0x180eb000 align 2**12
+	     *        filesz 0x0000438c memsz 0x0000438c flags rw-
+	     *   LOAD off    0x000003a0 vaddr 0x180ef3a0 paddr 0x180ef3a0 align 2**12
+	     *        filesz 0x00000000 memsz 0x0000284d flags rw-
+	     *
+	     * In the latter case we need to adjust the file offset of the bss subsection
+	     * to point to the end of the previous subsection so MiCommitImageVad will
+	     * know where to copy the left-over data of the previous subsection from.
+	     */
+	    if (!Next->FileOffset) {
+		Next->FileOffset = SubSection->FileOffset + SubSection->SubSectionSize;
+		/* In this case the raw data size of the next segment should be adjusted
+		 * to the size of the left-over data of the previous segment. */
+		assert(SubSection->RawDataSize >= NewRawDataSize);
+		Next->RawDataSize = min(Next->RawDataSize,
+					SubSection->RawDataSize - NewRawDataSize);
+	    }
+	    SubSection->RawDataSize = NewRawDataSize;
 	    /* Merge the section characteristics in case the former subsection has more
 	     * access rights than the latter. Note this applies to all the pages of the
 	     * latter subsection, whereas the ELF specs only says that the overlapping
