@@ -108,13 +108,6 @@ VOID Device_SaveCurrentSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	    /* Apply the correct mask for ROM BARs */
 	    BarMask = PCI_ADDRESS_ROM_ADDRESS_MASK;
-
-	    /* Make sure it's enabled */
-	    if (!(Bar & PCI_ROMADDRESS_ENABLED)) {
-		/* If it isn't, then a descriptor won't be built for it */
-		CmDescriptor->Type = CmResourceTypeNull;
-		continue;
-	    }
 	}
 
 	/* Now we have the right mask, read the actual address from the BAR */
