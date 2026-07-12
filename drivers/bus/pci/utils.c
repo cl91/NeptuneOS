@@ -367,7 +367,7 @@ BOOLEAN PciCreateIoDescriptorFromBarLimit(IN PPCI_PDO_EXTENSION PdoExt,
 	if (Desc->Generic.MaximumAddress.QuadPart >=
 	    Res->Generic.Start.QuadPart + WindowSize) {
 	    Desc->Generic.MaximumAddress.QuadPart =
-		Res->Generic.Start.QuadPart + WindowSize;
+		Res->Generic.Start.QuadPart + WindowSize - 1;
 	}
     }
 
