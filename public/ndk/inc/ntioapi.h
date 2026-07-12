@@ -1096,6 +1096,12 @@ typedef struct _IO_RESOURCE_DESCRIPTOR {
 	    ULONG Reserved1;
 	    ULONG Reserved2;
 	} ConfigData;
+	struct {
+	    ULONG Length64;
+	    ULONG Alignment64;
+	    PHYSICAL_ADDRESS MinimumAddress;
+	    PHYSICAL_ADDRESS MaximumAddress;
+	} Memory64;
     };
 } IO_RESOURCE_DESCRIPTOR, *PIO_RESOURCE_DESCRIPTOR;
 

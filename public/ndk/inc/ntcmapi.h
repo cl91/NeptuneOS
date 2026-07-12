@@ -1169,6 +1169,8 @@ FORCEINLINE PCHAR CmDbgResourceTypeToText(IN UCHAR Type)
 	return "CmResourceTypeDma";
     case CmResourceTypeBusNumber:
 	return "CmResourceTypeBusNumber";
+    case CmResourceTypeMemoryLarge:
+	return "CmResourceTypeMemoryLarge";
     case CmResourceTypeConfigData:
 	return "CmResourceTypeConfigData";
     case CmResourceTypeDevicePrivate:

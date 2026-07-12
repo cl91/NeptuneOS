@@ -386,7 +386,9 @@ static VOID CmpDbgDumpPartialResourceDescriptor(IN PCM_PARTIAL_RESOURCE_DESCRIPT
 		   Desc->BusNumber.Reserved);
 	break;
     case CmResourceTypeMemoryLarge:
-	CmDbgPrint("MEMORY-LARGE\n");
+	CmDbgPrint("MEMORY-LARGE Start 0x%llx Length64 0x%x\n",
+		   Desc->Memory64.Start.QuadPart, Desc->Memory64.Length64);
+	break;
 	break;
     case CmResourceTypeConfigData:
 	CmDbgPrint("CONFIG-DATA\n");
