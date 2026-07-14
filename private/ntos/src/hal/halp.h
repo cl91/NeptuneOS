@@ -234,9 +234,6 @@ typedef SMBIOS_MATCH_ENTRY SMBIOS_MATCH_ENTRY_TABLE[MAX_MATCH_ENTRIES];
 /* coreboot.c */
 NTSTATUS HalpInitCoreboot(VOID);
 
-/* dma.c */
-NTSTATUS HalpInitDma(VOID);
-
 /* rtc.c */
 NTSTATUS HalpInitRtc(VOID);
 
