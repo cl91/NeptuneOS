@@ -149,7 +149,6 @@ VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 	*CommandEnables |= PCI_ENABLE_IO_SPACE | PCI_ENABLE_MEMORY_SPACE;
     }
 
-    /* The last resource is the ROM */
     for (ULONG i = 0; i <= PCI_TYPE0_ADDRESSES; i++) {
 	PCM_PARTIAL_RESOURCE_DESCRIPTOR Res = &PdoExtension->Resources->Current[i];
         if (Res->Type == CmResourceTypeNull) {
@@ -158,6 +157,7 @@ VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 
 	ULONG LowPart = Res->Generic.Start.LowPart;
         if (i == PCI_TYPE0_ADDRESSES) {
+	    /* The last resource is the ROM */
             ASSERT(Res->Type == CmResourceTypeMemory);
 	    *CommandEnables |= PCI_ENABLE_MEMORY_SPACE;
 	    ULONG Bar = 0;
@@ -165,7 +165,7 @@ VOID Device_ChangeResourceSettings(IN PPCI_PDO_EXTENSION PdoExtension,
 				FIELD_OFFSET(PCI_COMMON_HEADER, Type0.ROMBaseAddress),
 				sizeof(ULONG));
             Bar &= ~PCI_ADDRESS_ROM_ADDRESS_MASK;
-            Bar |= (LowPart & PCI_ADDRESS_ROM_ADDRESS_MASK);
+            Bar |= (LowPart & PCI_ADDRESS_ROM_ADDRESS_MASK) | 1;
 	    PciWriteDeviceConfig(PdoExtension, &Bar,
 				 FIELD_OFFSET(PCI_COMMON_HEADER, Type0.ROMBaseAddress),
 				 sizeof(ULONG));
