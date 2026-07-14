@@ -284,7 +284,7 @@ NTSTATUS HalpAdapterObjectCreateProc(IN POBJECT Object,
 }
 
 static SMBIOS_MATCH_ENTRY_TABLE HalpIsaDmaQuirkMatchTable[] = {
-    {	 /* GPD MicroPC (generic strings, also match on bios date)  */
+    {  /* GPD MicroPC (generic strings, also match on bios date)  */
 	{ SYS_VENDOR, "Default string" },
 	{ SYS_PRODUCT, "Default string" },
 	{ BOARD_VENDOR, "Default string" },
@@ -293,7 +293,7 @@ static SMBIOS_MATCH_ENTRY_TABLE HalpIsaDmaQuirkMatchTable[] = {
     {  /* GPD MicroPC (later BIOS versions with proper DMI strings) */
 	{ SYS_VENDOR, "GPD" },
 	{ SYS_PRODUCT, "MicroPC" }
-    }
+    },
 };
 
 /* Returns TRUE if the platform does not support ISA DMA. */
@@ -326,10 +326,17 @@ static BOOLEAN HalpSkipIsaDmaInit()
     return FALSE;
 }
 
-NTSTATUS HalpInitDma()
+static NTSTATUS HalpInitDma()
 {
+    static BOOLEAN IsaDmaInitialized = FALSE;
+    /* If we are already initialized, return success. */
+    if (IsaDmaInitialized) {
+	return STATUS_SUCCESS;
+    }
+
     /* On platforms that do not support ISA DMA, we skip ISA DMA init. */
     if (HalpSkipIsaDmaInit()) {
+	IsaDmaInitialized = TRUE;
 	return STATUS_SUCCESS;
     }
 
@@ -360,6 +367,7 @@ NTSTATUS HalpInitDma()
 	assert(HalpEisaSystemAdapters[i] != NULL);
     }
 
+    IsaDmaInitialized = TRUE;
     return STATUS_SUCCESS;
 }
 
@@ -371,6 +379,7 @@ NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
     if (DmaChannel >= 8) {
 	return STATUS_INVALID_PARAMETER;
     }
+    RET_ERR(HalpInitDma());
     PHAL_SYSTEM_ADAPTER AdapterObject = HalpEisaSystemAdapters[DmaChannel];
     if (AdapterObject == NULL) {
 	return STATUS_NO_SUCH_DEVICE;
@@ -419,6 +428,7 @@ NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
     if (TransferLength == 0) {
 	return STATUS_INVALID_PARAMETER_4;
     }
+    RET_ERR(HalpInitDma());
 
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
@@ -441,6 +451,7 @@ NTSTATUS WdmHalDmaDisableChannel(IN ASYNC_STATE AsyncState,
 				 IN PTHREAD Thread,
 				 IN HANDLE AdapterHandle)
 {
+    RET_ERR(HalpInitDma());
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
 				      OBJECT_TYPE_SYSTEM_ADAPTER,
@@ -466,6 +477,7 @@ NTSTATUS WdmHalDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
 				      IN HANDLE AdapterHandle,
 				      OUT ULONG *pCount)
 {
+    RET_ERR(HalpInitDma());
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
 				      OBJECT_TYPE_SYSTEM_ADAPTER,
