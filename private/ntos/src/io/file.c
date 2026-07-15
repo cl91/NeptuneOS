@@ -1295,9 +1295,24 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
     /* TODO: We need to cache FileBasicInformation and FileStandardInformation
      * just like the fast IO path on Windows. */
 
-    /* Deviceless files cannot be queried. */
+    /* We only support FileStandardInformation for deviceless files. */
     if (!Locals.FileObject->DeviceObject) {
-	Status = STATUS_NOT_IMPLEMENTED;
+	if (FileInfoClass == FileStandardInformation) {
+	    PFILE_STANDARD_INFORMATION FileInfo = NULL;
+	    IF_ERR_GOTO(out, Status, MmMapUserBuffer(&Thread->Process->VSpace,
+						     (MWORD)FileInfoBuffer, Length,
+						     (PVOID *)&FileInfo));
+	    RtlZeroMemory(FileInfo, sizeof(FILE_STANDARD_INFORMATION));
+	    if (Locals.FileObject->Fcb) {
+		FileInfo->AllocationSize.QuadPart = Locals.FileObject->Fcb->FileSize;
+		FileInfo->EndOfFile.QuadPart = Locals.FileObject->Fcb->FileSize;
+	    }
+	    Locals.IoStatus.Information = sizeof(FILE_STANDARD_INFORMATION);
+	    Locals.IoStatus.Status = STATUS_SUCCESS;
+	    MmUnmapUserBuffer(FileInfo);
+	} else {
+	    Status = STATUS_NOT_IMPLEMENTED;
+	}
 	goto out;
     }
     assert(Locals.FileObject->DeviceObject->DriverObject != NULL);
