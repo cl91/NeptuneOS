@@ -3211,12 +3211,14 @@ static NTSTATUS HalpCreateFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Info,
 				    (PVOID *)&FrameBuffer->VirtualBase) :
 	MmMapIoSpace(FRAMEBUFFER_VADDR_START,
 		     FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE,
-		     FrameBufferSize, Info->PhysicalAddress, MmWriteCombined,
+		     LARGE_PAGE_ALIGN_UP(FrameBufferSize),
+		     Info->PhysicalAddress, MmWriteCombined,
 		     FALSE, &FrameBuffer->VirtualBase);
     if (!NT_SUCCESS(Status) && !DriverObject) {
 	/* Try the dynamic virtual region if there isn't enough space in the reserved boot
 	 * framebuffer mapping space. */
-	Status = MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, FrameBufferSize,
+	Status = MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END,
+			      LARGE_PAGE_ALIGN_UP(FrameBufferSize),
 			      Info->PhysicalAddress, MmWriteCombined, FALSE,
 			      &FrameBuffer->VirtualBase);
     }
