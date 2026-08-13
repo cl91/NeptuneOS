@@ -1326,7 +1326,7 @@ static VOID MiFileMapPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
 {
     PFILE_MAP_PIN_DATA_CONTEXT Ctx = Context;
     assert(Ctx);
-    MmDbg("File mapping callback, file offset 0x%llx, length 0x%llx, status 0x%x,"
+    MmDbg("File mapping callback, file offset 0x%llx, length 0x%llx, status 0x%x, "
 	  "thread %p (%s), address %p, ip %p\n", FileOffset, Length, Status,
 	  Ctx->Thread, KEDBG_THREAD_TO_FILENAME(Ctx->Thread),
 	  (PVOID)Ctx->Addr, (PVOID)Ctx->Ip);
