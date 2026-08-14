@@ -570,6 +570,7 @@ NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
 				 IN PPHYSICAL_ADDRESS HighestAddr,
 				 IN ULONG BoundaryAddressBits,
 				 IN MEMORY_CACHING_TYPE CacheType,
+				 IN BOOLEAN UseLargePage,
 				 OUT PVOID *pVirtAddr,
 				 OUT PHYSICAL_ADDRESS *pPhyAddr)
 {
@@ -586,7 +587,7 @@ NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
     RET_ERR(MmAllocatePhysicallyContiguousMemory(&Thread->Process->VSpace,
 						 Length,
 						 HighestAddr->QuadPart,
-						 CacheType,
+						 CacheType, UseLargePage,
 						 &VirtAddr, &PhyAddr));
     *pVirtAddr = (PVOID)VirtAddr;
     pPhyAddr->QuadPart = PhyAddr;

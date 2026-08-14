@@ -950,6 +950,8 @@ VOID MmUnmapWindowEx(IN PVIRT_ADDR_SPACE VSpace,
 		     IN MWORD StartAddr,
 		     IN MWORD WindowSize);
 MWORD MmFindAndMarkUncommittedSubregion(IN PMMVAD Vad);
+#define MM_MAP_IO_SPACE_READ_ONLY	1
+#define MM_MAP_IO_SPACE_LARGE_PAGE	2
 NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
 			IN MWORD WindowStart,
 			IN MWORD WindowEnd,
@@ -957,7 +959,7 @@ NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
 			IN ULONG LowZeroBits,
 			IN MWORD PhyAddr,
 			IN MEMORY_CACHING_TYPE CacheType,
-			IN BOOLEAN ReadOnly,
+			IN ULONG Flags,
 			OUT MWORD *pVirtAddr,
 			OUT OPTIONAL PMMVAD *pVad);
 VOID MmUnmapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
@@ -974,6 +976,7 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN MWORD Length,
 					      IN MWORD HighestPhyAddr,
 					      IN MEMORY_CACHING_TYPE CacheType,
+					      IN BOOLEAN UseLargePage,
 					      OUT MWORD *VirtAddr,
 					      OUT MWORD *PhyAddr);
 NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
@@ -1068,12 +1071,12 @@ FORCEINLINE NTSTATUS MmMapIoSpace(IN MWORD WindowStart,
 				  IN MWORD WindowSize,
 				  IN MWORD PhyAddr,
 				  IN MEMORY_CACHING_TYPE CacheType,
-				  IN BOOLEAN ReadOnly,
+				  IN ULONG Flags,
 				  OUT MWORD *pVirtAddr)
 {
     extern VIRT_ADDR_SPACE MiNtosVaddrSpace;
     return MmMapIoSpaceEx(&MiNtosVaddrSpace, WindowStart, WindowEnd, WindowSize, 0,
-			  PhyAddr, CacheType, ReadOnly, pVirtAddr, NULL);
+			  PhyAddr, CacheType, Flags, pVirtAddr, NULL);
 }
 
 FORCEINLINE VOID MmUnmapIoSpace(IN MWORD VirtAddr)

@@ -121,7 +121,8 @@ PVOID HalpMapTable(IN PHYSICAL_ADDRESS PhyAddr,
 {
     MWORD VirtAddr = 0;
     NTSTATUS Status = MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, Size,
-				   PhyAddr.QuadPart, MmCached, TRUE, &VirtAddr);
+				   PhyAddr.QuadPart, MmCached,
+				   MM_MAP_IO_SPACE_READ_ONLY, &VirtAddr);
     if (!NT_SUCCESS(Status)) {
 	assert(FALSE);
 	return NULL;

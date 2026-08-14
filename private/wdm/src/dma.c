@@ -496,7 +496,7 @@ static NTSTATUS HalpAllocateMapRegisters(IN PADAPTER_OBJECT AdapterObject,
      * when it's available, so as not to waste scarce resource (low memory). */
     ULONG BoundAddrBits = HalpGetAdapterBoundaryAddressBits(AdapterObject);
     RET_ERR_EX(WdmHalAllocateDmaBuffer(Count << PAGE_SHIFT, &HighestAddr,
-				       BoundAddrBits, MmCached,
+				       BoundAddrBits, MmCached, TRUE,
 				       &MapReg->VirtBase, &MapReg->PhyBase),
 	       ExFreePool(MapReg));
     assert(MapReg->VirtBase != NULL);

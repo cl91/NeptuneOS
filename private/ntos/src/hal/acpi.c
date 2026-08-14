@@ -137,7 +137,7 @@ static NTSTATUS HalpAcpiMapTable(IN ULONG64 PhyAddr,
 {
     assert(Signatures);
     RET_ERR(MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, sizeof(ACPI_TABLE_HEADER),
-			 PhyAddr, MmCached, TRUE, (PVOID)Table));
+			 PhyAddr, MmCached, MM_MAP_IO_SPACE_READ_ONLY, (PVOID)Table));
     /* Do not map the table if signature does not match any of the given signatures. */
     BOOLEAN Match = FALSE;
     for (ULONG i = 0; i < SignatureCount; i++) {
@@ -159,7 +159,7 @@ static NTSTATUS HalpAcpiMapTable(IN ULONG64 PhyAddr,
     if (PhyAddr + (*Table)->Length > PAGE_ALIGN_UP64(PhyAddr + sizeof(ACPI_TABLE_HEADER))) {
 	MmUnmapIoSpace((MWORD)*Table);
 	RET_ERR(MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END, (*Table)->Length,
-			     PhyAddr, MmCached, TRUE, (PVOID)Table));
+			     PhyAddr, MmCached, MM_MAP_IO_SPACE_READ_ONLY, (PVOID)Table));
     }
     return STATUS_SUCCESS;
 }

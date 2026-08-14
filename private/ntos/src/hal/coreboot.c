@@ -82,7 +82,7 @@ static PCB_TABLE_HEADER HalpCbMapTable(IN ULONG64 PhyAddr)
     PCB_TABLE_HEADER Table = NULL;
     if (!NT_SUCCESS(MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END,
 				 sizeof(CB_TABLE_HEADER), PhyAddr,
-				 MmCached, TRUE, (PVOID)&Table))) {
+				 MmCached, MM_MAP_IO_SPACE_READ_ONLY, (PVOID)&Table))) {
 	assert(FALSE);
 	return NULL;
     }
@@ -97,7 +97,7 @@ static PCB_TABLE_HEADER HalpCbMapTable(IN ULONG64 PhyAddr)
 	MmUnmapIoSpace((MWORD)Table);
 	if (!NT_SUCCESS(MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END,
 				     Table->TableBytes, PhyAddr,
-				     MmCached, TRUE, (PVOID)&Table))) {
+				     MmCached, MM_MAP_IO_SPACE_READ_ONLY, (PVOID)&Table))) {
 	    assert(FALSE);
 	    return NULL;
 	}
