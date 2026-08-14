@@ -3256,7 +3256,7 @@ static VOID HalpDeleteFrameBuffer(IN PHAL_FRAMEBUFFER FrameBuffer)
 	RemoveEntryList(&FrameBuffer->DriverLink);
     }
     RemoveEntryList(&FrameBuffer->Link);
-    MmUnmapIoSpace(FrameBuffer->VirtualBase);
+    MmUnmapServerRegion(FrameBuffer->VirtualBase);
     ExFreePoolWithTag(FrameBuffer, NTOS_HAL_TAG);
 }
 
@@ -3360,20 +3360,22 @@ NTSTATUS WdmHalRegisterFrameBuffer(IN ASYNC_STATE State,
 	return STATUS_INVALID_ADDRESS;
     }
     LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
-	if (FrameBuffer->TextMode) {
-	    continue;
+	if (!FrameBuffer->TextMode && PhyBase == FrameBuffer->Info.PhysicalAddress &&
+	    Width * Height == FrameBuffer->Info.Width * FrameBuffer->Info.Height &&
+	    Pitch == FrameBuffer->Info.Pitch &&
+	    BitsPerPixel == FrameBuffer->Info.BitsPerPixel) {
+	    FrameBuffer->BlueIndex = BlueIndex;
+	    FrameBuffer->GreenIndex = GreenIndex;
+	    FrameBuffer->RedIndex = RedIndex;
+	    return STATUS_SUCCESS;
 	}
-	if (PhyBase == FrameBuffer->Info.PhysicalAddress) {
-	    if (Width * Height == FrameBuffer->Info.Width * FrameBuffer->Info.Height &&
-		Pitch == FrameBuffer->Info.Pitch &&
-		BitsPerPixel == FrameBuffer->Info.BitsPerPixel) {
-		FrameBuffer->BlueIndex = BlueIndex;
-		FrameBuffer->GreenIndex = GreenIndex;
-		FrameBuffer->RedIndex = RedIndex;
-		return STATUS_SUCCESS;
-	    } else {
-		HalpDeleteFrameBuffer(FrameBuffer);
-	    }
+	/* Delete all boot framebuffers as they are no longer valid once the actual
+	 * GPU driver has performed mode-setting on the card. Note if we are on a
+	 * multi-GPU system, this will delete all boot framebuffers. This is because
+	 * there is no way of reliably knowing which one belongs to the card doing the
+	 * mode-setting, so the only correct thing we can do is to delete all of them. */
+	if (!FrameBuffer->DriverObject) {
+	    HalpDeleteFrameBuffer(FrameBuffer);
 	}
     }
     HAL_FRAMEBUFFER_INFO Info = {
@@ -3386,11 +3388,6 @@ NTSTATUS WdmHalRegisterFrameBuffer(IN ASYNC_STATE State,
     };
     RET_ERR(HalpCreateFrameBuffer(&Info, Offset, BlueIndex, GreenIndex, RedIndex,
 				  FALSE, DriverObject, VirtBase, Size, NeedFlush));
-    LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
-	if (FrameBuffer->TextMode) {
-	    HalpDeleteFrameBuffer(FrameBuffer);
-	}
-    }
     DbgTrace("Registered framebuffer at physical base %p, pitch 0x%x, "
 	     "width %d, height %d, bits per pixel %d, bgr = (%d %d %d)\n",
 	     (PVOID)(ULONG_PTR)Info.PhysicalAddress, Info.Pitch, Info.Width,
@@ -3413,5 +3410,6 @@ NTSTATUS WdmHalUnregisterFrameBuffer(IN ASYNC_STATE State,
 	    return STATUS_SUCCESS;
 	}
     }
+    assert(FALSE);
     return STATUS_NOT_FOUND;
 }
