@@ -3250,10 +3250,11 @@ static NTSTATUS HalpCreateFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Info,
     return STATUS_SUCCESS;
 }
 
-static VOID HalpDeleteFrameBuffer(IN PHAL_FRAMEBUFFER FrameBuffer)
+VOID HalDeleteFrameBuffer(IN PHAL_FRAMEBUFFER FrameBuffer)
 {
     if (FrameBuffer->DriverObject) {
 	RemoveEntryList(&FrameBuffer->DriverLink);
+	ObDereferenceObject(FrameBuffer->DriverObject);
     }
     RemoveEntryList(&FrameBuffer->Link);
     MmUnmapServerRegion(FrameBuffer->VirtualBase);
@@ -3375,7 +3376,7 @@ NTSTATUS WdmHalRegisterFrameBuffer(IN ASYNC_STATE State,
 	 * there is no way of reliably knowing which one belongs to the card doing the
 	 * mode-setting, so the only correct thing we can do is to delete all of them. */
 	if (!FrameBuffer->DriverObject) {
-	    HalpDeleteFrameBuffer(FrameBuffer);
+	    HalDeleteFrameBuffer(FrameBuffer);
 	}
     }
     HAL_FRAMEBUFFER_INFO Info = {
@@ -3406,7 +3407,7 @@ NTSTATUS WdmHalUnregisterFrameBuffer(IN ASYNC_STATE State,
     LoopOverList(FrameBuffer, &HalpFrameBuffers, HAL_FRAMEBUFFER, Link) {
 	if (DriverObject == FrameBuffer->DriverObject &&
 	    FrameBuffer->DriverVirtBase == VirtBase) {
-	    HalpDeleteFrameBuffer(FrameBuffer);
+	    HalDeleteFrameBuffer(FrameBuffer);
 	    return STATUS_SUCCESS;
 	}
     }

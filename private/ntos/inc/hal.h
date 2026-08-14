@@ -105,6 +105,7 @@ VOID HalRegisterBootFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Info,
 				IN UCHAR BlueIndex,
 				IN UCHAR GreenIndex,
 				IN UCHAR RedIndex);
+VOID HalDeleteFrameBuffer(IN PHAL_FRAMEBUFFER FrameBuffer);
 VOID HalDisplayString(PCSTR String);
 ULONG HalGetConsoleMaxColumns();
 ULONG HalGetConsoleMaxRows();
