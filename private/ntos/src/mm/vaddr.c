@@ -1142,10 +1142,14 @@ NTSTATUS MmMapUserBufferEx(IN PVIRT_ADDR_SPACE VSpace,
 	       });
 
     PMMVAD TargetBufferVad = NULL;
-    RET_ERR(MiMapSharedRegion(VSpace, UserWindowStart, WindowSize,
-			      TargetVSpace, TargetVaddrStart,
-			      TargetVaddrEnd,
-			      ReadOnly ? MEM_RESERVE_READ_ONLY : 0,
+    /* We should always try reserving a large-page aligned window just in case
+     * the original region is mapped using large pages. */
+    ULONG ReserveFlags = MEM_RESERVE_LARGE_PAGES;
+    if (ReadOnly) {
+	ReserveFlags |= MEM_RESERVE_READ_ONLY;
+    }
+    RET_ERR(MiMapSharedRegion(VSpace, UserWindowStart, WindowSize, TargetVSpace,
+			      TargetVaddrStart, TargetVaddrEnd, ReserveFlags,
 			      ReserveOnly ? 0 : WindowSize, CacheType, &TargetBufferVad));
     *TargetStartAddr = BufferStart - UserWindowStart + TargetBufferVad->AvlNode.Key;
     return STATUS_SUCCESS;
