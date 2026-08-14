@@ -1456,7 +1456,7 @@ NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
 			IN ULONG LowZeroBits,
 			IN MWORD PhyAddr,
 			IN MEMORY_CACHING_TYPE CacheType,
-			IN BOOLEAN ReadOnly,
+			IN ULONG Flags,
 			OUT MWORD *pVirtAddr,
 			OUT OPTIONAL PMMVAD *pVad)
 {
@@ -1467,28 +1467,33 @@ NTSTATUS MmMapIoSpaceEx(IN PVIRT_ADDR_SPACE VSpace,
     assert(IS_PAGE_ALIGNED(WindowStart));
     assert(IS_PAGE_ALIGNED(WindowEnd));
     PMMVAD Vad = NULL;
-    ULONG Flags = MEM_RESERVE_PHYSICAL_MAPPING | MEM_RESERVE_LARGE_PAGES;
-    if (ReadOnly) {
-	Flags |= MEM_RESERVE_READ_ONLY;
+    ULONG ReserveFlags = MEM_RESERVE_PHYSICAL_MAPPING;
+    if (Flags & MM_MAP_IO_SPACE_READ_ONLY) {
+	ReserveFlags |= MEM_RESERVE_READ_ONLY;
     }
-    BOOLEAN Retry = FALSE;
+    if (Flags & MM_MAP_IO_SPACE_LARGE_PAGE) {
+	ReserveFlags |= MEM_RESERVE_LARGE_PAGES;
+    }
+    BOOLEAN Retry = TRUE;
 retry:
     RET_ERR(MmReserveVirtualMemoryEx(VSpace, WindowStart, WindowEnd, WindowSize,
-				     LowZeroBits, 0, Flags, &Vad));
+				     LowZeroBits, 0, ReserveFlags, &Vad));
     Vad->PhysicalSectionView.SectionOffset = 0;
 
     PAGING_ATTRIBUTES Attributes = MiGetPagingAttributesFromCacheType(CacheType);
     MWORD VirtAddr = Vad->AvlNode.Key;
-    PAGING_RIGHTS PagingRights = ReadOnly ? MM_RIGHTS_RO : MM_RIGHTS_RW;
-    BOOLEAN UseLargePage = IS_LARGE_PAGE_ALIGNED(PhyAddr) && IS_LARGE_PAGE_ALIGNED(VirtAddr);
+    PAGING_RIGHTS PagingRights =
+	(Flags & MM_MAP_IO_SPACE_READ_ONLY) ? MM_RIGHTS_RO : MM_RIGHTS_RW;
+    BOOLEAN UseLargePage = !!(Flags & MM_MAP_IO_SPACE_LARGE_PAGE) &&
+	IS_LARGE_PAGE_ALIGNED(PhyAddr) && IS_LARGE_PAGE_ALIGNED(VirtAddr);
     NTSTATUS Status = MiMapIoMemory(VSpace, PhyAddr, VirtAddr, WindowSize, PagingRights,
 				    Attributes, UseLargePage);
     if (!NT_SUCCESS(Status)) {
 	MmDeleteVad(Vad);
 	/* If we failed to map the IO page due to the physical region having already
 	 * been mapped using large pages, retry with a larger region size. */
-	if (Status == STATUS_RESOURCE_IN_USE && !Retry) {
-	    Retry = TRUE;
+	if (Status == STATUS_RESOURCE_IN_USE && Retry) {
+	    Retry = FALSE;
 	    PageOffset += PhyAddr - LARGE_PAGE_ALIGN(PhyAddr);
 	    PhyAddr = LARGE_PAGE_ALIGN(PhyAddr);
 	    WindowSize = LARGE_PAGE_ALIGN_UP(WindowSize + PageOffset);
@@ -1557,6 +1562,7 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 					      IN MWORD Length,
 					      IN MWORD HighestPhyAddr,
 					      IN MEMORY_CACHING_TYPE CacheType,
+					      IN BOOLEAN UseLargePage,
 					      OUT MWORD *VirtAddr,
 					      OUT MWORD *pPhyAddr)
 {
@@ -1569,7 +1575,9 @@ NTSTATUS MmAllocatePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
     RET_ERR(MmRequestUntypedEx(Log2Size, HighestPhyAddr, &Untyped));
     MWORD PhyAddr = Untyped->AvlNode.Key;
     RET_ERR_EX(MmMapIoSpaceEx(VSpace, USER_IMAGE_REGION_START, USER_ADDRESS_END, Length,
-			      Log2Size, PhyAddr, CacheType, FALSE, VirtAddr, NULL),
+			      Log2Size, PhyAddr, CacheType,
+			      UseLargePage ? MM_MAP_IO_SPACE_LARGE_PAGE : 0,
+			      VirtAddr, NULL),
 	       MmReleaseUntyped(Untyped));
     *pPhyAddr = PhyAddr;
     return STATUS_SUCCESS;
@@ -1919,7 +1927,7 @@ NTSTATUS WdmMapIoSpace(IN ASYNC_STATE AsyncState,
     assert(IoGetDriverObjectFromProcess(Thread->Process));
     return MmMapIoSpaceEx(&Thread->Process->VSpace, USER_IMAGE_REGION_START,
 			  USER_ADDRESS_END, WindowSize, 0, PhyAddr,
-			  CacheType, FALSE, (MWORD *)VirtAddr, NULL);
+			  CacheType, MM_MAP_IO_SPACE_LARGE_PAGE, (MWORD *)VirtAddr, NULL);
 }
 
 NTSTATUS WdmUnmapIoSpace(IN ASYNC_STATE AsyncState,

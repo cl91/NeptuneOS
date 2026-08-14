@@ -94,7 +94,7 @@ NTAPI NTSTATUS MmAllocateContiguousMemorySpecifyCache(IN SIZE_T NumberOfBytes,
 {
     ULONG BoundaryAddressBits = RtlFindLeastSignificantBit(BoundaryAddressMultiple.QuadPart) + 1;
     return WdmHalAllocateDmaBuffer(NumberOfBytes, &HighestAddr,
-				   BoundaryAddressBits, CacheType,
+				   BoundaryAddressBits, CacheType, FALSE,
 				   VirtBase, PhysBase);
 }
 
@@ -158,13 +158,10 @@ static PVOID IopAllocateDmaPool(IN MEMORY_CACHING_TYPE CacheType,
     }
     SIZE_T AllocationSize = ALIGN_UP_BY(Size, DMA_POOL_ALLOCATION_GRANULARITY);
     PHYSICAL_ADDRESS HighestAddr = { .QuadPart = ULONG_PTR_MAX };
-    PHYSICAL_ADDRESS BoundaryAddressMultiple = {};
-    NTSTATUS Status = MmAllocateContiguousMemorySpecifyCache(AllocationSize,
-							     HighestAddr,
-							     BoundaryAddressMultiple,
-							     CacheType,
-							     &DmaPool->VirtualAddress,
-							     &DmaPool->PhysicalAddress);
+    NTSTATUS Status = WdmHalAllocateDmaBuffer(AllocationSize, &HighestAddr, 0,
+					      CacheType, TRUE,
+					      &DmaPool->VirtualAddress,
+					      &DmaPool->PhysicalAddress);
     if (!NT_SUCCESS(Status)) {
 	ExFreePool(DmaPool);
 	return NULL;

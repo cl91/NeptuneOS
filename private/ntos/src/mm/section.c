@@ -1276,10 +1276,12 @@ NTSTATUS MmMapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 	} else if (AccessProtection & PAGE_WRITECOMBINE) {
 	    CacheType = MmWriteCombined;
 	}
+	ULONG Flags = MM_MAP_IO_SPACE_LARGE_PAGE;
+	if (AccessProtection & PAGE_READONLY) {
+	    Flags |= MM_MAP_IO_SPACE_READ_ONLY;
+	}
 	RET_ERR(MmMapIoSpaceEx(VSpace, *BaseAddress, 0, *ViewSize, 0,
-			       *SectionOffset, CacheType,
-			       !!(AccessProtection & PAGE_READONLY),
-			       BaseAddress, &Vad));
+			       *SectionOffset, CacheType, Flags, BaseAddress, &Vad));
 	ObReferenceObjectByPointer(Section);
 	Vad->Section = Section;
 	InsertTailList(&Section->VadList, &Vad->SectionLink);

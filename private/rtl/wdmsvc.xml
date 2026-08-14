@@ -159,6 +159,7 @@
     <parameter annotation="in" type="ptr::PHYSICAL_ADDRESS" name="HighestAddr" />
     <parameter annotation="in" type="ULONG" name="BoundaryAddressBits" />
     <parameter annotation="in" type="MEMORY_CACHING_TYPE" name="CacheType" />
+    <parameter annotation="in" type="BOOLEAN" name="UseLargePage" />
     <parameter annotation="out" type="ptr::PVOID" name="VirtAddr" />
     <parameter annotation="out" type="ptr::PHYSICAL_ADDRESS" name="PhyAddr" />
   </svc>

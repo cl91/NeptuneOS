@@ -3213,14 +3213,14 @@ static NTSTATUS HalpCreateFrameBuffer(IN PHAL_FRAMEBUFFER_INFO Info,
 		     FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE,
 		     LARGE_PAGE_ALIGN_UP(FrameBufferSize),
 		     Info->PhysicalAddress, MmWriteCombined,
-		     FALSE, &FrameBuffer->VirtualBase);
+		     MM_MAP_IO_SPACE_LARGE_PAGE, &FrameBuffer->VirtualBase);
     if (!NT_SUCCESS(Status) && !DriverObject) {
 	/* Try the dynamic virtual region if there isn't enough space in the reserved boot
 	 * framebuffer mapping space. */
 	Status = MmMapIoSpace(EX_DYN_VSPACE_START, EX_DYN_VSPACE_END,
 			      LARGE_PAGE_ALIGN_UP(FrameBufferSize),
-			      Info->PhysicalAddress, MmWriteCombined, FALSE,
-			      &FrameBuffer->VirtualBase);
+			      Info->PhysicalAddress, MmWriteCombined,
+			      MM_MAP_IO_SPACE_LARGE_PAGE, &FrameBuffer->VirtualBase);
     }
     if (!NT_SUCCESS(Status)) {
 	ExFreePoolWithTag(FrameBuffer, NTOS_HAL_TAG);
@@ -3287,7 +3287,7 @@ NTSTATUS HalpInitVga()
      * so when the real GPU driver is initialized, its framebuffer will be mapped at
      * the beginning of the framebuffer virtual window. */
     RET_ERR_EX(MmMapIoSpace(FRAMEBUFFER_VADDR_START + FRAMEBUFFER_MAX_SIZE - PAGE_SIZE, 0,
-			    PAGE_SIZE, VGA_VIDEO_PAGE_PADDR, MmWriteCombined, FALSE,
+			    PAGE_SIZE, VGA_VIDEO_PAGE_PADDR, MmWriteCombined, 0,
 			    &FrameBuffer->VirtualBase),
 	       ExFreePoolWithTag(FrameBuffer, NTOS_HAL_TAG));
     InsertTailList(&HalpFrameBuffers, &FrameBuffer->Link);
