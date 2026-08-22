@@ -1089,7 +1089,7 @@ static NTSTATUS MiMapSharedRegion(IN PVIRT_ADDR_SPACE SrcVSpace,
 				     MEM_RESERVE_MIRRORED_MEMORY | TargetReserveFlag,
 				     &TargetVad));
     assert(TargetVad != NULL);
-    assert(TargetVad->WindowSize == SrcWindowSize);
+    assert(TargetVad->WindowSize >= SrcWindowSize);
 
     MmRegisterMirroredMemory(TargetVad, SrcVSpace, SrcWindowStart, CacheType);
     if (TargetCommitSize) {
