@@ -164,6 +164,7 @@ if [[ $ARCH == "amd64" || $ARCH == "arm64" ]]; then
 EOF
     sed -i '/assert_size_correct(long/d' libsel4/include/interfaces/sel4_client.h || build_failed
     sed -i '/assert_size_correct(seL4_X86_VMAttributes,/d' libsel4/include/interfaces/sel4_client.h || build_failed
+    sed -i '/assert_size_correct(seL4_X86_EPT_VMAttributes,/d' libsel4/include/interfaces/sel4_client.h || build_failed
     sed -i '/assert_size_correct(seL4_ARM_VMAttributes,/d' libsel4/include/interfaces/sel4_client.h || build_failed
     sed -i '/assert_size_correct(seL4_VCPUReg,/d' libsel4/include/interfaces/sel4_client.h || build_failed
 fi
