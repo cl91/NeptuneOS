@@ -420,13 +420,17 @@ static NTSTATUS PcipSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	    Res->Memory.Length <= TableOffset) {
 	    return STATUS_DEVICE_CONFIGURATION_ERROR;
 	}
-	/* Enable memory decoding temporarily because we need to modify the MSI-X table. */
+	/* Enable memory decoding because we need to modify the MSI-X table. Note
+	 * memory decoding is enabled here from now on as device needs to be able
+	 * to read the MSI-X table. */
 	PciSetCommand(PdoExtension, PCI_ENABLE_MEMORY_SPACE, TRUE);
+	CommandEnables |= PCI_ENABLE_MEMORY_SPACE;
 	PHYSICAL_ADDRESS TableAddress = { .QuadPart = Res->Memory.Start.QuadPart + TableOffset };
 	ULONG LengthToMap = PdoExtension->InterruptResourceCount * sizeof(PCI_MSIX_TABLE_ENTRY);
 	PPCI_MSIX_TABLE_ENTRY Table = MmMapIoSpace(TableAddress, LengthToMap, MmNonCached);
 	if (!Table) {
 	    assert(FALSE);
+	    PciSetCommand(PdoExtension, PCI_ENABLE_MEMORY_SPACE, FALSE);
 	    return STATUS_INSUFFICIENT_RESOURCES;
 	}
 	for (ULONG i = 0; i < PdoExtension->InterruptResourceCount; i++) {
@@ -439,7 +443,6 @@ static NTSTATUS PcipSetResources(IN PPCI_PDO_EXTENSION PdoExtension,
 	    Table[i].VectorControl = 0;
 	}
 	MmUnmapIoSpace(Table, LengthToMap);
-	PciSetCommand(PdoExtension, PCI_ENABLE_MEMORY_SPACE, FALSE);
     } else {
 	/* Else, program the MSI capability. */
 	assert(PdoExtension->InterruptResourceCount == 1);
