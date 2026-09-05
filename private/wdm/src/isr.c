@@ -282,9 +282,10 @@ NTAPI NTSTATUS IoConnectInterrupt(OUT PKINTERRUPT *pInterruptObject,
     /* The mutex cap should be in the process shared CNode. */
     assert(PsCapIsProcessShared(MutexCap));
 
-    DbgTrace("Created interrupt object %p ThreadHandle %p "
+    DbgTrace("Created interrupt object %p vector 0x%x ThreadHandle %p "
 	     "IrqHandler 0x%zx Notification 0x%zx Mutex 0x%zx\n",
-	     InterruptObject, InterruptObject->ThreadHandle,
+	     InterruptObject, InterruptObject->Vector,
+	     InterruptObject->ThreadHandle,
 	     InterruptObject->IrqHandlerCap,
 	     InterruptObject->NotificationCap,
 	     InterruptObject->Mutex.Notification);
