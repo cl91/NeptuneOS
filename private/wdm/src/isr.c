@@ -40,6 +40,13 @@ static VOID IopProcessDpcQueue()
 	    goto done;
 	}
 	PKDPC Dpc = CONTAINING_RECORD(Entry, KDPC, QueueEntry);
+	if (!Dpc->Queued) {
+	    DbgTrace("ERROR: DPC %p (BL %p FL %p Callback %p Context %p Args %p %p) is "
+		     "not queued but appears in the queue.\n",
+		     Dpc, Dpc->QueueEntry.Blink, Dpc->QueueEntry.Flink,
+		     Dpc->DeferredRoutine, Dpc->DeferredContext, Dpc->SystemArgument1,
+		     Dpc->SystemArgument2);
+	}
 	assert(Dpc->Queued);
 	Dpc->Queued = FALSE;
 	Entry = Dpc->QueueEntry.Flink;
@@ -144,7 +151,7 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 			       IN PVOID SystemArgument1,
 			       IN PVOID SystemArgument2)
 {
-    return KiInsertQueueDpc(Dpc, SystemArgument1, SystemArgument2, FALSE);
+    return KiInsertQueueDpc(Dpc, SystemArgument1, SystemArgument2, TRUE);
 }
 
 NTAPI BOOLEAN KeRemoveQueueDpc(IN OUT PKDPC Dpc)
