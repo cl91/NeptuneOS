@@ -183,7 +183,7 @@ NTAPI BOOLEAN KeCancelTimerEx(IN OUT PKTIMER Timer,
 	if (Timer->LowPriority && Timer->WorkItem) {
 	    IopRemoveWorkItem(Timer->WorkItem);
 	} else if (Timer->Dpc) {
-	    KeRemoveQueueDpc(Timer->Dpc);
+	    KiRemoveQueueDpc(Timer->Dpc, FALSE);
 	}
     }
     IopReleaseDpcMutex();

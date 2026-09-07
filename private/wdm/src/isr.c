@@ -142,6 +142,28 @@ BOOLEAN KiInsertQueueDpc(IN PKDPC Dpc,
     return Queued;
 }
 
+BOOLEAN KiRemoveQueueDpc(IN OUT PKDPC Dpc,
+			 IN BOOLEAN AcquireLock)
+{
+    BOOLEAN Queued = Dpc->Queued;
+    if (AcquireLock) {
+	IopAcquireDpcMutex();
+    }
+    if (Queued) {
+	DbgTrace("Removing DPC %p\n", Dpc);
+	RemoveEntryList(&Dpc->QueueEntry);
+	Dpc->SystemArgument1 = NULL;
+	Dpc->SystemArgument2 = NULL;
+	Dpc->Queued = FALSE;
+    } else {
+	DbgTrace("DPC %p not queued. Not removing\n", Dpc);
+    }
+    if (AcquireLock) {
+	IopReleaseDpcMutex();
+    }
+    return Queued;
+}
+
 /*
  * As is in Windows/ReactOS you cannot queue DPC objects multiple
  * times. This routine returns false if the DPC object has already
@@ -156,19 +178,7 @@ NTAPI BOOLEAN KeInsertQueueDpc(IN PKDPC Dpc,
 
 NTAPI BOOLEAN KeRemoveQueueDpc(IN OUT PKDPC Dpc)
 {
-    BOOLEAN Queued = Dpc->Queued;
-    IopAcquireDpcMutex();
-    if (Queued) {
-	DbgTrace("Removing DPC %p\n", Dpc);
-	RemoveEntryList(&Dpc->QueueEntry);
-	Dpc->SystemArgument1 = NULL;
-	Dpc->SystemArgument2 = NULL;
-	Dpc->Queued = FALSE;
-    } else {
-	DbgTrace("DPC %p not queued. Not removing\n", Dpc);
-    }
-    IopReleaseDpcMutex();
-    return Queued;
+    return KiRemoveQueueDpc(Dpc, TRUE);
 }
 
 static NTSTATUS KiConnectIrqNotification(IN MWORD IrqHandlerCap,

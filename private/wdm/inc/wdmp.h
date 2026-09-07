@@ -220,6 +220,8 @@ BOOLEAN KiInsertQueueDpc(IN PKDPC Dpc,
 			 IN PVOID SystemArgument1,
 			 IN PVOID SystemArgument2,
 			 IN BOOLEAN AcquireLock);
+BOOLEAN KiRemoveQueueDpc(IN OUT PKDPC Dpc,
+			 IN BOOLEAN AcquireLock);
 
 /* ioport.c */
 extern LIST_ENTRY IopX86PortList;
