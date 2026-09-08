@@ -19,6 +19,17 @@ VOID IopReleaseDpcMutex()
     IoReleaseMutex(&IopDpcMutex);
 }
 
+static VOID IopSignalMainThread()
+{
+    PTEB Teb = NtCurrentTeb();
+    if ((Teb->Wdm.EventSignaled || Teb->Wdm.IoWorkItemQueued) && IopEventLoopNotification) {
+	assert(PsCapIsProcessShared(IopEventLoopNotification));
+	Teb->Wdm.IoWorkItemQueued = FALSE;
+	Teb->Wdm.EventSignaled = FALSE;
+	seL4_Signal(RtlProcessCNodeIndexToGuardedCap(IopEventLoopNotification));
+    }
+}
+
 static VOID IopProcessDpcQueue()
 {
     PTEB Teb = NtCurrentTeb();
@@ -61,20 +72,16 @@ static VOID IopProcessDpcQueue()
 	IopAcquireDpcMutex();
 	goto check;
     done:
-	assert(PsCapIsProcessShared(IopEventLoopNotification));
-	seL4_Signal(RtlProcessCNodeIndexToGuardedCap(IopEventLoopNotification));
+	IopSignalMainThread();
     }
 }
 
 VOID IopSignalDpcNotification()
 {
     PTEB Teb = NtCurrentTeb();
-    if ((Teb->Wdm.DpcQueued || Teb->Wdm.IoWorkItemQueued || Teb->Wdm.EventSignaled) &&
-	IopDpcNotificationCap) {
+    if (Teb->Wdm.DpcQueued && IopDpcNotificationCap) {
 	assert(PsCapIsProcessShared(IopDpcNotificationCap));
 	Teb->Wdm.DpcQueued = FALSE;
-	Teb->Wdm.IoWorkItemQueued = FALSE;
-	Teb->Wdm.EventSignaled = FALSE;
 	seL4_Signal(RtlProcessCNodeIndexToGuardedCap(IopDpcNotificationCap));
     }
 }
@@ -135,6 +142,13 @@ BOOLEAN KiInsertQueueDpc(IN PKDPC Dpc,
 	NtCurrentTeb()->Wdm.DpcQueued = TRUE;
     } else {
 	DbgTrace("DPC %p already inserted. Not inserting\n", Dpc);
+    }
+    /* In either cases, if we are in the main thread (PASSIVE_LEVEL), we need to
+     * signal the DPC notification so the DPC thread is unblocked immediately. If
+     * we are at DPC or higher level, this is delayed till the DPC/ISR thread is
+     * about to go to sleep. */
+    if (IoThreadIsAtPassiveLevel()) {
+	IopSignalDpcNotification();
     }
     if (AcquireLock) {
 	IopReleaseDpcMutex();
@@ -222,6 +236,8 @@ static NTAPI ULONG IopInterruptServiceThreadEntry(PVOID Context)
 	IoReleaseInterruptMutex(Interrupt);
 	/* Signal the DPC thread to check for the DPC queue */
 	IopSignalDpcNotification();
+	/* Signal the main thread to check for event or IO work item */
+	IopSignalMainThread();
     }
     return 0;
 }

@@ -2823,14 +2823,6 @@ delete:
     if (!IsListEmpty(&IopIrpQueue) || IopHasEnvToWakeUp() || WorkItemsQueued) {
 	goto process;
     }
-
-    /* If any of the IRP dispatch routine or work item queued DPC, now
-     * is the time to wake up the DPC thread. Note we don't care about
-     * IO work items or event objects at this point because they should
-     * have all been processed above. */
-    NtCurrentTeb()->Wdm.IoWorkItemQueued = FALSE;
-    NtCurrentTeb()->Wdm.EventSignaled = FALSE;
-    IopSignalDpcNotification();
 }
 
 /*
