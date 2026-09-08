@@ -35,7 +35,6 @@ static VOID IopProcessDpcQueue()
     PTEB Teb = NtCurrentTeb();
     Teb->Wdm.ServiceCap = IopDpcThreadWdmServiceCap;
     Teb->Wdm.IsDpcThread = TRUE;
-    PLIST_ENTRY Entry;
     while (TRUE) {
 	MWORD Badge = 0;
 	seL4_Wait(RtlProcessCNodeIndexToGuardedCap(IopDpcNotificationCap), &Badge);
@@ -44,8 +43,10 @@ static VOID IopProcessDpcQueue()
 	}
 	IopProcessTimerList();
 	IopAcquireDpcMutex();
-	Entry = IopDpcQueue.Flink;
     check:
+	/* A DPC routine may queue other DPCs (or requeue itself), so we need to
+	 * always check the beginning of the queue. */
+	PLIST_ENTRY Entry = IopDpcQueue.Flink;
 	if (Entry == &IopDpcQueue) {
 	    IopReleaseDpcMutex();
 	    goto done;
@@ -60,7 +61,6 @@ static VOID IopProcessDpcQueue()
 	}
 	assert(Dpc->Queued);
 	Dpc->Queued = FALSE;
-	Entry = Dpc->QueueEntry.Flink;
 	RemoveEntryList(&Dpc->QueueEntry);
 	IopReleaseDpcMutex();
 	if (Dpc->DeferredRoutine != NULL) {
