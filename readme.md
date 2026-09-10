@@ -108,9 +108,9 @@ Have a look at `build.sh` for the build script. I use Arch Linux (btw) so the
 toolchain versions that have been tested to work are whichever versions Arch Linux
 happened to have at the time I ran `pacman -Syu`, but from experience most recent
 versions of clang/LLVM should all work. You also need the `cpio` utility for building
-the initcpio. Finally, for the boot floppy and boot iso you will need the following
-tools: `syslinux` (for boot floppy), `grub` and `xorriso` (for boot iso), and
-`mtools` (for both).
+the initcpio. Finally, for the boot image and boot iso you will need the following
+tools: `syslinux`, `sgdisk` (`gptfdisk` package in Arch Linux), and `fdisk`
+(for boot image), `grub` and `xorriso` (for boot iso), and `mtools` (for both).
 
 It is recommended to use a language server-enabled IDE to browse the source code.
 The tested setup is the `lsp-mode` package on `emacs` with `clangd` as the language
@@ -124,9 +124,9 @@ we include the seL4 kernel as a submodule) and then run
 ./build.sh [amd64] [release]
 ```
 If you don't specify `amd64`, then it's an `i686` build. If you don't specify
-`release`, then it's a debug build. To create boot floppies, type
+`release`, then it's a debug build. To create boot disk images, type
 ```
-./mkfloopy.sh [amd64] [release]
+./mkhdd.sh [amd64] [release]
 ```
 To create boot isos, type
 ```
@@ -134,29 +134,33 @@ To create boot isos, type
 ```
 To emulate using QEMU, run
 ```
-./run.sh [direct|iso|uefi] [amd64] [release] [extra-qemu-args]
+./run.sh [direct|iso|ahci|nvme] [uefi] [amd64] [release] [extra-qemu-args]
 ```
 If you specify `direct`, then QEMU will load the seL4 kernel and the NTOS image
-directly (using `-kernel` and `-initrd`). If you specify `iso` or `uefi`, it will
+directly (using `-kernel` and `-initrd`). If you specify `iso`, it will
 load the boot iso built by `mkiso.sh`. The `uefi` option will also configure QEMU
 to load the UEFI firmware, which provides a nice high definition framebuffer console.
-Otherwise, the boot floppy created by `mkfloppy.sh`
-is used. Extra arguments are passed to QEMU. For instance, to run the `i386`
+Otherwise, the boot disk image created by `mkhdd.sh` is used. You can specify the hdd
+controller type with `ahci` or `nvme` (the default).
+Extra arguments are passed to QEMU. For instance, to run the `i386`
 release build with PC speaker enabled in QEMU you can pass the following (this
 assumes you are using a recent QEMU version and have pulseaudio)
 ```
 ./run.sh release -machine pcspk-audiodev=snd0 -audiodev pa,id=snd0
 ```
-To emulate an AHCI drive under QEMU, add the following extra QEMU arguments:
+To test guest networking, you can create a TAP device on the host and assign it an IP address
 ```
--drive file=disk.img,if=none,id=disk0 -device ich9-ahci,id=ahci0 -device ide-hd,drive=disk0,bus=ahci0.0
+sudo ip tuntap add dev tap0 mode tap
+sudo ip link set tap0 up
+sudo ip addr add 192.168.100.1/24 dev tap0
 ```
-Replace `disk.img` with the path to your disk image. You may need to add `-boot a` so QEMU
-will boot from the floppy disk. To emulate an NVME drive under QEMU, add the following
-extra QEMU arguments:
+You can then use the following extra QEMU arguments to establish a private network
+between the host and the guest
 ```
--drive file=disk.img,format=raw,if=none,id=drv0 -device nvme,serial=deadbeef,drive=drv0,id=nvme0
+-netdev tap,id=net0,ifname=tap0,script=no,downscript=no -device e1000e,netdev=net0
 ```
+The boot disk image contains a demo program `umtests.exe`, which contains simple tests
+and benchmarks for several device drivers in the system, including ethernet and storage.
 
 ### Debugging
 

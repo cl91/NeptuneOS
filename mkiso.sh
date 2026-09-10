@@ -44,3 +44,45 @@ cat <<EOF >> iso/boot/grub/grub.cfg
 }
 EOF
 grub-mkrescue -o boot.iso iso/
+
+IMG="efi_disk.img"
+SIZE_MB=300
+
+# 1. Create raw disk image
+dd if=/dev/zero of="$IMG" bs=1M count=$SIZE_MB status=progress
+
+# 2. Create GPT partition table + one EFI partition
+#    - partition 1: type EF00 (EFI System Partition)
+#    - starts at 1MiB (2048 sectors)
+sgdisk -o "$IMG"
+sgdisk -n 1:2048:0 -t 1:ef00 -c 1:"EFI System Partition" "$IMG"
+
+# 3. Compute partition offset (in bytes) and total sectors
+#    GPT + alignment => partition starts at sector 2048
+#    FAT will be written directly using mtools offset syntax
+PART_OFFSET=$(($(sgdisk -i 1 "$IMG"  | grep 'First sector' | cut -d' ' -f3) * 512))
+PART_SECTORS=$(sgdisk -i 1 "$IMG" | grep 'Partition size' | cut -d' ' -f3)
+
+# 4. Format partition as FAT32
+#    "::" is the FAT root directory
+mformat -i "${IMG}@@${PART_OFFSET}" -T $PART_SECTORS -F ::
+
+# Build standalone EFI binary
+grub-mkstandalone \
+    -O x86_64-efi \
+    -o BOOTX64.EFI \
+    -d /usr/lib/grub/x86_64-efi \
+    "boot/grub/grub.cfg=iso/boot/grub/grub.cfg" \
+    "kernel.gz=iso/kernel.gz" \
+    "ntos.gz=iso/ntos.gz"
+
+# 6. Copy GRUB EFI binary into FAT partition
+mmd -i "${IMG}@@${PART_OFFSET}" ::/EFI
+mmd -i "${IMG}@@${PART_OFFSET}" ::/EFI/BOOT
+
+mcopy -i "${IMG}@@${PART_OFFSET}" BOOTX64.EFI ::/EFI/BOOT/
+mcopy -i "${IMG}@@${PART_OFFSET}" base/umtests/umtests.exe ::/umtests.exe
+
+rm BOOTX64.EFI
+
+echo "Done: $IMG created"

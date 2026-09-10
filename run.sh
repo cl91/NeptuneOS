@@ -1,7 +1,7 @@
 ARCH=i386
 OVMFARCH=x64
 BUILD_TYPE=Debug
-BOOT_TYPE=iso
+BOOT_TYPE=nvme
 UEFI_BOOT=0
 
 for var in "$@"; do
@@ -23,6 +23,12 @@ for var in "$@"; do
     fi
     if [ "${var,,}" == 'iso' ]; then
         BOOT_TYPE=iso
+    fi
+    if [ "${var,,}" == 'ahci' ]; then
+        BOOT_TYPE=ahci
+    fi
+    if [ "${var,,}" == 'nvme' ]; then
+        BOOT_TYPE=nvme
     fi
     if [ "${var,,}" == 'uefi' ]; then
         UEFI_BOOT=1
@@ -69,11 +75,25 @@ for var in "$@"; do
     if [ "${var,,}" == 'iso' ]; then
         continue
     fi
+    if [ "${var,,}" == 'ahci' ]; then
+        continue
+    fi
+    if [ "${var,,}" == 'nvme' ]; then
+        continue
+    fi
     if [ "${var,,}" == 'uefi' ]; then
         continue
     fi
     ARGS[${#ARGS[@]}]="$var"
 done
+
+if (( $UEFI_BOOT )); then
+    BIOS="-bios /usr/share/ovmf/$OVMFARCH/OVMF.4m.fd"
+    DISKIMG="efi_disk.img"
+else
+    BIOS=""
+    DISKIMG="disk.img"
+fi
 
 if [[ $BOOT_TYPE == "direct" ]]; then
     BOOTMEDIA="-kernel $BUILDDIR/$IMAGEDIR/kernel -initrd $BUILDDIR/$IMAGEDIR/ntos"
@@ -81,12 +101,10 @@ elif [[ $BOOT_TYPE == "floppy" ]]; then
     BOOTMEDIA="-fda $BUILDDIR/floppy.img"
 elif [[ $BOOT_TYPE == "iso" ]]; then
     BOOTMEDIA="-cdrom $BUILDDIR/boot.iso"
-fi
-
-if (( $UEFI_BOOT )); then
-    BIOS="-bios /usr/share/ovmf/$OVMFARCH/OVMF.4m.fd"
-else
-    BIOS=""
+elif [[ $BOOT_TYPE == "ahci" ]]; then
+    BOOTMEDIA="-drive file=$BUILDDIR/$DISKIMG,if=none,id=disk0 -device ich9-ahci,id=ahci0 -device ide-hd,drive=disk0,bus=ahci0.0"
+elif [[ $BOOT_TYPE == "nvme" ]]; then
+    BOOTMEDIA="-drive file=$BUILDDIR/$DISKIMG,format=raw,if=none,id=drv0 -device nvme,serial=deadbeef,drive=drv0,id=nvme0"
 fi
 
 $QEMU -m size=400M -serial stdio $BOOTMEDIA $BIOS "${ARGS[@]}"
