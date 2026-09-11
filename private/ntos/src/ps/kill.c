@@ -238,11 +238,10 @@ NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
     ObReferenceObjectByPointer(Thread);
 
     /* If we are terminating a running driver process, unload the driver.
-     * Note we do not do this before the driver is fully loaded since
-     * IopLoadDriver takes care of properly dereferencing the driver object
-     * if it fails to load. */
+     * This will eventually detach the driver object from the process, once
+     * the refcount of the driver object goes to zero. */
     Locals.DriverObject = IoGetDriverObjectFromProcess(Process);
-    if (!Locals.DriverObject || !Locals.DriverObject->DriverLoaded) {
+    if (!Locals.DriverObject) {
 	goto close;
     }
     AWAIT(IoUnloadDriver, State, Locals, Thread, Locals.DriverObject,

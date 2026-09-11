@@ -1394,9 +1394,7 @@ static NTSTATUS IopHandleFlushCacheMessage(IN PIO_PACKET Msg,
 static VOID IopReceiveIoPacketsFromDriver(IN PIO_DRIVER_OBJECT DriverObject)
 {
     assert(DriverObject != NULL);
-    if (!DriverObject->DriverLoaded) {
-	KeSetEvent(&DriverObject->InitializationDoneEvent);
-    }
+    KeSetEvent(&DriverObject->InitializationDoneEvent);
 
     /* Process the driver's outgoing IO packet buffer. This buffer contains the
      * client driver's messages to the server. */

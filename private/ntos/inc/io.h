@@ -78,9 +78,6 @@ typedef struct _IO_DRIVER_OBJECT {
     MWORD OutgoingIoPacketsClientAddr;
     PIO_PACKET_BUFFER_POINTERS IoPacketBufferPointers; /* In NTOS server address space */
     ULONG SignalGroupIndex; /* Index within the array IopDriverSignalGroups */
-    BOOLEAN DriverLoaded;  /* TRUE if the driver loading succeeded. This is used by
-			    * PsTerminateProcess to determine whether we should
-			    * dereference the driver object. */
     BOOLEAN DriverUnloading; /* TRUE if IoUnlinkDriverFromServiceLoop has been called
 			      * for the driver and no more IO packets should be queued. */
 } IO_DRIVER_OBJECT, *PIO_DRIVER_OBJECT;

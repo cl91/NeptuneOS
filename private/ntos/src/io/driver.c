@@ -439,8 +439,10 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     }
 
     /* Now wait on the InitializationDoneEvent for the main event loop of the
-     * driver process to start. */
+     * driver process to start. We need to increase the refcount of the driver
+     * object as the driver process may crash during the load. */
     Locals.DriverObject = DriverObject;
+    ObReferenceObjectByPointer(DriverObject);
     AWAIT(KeWaitForSingleObject, State, Locals, Thread,
 	  &Locals.DriverObject->InitializationDoneEvent.Header, FALSE, NULL);
 
@@ -455,11 +457,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     } else {
 	Status = STATUS_UNSUCCESSFUL;
     }
-    if (!NT_SUCCESS(Status)) {
-	ObDereferenceObject(Locals.DriverObject);
-    } else {
-	Locals.DriverObject->DriverLoaded = TRUE;
-    }
+    ObDereferenceObject(Locals.DriverObject);
 
 out:
     assert(!Locals.DriverImageHandle);
