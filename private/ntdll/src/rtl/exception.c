@@ -265,7 +265,7 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	INT FrameCount = 0;
 
 	while (FrameCount < NUM_BACKTRACE_LINES) {
-	    ULONG64 ControlPc = UnwindContext.Rip;
+	    ULONG64 ControlPc = UnwindContext.INSTRUCTION_POINTER;
 	    if (ControlPc == 0)
 		break;
 
@@ -284,19 +284,42 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 				 NULL);
 	    } else {
 		/* Leaf function: simulate a return */
+#ifdef _M_AMD64
 		if (!RtlpIsStackPtrOk((PVOID)UnwindContext.Rsp))
 		    break;
 
 		UnwindContext.Rip = *(ULONG64*)UnwindContext.Rsp;
 		UnwindContext.Rsp += sizeof(ULONG64);
+#elif defined(_M_ARM64)
+		/* On ARM64, return address is typically in LR (X30),
+		 * not necessarily on the stack. */
+		ULONG64 NextPc = UnwindContext.Lr;
+
+		if (NextPc == 0)
+		    break;
+
+		/* Advance SP conservatively (stack frame size unknown) */
+		if (!RtlpIsStackPtrOk((PVOID)UnwindContext.Sp))
+		    break;
+
+		/* Move to caller */
+		UnwindContext.Pc = NextPc;
+
+		/* Heuristic: assume minimal frame (16 bytes alignment).
+		 * This is imperfect but avoids infinite loops. */
+		UnwindContext.Sp += 16;
+#else
+#error "Unsupported architecture"
+#endif
 	    }
 
-	    if (UnwindContext.Rip == 0)
+	    if (UnwindContext.INSTRUCTION_POINTER == 0)
 		break;
 
 	    /* Print frame */
 	    DbgPrinter("   ");
-	    RtlpPrintAddressWithModuleName((PVOID)UnwindContext.Rip, DbgPrinter);
+	    RtlpPrintAddressWithModuleName((PVOID)UnwindContext.INSTRUCTION_POINTER,
+					   DbgPrinter);
 
 	    FrameCount++;
 	}
