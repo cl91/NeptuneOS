@@ -240,6 +240,11 @@ FORCEINLINE KAFFINITY AFFINITY_MASK(ULONG Index)
     return (KAFFINITY)1 << Index;
 }
 
+FORCEINLINE ULONG KeGetRecommendedSharedDataAlignment(VOID)
+{
+    return 64;
+}
+
 /*
  * Native Calls. These are only available for client threads.
  * The NTOS root task has different function signatures for these.
