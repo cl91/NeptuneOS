@@ -1,91 +1,86 @@
-# Neptune OS: a Windows NT personality for the seL4 microkernel
+# Neptune OS: a general purpose, Windows NT-like OS built on the seL4 microkernel
 
-Neptune OS is a Windows NT personality for the seL4 microkernel. It implements what
-Microsoft calls the "NT Executive", the upper layer of the Windows kernel `NTOSKRNL.EXE`,
-as a user process under the seL4 microkernel. The NT Executive implements the so-called
-NT Native API, the native system call interface of Windows upon which the more familiar
-Win32 API is built. These are exposed to the user mode via stub functions in `NTDLL.DLL`
-with names such as `NtCreateProcess`. The NT Executive is also responsible for exposing
-a programming interface to device drivers. Said interface includes functions like
-`IoConnectInterrupt` and `IoCallDriver`. Our architecture enables device drivers to
-run in separate userspace processes and communicate with the NT Executive process via
-standard seL4 IPC primitives.
+Neptune OS is general purpose operating system built on the seL4 microkernel. Poetically
+speaking it is a "re-imagination" of what Windows NT could have become had seL4 been
+available back in 1988. The original NT architecture was heavily influenced by the archetypal
+Mach design and comprised of a collection of system services (called the NT Executive) sitting
+atop a minimal microkernel responsible only for core primitives. However, the hardware
+limitations of the late 1980s forced NT into a "hybrid" kernel approach where the
+Executive and the Microkernel, along with device drivers, were all sitting in kernel
+space for performance. The goal of Neptune OS is to rectify this historical compromise,
+by leveraging seL4’s capability-based, formally verified, high-performance IPC to realize
+the original NT vision: a pure microkernel architecture where system components exist as
+isolated, user-mode servers.
 
-The eventual goal of the Neptune OS project is to implement enough NT semantics such
-that a ReactOS user land can be ported under Neptune OS, as well as most ReactOS kernel
-drivers. In theory we should be able to achieve binary compatibility with native Windows
-executables provided that our implementation of the NT Native API is sufficiently faithful.
-We should also be able to achieve a high degree of source code portability with Windows
-device drivers and file system drivers, although we do not aim for complete, line-for-line
-source code compatibility due to the architectural differences with Windows/ReactOS that
-make this goal non-realistic. Please see the [Documentation](#documentations) section for
-more information.
+To achieve this, Neptune OS reimplements the NT Executive as a userspace process under seL4.
+This process acts as the root task and exposes, via the seL4 IPC, a higher-level system service
+interface (known as the NT Native API) to client processes. This Executive-provided API is
+versatile enough to support both what the NT architecture refers to as environment subsystems,
+such as Win32 and POSIX, that provide the usual familiar programming interfaces to user
+applications, as well as device driver subsystems which enable unmodified or minimally
+modified Windows and Linux kernel device drivers to run natively (ie. **NOT** in a virtual
+machine) as isolated, unprivileged userspace processes under Neptune OS. These device driver
+subsystems are our major architectural advantage over the original hybrid-kernel NT, as they
+ensure a driver crash remain a localized event which cannot compromise the stability of the
+rest of the system.
+
+The latest release of the project is
+[v0.4](https://github.com/cl91/NeptuneOS/releases/tag/v0.4.0004). You can watch the following
+demo videos which showcase unmodified Linux kernel GPU and Ethernet drivers
+([amdgpu, i915](https://youtu.be/BJIrUZIGgBc), [virtio_gpu, e1000e](https://youtu.be/YTdqeGk54to)
+running as regular userspace processes on Neptune OS.
+
+Disclaimer on AI use: this project does **NOT** use vibe-coding or allow vibe-coded PRs or
+LLM-generated issues. While I have used AI extensively for discussions and brain-storming,
+the actual coding is done almost entirely by myself with minimal AI use.
 
 ## Project Status
 
 The current status of the project is that we have implemented enough NT Executive
-components to support a reasonably complete storage driver and file system driver stack
-with read-ahead and write-back caching support. This includes the storage class driver pair
-(`classpnp.sys` and `disk.sys`), the `storport.sys` port driver, two storage miniport drivers
-for AHCI (`storahci.sys`, from [Microsoft](https://github.com/microsoft/Windows-driver-samples/tree/main/storage/miniports/storahci)) and NVME (`stornvme.sys`, from [Open Fabrics Alliance](https://nvmexpress.org/open-fabrics-alliance-nvm-express-window-driver-1-4-released-december-8-2014/)) drives, as well as the partition manager
-(`partmgr.sys`) and mount manager (`mountmgr.sys`). We also have a floppy controller
-driver `fdc.sys` for the standard floppy controller on the PC. So far only one file system
-driver, the FAT12/16/32 file system driver `fatfs.sys`, has been ported, but more is planned
-in the future (in particular, `ext2fsd` so we can support ext2/3/4). Together with a
-basic keyboard driver stack (keyboard class driver `kbdclass.sys` and the PS/2 port driver
-`i8042prt.sys`), these allow us to run a basic command prompt `ntcmd.exe`, taken from the
-ReactOS project, that supports most of the common shell commands, such as `pwd`, `cd`, `copy`,
-`move`, `del`, `mount`, and `umount`. We also include a `beep.sys` driver which makes an
-annoying sound on the PC speaker.
+components to support the following:
 
-The entire system fits in a floppy and can be downloaded from
-[Release v0.3.0003](https://github.com/cl91/NeptuneOS/releases/tag/v0.3.0003).
-You can watch a short demo on [YouTube](https://www.youtube.com/watch?v=ejNeS7A5qq0).
-You can also build it yourself. See the section on [Building](#building-and-running).
-
-### Planned Features
-Due to the lack of high quality open-source Windows device drivers, the main goal of the
-next release is to design a subsystem which allows reusing of the Linux kernel device
-drivers. The basic idea is building the Linux kernel as a library using the work done in
-the LKL project, and writing a shim that facilitates communication between the NT Executive
-process and the Linux device driver library using the standard IRP driver interface. For
-more details, see issue [#19](https://github.com/cl91/NeptuneOS/issues/19).
+* Running nontrivial Linux kernel device drivers natively in userspace. The tested drivers
+  are:
+  - DRM (GPU) drivers: i915, radeon, amdgpu. Only modesetting and framebuffer mapping are
+	tested as 3D rendering requires userspace mesa components, which have not been ported
+	yet.
+  - Ethernet: Intel e1000e and Realtek r8169. Basic Ethernet packet TX/RX is working.
+  - USB xHCI controller. Only port enumeration is tested.
+* ACPI and PCI bus drivers, ported from ReactOS, to enable power management (ACPI poweroff
+  and reboot) and PCI bus enumeration.
+* Basic keyboard driver stack (keyboard class driver `kbdclass.sys` and the PS/2 port driver
+  `i8042prt.sys`)
+* A reasonably complete storage driver and file system driver stack with read-ahead and
+  write-back caching support, ported from Windows and ReactOS. These include:
+  - The storage class driver pair (`classpnp.sys` and `disk.sys`), taken from the official
+    Microsoft open source Windows driver
+	[repo](https://github.com/microsoft/Windows-driver-samples).
+  - The `storport.sys` port driver, taken from ReactOS and modified to fix bugs and add
+    minimal Win8+ API implementation to support `storahci` and `stornvme` drivers.
+  - AHCI storage miniport driver `storahci.sys` from
+	[Microsoft](https://github.com/microsoft/Windows-driver-samples/tree/main/storage/miniports/storahci).
+  - NVME storage miniport driver `stornvme.sys` from
+    [Open Fabrics Alliance](https://nvmexpress.org/open-fabrics-alliance-nvm-express-window-driver-1-4-released-december-8-2014/).
+  - The partition manager (`partmgr.sys`) driver and the mount manager driver (`mountmgr.sys`).
+  - Floppy controller driver `fdc.sys` for the standard floppy controller on the PC.
+  - The FAT12/16/32 file system driver `fatfs.sys`.
+* A basic Session Manager `smss.exe` and NT native command prompt `ntcmd.exe`, with support for
+  most common shell commands.
+* A disk benchmark utility `umtests.exe` (see [Benchmarking](#benchmarking) below).
+* Finally, a `beep.sys` driver which makes an annoying sound on the PC speaker.
 
 ## Minimal System Requirements
 
-For i386 systems:
+For amd64 systems we require at least an Intel Ivy Bridge processor or the AMD equivalent.
+The default seL4 kernel is built with the `fsgsbase` instruction enabled which is only
+supported on Ivy Bridge and later. It is possible to disable the use of the fsgsbase
+instruction in the seL4 kernel build (see `private/ntos/cmake/sel4.cmake`) but this has
+not been tested on a real machine.
 
-1. CPU: At least a Pentium 2 or equivalent: the default clang target is i686 which
-   can generate instructions not implemented by 386, 486, and Pentium. Also, on x86
-   the seL4 kernel assumes that the processor supports global pages (bit PGE in CR4).
-   This is only supported in Pentium Pro (i686) and later. There is no way to disable
-   this at compile time (see assembly routine `enable_paging` in `sel4/src/arch/x86/32/head.S`).
-2. RAM: 32MB should be safe, can probably go lower.
-3. BIOS or UEFI-based firmware, with a conformant ACPI implementation. This is more of a seL4
-   requirement as it needs at least ACPI 3.0 for detecting the number of CPU cores. Note
-   that most early 32-bit era PCs don't necessarily have a conformant ACPI (let alone
-   ACPI 3.0) implementation, so this pretty much restricts you to Core 2 Duo era machines.
-   Thinkpad X60 is a 32-bit laptop that has been tested to work.
-4. VGA-compatible graphics controller. If you are booting under UEFI, the GOP linear
-   framebuffer is used to render the text console. Similarly, if you use coreboot as
-   your boot firmware and have enabled its builtin graphics initialization routines,
-   its linear framebuffer will also be used to render our text console. Otherwise, the
-   VGA text console will be used.
-5. PS2 keyboard. Many BIOSes offer PS2 emulation for USB keyboards so connecting a USB
-   keyboard might also work.
-
-For amd64 systems the CPU and RAM requirements are slightly different:
-
-1. CPU: At least Intel Ivy Bridge or equivalent: the default seL4 kernel is built with
-   the `fsgsbase` instruction enabled. This is only supported on Ivy Bridge and later.
-   To run amd64 builds on earlier CPUs you can disable fsgsbase instruction in
-   `private/ntos/cmake/sel4.cmake`. Also we require cmpxchg16b, which is available since
-   Nehalem, and quite possibly earlier (earlier Core 2 processors might need a microcode
-   update).
-2. RAM: 128MB should be safe, can probably go lower.
-
-For `amd64` machines, Thinkpad X230, T420, X2100 (from 51NB), and the GPD Micropc (1st gen)
-have all been tested to work.
+For i386 systems, we require at least a Core 2 Duo processor or the AMD equivalent, as
+the seL4 kernel assumes that the processor supports global pages (bit PGE in CR4) and
+requires at least ACPI 3.0 to detect the number of CPU nodes. ACPI 3.0 did not become
+widely available until the Core 2 Duo era.
 
 ## Building and running
 
@@ -118,8 +113,7 @@ server. The `build.sh` script will generate the `compile_commands.json` file for
 `clangd`. You will need to install [jq](https://jqlang.github.io/jq/) for this
 purpose.
 
-Clone the project first (make sure you use `git clone --recurse-submodules` since
-we include the seL4 kernel as a submodule) and then run
+Clone the project first (make sure you use `git clone --recurse-submodules`) and then run
 ```
 ./build.sh [amd64] [release]
 ```
@@ -161,6 +155,12 @@ between the host and the guest
 ```
 The boot disk image contains a demo program `umtests.exe`, which contains simple tests
 and benchmarks for several device drivers in the system, including ethernet and storage.
+
+### Firmware
+
+To run on physical hardware, you need to include the necessary firmware in the final
+OS image. To do so you need to edit the `FW_COPY_LIST` variable in `build.sh`. The
+shipped release images contain AMD GPU firmware for the Polaris generation cards.
 
 ### Debugging
 
