@@ -1,9 +1,9 @@
-# Neptune OS: a general purpose, Windows NT-like OS built on the seL4 microkernel
+# Neptune OS: a general purpose Windows NT-like OS built on the seL4 microkernel
 
 Neptune OS is general purpose operating system built on the seL4 microkernel. Poetically
 speaking it is a "re-imagination" of what Windows NT could have become had seL4 been
 available back in 1988. The original NT architecture was heavily influenced by the archetypal
-Mach design and comprised of a collection of system services (called the NT Executive) sitting
+Mach design and comprised of a collection of system services, called the NT Executive, sitting
 atop a minimal microkernel responsible only for core primitives. However, the hardware
 limitations of the late 1980s forced NT into a "hybrid" kernel approach where the
 Executive and the Microkernel, along with device drivers, were all sitting in kernel
@@ -27,10 +27,10 @@ rest of the system.
 The latest release of the project is
 [v0.4](https://github.com/cl91/NeptuneOS/releases/tag/v0.4.0004). You can watch the following
 demo videos which showcase unmodified Linux kernel GPU and Ethernet drivers
-([amdgpu, i915](https://youtu.be/BJIrUZIGgBc), [virtio_gpu, e1000e](https://youtu.be/YTdqeGk54to)
+([amdgpu, i915](https://youtu.be/BJIrUZIGgBc), [virtio_gpu, e1000e](https://youtu.be/YTdqeGk54to))
 running as regular userspace processes on Neptune OS.
 
-Disclaimer on AI use: this project does **NOT** use vibe-coding or allow vibe-coded PRs or
+Disclaimer on AI use: this project does **NOT** use vibe-coding nor allow vibe-coded PRs or
 LLM-generated issues. While I have used AI extensively for discussions and brain-storming,
 the actual coding is done almost entirely by myself with minimal AI use.
 
@@ -82,7 +82,7 @@ the seL4 kernel assumes that the processor supports global pages (bit PGE in CR4
 requires at least ACPI 3.0 to detect the number of CPU nodes. ACPI 3.0 did not become
 widely available until the Core 2 Duo era.
 
-## Building and running
+## Building and Running
 
 You will need to build under Linux (macOS can potentially work, but I have not tested it).
 You will need the following Python dependencies, and probably more.
