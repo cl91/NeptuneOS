@@ -1,5 +1,10 @@
 # Changelog
 
+## Release [v0.4]
+   - Added the Linux Driver Subsystem which allows unmodified or minimally modified
+     Linux kernel drivers, such as amdgpu and i915, to run on Neptune OS in isolated,
+     unprivileged userspace processes.
+
 ## Release [v0.3]
 
    - Updated seL4 to upstream release 14.0.0
