@@ -267,3 +267,8 @@ in understanding the inner workings of Neptune OS, read the `Developer-Guide.md`
 starts with an architectural overview of the operating system and proceeds to explain
 the various design decisions of individual OS components. It also contains the driver
 porting guide for those interested in porting drivers from ReactOS.
+
+## Sponsorship
+
+If you find this project useful or interesting, consider
+[supporting development](https://github.com/sponsors/cl91).
