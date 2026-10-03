@@ -358,6 +358,37 @@ static inline BOOLEAN KiValidateUnicodeString(IN MWORD IpcBufferServerAddr,
     return TRUE;
 }
 
+static inline BOOLEAN KiValidateSid(IN MWORD IpcBufferServerAddr,
+				    IN MWORD MsgWord,
+				    IN BOOLEAN Optional)
+{
+    /* Allow NULL pointer if parameter is marked optional */
+    if (MsgWord == 0) {
+	return Optional;
+    }
+    /* Validate the buffer offset */
+    SERVICE_ARGUMENT Arg = { .Word = MsgWord };
+    if (!KiServiceValidateArgument(MsgWord, 0, FALSE)) {
+	return FALSE;
+    }
+    /* Check that buffer is no smaller than the SID header */
+    if (Arg.BufferSize < FIELD_OFFSET(SID, SubAuthority)) {
+	DbgTrace("Invalid SID size: expected at least 0x%x, got 0x%x\n",
+		 FIELD_OFFSET(SID, SubAuthority), Arg.BufferSize);
+	return FALSE;
+    }
+    PISID Sid = KiServiceGetArgument(IpcBufferServerAddr, MsgWord);
+    /* Validate that the size matches the number of sub-authorities. */
+    ULONG Size = FIELD_OFFSET(SID, SubAuthority) +
+	Sid->SubAuthorityCount * sizeof(Sid->SubAuthority[0]);
+    if (Arg.BufferSize != Size) {
+	DbgTrace("Invalid SID size: expected 0x%x, got 0x%x\n",
+		 Size, Arg.BufferSize);
+	return FALSE;
+    }
+    return TRUE;
+}
+
 static inline BOOLEAN KiValidateObjectAttributes(IN MWORD IpcBufferServerAddr,
 						 IN MWORD MsgWord,
 						 IN BOOLEAN Optional)
@@ -495,6 +526,16 @@ static inline NTSTATUS KiServiceMapPfnDb(IN PTHREAD Thread,
 {
     return KiServiceMapBuffer(Thread, Mapped, (PPVOID)ServerAddress,
 			      ClientAddress, PfnCount * sizeof(ULONG_PTR));
+}
+
+static inline NTSTATUS KiServiceMapHandleArray(IN PTHREAD Thread,
+					       OUT BOOLEAN *Mapped,
+					       OUT PHANDLE *ServerAddress,
+					       IN MWORD ClientAddress,
+					       IN MWORD HandleCount)
+{
+    return KiServiceMapBuffer(Thread, Mapped, (PPVOID)ServerAddress,
+			      ClientAddress, HandleCount * sizeof(HANDLE));
 }
 
 static inline NTSTATUS KiServiceMapPnpControlBuffer(IN PTHREAD Thread,

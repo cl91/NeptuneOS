@@ -77,6 +77,11 @@ typedef struct _OBJECT_NAME_INFORMATION {
     UNICODE_STRING Name;
 } OBJECT_NAME_INFORMATION, *POBJECT_NAME_INFORMATION;
 
+typedef struct _OBJECT_HANDLE_FLAG_INFORMATION {
+    BOOLEAN Inherit;
+    BOOLEAN ProtectFromClose;
+} OBJECT_HANDLE_FLAG_INFORMATION, *POBJECT_HANDLE_FLAG_INFORMATION;
+
 typedef struct _OBJECT_HANDLE_ATTRIBUTE_INFORMATION {
     BOOLEAN Inherit;
     BOOLEAN ProtectFromClose;
@@ -99,6 +104,17 @@ NTAPI NTSYSAPI NTSTATUS NtWaitForSingleObject(IN HANDLE WaitObject,
                                               IN BOOLEAN Alertable,
                                               IN PLARGE_INTEGER Time);
 
+NTAPI NTSYSAPI NTSTATUS NtSignalAndWaitForSingleObject(IN HANDLE SignalObject,
+						       IN HANDLE WaitObject,
+						       IN BOOLEAN Alertable,
+						       IN PLARGE_INTEGER Time);
+
+NTAPI NTSYSAPI NTSTATUS NtWaitForMultipleObjects(IN ULONG Count,
+						 IN PHANDLE Handles,
+						 IN WAIT_TYPE WaitType,
+						 IN BOOLEAN Alertable,
+						 IN PLARGE_INTEGER Timeout);
+
 NTAPI NTSYSAPI NTSTATUS NtCreateDirectoryObject(OUT PHANDLE DirectoryHandle,
 						IN ACCESS_MASK DesiredAccess,
 						IN POBJECT_ATTRIBUTES ObjectAttributes);
@@ -118,24 +134,43 @@ NTAPI NTSYSAPI NTSTATUS  NtQueryDirectoryObject(IN HANDLE DirectoryHandle,
 NTAPI NTSYSAPI NTSTATUS NtCreateSymbolicLinkObject(OUT PHANDLE SymbolicLinkHandle,
 						   IN ACCESS_MASK DesiredAccess,
 						   IN POBJECT_ATTRIBUTES ObjectAttributes,
-						   IN PUNICODE_STRING Name);
+						   IN PCUNICODE_STRING Name);
 
 NTAPI NTSYSAPI NTSTATUS NtOpenSymbolicLinkObject(OUT PHANDLE SymbolicLinkHandle,
 						 IN ACCESS_MASK DesiredAccess,
 						 IN POBJECT_ATTRIBUTES ObjectAttributes);
 
 NTAPI NTSYSAPI NTSTATUS NtQuerySymbolicLinkObject(IN HANDLE SymbolicLinkHandle,
-						  IN OUT PUNICODE_STRING LinkName,
+						  OUT PVOID LinkNameW,
+						  IN ULONG LinkNameLength,
 						  OUT OPTIONAL ULONG *ReturnedLength);
+
+NTAPI NTSYSAPI NTSTATUS NtQuerySymbolicLinkObjectA(IN HANDLE SymbolicLinkHandle,
+						   OUT PVOID LinkName,
+						   IN ULONG LinkNameLength,
+						   OUT OPTIONAL ULONG *ReturnedLength);
+
+NTAPI NTSYSAPI NTSTATUS NtDuplicateObject(IN HANDLE SourceProcessHandle,
+					  IN HANDLE SourceHandle,
+					  IN HANDLE TargetProcessHandle,
+					  OUT PHANDLE TargetHandle,
+					  IN ACCESS_MASK DesiredAccess,
+					  IN ULONG HandleAttributes,
+					  IN ULONG Options);
 
 NTAPI NTSYSAPI NTSTATUS NtMakePermanentObject(IN HANDLE Object);
 
 NTAPI NTSYSAPI NTSTATUS NtMakeTemporaryObject(IN HANDLE Handle);
 
 NTAPI NTSYSAPI NTSTATUS NtQueryObject(IN HANDLE ObjectHandle,
-				      IN OBJECT_INFORMATION_CLASS ObjectInformationClass,
+				      IN OBJECT_INFORMATION_CLASS InfoClass,
 				      OUT PVOID ObjectInformation,
 				      IN ULONG Length,
 				      OUT PULONG ResultLength);
+
+NTAPI NTSYSAPI NTSTATUS NtSetInformationObject(IN HANDLE ObjectHandle,
+					       IN OBJECT_INFORMATION_CLASS InfoClass,
+					       IN PVOID ObjectInformation,
+					       IN ULONG Length);
 
 #endif

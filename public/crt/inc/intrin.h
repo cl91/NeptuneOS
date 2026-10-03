@@ -260,6 +260,10 @@ static inline long long InterlockedDecrement64(volatile long long *lpAddend)
 #define InterlockedExchangePointerAcquire __ACQ_(InterlockedExchangePointer)
 #define InterlockedExchangePointerNoFence __NF_(InterlockedExchangePointer)
 
+#define InterlockedCompareExchangePointerAcquire __ACQ_(_InterlockedCompareExchangePointer)
+#define InterlockedCompareExchangePointerRelease __REL_(_InterlockedCompareExchangePointer)
+#define InterlockedCompareExchangePointerNoFence __NF_(_InterlockedCompareExchangePointer)
+
 #endif /* _MSC_VER */
 
 #if defined(_M_IX86) || defined(_M_AMD64)

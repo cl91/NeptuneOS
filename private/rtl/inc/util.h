@@ -211,11 +211,14 @@ FORCEINLINE VOID InvalidateListEntry(IN PLIST_ENTRY ListEntry)
 FORCEINLINE VOID AppendTailListHead(IN PLIST_ENTRY ListHead,
 				    IN PLIST_ENTRY ListToAppend)
 {
+    if (IsListEmpty(ListToAppend)) {
+	return;
+    }
     ListHead->Blink->Flink = ListToAppend->Flink;
     ListToAppend->Flink->Blink = ListHead->Blink;
     ListHead->Blink = ListToAppend->Blink;
     ListToAppend->Blink->Flink = ListHead;
-    InvalidateListEntry(ListToAppend);
+    InitializeListHead(ListToAppend);
 }
 
 FORCEINLINE SIZE_T GetListLength(IN PLIST_ENTRY ListEntry)

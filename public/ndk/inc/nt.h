@@ -12,7 +12,6 @@
 #include <intrin.h>
 #include <debug.h>
 #include <ntkeapi.h>
-#include <ntrtl.h>
 #include <ntseapi.h>
 #include <ntmmapi.h>
 #include <ntpsapi.h>
@@ -22,5 +21,7 @@
 #include <ntcmapi.h>
 #include <ntpoapi.h>
 #include <ntexapi.h>
+#include <ntrtl.h>
 #include <ntlpc.h>
+#include <ntdbg.h>
 #include <ntverp.h>

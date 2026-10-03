@@ -567,6 +567,15 @@ NTSTATUS NtCreateTimer(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS NtOpenTimer(IN ASYNC_STATE State,
+		     IN PTHREAD Thread,
+		     OUT HANDLE *TimerHandle,
+		     IN ACCESS_MASK DesiredAccess,
+		     IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtSetTimer(IN ASYNC_STATE State,
                     IN PTHREAD Thread,
                     IN HANDLE TimerHandle,
@@ -589,6 +598,14 @@ NTSTATUS NtSetTimer(IN ASYNC_STATE State,
 	*pPreviousState = PreviousState;
     }
     return STATUS_SUCCESS;
+}
+
+NTSTATUS NtCancelTimer(IN ASYNC_STATE AsyncState,
+		       IN PTHREAD Thread,
+		       IN HANDLE TimerHandle,
+		       OUT OPTIONAL PBOOLEAN CurrentState)
+{
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtDelayExecution(IN ASYNC_STATE AsyncState,

@@ -17,7 +17,7 @@ NTSTATUS PsxConnectPort(OUT PHANDLE PortHandle,
 	return Status;
     }
     Status = NtConnectPort(*PortHandle, &SecurityQos, CommPortHandle,
-			   NULL, NULL, NULL, &MaxMessageLength, NULL, 0);
+			   NULL, NULL, NULL, NULL, &MaxMessageLength, NULL, 0);
     return Status;
 }
 

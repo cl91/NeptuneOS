@@ -295,7 +295,7 @@ static inline NTSTATUS RtlpInitializeHeapLockEx(IN OUT PHEAP_LOCK Lock,
 						IN HANDLE LockSemaphore)
 {
     return RtlpInitializeCriticalSection(&Lock->CriticalSection,
-					 LockSemaphore, 0);
+					 LockSemaphore, 0, 0);
 }
 
 static inline NTSTATUS RtlpEnterHeapLock(IN OUT PHEAP_LOCK Lock,

@@ -18,3 +18,32 @@ NTSTATUS NtSetDefaultLocale(IN ASYNC_STATE AsyncState,
 {
     UNIMPLEMENTED;
 }
+
+NTSTATUS NtQueryDefaultUILanguage(IN ASYNC_STATE AsyncState,
+                                  IN PTHREAD Thread,
+                                  OUT LANGID *LanguageId)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtQueryInstallUILanguage(IN ASYNC_STATE AsyncState,
+                                  IN PTHREAD Thread,
+                                  OUT LANGID *LanguageId)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtIsSystemResumeAutomatic(IN ASYNC_STATE AsyncState,
+                                   IN PTHREAD Thread,
+                                   OUT PBOOLEAN Automatic)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtSetSystemTime(IN ASYNC_STATE AsyncState,
+			 IN PTHREAD Thread,
+			 IN PLARGE_INTEGER SystemTime,
+			 IN OPTIONAL PLARGE_INTEGER NewSystemTime)
+{
+    UNIMPLEMENTED;
+}

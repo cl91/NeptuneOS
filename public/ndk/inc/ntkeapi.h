@@ -2,7 +2,12 @@
 
 #include "ntdef.h"
 #include "ntstatus.h"
+#include "kebasedef.h"
 #include "nls.h"
+
+#define EXCEPTION_READ_FAULT    0
+#define EXCEPTION_WRITE_FAULT   1
+#define EXCEPTION_EXECUTE_FAULT 8
 
 //
 // Processor Architectures
@@ -33,6 +38,55 @@ typedef struct _PROCESSOR_NUMBER {
     UCHAR Number;
     UCHAR Reserved;
 } PROCESSOR_NUMBER, *PPROCESSOR_NUMBER;
+
+#if defined(_WIN64)
+#define MAXIMUM_PROC_PER_GROUP 64
+#else
+#define MAXIMUM_PROC_PER_GROUP 32
+#endif
+#define MAXIMUM_PROCESSORS MAXIMUM_PROC_PER_GROUP
+
+typedef enum _PROCESSOR_CACHE_TYPE {
+    CacheUnified,
+    CacheInstruction,
+    CacheData,
+    CacheTrace
+} PROCESSOR_CACHE_TYPE;
+
+typedef struct _CACHE_DESCRIPTOR {
+    UCHAR Level;
+    UCHAR Associativity;
+    USHORT LineSize;
+    ULONG Size;
+    PROCESSOR_CACHE_TYPE Type;
+} CACHE_DESCRIPTOR, *PCACHE_DESCRIPTOR;
+
+typedef enum _LOGICAL_PROCESSOR_RELATIONSHIP {
+    RelationProcessorCore,
+    RelationNumaNode,
+    RelationCache,
+    RelationProcessorPackage,
+    RelationGroup,
+    RelationProcessorDie,
+    RelationNumaNodeEx,
+    RelationProcessorModule,
+    RelationAll = 0xFFFF
+} LOGICAL_PROCESSOR_RELATIONSHIP;
+
+typedef struct _SYSTEM_LOGICAL_PROCESSOR_INFORMATION {
+    ULONG_PTR ProcessorMask;
+    LOGICAL_PROCESSOR_RELATIONSHIP Relationship;
+    union {
+	struct {
+	    UCHAR Flags;
+	} ProcessorCore;
+	struct {
+	    ULONG NodeNumber;
+	} NumaNode;
+	CACHE_DESCRIPTOR Cache;
+	ULONGLONG Reserved[2];
+    };
+} SYSTEM_LOGICAL_PROCESSOR_INFORMATION, *PSYSTEM_LOGICAL_PROCESSOR_INFORMATION;
 
 /*
  * System Time Structure
@@ -235,6 +289,10 @@ typedef struct DECLSPEC_ALIGN(16) _XMM_SAVE_AREA32 {
 #include <ntarm64.h>
 #endif
 
+typedef VOID (NTAPI *PKNORMAL_ROUTINE)(IN PVOID NormalContext OPTIONAL,
+				       IN PVOID SystemArgument1 OPTIONAL,
+				       IN PVOID SystemArgument2 OPTIONAL);
+
 FORCEINLINE KAFFINITY AFFINITY_MASK(ULONG Index)
 {
     return (KAFFINITY)1 << Index;
@@ -256,11 +314,25 @@ NTAPI NTSYSAPI NTSTATUS NtContinue(IN PCONTEXT Context,
 
 NTAPI NTSYSAPI NTSTATUS NtTestAlert(VOID);
 
+NTAPI NTSYSAPI NTSTATUS NtQueueApcThread(IN HANDLE ThreadHandle,
+					 IN PKNORMAL_ROUTINE ApcRoutine,
+					 IN OPTIONAL PVOID NormalContext,
+					 IN OPTIONAL PVOID SystemArgument1,
+					 IN OPTIONAL PVOID SystemArgument2);
+
 NTAPI NTSYSAPI NTSTATUS NtDelayExecution(IN BOOLEAN Alertable,
 					 IN LARGE_INTEGER *Interval);
+
+NTAPI NTSYSAPI NTSTATUS NtYieldExecution(VOID);
 
 NTAPI NTSYSAPI ULONG NtGetCurrentProcessorNumber(VOID);
 
 NTAPI NTSYSAPI NTSTATUS NtQuerySystemTime(OUT PLARGE_INTEGER CurrentTime);
+
+NTAPI NTSYSAPI NTSTATUS NtSetSystemTime(IN PLARGE_INTEGER SystemTime,
+					IN OPTIONAL PLARGE_INTEGER NewSystemTime);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryPerformanceCounter(OUT PLARGE_INTEGER Counter,
+						  OUT OPTIONAL PLARGE_INTEGER Frequency);
 
 #endif

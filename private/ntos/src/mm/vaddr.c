@@ -1300,10 +1300,13 @@ static VOID MiDispatchUserException(IN PTHREAD Thread,
     /* For VM fault, the first exception parameter is the type of the fault (read = 0,
      * write = 1, no-execute = 8). The second exception parameter is the vm address
      * that the client was trying to access. */
-    MWORD ExceptionParameters[] = {
-	MiIsExecuteFault(FaultStatusRegister) ? 8 : MiIsWriteFault(FaultStatusRegister),
-	Addr
-    };
+    MWORD ExceptionType = EXCEPTION_READ_FAULT;
+    if (MiIsExecuteFault(FaultStatusRegister)) {
+	ExceptionType = EXCEPTION_EXECUTE_FAULT;
+    } else if (MiIsWriteFault(FaultStatusRegister)) {
+	ExceptionType = EXCEPTION_WRITE_FAULT;
+    }
+    MWORD ExceptionParameters[] = { ExceptionType, Addr };
     NTSTATUS Status = KeDispatchUserException(Thread, STATUS_ACCESS_VIOLATION, Ip,
 					      ARRAYSIZE(ExceptionParameters),
 					      ExceptionParameters);
@@ -1846,6 +1849,17 @@ out:
     return Status;
 }
 
+NTSTATUS NtReadVirtualMemory(IN ASYNC_STATE State,
+			     IN PTHREAD Thread,
+                             IN HANDLE ProcessHandle,
+                             IN PVOID BaseAddress,
+                             OUT PVOID Buffer,
+                             IN SIZE_T NumberOfBytesToRead,
+                             OUT SIZE_T *NumberOfBytesRead)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
 			      IN PTHREAD Thread,
                               IN HANDLE ProcessHandle,
@@ -1884,26 +1898,14 @@ out:
     return Status;
 }
 
-
-NTSTATUS NtReadVirtualMemory(IN ASYNC_STATE State,
-			     IN PTHREAD Thread,
-                             IN HANDLE ProcessHandle,
-                             IN PVOID BaseAddress,
-                             OUT PVOID Buffer,
-                             IN SIZE_T NumberOfBytesToRead,
-                             OUT SIZE_T *NumberOfBytesRead)
-{
-    UNIMPLEMENTED;
-}
-
 NTSTATUS NtQueryVirtualMemory(IN ASYNC_STATE State,
 			      IN PTHREAD Thread,
                               IN HANDLE ProcessHandle,
                               IN PVOID BaseAddress,
                               IN MEMORY_INFORMATION_CLASS MemoryInformationClass,
                               IN PVOID MemoryInformationBuffer,
-                              IN ULONG MemoryInformationLength,
-                              OUT OPTIONAL ULONG *ReturnLength)
+                              IN SIZE_T MemoryInformationLength,
+                              OUT OPTIONAL PSIZE_T ReturnLength)
 {
     UNIMPLEMENTED;
 }
@@ -1917,6 +1919,103 @@ NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
                                 OUT OPTIONAL ULONG *OldAccessProtection)
 {
     return STATUS_NOT_IMPLEMENTED;
+}
+
+NTSTATUS NtFlushVirtualMemory(IN ASYNC_STATE AsyncState,
+			      IN PTHREAD Thread,
+			      IN HANDLE ProcessHandle,
+			      IN OUT PPVOID BaseAddress,
+			      IN OUT PSIZE_T RegionSize,
+			      OUT PIO_STATUS_BLOCK IoStatus)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtLockVirtualMemory(IN ASYNC_STATE AsyncState,
+			     IN PTHREAD Thread,
+			     IN HANDLE ProcessHandle,
+			     IN OUT PPVOID BaseAddress,
+			     IN OUT PSIZE_T NumberOfBytesToLock,
+			     IN ULONG MapType)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtUnlockVirtualMemory(IN ASYNC_STATE AsyncState,
+			       IN PTHREAD Thread,
+			       IN HANDLE ProcessHandle,
+			       IN OUT PPVOID BaseAddress,
+			       IN OUT PSIZE_T NumberOfBytesToUnlock,
+			       IN ULONG MapType)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtGetWriteWatch(IN ASYNC_STATE AsyncState,
+			 IN PTHREAD Thread,
+			 IN HANDLE ProcessHandle,
+			 IN ULONG Flags,
+			 IN PVOID BaseAddress,
+			 IN SIZE_T RegionSize,
+			 IN PPVOID UserAddressArray,
+			 OUT PULONG_PTR EntriesInUserAddressArray,
+			 OUT PULONG Granularity)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtResetWriteWatch(IN ASYNC_STATE AsyncState,
+			   IN PTHREAD Thread,
+			   IN HANDLE ProcessHandle,
+			   IN PVOID BaseAddress,
+			   IN SIZE_T RegionSize)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtAllocateUserPhysicalPages(IN ASYNC_STATE AsyncState,
+				     IN PTHREAD Thread,
+				     IN HANDLE ProcessHandle,
+				     IN OUT PULONG_PTR NumberOfPages,
+				     IN OUT PULONG_PTR UserPfnArray)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtFreeUserPhysicalPages(IN ASYNC_STATE AsyncState,
+				 IN PTHREAD Thread,
+				 IN HANDLE ProcessHandle,
+				 IN OUT PULONG_PTR NumberOfPages,
+				 IN OUT PULONG_PTR UserPfnArray)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtMapUserPhysicalPages(IN ASYNC_STATE AsyncState,
+				IN PTHREAD Thread,
+				IN PVOID VirtualAddresses,
+				IN ULONG_PTR NumberOfPages,
+				IN OUT PULONG_PTR UserPfnArray)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtMapUserPhysicalPagesScatter(IN ASYNC_STATE AsyncState,
+				       IN PTHREAD Thread,
+				       IN PPVOID VirtualAddresses,
+				       IN ULONG_PTR NumberOfPages,
+				       IN OUT PULONG_PTR UserPfnArray)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtFlushInstructionCache(IN ASYNC_STATE AsyncState,
+				 IN PTHREAD Thread,
+				 IN HANDLE ProcessHandle,
+				 IN PVOID BaseAddress,
+				 IN SIZE_T NumberOfBytesToFlush)
+{
+    UNIMPLEMENTED;
 }
 
 NTSTATUS WdmMapIoSpace(IN ASYNC_STATE AsyncState,

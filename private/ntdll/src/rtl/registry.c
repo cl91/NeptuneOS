@@ -690,12 +690,12 @@ NTAPI NTSTATUS RtlFormatCurrentUserKeyPath(OUT PUNICODE_STRING KeyPath)
 /*
  * @implemented
  */
-NTAPI NTSTATUS RtlpNtCreateKey(OUT HANDLE KeyHandle,
-			       IN ACCESS_MASK DesiredAccess,
-			       IN POBJECT_ATTRIBUTES ObjectAttributes,
-			       IN ULONG TitleIndex,
-			       IN PUNICODE_STRING Class,
-			       OUT PULONG Disposition)
+NTAPI NTSTATUS RtlCreateKey(OUT HANDLE KeyHandle,
+			    IN ACCESS_MASK DesiredAccess,
+			    IN POBJECT_ATTRIBUTES ObjectAttributes,
+			    IN ULONG TitleIndex,
+			    IN PUNICODE_STRING Class,
+			    OUT PULONG Disposition)
 {
     /* Check if we have object attributes */
     if (ObjectAttributes) {
@@ -712,10 +712,10 @@ NTAPI NTSTATUS RtlpNtCreateKey(OUT HANDLE KeyHandle,
 /*
  * @implemented
  */
-NTAPI NTSTATUS RtlpNtEnumerateSubKey(IN HANDLE KeyHandle,
-				     OUT PUNICODE_STRING SubKeyName,
-				     IN ULONG Index,
-				     IN ULONG Unused)
+NTAPI NTSTATUS RtlEnumerateSubKey(IN HANDLE KeyHandle,
+				  OUT PUNICODE_STRING SubKeyName,
+				  IN ULONG Index,
+				  IN ULONG Unused)
 {
     PKEY_BASIC_INFORMATION KeyInfo = NULL;
     ULONG BufferLength = 0;
@@ -758,7 +758,7 @@ NTAPI NTSTATUS RtlpNtEnumerateSubKey(IN HANDLE KeyHandle,
 /*
  * @implemented
  */
-NTAPI NTSTATUS RtlpNtMakeTemporaryKey(IN HANDLE KeyHandle)
+NTAPI NTSTATUS RtlMakeTemporaryKey(IN HANDLE KeyHandle)
 {
     /* This just deletes the key */
     return NtDeleteKey(KeyHandle);
@@ -767,10 +767,10 @@ NTAPI NTSTATUS RtlpNtMakeTemporaryKey(IN HANDLE KeyHandle)
 /*
  * @implemented
  */
-NTAPI NTSTATUS RtlpNtOpenKey(OUT HANDLE KeyHandle,
-			     IN ACCESS_MASK DesiredAccess,
-			     IN POBJECT_ATTRIBUTES ObjectAttributes,
-			     IN ULONG Unused)
+NTAPI NTSTATUS RtlOpenKey(OUT HANDLE KeyHandle,
+			  IN ACCESS_MASK DesiredAccess,
+			  IN POBJECT_ATTRIBUTES ObjectAttributes,
+			  IN ULONG Unused)
 {
     /* Check if we have object attributes */
     if (ObjectAttributes) {
@@ -785,11 +785,11 @@ NTAPI NTSTATUS RtlpNtOpenKey(OUT HANDLE KeyHandle,
 /*
  * @implemented
  */
-NTAPI NTSTATUS RtlpNtQueryValueKey(IN HANDLE KeyHandle,
-				   OUT PULONG Type OPTIONAL,
-				   OUT PVOID Data OPTIONAL,
-				   IN OUT PULONG DataLength OPTIONAL,
-				   IN ULONG Unused)
+NTAPI NTSTATUS RtlQueryValueKey(IN HANDLE KeyHandle,
+				OUT PULONG Type OPTIONAL,
+				OUT PVOID Data OPTIONAL,
+				IN OUT PULONG DataLength OPTIONAL,
+				IN ULONG Unused)
 {
     PKEY_VALUE_PARTIAL_INFORMATION ValueInfo;
     UNICODE_STRING ValueName;
@@ -836,10 +836,10 @@ NTAPI NTSTATUS RtlpNtQueryValueKey(IN HANDLE KeyHandle,
 /*
  * @implemented
  */
-NTAPI NTSTATUS RtlpNtSetValueKey(IN HANDLE KeyHandle,
-				 IN ULONG Type,
-				 IN PVOID Data,
-				 IN ULONG DataLength)
+NTAPI NTSTATUS RtlSetValueKey(IN HANDLE KeyHandle,
+			      IN ULONG Type,
+			      IN PVOID Data,
+			      IN ULONG DataLength)
 {
     UNICODE_STRING ValueName;
 

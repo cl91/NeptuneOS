@@ -69,7 +69,7 @@ list(APPEND SRC
     ../ntdll/src/ke/services.c
     ../ntdll/src/ke/lpc.c
     ../ntdll/src/ke/${Arch}/context.c
-    ../ntdll/src/rtl/debug.c
+    ../ntdll/src/dbg/debug.c
 )
 
 add_library(ntpsx STATIC ${SRC})

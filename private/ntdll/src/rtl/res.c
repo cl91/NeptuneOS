@@ -69,9 +69,9 @@ static ULONG RtlpPushLanguageToList(USHORT *List, ULONG Pos, WORD Lang)
  *
  * Find the first suitable entry in a resource directory
  */
-static IMAGE_RESOURCE_DIRECTORY *RtlpFindFirstResourceEntry(IMAGE_RESOURCE_DIRECTORY *Dir,
-							    void *Root,
-							    BOOLEAN WantDir)
+IMAGE_RESOURCE_DIRECTORY *RtlpFindFirstResourceEntry(IMAGE_RESOURCE_DIRECTORY *Dir,
+						     PVOID Root,
+						     BOOLEAN WantDir)
 {
     const IMAGE_RESOURCE_DIRECTORY_ENTRY *Entry =
 	(const IMAGE_RESOURCE_DIRECTORY_ENTRY *)(Dir + 1);
@@ -128,10 +128,10 @@ static IMAGE_RESOURCE_DIRECTORY *RtlpFindResourceEntryById(IMAGE_RESOURCE_DIRECT
  *
  * Find an entry by name in a resource directory
  */
-static IMAGE_RESOURCE_DIRECTORY *RtlpFindResourceEntryByName(IMAGE_RESOURCE_DIRECTORY *Dir,
-							     LPCWSTR Name,
-							     void *Root,
-							     BOOLEAN WantDir)
+IMAGE_RESOURCE_DIRECTORY *RtlpFindResourceEntryByName(IMAGE_RESOURCE_DIRECTORY *Dir,
+						      LPCWSTR Name,
+						      PVOID Root,
+						      BOOLEAN WantDir)
 {
     const IMAGE_RESOURCE_DIRECTORY_ENTRY *Entry;
     const IMAGE_RESOURCE_DIR_STRING_U *Str;

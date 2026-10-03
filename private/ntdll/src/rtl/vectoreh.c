@@ -26,7 +26,7 @@ VOID RtlpInitializeVectoredExceptionHandling(IN PNTDLL_PROCESS_INIT_INFO InitInf
 {
     /* Initialize our two lists and the common lock */
     RtlpInitializeCriticalSection(&RtlpVectoredHandlerLock,
-				  InitInfo->VectoredHandlerLockSemaphore, 0);
+				  InitInfo->VectoredHandlerLockSemaphore, 0, 0);
     InitializeListHead(&RtlpVectoredExceptionList);
     InitializeListHead(&RtlpVectoredContinueList);
     RtlpVectoredExceptionInitialized = TRUE;

@@ -62,3 +62,15 @@ NTSTATUS NtAdjustPrivilegesToken(IN ASYNC_STATE AsyncState,
 {
     UNIMPLEMENTED;
 }
+
+NTSTATUS NtDuplicateToken(IN ASYNC_STATE AsyncState,
+			  IN PTHREAD Thread,
+			  IN HANDLE ExistingTokenHandle,
+			  IN ACCESS_MASK DesiredAccess,
+			  IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
+			  IN BOOLEAN EffectiveOnly,
+			  IN TOKEN_TYPE TokenType,
+			  OUT HANDLE *NewTokenHandle)
+{
+    UNIMPLEMENTED;
+}

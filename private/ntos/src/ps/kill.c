@@ -197,6 +197,15 @@ NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread)
     return PspSuspendThread(Thread->TreeNode.Cap);
 }
 
+/*
+ * Thread termination port registration
+ */
+NTSTATUS NtRegisterThreadTerminatePort(IN ASYNC_STATE AsyncState,
+				       IN PTHREAD Thread,
+				       IN HANDLE PortHandle)
+{
+    UNIMPLEMENTED;
+}
 
 NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
 			   IN PTHREAD Thread,
@@ -309,4 +318,12 @@ NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
     assert(ThreadToResume != NULL);
     RET_ERR(PsResumeThread(ThreadToResume));
     return STATUS_SUCCESS;
+}
+
+NTSTATUS NtSuspendThread(IN ASYNC_STATE State,
+			 IN PTHREAD Thread,
+			 IN HANDLE ThreadHandle,
+			 OUT OPTIONAL PULONG PreviousSuspendCount)
+{
+    UNIMPLEMENTED;
 }

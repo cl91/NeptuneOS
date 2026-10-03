@@ -52,6 +52,14 @@ RTL_CRITICAL_SECTION FastPebLock;
 #define DEFAULT_SECURITY_COOKIE 0xBB40E64E
 #endif
 
+#define ACTIVATE_ACT_CTX(ActCtx, LdrEntry)				\
+    /* Set up and activate an activation context */			\
+    RtlZeroMemory(&(ActCtx), sizeof((ActCtx)));				\
+    (ActCtx).Size = sizeof((ActCtx));					\
+    (ActCtx).Format = 1;						\
+    RtlActivateActivationContextUnsafeFast(&(ActCtx),			\
+					   (LdrEntry)->EntryPointActivationContext)
+
 /* FUNCTIONS *****************************************************************/
 
 /*
@@ -350,6 +358,7 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 	   &LdrpImageEntry->BaseDllName,
 	   NtCurrentTib()->ClientId.UniqueProcess,
 	   NtCurrentTib()->ClientId.UniqueThread);
+    RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED ActCtx;
 
     /* Loop in initialization order */
     PLIST_ENTRY ListHead = &Peb->LdrData->InInitializationOrderModuleList;
@@ -396,6 +405,8 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 			NtCurrentTib()->ClientId.UniqueProcess,
 			&LdrEntry->FullDllName, LdrEntry->EntryPoint);
 
+		ACTIVATE_ACT_CTX(ActCtx, LdrEntry);
+
 		BOOLEAN DllStatus;
 		__try {
 		    /* Check if it has TLS */
@@ -418,6 +429,8 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
 			    GetExceptionCode(), &LdrEntry->BaseDllName);
 		}
 
+		RtlDeactivateActivationContextUnsafeFast(&ActCtx);
+
 		/* Mark the entry as processed */
 		LdrEntry->Flags |= LDRP_PROCESS_ATTACH_CALLED;
 
@@ -439,11 +452,13 @@ static NTSTATUS LdrpRunInitializeRoutines(IN PCONTEXT Context OPTIONAL)
     /* Check for TLS */
     if (LdrpImageHasTls && Context) {
 	__try {
+	    ACTIVATE_ACT_CTX(ActCtx, LdrpImageEntry);
 	    /* Do TLS callbacks */
 	    LdrpCallTlsInitializers(LdrpImageEntry, DLL_PROCESS_ATTACH);
-	} __except(EXCEPTION_EXECUTE_HANDLER) {
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
 	    /* Do nothing */
 	}
+	RtlDeactivateActivationContextUnsafeFast(&ActCtx);
     }
 
     return STATUS_SUCCESS;
@@ -562,7 +577,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     }
 
     /* Initialize the Loader Lock. */
-    RtlpInitializeCriticalSection(&LdrpLoaderLock, InitInfo->LoaderLockSemaphore, 0);
+    RtlpInitializeCriticalSection(&LdrpLoaderLock, InitInfo->LoaderLockSemaphore, 0, 0);
     Peb->LoaderLock = &LdrpLoaderLock;
 
     /* Check if User Stack Trace Database support was requested */
@@ -571,7 +586,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     }
 
     /* Setup the Fast PEB Lock. */
-    RtlpInitializeCriticalSection(&FastPebLock, InitInfo->FastPebLockSemaphore, 0);
+    RtlpInitializeCriticalSection(&FastPebLock, InitInfo->FastPebLockSemaphore, 0, 0);
     Peb->FastPebLock = &FastPebLock;
 
     /* Initialize the unicode case tables */
@@ -585,6 +600,12 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     ULONG ImageNameLength = strlen(InitInfo->ImageName);
     ImageNameLength = min(ImageNameLength, sizeof(RtlpDbgTraceModuleNameBuffer) - 2);
     memcpy(RtlpDbgTraceModuleNameBuffer, InitInfo->ImageName, ImageNameLength+1);
+
+    RET_ERR(RtlpInitializeLocaleTable());
+
+    /* Allocate an Activation Context Stack */
+    RET_ERR(RtlAllocateActivationContextStack(
+		(PVOID)&NtCurrentTeb()->ActivationContextStackPointer));
 
     /* If the parent process (or whoever created us) has set the Process Parameters
      * structure, it will be in denormalized form (where pointers are replaced with
@@ -634,7 +655,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 		      min(PathLen + sizeof(WCHAR), MaxLen));
 	Peb->ProcessParameters->CurrentDirectory.DosPath.Length = min(PathLen, MaxLen);
     }
-    DbgTrace("%ws\n", SharedUserData->NtSystemRoot);
+    DbgTrace("System root is %ws\n", SharedUserData->NtSystemRoot);
     RET_ERR(RtlSetCurrentDirectory_U(&Peb->ProcessParameters->CurrentDirectory.DosPath));
 
     /* Setup Loader Data */
@@ -678,6 +699,7 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
     LdrpInsertMemoryTableEntry(LdrpNtdllEntry, "ntdll.dll");
     InsertTailList(&Peb->LdrData->InInitializationOrderModuleList,
                    &LdrpNtdllEntry->InInitializationOrderLinks);
+    RtlpInitializeActCtx();
 
     /* Let the world know */
     DPRINT1("LDR: NEW PROCESS\n");
@@ -720,6 +742,9 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 					  STATUS_INVALID_IMAGE_FORMAT));
     }
 
+    RtlpInitializeKeyedEvent();
+    RtlpInitializeThreadPooling();
+
     /* Initialize TLS */
     RET_ERR_EX(LdrpInitializeTls(),
 	       DPRINT1("LDR: failed to initialize TLS slots, error 0x%x\n", Status));
@@ -756,11 +781,25 @@ static NTSTATUS LdrpInitializeThread()
     if (LdrpShutdownInProgress)
 	return STATUS_SUCCESS;
 
+    /* Acquire the loader Lock */
+    RtlEnterCriticalSection(&LdrpLoaderLock);
+
+    /* Allocate an Activation Context Stack */
+    DPRINT("ActivationContextStack %p\n",
+	   NtCurrentTeb()->ActivationContextStackPointer);
+    NTSTATUS Status = RtlAllocateActivationContextStack(
+	(PVOID)&NtCurrentTeb()->ActivationContextStackPointer);
+    if (!NT_SUCCESS(Status)) {
+        DPRINT1("Warning: Unable to allocate ActivationContextStack\n");
+	goto Exit;
+    }
+
     /* Allocate the tls regions */
-    RET_ERR(LdrpAllocateTls());
+    IF_ERR_GOTO(Exit, Status, LdrpAllocateTls());
 
     /* For each DLL module (except the executable image), call the tls
      * initializer and the dll initialization routine */
+    RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED ActCtx;
     PLIST_ENTRY ListHead = &Peb->LdrData->InMemoryOrderModuleList;
     PLIST_ENTRY NextEntry = ListHead->Flink;
     while (NextEntry != ListHead) {
@@ -780,6 +819,8 @@ static NTSTATUS LdrpInitializeThread()
 		if ((EntryPoint) && (LdrEntry->Flags & LDRP_PROCESS_ATTACH_CALLED) &&
 		    (LdrEntry->Flags & LDRP_IMAGE_DLL)) {
 		    __try {
+			ACTIVATE_ACT_CTX(ActCtx, LdrEntry);
+
 			/* Check if it has TLS */
 			if (LdrEntry->TlsIndex) {
 			    /* Make sure we're not shutting down */
@@ -809,6 +850,8 @@ static NTSTATUS LdrpInitializeThread()
 				"LdrpCallInitRoutine(DLL_THREAD_ATTACH) for %wZ\n",
 				GetExceptionCode(), &LdrEntry->BaseDllName);
 		    }
+
+                    RtlDeactivateActivationContextUnsafeFast(&ActCtx);
 		}
 	    }
 	}
@@ -820,12 +863,18 @@ static NTSTATUS LdrpInitializeThread()
     /* For the image module itself, call the tls initializer (if it has one) */
     if (LdrpImageHasTls && !LdrpShutdownInProgress) {
 	__try {
+	    ACTIVATE_ACT_CTX(ActCtx, LdrpImageEntry);
 	    /* Do TLS callbacks */
 	    LdrpCallTlsInitializers(LdrpImageEntry, DLL_THREAD_ATTACH);
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	    /* Do nothing */
 	}
+	RtlDeactivateActivationContextUnsafeFast(&ActCtx);
     }
+
+    /* Release the loader lock */
+Exit:
+    RtlLeaveCriticalSection(&LdrpLoaderLock);
 
     DPRINT("LdrpInitializeThread() done\n");
     return STATUS_SUCCESS;
@@ -858,7 +907,7 @@ VOID LdrpInitialize(PNT_TIB NtTib)
 	NtTib->StackBase = (PVOID)InitInfo.ThreadInitInfo.StackTop;
 	/* Note that since we have marked the stack of the initial thread as
 	 * commit-on-demand, the stack limit should be the whole stack. */
-	NtTib->StackLimit = ((PTEB)NtTib)->DeallocationStack =
+	NtTib->StackLimit = NtTib->DeallocationStack =
 	    (PVOID)(InitInfo.ThreadInitInfo.StackTop - InitInfo.ThreadInitInfo.StackReserve);
 
 	/* Set up the client id in the thread information block */
@@ -922,7 +971,7 @@ VOID LdrpInitialize(PNT_TIB NtTib)
 
 	/* Set up the stack base and limit in the thread information block */
 	NtTib->StackBase = (PVOID)InitInfo.StackTop;
-	NtTib->StackLimit = ((PTEB)NtTib)->DeallocationStack =
+	NtTib->StackLimit = NtTib->DeallocationStack =
 	    (PVOID)(InitInfo.StackTop - InitInfo.StackReserve);
 
 	/* Set up the client id in the thread information block */
@@ -983,6 +1032,7 @@ NTAPI NTSTATUS LdrShutdownProcess(VOID)
 {
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     PLIST_ENTRY NextEntry, ListHead;
+    RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED ActCtx;
     PVOID EntryPoint;
 
     DPRINT("LdrShutdownProcess() called for %wZ\n", &LdrpImageEntry->BaseDllName);
@@ -1019,6 +1069,7 @@ NTAPI NTSTATUS LdrShutdownProcess(VOID)
 	    /* Check if we are ready to call it */
 	    if (EntryPoint && (LdrEntry->Flags & LDRP_PROCESS_ATTACH_CALLED)
 		&& LdrEntry->Flags) {
+		ACTIVATE_ACT_CTX(ActCtx, LdrEntry);
 		__try {
 		    /* Check if it has TLS */
 		    if (LdrEntry->TlsIndex) {
@@ -1037,6 +1088,7 @@ NTAPI NTSTATUS LdrShutdownProcess(VOID)
 			    "LdrpCallInitRoutine(DLL_PROCESS_DETACH) for %wZ\n",
 			    GetExceptionCode(), &LdrEntry->BaseDllName);
 		}
+		RtlDeactivateActivationContextUnsafeFast(&ActCtx);
 	    }
 	}
     }
@@ -1044,11 +1096,13 @@ NTAPI NTSTATUS LdrShutdownProcess(VOID)
     /* Check for TLS */
     if (LdrpImageHasTls) {
 	__try {
+	    ACTIVATE_ACT_CTX(ActCtx, LdrpImageEntry);
 	    /* Do TLS callbacks */
 	    LdrpCallTlsInitializers(LdrpImageEntry, DLL_PROCESS_DETACH);
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	    /* Do nothing */
 	}
+	RtlDeactivateActivationContextUnsafeFast(&ActCtx);
     }
 
     /* FIXME: Do Heap detection and Etw final shutdown */
@@ -1068,6 +1122,7 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
     PTEB Teb = NtCurrentTeb();
     PLDR_DATA_TABLE_ENTRY LdrEntry;
     PLIST_ENTRY NextEntry, ListHead;
+    RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED ActCtx;
     PVOID EntryPoint;
 
     DPRINT("LdrShutdownThread() called for %wZ\n", &LdrpImageEntry->BaseDllName);
@@ -1101,6 +1156,7 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
 
 		/* Check if we are ready to call it */
 		if (EntryPoint) {
+		    ACTIVATE_ACT_CTX(ActCtx, LdrEntry);
 		    __try {
 			/* Check if it has TLS */
 			if (LdrEntry->TlsIndex) {
@@ -1126,6 +1182,7 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
 				"LdrpCallInitRoutine(DLL_THREAD_DETACH) for %wZ\n",
 				GetExceptionCode(), &LdrEntry->BaseDllName);
 		    }
+		    RtlDeactivateActivationContextUnsafeFast(&ActCtx);
 		}
 	    }
 	}
@@ -1134,11 +1191,13 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
     /* Check for TLS */
     if (LdrpImageHasTls) {
 	__try {
+	    ACTIVATE_ACT_CTX(ActCtx, LdrpImageEntry);
 	    /* Do TLS callbacks */
 	    LdrpCallTlsInitializers(LdrpImageEntry, DLL_THREAD_DETACH);
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
 	    /* Do nothing */
 	}
+	RtlDeactivateActivationContextUnsafeFast(&ActCtx);
     }
 
     /* Free TLS */
@@ -1183,6 +1242,7 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
 	Teb->NtTib.FiberData = NULL;
     }
 
+    RtlFreeThreadActivationContextStack();
     DPRINT("LdrShutdownThread() done\n");
     return STATUS_SUCCESS;
 }

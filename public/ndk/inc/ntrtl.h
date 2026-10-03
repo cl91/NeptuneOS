@@ -1,12 +1,9 @@
 #pragma once
 
 #include <ntmmapi.h>
+#include <ntpsapi.h>
 #include <ntimage.h>
-
-typedef struct _CLIENT_ID {
-    HANDLE UniqueProcess;
-    HANDLE UniqueThread;
-} CLIENT_ID, *PCLIENT_ID;
+#include <rtlbasedef.h>
 
 /*
  * Time Structure for RTL Time calls
@@ -53,6 +50,14 @@ typedef struct _RTL_PROCESS_MODULE_INFORMATION {
     CHAR FullPathName[256];
 } RTL_PROCESS_MODULE_INFORMATION, *PRTL_PROCESS_MODULE_INFORMATION;
 
+typedef struct _RTL_PROCESS_MODULE_INFORMATION_EX {
+    ULONG NextOffset;
+    RTL_PROCESS_MODULE_INFORMATION BaseInfo;
+    ULONG ImageCheckSum;
+    ULONG TimeDateStamp;
+    PVOID DefaultBase;
+} RTL_PROCESS_MODULE_INFORMATION_EX, *PRTL_PROCESS_MODULE_INFORMATION_EX;
+
 typedef struct _RTL_PROCESS_MODULES {
     ULONG NumberOfModules;
     RTL_PROCESS_MODULE_INFORMATION Modules[1];
@@ -78,18 +83,6 @@ typedef ULONG (NTAPI *PTHREAD_START_ROUTINE)(PVOID Parameter);
 #define IS_DISPATCHING(Flag) ((Flag & EXCEPTION_UNWIND) == 0)
 #define IS_TARGET_UNWIND(Flag) (Flag & EXCEPTION_TARGET_UNWIND)
 
-#define EXCEPTION_MAXIMUM_PARAMETERS 15
-
-/* Exception records */
-typedef struct _EXCEPTION_RECORD {
-    NTSTATUS ExceptionCode;
-    ULONG ExceptionFlags;
-    struct _EXCEPTION_RECORD *ExceptionRecord;
-    PVOID ExceptionAddress;
-    ULONG NumberParameters;
-    ULONG_PTR ExceptionInformation[EXCEPTION_MAXIMUM_PARAMETERS];
-} EXCEPTION_RECORD, *PEXCEPTION_RECORD;
-
 /* Pseudo handle values for current process and thread */
 static inline HANDLE NtCurrentProcess(VOID)
 {
@@ -104,14 +97,14 @@ static inline HANDLE NtCurrentThread(VOID)
 /*
  * Unicode and UTF-8 Conversion Routines
  */
-NTAPI NTSYSAPI NTSTATUS RtlUnicodeToUTF8N(CHAR *utf8_dest, ULONG utf8_bytes_max,
-					  ULONG *utf8_bytes_written,
-					  const WCHAR *uni_src, ULONG uni_bytes);
+NTAPI NTSYSAPI NTSTATUS RtlUnicodeToUTF8N(CHAR *Utf8Dest, ULONG Utf8BytesMax,
+					  ULONG *Utf8BytesWritten,
+					  const WCHAR *UniSrc, ULONG UniBytes);
 
-NTAPI NTSYSAPI NTSTATUS RtlUTF8ToUnicodeN(WCHAR *uni_dest, ULONG uni_bytes_max,
-					  ULONG *uni_bytes_written,
-					  const CHAR *utf8_src,
-					  ULONG utf8_bytes);
+NTAPI NTSYSAPI NTSTATUS RtlUTF8ToUnicodeN(WCHAR *UniDest, ULONG UniBytesMax,
+					  ULONG *UniBytesWritten,
+					  const CHAR *Utf8Src,
+					  ULONG Utf8Bytes);
 
 NTAPI NTSYSAPI CCHAR RtlFindMostSignificantBit(IN ULONGLONG Set);
 
@@ -161,6 +154,292 @@ NTAPI NTSYSAPI CCHAR RtlFindLeastSignificantBit(IN ULONGLONG Set);
     memset(Destination, Fill, Length)
 
 /*
+ * RtlUshortByteSwap
+ *
+ * Swap the bytes of an unsigned short value.
+ *
+ * NOTES
+ * Based on the inline versions in Wine winternl.h
+ *
+ * @implemented
+ */
+FORCEINLINE USHORT RtlUshortByteSwap(IN USHORT Source)
+{
+    return (Source >> 8) | (Source << 8);
+}
+
+/*
+ * RtlUlongByteSwap
+ *
+ * Swap the bytes of an unsigned int value.
+ *
+ * NOTES
+ * Based on the inline versions in Wine winternl.h
+ *
+ * @implemented
+ */
+FORCEINLINE ULONG RtlUlongByteSwap(IN ULONG Source)
+{
+    return ((ULONG)RtlUshortByteSwap((USHORT)Source) << 16) |
+	RtlUshortByteSwap((USHORT)(Source >> 16));
+}
+
+/*
+ * RtlUlonglongByteSwap
+ *
+ * Swap the bytes of an unsigned long long value.
+ *
+ * PARAMS
+ *  i [I] Value to swap bytes of
+ *
+ * RETURNS
+ *  The value with its bytes swapped.
+ *
+ * @implemented
+ */
+FORCEINLINE ULONGLONG RtlUlonglongByteSwap(IN ULONGLONG Source)
+{
+    return ((ULONGLONG)RtlUlongByteSwap(Source) << 32) | RtlUlongByteSwap(Source >> 32);
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlConvertLongToLargeInteger(LONG SignedInteger)
+{
+    LARGE_INTEGER RC;
+    RC.QuadPart = SignedInteger;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlConvertUlongToLargeInteger(ULONG UnsignedInteger)
+{
+    LARGE_INTEGER RC;
+    RC.QuadPart = UnsignedInteger;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlEnlargedIntegerMultiply(LONG Multiplicand,
+						     LONG Multiplier)
+{
+    LARGE_INTEGER RC;
+    RC.QuadPart = (LONGLONG)Multiplicand * Multiplier;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE ULONG RtlEnlargedUnsignedDivide(ULARGE_INTEGER Dividend,
+					    ULONG Divisor,
+					    PULONG Remainder)
+{
+    if (Remainder)
+	*Remainder = (ULONG)(Dividend.QuadPart % Divisor);
+    return (ULONG)(Dividend.QuadPart / Divisor);
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlEnlargedUnsignedMultiply(ULONG Multiplicand,
+						      ULONG Multiplier)
+{
+    LARGE_INTEGER RC;
+    RC.QuadPart = (ULONGLONG)Multiplicand * Multiplier;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlExtendedIntegerMultiply(LARGE_INTEGER Multiplicand,
+						     LONG Multiplier)
+{
+    LARGE_INTEGER RC;
+    RC.QuadPart = Multiplicand.QuadPart * Multiplier;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlExtendedLargeIntegerDivide(LARGE_INTEGER Dividend,
+							ULONG Divisor,
+							PULONG Remainder)
+{
+    LARGE_INTEGER RC;
+    if (Remainder)
+	*Remainder = (ULONG)(Dividend.QuadPart % Divisor);
+    RC.QuadPart = Dividend.QuadPart / Divisor;
+    return RC;
+}
+
+/******************************************************************************
+ * RtlExtendedMagicDivide
+ *
+ * Allows replacing a division by a longlong constant with a multiplication by
+ * the inverse constant.
+ *
+ * RETURNS
+ *  (Dividend * MagicDivisor) >> (64 + ShiftCount)
+ *
+ * NOTES
+ *  If the divisor of a division is constant, the constants MagicDivisor and
+ *  shift must be chosen such that
+ *  MagicDivisor = 2^(64 + ShiftCount) / Divisor.
+ *
+ *  Then we have RtlExtendedMagicDivide(Dividend,MagicDivisor,ShiftCount) ==
+ *  Dividend * MagicDivisor / 2^(64 + ShiftCount) == Dividend / Divisor.
+ *
+ *  The Parameter MagicDivisor although defined as LONGLONG is used as
+ *  ULONGLONG.
+ */
+
+#define LOWER_32(A) ((A) & 0xffffffff)
+#define UPPER_32(A) ((A) >> 32)
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER NTAPI RtlExtendedMagicDivide(LARGE_INTEGER Dividend,
+						       LARGE_INTEGER MagicDivisor,
+						       CCHAR ShiftCount)
+{
+    ULONGLONG DividendHigh;
+    ULONGLONG DividendLow;
+    ULONGLONG InverseDivisorHigh;
+    ULONGLONG InverseDivisorLow;
+    ULONGLONG AhBl;
+    ULONGLONG AlBh;
+    LARGE_INTEGER Result;
+    BOOLEAN Positive;
+
+    if (Dividend.QuadPart < 0) {
+	DividendHigh = UPPER_32((ULONGLONG)-Dividend.QuadPart);
+	DividendLow = LOWER_32((ULONGLONG)-Dividend.QuadPart);
+	Positive = FALSE;
+    } else {
+	DividendHigh = UPPER_32((ULONGLONG)Dividend.QuadPart);
+	DividendLow = LOWER_32((ULONGLONG)Dividend.QuadPart);
+	Positive = TRUE;
+    }
+    InverseDivisorHigh = UPPER_32((ULONGLONG)MagicDivisor.QuadPart);
+    InverseDivisorLow = LOWER_32((ULONGLONG)MagicDivisor.QuadPart);
+
+    AhBl = DividendHigh * InverseDivisorLow;
+    AlBh = DividendLow * InverseDivisorHigh;
+
+    Result.QuadPart = (LONGLONG)((DividendHigh * InverseDivisorHigh + UPPER_32(AhBl) +
+				  UPPER_32(AlBh) +
+				  UPPER_32(LOWER_32(AhBl) + LOWER_32(AlBh) +
+					   UPPER_32(DividendLow * InverseDivisorLow))) >>
+				 ShiftCount);
+    if (!Positive) {
+	Result.QuadPart = -Result.QuadPart;
+    }
+
+    return Result;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlLargeIntegerAdd(LARGE_INTEGER Addend1,
+					     LARGE_INTEGER Addend2)
+{
+    LARGE_INTEGER RC;
+    RC.QuadPart = Addend1.QuadPart + Addend2.QuadPart;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlLargeIntegerArithmeticShift(LARGE_INTEGER LargeInteger,
+							 CCHAR ShiftCount)
+{
+    LARGE_INTEGER RC;
+    CHAR Shift;
+    Shift = ShiftCount % 64;
+    if (Shift < 32) {
+	RC.QuadPart = LargeInteger.QuadPart >> Shift;
+    } else {
+	/* copy the sign bit */
+	RC.HighPart = (LargeInteger.HighPart & 0x80000000);
+	RC.LowPart = LargeInteger.HighPart >> Shift;
+    }
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlLargeIntegerDivide(LARGE_INTEGER Dividend,
+						LARGE_INTEGER Divisor,
+						PLARGE_INTEGER Remainder)
+{
+    LARGE_INTEGER RC;
+    if (Remainder)
+	Remainder->QuadPart = Dividend.QuadPart % Divisor.QuadPart;
+    RC.QuadPart = Dividend.QuadPart / Divisor.QuadPart;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlLargeIntegerNegate(LARGE_INTEGER Subtrahend)
+{
+    LARGE_INTEGER RC;
+    RC.QuadPart = -Subtrahend.QuadPart;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlLargeIntegerShiftLeft(LARGE_INTEGER LargeInteger,
+						   CCHAR ShiftCount)
+{
+    LARGE_INTEGER RC;
+    CCHAR Shift;
+    Shift = ShiftCount % 64;
+    RC.QuadPart = LargeInteger.QuadPart << Shift;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlLargeIntegerShiftRight(LARGE_INTEGER LargeInteger,
+						    CCHAR ShiftCount)
+{
+    LARGE_INTEGER RC;
+    CCHAR Shift;
+    Shift = ShiftCount % 64;
+    RC.QuadPart = LargeInteger.QuadPart >> Shift;
+    return RC;
+}
+
+/*
+ * @implemented
+ */
+FORCEINLINE LARGE_INTEGER RtlLargeIntegerSubtract(LARGE_INTEGER Minuend,
+						  LARGE_INTEGER Subtrahend)
+{
+    LARGE_INTEGER RC;
+    RC.QuadPart = Minuend.QuadPart - Subtrahend.QuadPart;
+    return RC;
+}
+
+/*
  * Time Functions
  */
 NTAPI NTSYSAPI BOOLEAN RtlCutoverTimeToSystemTime(IN PTIME_FIELDS CutoverTimeFields,
@@ -192,6 +471,12 @@ NTAPI NTSYSAPI VOID RtlSecondsSince1980ToTime(IN ULONG ElapsedSeconds,
 NTAPI NTSYSAPI ULONG RtlComputeCrc32(IN ULONG InitialCrc,
 				     IN const UCHAR *Data,
 				     IN ULONG Length);
+
+NTAPI NTSYSAPI ULONG RtlRandom(IN OUT PULONG Seed);
+
+NTAPI NTSYSAPI ULONG RtlRandomEx(IN OUT PULONG Seed);
+
+NTAPI NTSYSAPI ULONG RtlUniform(IN OUT PULONG Seed);
 
 /*
  * Range and Range List Flags

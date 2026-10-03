@@ -2,6 +2,8 @@
 
 #include <ntdef.h>
 #include <ntseapi.h>
+#include <ntioapi.h>
+#include "mmbasedef.h"
 
 #define PAGE_NOACCESS		(0x01)
 #define PAGE_READONLY		(0x02)
@@ -32,15 +34,11 @@
  * user applications. */
 #define MEM_COMMIT_ON_DEMAND	(0x80000000UL)
 
-#define SEC_BASED		(0x00200000UL)
-#define SEC_NO_CHANGE		(0x00400000UL)
-#define SEC_FILE		(0x00800000UL)
-#define SEC_IMAGE		(0x01000000UL)
-#define SEC_RESERVE		(0x04000000UL)
-#define SEC_COMMIT		(0x08000000UL)
-#define SEC_NOCACHE		(0x10000000UL)
-#define SEC_GLOBAL		(0x20000000UL)
-#define SEC_LARGE_PAGES		(0x80000000UL)
+/*
+ * Lock/Unlock Virtuam Memory Flags
+ */
+#define MAP_PROCESS                                         1
+#define MAP_SYSTEM                                          2
 
 /*
  * Memory Information Classes for NtQueryVirtualMemory
@@ -52,19 +50,6 @@ typedef enum _MEMORY_INFORMATION_CLASS {
     MemoryBasicVlmInformation,
     MemoryWorkingSetExList
 } MEMORY_INFORMATION_CLASS;
-
-/*
- * Memory Information Types
- */
-typedef struct _MEMORY_BASIC_INFORMATION {
-    PVOID BaseAddress;
-    PVOID AllocationBase;
-    ULONG AllocationProtect;
-    SIZE_T RegionSize;
-    ULONG State;
-    ULONG Protect;
-    ULONG Type;
-} MEMORY_BASIC_INFORMATION, *PMEMORY_BASIC_INFORMATION;
 
 /*
  * Section Information Clasess for NtQuerySection
@@ -232,6 +217,10 @@ NTAPI NTSYSAPI NTSTATUS NtCreateSection(OUT PHANDLE SectionHandle,
 					IN ULONG AllocationAttributes,
 					IN OPTIONAL HANDLE FileHandle);
 
+NTAPI NTSYSAPI NTSTATUS NtOpenSection(OUT PHANDLE SectionHandle,
+				      IN ACCESS_MASK DesiredAccess,
+				      IN POBJECT_ATTRIBUTES ObjectAttributes);
+
 NTAPI NTSYSAPI NTSTATUS NtQuerySection(IN HANDLE SectionHandle,
 				       IN SECTION_INFORMATION_CLASS SectionInformationClass,
 				       OUT PVOID SectionInformation,
@@ -279,10 +268,64 @@ NTAPI NTSYSAPI NTSTATUS NtReadVirtualMemory(IN HANDLE ProcessHandle,
 					    IN SIZE_T NumberOfBytesToRead,
 					    OUT OPTIONAL PSIZE_T NumberOfBytesRead);
 
+NTAPI NTSYSAPI NTSTATUS NtQueryVirtualMemory(IN HANDLE ProcessHandle,
+					     IN PVOID BaseAddress,
+					     IN MEMORY_INFORMATION_CLASS InfoClass,
+					     OUT PVOID MemoryInformationBuffer,
+					     IN SIZE_T MemoryInformationLength,
+					     OUT OPTIONAL PSIZE_T ReturnLength);
+
 NTAPI NTSYSAPI NTSTATUS NtWriteVirtualMemory(IN HANDLE ProcessHandle,
 					     IN PVOID  BaseAddress,
 					     IN PVOID Buffer,
 					     IN SIZE_T NumberOfBytesToWrite,
 					     OUT OPTIONAL PSIZE_T NumberOfBytesWritten);
+
+NTAPI NTSYSAPI NTSTATUS NtLockVirtualMemory(IN HANDLE ProcessHandle,
+					    IN OUT PVOID *BaseAddress,
+					    IN OUT PSIZE_T NumberOfBytesToLock,
+					    IN ULONG MapType);
+
+NTAPI NTSYSAPI NTSTATUS NtUnlockVirtualMemory(IN HANDLE ProcessHandle,
+					      IN OUT PVOID *BaseAddress,
+					      IN OUT PSIZE_T NumberOfBytesToUnlock,
+					      IN ULONG MapType);
+
+NTAPI NTSYSAPI NTSTATUS NtFlushVirtualMemory(IN HANDLE ProcessHandle,
+					     IN OUT PVOID *BaseAddress,
+					     IN OUT PSIZE_T RegionSize,
+					     OUT PIO_STATUS_BLOCK IoStatus);
+
+NTAPI NTSYSAPI NTSTATUS NtGetWriteWatch(IN HANDLE ProcessHandle,
+					IN ULONG Flags,
+					IN PVOID BaseAddress,
+					IN SIZE_T RegionSize,
+					IN PVOID *UserAddressArray,
+					OUT PULONG_PTR EntriesInUserAddressArray,
+					OUT PULONG Granularity);
+
+NTAPI NTSYSAPI NTSTATUS NtResetWriteWatch(IN HANDLE ProcessHandle,
+					  IN PVOID BaseAddress,
+					  IN SIZE_T RegionSize);
+
+NTAPI NTSYSAPI NTSTATUS NtAllocateUserPhysicalPages(IN HANDLE ProcessHandle,
+						    IN OUT PULONG_PTR NumberOfPages,
+						    IN OUT PULONG_PTR UserPfnArray);
+
+NTAPI NTSYSAPI NTSTATUS NtFreeUserPhysicalPages(IN HANDLE ProcessHandle,
+						IN OUT PULONG_PTR NumberOfPages,
+						IN OUT PULONG_PTR UserPfnArray);
+
+NTAPI NTSYSAPI NTSTATUS NtMapUserPhysicalPages(IN PVOID VirtualAddresses,
+					       IN ULONG_PTR NumberOfPages,
+					       IN OUT PULONG_PTR UserPfnArray);
+
+NTAPI NTSYSAPI NTSTATUS NtMapUserPhysicalPagesScatter(IN PVOID *VirtualAddresses,
+						      IN ULONG_PTR NumberOfPages,
+						      IN OUT PULONG_PTR UserPfnArray);
+
+NTAPI NTSYSAPI NTSTATUS NtFlushInstructionCache(IN HANDLE ProcessHandle,
+						IN PVOID BaseAddress,
+						IN SIZE_T NumberOfBytesToFlush);
 
 #endif	/* _NTOSKRNL_ */

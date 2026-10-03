@@ -816,3 +816,10 @@ NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,
 {
     UNIMPLEMENTED;
 }
+
+NTSTATUS NtFlushKey(IN ASYNC_STATE AsyncState,
+                    IN PTHREAD Thread,
+                    IN HANDLE KeyHandle)
+{
+    UNIMPLEMENTED;
+}

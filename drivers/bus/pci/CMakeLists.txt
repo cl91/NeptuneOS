@@ -1,7 +1,5 @@
 project(pci C)
 
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
-
 list(APPEND SOURCE
     id.c
     pcibridge.c
@@ -21,3 +19,4 @@ list(APPEND SOURCE
 add_message_headers(UNICODE pciclass.mc)
 add_driver(pci ${SOURCE})
 add_dependencies(pci pciclass)
+target_include_directories(pci PRIVATE ${CMAKE_CURRENT_BINARY_DIR})

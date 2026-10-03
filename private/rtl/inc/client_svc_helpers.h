@@ -53,7 +53,7 @@ static inline NTSTATUS KiMarshalThreadContext(OUT SERVICE_ARGUMENT *SvcArg,
 }
 
 static inline NTSTATUS KiMarshalUnicodeString(OUT SERVICE_ARGUMENT *Arg,
-					      IN PUNICODE_STRING String,
+					      IN PCUNICODE_STRING String,
 					      IN OUT ULONG *MsgBufOffset)
 {
     assert(MsgBufOffset != NULL);
@@ -89,6 +89,29 @@ static inline NTSTATUS KiMarshalAnsiString(OUT SERVICE_ARGUMENT *Arg,
     Arg->BufferStart = *MsgBufOffset;
     Arg->BufferSize = Length;
     *MsgBufOffset += Length;
+    return STATUS_SUCCESS;
+}
+
+static inline NTSTATUS KiMarshalSid(OUT SERVICE_ARGUMENT *SvcArg,
+				    IN PSID SidPtr,
+				    IN OUT ULONG *MsgBufOffset)
+{
+    if (*MsgBufOffset > SVC_MSGBUF_SIZE) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    if (!SidPtr) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    PISID Sid = SidPtr;
+    ULONG Size = FIELD_OFFSET(SID, SubAuthority) +
+	Sid->SubAuthorityCount * sizeof(Sid->SubAuthority[0]);
+    if (SVC_MSGBUF_SIZE - *MsgBufOffset < Size) {
+        return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    memcpy(&OFFSET_TO_ARG(*MsgBufOffset, CHAR), Sid, Size);
+    SvcArg->BufferStart = *MsgBufOffset;
+    SvcArg->BufferSize = Size;
+    *MsgBufOffset += Size;
     return STATUS_SUCCESS;
 }
 
@@ -192,7 +215,7 @@ static inline NTSTATUS KiServiceUnmarshalBuffer64(IN PVOID ClientBuffer,
 						  IN SERVICE_ARGUMENT BufferArg,
 						  IN NTSTATUS Status,
 						  IN MWORD BufferLength,
-						  IN MWORD *ResultLength)
+						  IN SIZE_T *ResultLength)
 {
     assert(ClientBuffer != NULL);
     MWORD SizeToCopy = (Status != STATUS_BUFFER_OVERFLOW &&
@@ -214,8 +237,9 @@ static inline NTSTATUS KiServiceUnmarshalBuffer5(IN PVOID ClientBuffer,
 						 IN MWORD BufferLength,
 						 IN ULONG *pResultLength)
 {
-    MWORD ResultLength = *pResultLength;
-    return KiServiceUnmarshalBuffer64(ClientBuffer, BufferArg, Status, BufferLength, &ResultLength);
+    SIZE_T ResultLength = *pResultLength;
+    return KiServiceUnmarshalBuffer64(ClientBuffer, BufferArg, Status,
+				      BufferLength, &ResultLength);
 }
 
 static inline NTSTATUS KiServiceUnmarshalBuffer6(IN PVOID ClientBuffer,
@@ -246,15 +270,39 @@ static inline NTSTATUS KiServiceMarshalPfnDb(IN OPTIONAL PULONG_PTR ClientBuffer
     return STATUS_SUCCESS;
 }
 
+static inline NTSTATUS KiServiceMarshalHandleArray(IN OPTIONAL PHANDLE ClientBuffer,
+						   IN ULONG HandleCount,
+						   OUT SERVICE_ARGUMENT *BufferArg,
+						   OUT SERVICE_ARGUMENT *SizeArg,
+						   IN BOOLEAN InParam,
+						   OUT ULONG *MsgBufOffset)
+{
+    RET_ERR(KiServiceMarshalBuffer(ClientBuffer, HandleCount * sizeof(HANDLE),
+				   BufferArg, SizeArg, InParam, MsgBufOffset));
+    SizeArg->Word = HandleCount;
+    return STATUS_SUCCESS;
+}
+
 static inline NTSTATUS KiServiceUnmarshalPfnDb(IN PULONG_PTR ClientBuffer,
 					       IN SERVICE_ARGUMENT BufferArg,
 					       IN NTSTATUS Status,
 					       IN ULONG PfnCount,
 					       IN ULONG *pResultPfnCount)
 {
-    MWORD ResultLength = *pResultPfnCount * sizeof(ULONG_PTR);
+    SIZE_T ResultLength = *pResultPfnCount * sizeof(ULONG_PTR);
     return KiServiceUnmarshalBuffer64(ClientBuffer, BufferArg, Status,
 				      PfnCount * sizeof(ULONG_PTR), &ResultLength);
+}
+
+static inline NTSTATUS KiServiceUnmarshalHandleArray(IN PULONG_PTR ClientBuffer,
+						     IN SERVICE_ARGUMENT BufferArg,
+						     IN NTSTATUS Status,
+						     IN ULONG HandleCount,
+						     IN ULONG *pResultHandleCount)
+{
+    SIZE_T ResultLength = *pResultHandleCount * sizeof(HANDLE);
+    return KiServiceUnmarshalBuffer64(ClientBuffer, BufferArg, Status,
+				      HandleCount * sizeof(HANDLE), &ResultLength);
 }
 
 static inline VOID KiDeliverApc(IN ULONG MsgBufOffset,

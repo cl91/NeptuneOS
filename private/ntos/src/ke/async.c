@@ -382,3 +382,14 @@ NTSTATUS NtTestAlert(IN ASYNC_STATE State,
 {
     UNIMPLEMENTED;
 }
+
+NTSTATUS NtQueueApcThread(IN ASYNC_STATE AsyncState,
+			  IN PTHREAD Thread,
+			  IN HANDLE ThreadHandle,
+			  IN PKNORMAL_ROUTINE ApcRoutine,
+			  IN OPTIONAL PVOID NormalContext,
+			  IN OPTIONAL PVOID SystemArgument1,
+			  IN OPTIONAL PVOID SystemArgument2)
+{
+    UNIMPLEMENTED;
+}

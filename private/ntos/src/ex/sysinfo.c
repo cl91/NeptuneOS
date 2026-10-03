@@ -417,6 +417,34 @@ C_ASSERT(SystemBasicInformation == 0);
 /*
  * @implemented
  */
+NTSTATUS NtSetSystemInformation(IN ASYNC_STATE State,
+				IN PTHREAD Thread,
+				IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
+				IN PVOID SystemInformationBuffer,
+				IN ULONG SystemInformationLength)
+{
+    NTSTATUS Status = STATUS_NOT_IMPLEMENTED;
+
+    /*
+     * Check whether the request is valid.
+     */
+    if (SystemInformationClass < MIN_SYSTEM_INFO_CLASS ||
+	SystemInformationClass >= MAX_SYSTEM_INFO_CLASS) {
+	return STATUS_INVALID_INFO_CLASS;
+    }
+
+    if (CallQS[SystemInformationClass].Set != NULL) {
+	/* Hand the request to a subhandler */
+	Status = CallQS[SystemInformationClass].Set(SystemInformationBuffer,
+						    SystemInformationLength);
+    }
+
+    return Status;
+}
+
+/*
+ * @implemented
+ */
 NTSTATUS NtQuerySystemInformation(IN ASYNC_STATE State,
 				  IN PTHREAD Thread,
                                   IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
@@ -447,4 +475,26 @@ NTSTATUS NtQuerySystemInformation(IN ASYNC_STATE State,
     }
 
     return Status;
+}
+
+NTSTATUS NtQuerySystemEnvironmentValueEx(IN ASYNC_STATE State,
+					 IN PTHREAD Thread,
+					 IN PCSTR VariableName,
+					 IN GUID *VendorGuid,
+					 OUT PVOID Value,
+					 IN OUT PULONG ReturnLength,
+					 OUT OPTIONAL PULONG Attributes)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtSetSystemEnvironmentValueEx(IN ASYNC_STATE State,
+				       IN PTHREAD Thread,
+				       IN PCSTR VariableName,
+				       IN GUID *VendorGuid,
+				       IN PVOID Value,
+				       IN ULONG ValueLength,
+				       IN ULONG Attributes)
+{
+    UNIMPLEMENTED;
 }

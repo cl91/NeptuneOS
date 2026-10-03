@@ -712,7 +712,7 @@ NTAPI NTSTATUS RtlComputePrivatizedDllName_U(IN PUNICODE_STRING DllName,
 NTAPI ULONG RtlGetFullPathName_Ustr(IN PUNICODE_STRING FileName,
 				    IN ULONG Size,
 				    OUT PWSTR Buffer,
-				    OUT OPTIONAL PCWSTR * ShortName,
+				    OUT OPTIONAL PCWSTR *ShortName,
 				    OUT OPTIONAL PBOOLEAN InvalidName,
 				    OUT RTL_PATH_TYPE * PathType)
 {
@@ -1473,8 +1473,6 @@ NTAPI ULONG RtlGetLongestNtPathLength(VOID)
 
 /*
  * @implemented
- * @note: the export is called RtlGetLengthWithoutTrailingPathSeperators
- *        (with a 'e' instead of a 'a' in "Seperators").
  */
 NTAPI NTSTATUS RtlGetLengthWithoutTrailingPathSeparators(IN ULONG Flags,
 							 IN PCUNICODE_STRING PathString,
@@ -1818,7 +1816,7 @@ NTAPI ULONG RtlGetFullPathName_UEx(IN PWSTR FileName,
     return RtlGetFullPathName_Ustr(&FileNameString,
 				   BufferLength,
 				   Buffer,
-				   (PCWSTR *) FilePart,
+				   (PCWSTR *)FilePart,
 				   NULL, InputPathType);
 }
 
