@@ -350,6 +350,7 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 		       OUT LOCAL_HANDLE *CommPortHandle,
 		       OUT OPTIONAL HANDLE *EventHandle,
 		       IN OUT OPTIONAL PPORT_VIEW ClientView,
+		       IN OPTIONAL PISID RequiredServerSid,
 		       OUT OPTIONAL REMOTE_PORT_VIEW *ServerView,
 		       OUT OPTIONAL ULONG *MaxMessageLength,
 		       IN OPTIONAL PVOID ConnectionInformation,
@@ -440,4 +441,15 @@ out:
 	ObDereferenceObject(Locals.PortObject);
     }
     ASYNC_END(State, Status);
+}
+
+/*
+ * Disconnect the specified LPC communication port. This routine is called by a
+ * client of an LPC connection.
+ */
+NTSTATUS NtDisconnectPort(IN ASYNC_STATE State,
+			  IN PTHREAD Thread,
+			  IN LOCAL_HANDLE CommPortHandle)
+{
+    UNIMPLEMENTED;
 }

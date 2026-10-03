@@ -12,6 +12,7 @@
 #include <ntdll.h>
 
 #define MAX_STATIC_CS_DEBUG_OBJECTS 64
+#define RTLP_DEFAULT_CRITICAL_SECTION_SPIN_COUNT 2000
 
 /* Protects the list of critical sections owned by the process */
 static RTL_CRITICAL_SECTION RtlpCriticalSectionLock;
@@ -391,7 +392,8 @@ NTAPI NTSTATUS RtlInitializeCriticalSection(PRTL_CRITICAL_SECTION CriticalSectio
  */
 NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 				       IN HANDLE LockSemaphore,
-				       IN ULONG SpinCount)
+				       IN ULONG SpinCount,
+				       IN ULONG Flags)
 {
     assert(CriticalSection != NULL);
 
@@ -403,13 +405,27 @@ NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
     CriticalSection->LockCount = -1;
     CriticalSection->RecursionCount = 0;
     CriticalSection->OwningThread = 0;
-    CriticalSection->SpinCount = (NtCurrentPeb()->NumberOfProcessors > 1) ? SpinCount : 0;
+    if (NtCurrentPeb()->NumberOfProcessors <= 1) {
+	SpinCount = 0;
+    } else if (SpinCount == 0) {
+	SpinCount = RTLP_DEFAULT_CRITICAL_SECTION_SPIN_COUNT |
+		    RTL_CRITICAL_SECTION_FLAG_DYNAMIC_SPIN;
+    }
+    CriticalSection->SpinCount = SpinCount |
+				 (Flags & (RTL_CRITICAL_SECTION_FLAG_NO_DEBUG_INFO |
+					   RTL_CRITICAL_SECTION_FLAG_DYNAMIC_SPIN |
+					   RTL_CRITICAL_SECTION_FLAG_RESOURCE_TYPE));
     CriticalSection->LockSemaphore = LockSemaphore;
+
+    if (!(Flags & RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO)) {
+	CriticalSection->DebugInfo = LongToPtr(-1);
+	return STATUS_SUCCESS;
+    }
 
     /* Allocate the Debug Data */
     CriticalSectionDebugData = RtlpAllocateDebugInfo();
-    DPRINT("Allocated Debug Data: %p inside Process: %p\n",
-	   CriticalSectionDebugData, NtCurrentTib()->ClientId.UniqueProcess);
+    DPRINT("Allocated Debug Data: %p inside Process: %p\n", CriticalSectionDebugData,
+	   NtCurrentTib()->ClientId.UniqueProcess);
 
     if (!CriticalSectionDebugData) {
 	/* This is bad! */
@@ -449,7 +465,7 @@ VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore)
     /* Initialize the critical section protecting the process
      * critical section list */
     RtlpInitializeCriticalSection(&RtlpCriticalSectionLock,
-				  CriticalSectionLockSemaphore, 0);
+				  CriticalSectionLockSemaphore, 0, 0);
 
     DPRINT("Inserting into ProcessLocks: %p, %p, %p\n",
 	   &RtlpCriticalSectionLock.DebugInfo->ProcessLocksList,
@@ -478,10 +494,55 @@ VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore)
  *     SpinCount is ignored on single-processor systems.
  *
  *--*/
-NTAPI NTSTATUS
-RtlInitializeCriticalSectionAndSpinCount(PRTL_CRITICAL_SECTION CriticalSection,
-					 ULONG SpinCount)
+NTAPI NTSTATUS RtlInitializeCriticalSectionAndSpinCount(PRTL_CRITICAL_SECTION CriticalSection,
+							ULONG SpinCount)
 {
+    SpinCount &= ~RTL_CRITICAL_SECTION_ALL_FLAG_BITS;
+    return RtlInitializeCriticalSectionEx(CriticalSection, SpinCount, 0);
+}
+
+/*++
+ * RtlInitializeCriticalSectionEx
+ * @implemented NT6.0
+ *
+ *     Initialises a new critical section.
+ *
+ * Params:
+ *     CriticalSection - Critical section to initialise
+ *
+ *     SpinCount - Spin count for the critical section.
+ *
+ *     Flags - Flags for initialization.
+ *
+ * Returns:
+ *     STATUS_SUCCESS.
+ *
+ * Remarks:
+ *     SpinCount is ignored on single-processor systems.
+ *
+ *--*/
+NTAPI NTSTATUS RtlInitializeCriticalSectionEx(OUT PRTL_CRITICAL_SECTION CriticalSection,
+					      IN ULONG SpinCount,
+					      IN ULONG Flags)
+{
+    /* Remove lower bits from flags */
+    Flags &= RTL_CRITICAL_SECTION_ALL_FLAG_BITS;
+
+    /* These flags generally allowed */
+    ULONG AllowedFlags = RTL_CRITICAL_SECTION_FLAG_NO_DEBUG_INFO |
+	RTL_CRITICAL_SECTION_FLAG_DYNAMIC_SPIN |
+	RTL_CRITICAL_SECTION_FLAG_STATIC_INIT |
+	RTL_CRITICAL_SECTION_FLAG_RESOURCE_TYPE |
+	RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO;
+
+    if (Flags & ~AllowedFlags) {
+	return STATUS_INVALID_PARAMETER_3;
+    }
+
+    if (SpinCount & RTL_CRITICAL_SECTION_ALL_FLAG_BITS) {
+	return STATUS_INVALID_PARAMETER_2;
+    }
+
     assert(CriticalSection != &RtlpCriticalSectionLock);
 
     HANDLE LockSemaphore = NULL;
@@ -492,30 +553,33 @@ RtlInitializeCriticalSectionAndSpinCount(PRTL_CRITICAL_SECTION CriticalSection,
 
     RET_ERR_EX(RtlpInitializeCriticalSection(CriticalSection,
 					     LockSemaphore,
-					     SpinCount),
+					     SpinCount,
+					     Flags),
 	       NtClose(LockSemaphore));
 
-    /*
-     * Add it to the List of Critical Sections owned by the process.
-     *
-     * Here CriticalSection->DebugInfo->ProcessLocksList is the list entry,
-     * and RtlpCriticalSectionList is the list head.
-     *
-     * This is protected by the critical section lock.
-     */
-    DPRINT("Securely inserting into ProcessLocks: %p, %p, %p\n",
-	   &CriticalSection->DebugInfo->ProcessLocksList, CriticalSection,
-	   &RtlpCriticalSectionList);
+    if (Flags & RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO) {
+	/*
+	 * Add it to the List of Critical Sections owned by the process.
+	 *
+	 * Here CriticalSection->DebugInfo->ProcessLocksList is the list entry,
+	 * and RtlpCriticalSectionList is the list head.
+	 *
+	 * This is protected by the critical section lock.
+	 */
+	DPRINT("Securely inserting into ProcessLocks: %p, %p, %p\n",
+	       &CriticalSection->DebugInfo->ProcessLocksList, CriticalSection,
+	       &RtlpCriticalSectionList);
 
-    /* Protect List */
-    RtlEnterCriticalSection(&RtlpCriticalSectionLock);
+	/* Protect List */
+	RtlEnterCriticalSection(&RtlpCriticalSectionLock);
 
-    /* Add this critical section to the list */
-    InsertTailList(&RtlpCriticalSectionList,
-		   &CriticalSection->DebugInfo->ProcessLocksList);
+	/* Add this critical section to the list */
+	InsertTailList(&RtlpCriticalSectionList,
+		       &CriticalSection->DebugInfo->ProcessLocksList);
 
-    /* Unprotect */
-    RtlLeaveCriticalSection(&RtlpCriticalSectionLock);
+	/* Unprotect */
+	RtlLeaveCriticalSection(&RtlpCriticalSectionLock);
+    }
 
     return STATUS_SUCCESS;
 }

@@ -21,3 +21,14 @@ NTAPI NTSTATUS NtQuerySystemTime(OUT PLARGE_INTEGER CurrentTime)
 	KiAbsoluteCounterTimeToSystemTime(KiQueryAbsoluteCounterTime()).SystemTime;
     return STATUS_SUCCESS;
 }
+
+NTAPI NTSTATUS NtQueryPerformanceCounter(OUT LARGE_INTEGER *PerformanceCounter,
+					 OUT OPTIONAL LARGE_INTEGER *PerformanceFrequency)
+{
+    PerformanceCounter->QuadPart = KiQueryAbsoluteCounterTime().CounterTime;
+    if (PerformanceFrequency) {
+	ULONG64 TscFreqInMHz = SharedUserData->TscFrequencyInMHz;
+	PerformanceFrequency->QuadPart = TscFreqInMHz * 1000000;
+    }
+    return STATUS_SUCCESS;
+}

@@ -12,7 +12,7 @@ FORCEINLINE NTSTATUS KiMarshalPortMessage(IN PPORT_MESSAGE PortMessage,
 	ULONG DataLength = MessageLength - sizeof(PORT_MESSAGE);
 	if (!LocalView || LocalView->ViewSize < DataLength) {
 	    assert(FALSE);
-	    return STATUS_INVALID_PARAMETER_3;
+	    return STATUS_PORT_MESSAGE_TOO_LONG;
 	}
 	ShortMsg = *PortMessage;
 	RtlCopyMemory(LocalView->ViewBase, PortMessage + 1, DataLength);

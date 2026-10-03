@@ -353,19 +353,24 @@ ClientPostMarshaling:
 
 # Types that can fit into a single machine word
 SIMPLE_TYPES = ["BOOLEAN", "CHAR", "UCHAR", "SHORT", "USHORT", "LONG", "ULONG", "ULONG64",
-                "ULONG_PTR", "SIZE_T", "MWORD", "NTSTATUS", "SECTION_INHERIT",
+                "ULONG_PTR", "SIZE_T", "MWORD", "NTSTATUS", "WAIT_TYPE", "SECTION_INHERIT",
                 "ACCESS_MASK", "LCID", "PVOID", "HANDLE", "GLOBAL_HANDLE", "LOCAL_HANDLE",
-                "PIO_APC_ROUTINE", "PTIMER_APC_ROUTINE", "PIO_INTERRUPT_SERVICE_THREAD_ENTRY",
+                "PIO_APC_ROUTINE", "PTIMER_APC_ROUTINE", "PKNORMAL_ROUTINE",
+                "PIO_INTERRUPT_SERVICE_THREAD_ENTRY", "RTL_ATOM",
                 "EVENT_TYPE", "TIMER_TYPE", "SHUTDOWN_ACTION", "MEMORY_CACHING_TYPE",
                 "HARDERROR_RESPONSE_OPTION", "HARDERROR_RESPONSE",
-                "DEVICE_REGISTRY_PROPERTY", "SECURITY_INFORMATION",
+                "DEVICE_REGISTRY_PROPERTY", "SECURITY_INFORMATION", "TOKEN_TYPE",
                 "IO_NOTIFICATION_EVENT_CATEGORY", "OBJECT_INFORMATION_CLASS",
                 "SYSTEM_INFORMATION_CLASS", "TOKEN_INFORMATION_CLASS",
                 "MEMORY_INFORMATION_CLASS", "SECTION_INFORMATION_CLASS",
                 "PROCESS_INFORMATION_CLASS", "THREAD_INFORMATION_CLASS",
+                "JOB_OBJECT_INFORMATION_CLASS", "DEBUG_OBJECT_INFORMATION_CLASS",
                 "FILE_INFORMATION_CLASS", "FS_INFORMATION_CLASS",
                 "KEY_INFORMATION_CLASS", "KEY_VALUE_INFORMATION_CLASS",
-                "PLUGPLAY_CONTROL_CLASS"]
+                "EVENT_INFORMATION_CLASS", "ATOM_INFORMATION_CLASS",
+                "PLUGPLAY_CONTROL_CLASS", "POWER_INFORMATION_LEVEL",
+                "POWER_ACTION", "SYSTEM_POWER_STATE", "LATENCY_TIME",
+                "EXECUTION_STATE"]
 
 
 def camel_case_to_upper_snake_case(name):
@@ -515,7 +520,7 @@ memcpy({{name}}, KiServiceGetArgument((MWORD)seL4_GetIPCBuffer(), {{name}}Arg.Wo
 {% if dir_in %}P{{base_type}} {{name}}{% else %}{{base_type}} *{{name}}{% endif %} = NULL;"""
         self.tmpl_server_marshaling = """if (!KiServiceValidateArgument({{name}}Arg.Word, sizeof({{base_type}}), {% if optional %}TRUE{% else %}FALSE{% endif %})) {
     DbgTrace("{{svc_name}}: Invalid argument at position {{idx+1}}. Argument is 0x%zx.\\n", {{name}}Arg.Word);
-    Status = STATUS_INVALID_PARAMETER_{{idx+1}};
+    Status = {% if idx >= 11 %}STATUS_INVALID_PARAMETER{% else %}STATUS_INVALID_PARAMETER_{{idx+1}}{% endif %};
     goto ServerPostMarshaling_{{svc_name}};
 }
 {{name}} = KiServiceGetArgument(Thread->IpcBufferServerAddr, {{name}}Arg.Word);
@@ -893,7 +898,7 @@ class Service:
             SimplePointerMarshaller(server_name),
             SingleObjectMarshaller(server_name, object_type = "UnicodeString",
                                    server_type = "PCSTR",
-                                   client_type = "PUNICODE_STRING",
+                                   client_type = "PCUNICODE_STRING",
                                    marshal_func = "KiMarshalUnicodeString",
                                    validate_func = "KiValidateUnicodeString",
                                    unmarshal_func = "KiServiceGetArgument"),
@@ -921,6 +926,12 @@ class Service:
                                    marshal_func = "KiMarshalThreadContext",
                                    validate_func = "KiValidateThreadContext",
                                    unmarshal_func = "KiServiceGetArgument"),
+            SingleObjectMarshaller(server_name, object_type = "Sid",
+                                   server_type = "PISID",
+                                   client_type = "PSID",
+                                   marshal_func = "KiMarshalSid",
+                                   validate_func = "KiValidateSid",
+                                   unmarshal_func = "KiServiceGetArgument"),
             BufferMarshaller(server_name, buffer_type = "Void",
                              server_type = "PVOID", client_type = "PVOID",
                              client_marshal_func = "KiServiceMarshalBuffer",
@@ -941,6 +952,13 @@ class Service:
                              client_post_marshal_func = "",
                              client_unmarshal_func = "KiServiceUnmarshalPfnDb",
                              server_marshal_func = "KiServiceMapPfnDb",
+                             server_post_marshal_func = "KiServiceUnmapBuffer"),
+            BufferMarshaller(server_name, buffer_type = "HandleArray",
+                             server_type = "PHANDLE", client_type = "PHANDLE",
+                             client_marshal_func = "KiServiceMarshalHandleArray",
+                             client_post_marshal_func = "",
+                             client_unmarshal_func = "KiServiceUnmarshalHandleArray",
+                             server_marshal_func = "KiServiceMapHandleArray",
                              server_post_marshal_func = "KiServiceUnmapBuffer"),
             BufferMarshaller(server_name, buffer_type = "InputIoBuffer",
                              server_type = "PVOID", client_type = "PVOID",

@@ -1367,6 +1367,15 @@ out:
     ASYNC_END(State, Status);
 }
 
+NTSTATUS NtOpenSection(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
+		       OUT HANDLE *SectionHandle,
+		       IN ACCESS_MASK DesiredAccess,
+		       IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtMapViewOfSection(IN ASYNC_STATE AsyncState,
                             IN PTHREAD Thread,
                             IN HANDLE SectionHandle,

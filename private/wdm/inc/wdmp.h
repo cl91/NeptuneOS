@@ -22,9 +22,6 @@
 
 #define CONTROL_KEY_NAME L"\\Registry\\Machine\\System\\CurrentControlSet\\"
 
-/* Shared kernel data that is accessible from user space */
-#define SharedUserData ((const volatile KUSER_SHARED_DATA *const) KUSER_SHARED_DATA_CLIENT_ADDR)
-
 #define IopAllocatePoolEx(Ptr, Type, Size, OnError)		\
     Type *Ptr = (Type *)RtlAllocateHeap(RtlGetProcessHeap(),	\
 					HEAP_ZERO_MEMORY,	\

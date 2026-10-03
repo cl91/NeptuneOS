@@ -1591,7 +1591,7 @@ NTSTATUS LdrpInitializeHeapManager(IN PNTDLL_PROCESS_INIT_INFO InitInfo,
 
     /* Initialize the process heaps list protecting lock */
     RtlpInitializeCriticalSection(&RtlpProcessHeapListLock,
-				  InitInfo->ProcessHeapListLockSemaphore, 0);
+				  InitInfo->ProcessHeapListLockSemaphore, 0, 0);
 
     DPRINT("Creating process heap\n");
     RET_ERR(LdrpCreateHeap((PVOID)InitInfo->ProcessHeapStart, ProcessHeapFlags,
@@ -2084,9 +2084,6 @@ static PVOID RtlpAllocateNonDedicated(PHEAP Heap,
 	return InUseEntry + 1;
     }
 
-    /* Really unfortunate, out of memory condition */
-    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_NO_MEMORY);
-
     /* Generate an exception */
     if (Flags & HEAP_GENERATE_EXCEPTIONS) {
 	EXCEPTION_RECORD ExceptionRecord;
@@ -2139,7 +2136,6 @@ NTAPI PVOID RtlAllocateHeap(IN PVOID HeapPtr,
 
     /* Check for the maximum size */
     if (Size >= 0x80000000) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_NO_MEMORY);
 	DPRINT1("HEAP: Allocation failed!\n");
 	return NULL;
     }
@@ -2305,8 +2301,6 @@ NTAPI PVOID RtlAllocateHeap(IN PVOID HeapPtr,
 	RtlRaiseException(&ExceptionRecord);
     }
 
-    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_BUFFER_TOO_SMALL);
-
     /* Release the lock */
     if (HeapLocked)
 	RtlpLeaveHeapLock(Heap->LockVariable);
@@ -2359,14 +2353,12 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 	    /* This is an invalid block */
 	    DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
 	    ASSERT(FALSE);
-	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 	    return FALSE;
 	}
     } __except(EXCEPTION_EXECUTE_HANDLER) {
 	/* The pointer was invalid */
 	DPRINT1("HEAP: Trying to free an invalid address %p!\n", Ptr);
 	ASSERT(FALSE);
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 	return FALSE;
     }
 
@@ -2387,7 +2379,7 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 
 	BlockSize = 0;
 	Status = NtFreeVirtualMemory(NtCurrentProcess(),
-				     (PVOID *) & VirtualEntry,
+				     (PVOID *)&VirtualEntry,
 				     &BlockSize, MEM_RELEASE);
 
 	if (!NT_SUCCESS(Status)) {
@@ -2395,7 +2387,6 @@ BOOLEAN RtlFreeHeap(HANDLE HeapPtr,	/* [in] Handle of heap */
 		    "Heap %p, ptr %p, base address %p\n",
 		    Status, Heap, Ptr, VirtualEntry);
 	    assert(FALSE);
-	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(Status);
 	}
     } else {
 	/* Normal allocation */
@@ -2712,7 +2703,6 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
 
     /* Return success in case of a null pointer */
     if (!Ptr) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_SUCCESS);
 	return NULL;
     }
 
@@ -2725,7 +2715,6 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
 
     /* Make sure size is valid */
     if (Size >= 0x80000000) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_NO_MEMORY);
 	return NULL;
     }
 
@@ -2755,9 +2744,6 @@ RtlReAllocateHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr, SIZE_T Size)
 
     /* If that entry is not really in-use, we have a problem */
     if (!(InUseEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY)) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-	    (STATUS_INVALID_PARAMETER);
-
 	/* Release the lock and return */
 	if (HeapLocked)
 	    RtlpLeaveHeapLock(Heap->LockVariable);
@@ -3169,7 +3155,6 @@ SIZE_T RtlSizeHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr)
 
     // FIXME This is a hack around missing SEH support!
     if (!Heap) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_HANDLE);
 	return (SIZE_T)-1;
     }
 
@@ -3185,7 +3170,6 @@ SIZE_T RtlSizeHeap(HANDLE HeapPtr, ULONG Flags, PVOID Ptr)
 
     /* Return -1 if that entry is free */
     if (!(HeapEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY)) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 	return (SIZE_T)-1;
     }
 
@@ -3712,7 +3696,7 @@ RtlEnumProcessHeaps(PHEAP_ENUMERATION_ROUTINE HeapEnumerationRoutine,
 /*
  * @implemented
  */
-ULONG NTAPI RtlGetProcessHeaps(ULONG count, HANDLE * heaps)
+ULONG NTAPI RtlGetProcessHeaps(ULONG Count, HANDLE *Heaps)
 {
     UNIMPLEMENTED;
     return 0;
@@ -3770,8 +3754,6 @@ BOOLEAN NTAPI RtlSetUserValueHeap(IN PVOID HeapHandle,
 
     /* If it's a free entry - return error */
     if (!(HeapEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY)) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
-
 	/* Release the heap lock if it was acquired */
 	if (HeapLocked)
 	    RtlpLeaveHeapLock(Heap->LockVariable);
@@ -3828,9 +3810,6 @@ BOOLEAN NTAPI RtlSetUserFlagsHeap(IN PVOID HeapHandle,
 
     /* If it's a free entry - return error */
     if (!(HeapEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY)) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-	    (STATUS_INVALID_PARAMETER);
-
 	/* Release the heap lock if it was acquired */
 	if (HeapLocked)
 	    RtlpLeaveHeapLock(Heap->LockVariable);
@@ -3882,9 +3861,6 @@ BOOLEAN NTAPI RtlGetUserInfoHeap(IN PVOID HeapHandle,
 
     /* If it's a free entry - return error */
     if (!(HeapEntry->CommonEntry.Flags & HEAP_ENTRY_BUSY)) {
-	RtlSetLastWin32ErrorAndNtStatusFromNtStatus
-	    (STATUS_INVALID_PARAMETER);
-
 	/* Release the heap lock if it was acquired */
 	if (HeapLocked)
 	    RtlpLeaveHeapLock(Heap->LockVariable);
@@ -4037,7 +4013,7 @@ ULONG NTAPI RtlMultipleAllocateHeap(IN PVOID HeapHandle,
 				    IN ULONG Flags,
 				    IN SIZE_T Size,
 				    IN ULONG Count,
-				    OUT PVOID * Array)
+				    OUT PVOID *Array)
 {
     ULONG Index;
     EXCEPTION_RECORD ExceptionRecord;
@@ -4045,9 +4021,6 @@ ULONG NTAPI RtlMultipleAllocateHeap(IN PVOID HeapHandle,
     for (Index = 0; Index < Count; ++Index) {
 	Array[Index] = RtlAllocateHeap(HeapHandle, Flags, Size);
 	if (Array[Index] == NULL) {
-	    /* ERROR_NOT_ENOUGH_MEMORY */
-	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_NO_MEMORY);
-
 	    if (Flags & HEAP_GENERATE_EXCEPTIONS) {
 		ExceptionRecord.ExceptionCode = STATUS_NO_MEMORY;
 		ExceptionRecord.ExceptionRecord = NULL;
@@ -4077,13 +4050,9 @@ ULONG NTAPI RtlMultipleFreeHeap(IN PVOID HeapHandle,
 
 	__try {
 	    if (!RtlFreeHeap(HeapHandle, Flags, Array[Index])) {
-		/* ERROR_INVALID_PARAMETER */
-		RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 		break;
 	    }
 	} __except(EXCEPTION_EXECUTE_HANDLER) {
-	    /* ERROR_INVALID_PARAMETER */
-	    RtlSetLastWin32ErrorAndNtStatusFromNtStatus(STATUS_INVALID_PARAMETER);
 	    break;
 	}
     }

@@ -1075,3 +1075,27 @@ int snprintf(char *buf, size_t size, const char *fmt, ...)
 
     return i;
 }
+
+/**
+ * sprintf - Format a string and place it in a buffer
+ * @buf: The buffer to place the result into
+ * @fmt: The format string to use
+ * @...: Arguments for the format string
+ *
+ * The return value is the number of characters written into @buf not including
+ * the trailing '\0'. Use snprintf() or scnprintf() in order to avoid
+ * buffer overflows.
+ *
+ * See the vsnprintf() documentation for format string extensions over C99.
+ */
+int sprintf(char *buf, const char *fmt, ...)
+{
+        va_list args;
+        int i;
+
+        va_start(args, fmt);
+        i = vsnprintf(buf, INT_MAX, fmt, args);
+        va_end(args);
+
+        return i;
+}

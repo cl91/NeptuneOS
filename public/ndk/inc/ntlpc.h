@@ -29,6 +29,9 @@ typedef struct _REMOTE_PORT_VIEW {
 #define PORT_MAXIMUM_MESSAGE_LENGTH 256
 #endif
 
+#define LPC_MAX_MESSAGE_LENGTH PORT_MAXIMUM_MESSAGE_LENGTH
+#define LPC_MAX_DATA_LENGTH (LPC_MAX_MESSAGE_LENGTH - sizeof(PORT_MESSAGE))
+
 #ifndef _NTOSKRNL_
 
 /*
@@ -79,10 +82,16 @@ NTAPI NTSYSAPI NTSTATUS NtConnectPort(IN HANDLE PortHandle,
 				      OUT LOCAL_HANDLE *CommPortHandle,
 				      OUT OPTIONAL HANDLE *EventHandle,
 				      IN OUT OPTIONAL PPORT_VIEW ClientView,
+				      IN OPTIONAL PSID RequiredServerSid,
 				      IN OUT OPTIONAL PREMOTE_PORT_VIEW ServerView,
 				      OUT OPTIONAL PULONG MaxMessageLength,
 				      IN OPTIONAL PVOID ConnectionInformation,
 				      IN OPTIONAL ULONG ConnectionInformationLength);
+
+/*
+ * Port disconnection (client)
+ */
+NTAPI NTSYSAPI NTSTATUS NtDisconnectPort(IN LOCAL_HANDLE CommPortHandle);
 
 /*
  * Port reply (server)

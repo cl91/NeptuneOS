@@ -733,7 +733,10 @@ NTSTATUS MountMgrQuerySymbolicLink(IN PUNICODE_STRING SymbolicName,
     }
 
     /* Query its target */
-    Status = NtQuerySymbolicLinkObject(LinkHandle, LinkTarget, NULL);
+    ULONG ReturnLength = 0;
+    Status = NtQuerySymbolicLinkObject(LinkHandle, LinkTarget->Buffer,
+				       LinkTarget->MaximumLength, &ReturnLength);
+    LinkTarget->Length = ReturnLength;
 
     NtClose(LinkHandle);
 

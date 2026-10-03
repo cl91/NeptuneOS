@@ -797,22 +797,6 @@ extern "C" {
 #define	REGSTR_VAL_EISA_SIMULATE_INT15	TEXT("NESASimulateInt15")
 #endif
 
-#ifndef _IN_KERNEL_
-
-typedef struct _DSKTLSYSTEMTIME {
-	WORD wYear;
-	WORD wMonth;
-	WORD wDayOfWeek;
-	WORD wDay;
-	WORD wHour;
-	WORD wMinute;
-	WORD wSecond;
-	WORD wMilliseconds;
-	WORD wResult;
-} DSKTLSYSTEMTIME,*PDSKTLSYSTEMTIME,*LPDSKTLSYSTEMTIME;
-
-#endif
-
 #ifdef __cplusplus
 }
 #endif

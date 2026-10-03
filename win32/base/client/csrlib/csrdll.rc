@@ -1,0 +1,5 @@
+#define NEPTUNEOS_VERSION_DLL
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Client/Server Runtime Subsystem Client DLL"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "csrdll"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "csrdll.dll"
+#include <version.rc>

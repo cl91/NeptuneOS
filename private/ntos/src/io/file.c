@@ -553,6 +553,29 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
 			 CreateDisposition, CreateOptions, FALSE);
 }
 
+NTSTATUS NtCreateMailslotFile(IN ASYNC_STATE State, IN PTHREAD Thread,
+			      OUT HANDLE *FileHandle, IN ACCESS_MASK DesiredAccess,
+			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+			      OUT IO_STATUS_BLOCK *IoStatusBlock, IN ULONG CreateOptions,
+			      IN ULONG MailslotQuota, IN ULONG MaxMessageSize,
+			      IN OPTIONAL PLARGE_INTEGER TimeOut)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtCreateNamedPipeFile(IN ASYNC_STATE State, IN PTHREAD Thread,
+			       OUT HANDLE *FileHandle, IN ACCESS_MASK DesiredAccess,
+			       IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+			       OUT IO_STATUS_BLOCK *IoStatusBlock, IN ULONG ShareAccess,
+			       IN ULONG CreateDisposition, IN ULONG CreateOptions,
+			       IN ULONG NamedPipeType, IN ULONG ReadMode,
+			       IN ULONG CompletionMode, IN ULONG MaximumInstances,
+			       IN ULONG InboundQuota, IN ULONG OutboundQuota,
+			       IN OPTIONAL PLARGE_INTEGER DefaultTimeout)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtOpenFile(IN ASYNC_STATE State,
 		    IN PTHREAD Thread,
                     OUT HANDLE *FileHandle,
@@ -825,6 +848,21 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
 			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, FALSE);
 }
 
+NTSTATUS NtReadFileScatter(IN ASYNC_STATE State,
+			   IN PTHREAD Thread,
+			   IN HANDLE FileHandle,
+			   IN HANDLE Event,
+			   IN PIO_APC_ROUTINE UserApcRoutine,
+			   IN PVOID UserApcContext,
+			   OUT IO_STATUS_BLOCK *UserIoStatusBlock,
+			   IN PVOID BufferDescription,
+			   IN ULONG BufferLength,
+			   IN PLARGE_INTEGER ByteOffset,
+			   IN OPTIONAL PULONG Key)
+{
+    UNIMPLEMENTED;
+}
+
 NTSTATUS NtWriteFile(IN ASYNC_STATE State,
                      IN PTHREAD Thread,
                      IN HANDLE FileHandle,
@@ -839,6 +877,37 @@ NTSTATUS NtWriteFile(IN ASYNC_STATE State,
 {
     return IopReadWriteFile(State, Thread, FileHandle, EventHandle, ApcRoutine, ApcContext,
 			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, TRUE);
+}
+
+NTSTATUS NtWriteFileGather(IN ASYNC_STATE State,
+			   IN PTHREAD Thread,
+			   IN HANDLE FileHandle,
+			   IN HANDLE Event,
+			   IN PIO_APC_ROUTINE ApcRoutine,
+			   IN PVOID ApcContext,
+			   OUT IO_STATUS_BLOCK *IoStatusBlock,
+			   IN PVOID BufferDescription,
+			   IN ULONG BufferLength,
+			   IN PLARGE_INTEGER ByteOffset,
+			   IN OPTIONAL PULONG Key)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtLockFile(IN ASYNC_STATE State, IN PTHREAD Thread, IN HANDLE FileHandle,
+		    IN HANDLE EventHandle, IN PIO_APC_ROUTINE ApcRoutine,
+		    IN PVOID ApcContext, OUT IO_STATUS_BLOCK *IoStatusBlock,
+		    IN PLARGE_INTEGER ByteOffset, IN PLARGE_INTEGER Length, IN ULONG Key,
+		    IN BOOLEAN FailImmediately, IN BOOLEAN ExclusiveLock)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtUnlockFile(IN ASYNC_STATE State, IN PTHREAD Thread, IN HANDLE FileHandle,
+		      OUT IO_STATUS_BLOCK *IoStatusBlock, IN PLARGE_INTEGER ByteOffset,
+		      IN PLARGE_INTEGER Length, IN ULONG Key)
+{
+    UNIMPLEMENTED;
 }
 
 static NTSTATUS IopDeviceIoControlFile(IN ASYNC_STATE State,
@@ -1120,6 +1189,14 @@ NTSTATUS NtDeleteFile(IN ASYNC_STATE State,
     ASYNC_END(State, STATUS_SUCCESS);
 }
 
+NTSTATUS NtCancelIoFile(IN ASYNC_STATE State,
+			IN PTHREAD Thread,
+			IN HANDLE FileHandle,
+			OUT PIO_STATUS_BLOCK IoStatusBlock)
+{
+    UNIMPLEMENTED;
+}
+
 /* TODO: We need to cache basic file info since this is accessed frequently. */
 NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
                                IN PTHREAD Thread,
@@ -1205,6 +1282,29 @@ out:
     }
     AWAIT_IF(Locals.FileHandle, NtClose, State, Locals, Thread, Locals.FileHandle);
     ASYNC_END(State, Locals.IoStatus.Status);
+}
+
+NTSTATUS NtQueryFullAttributesFile(IN ASYNC_STATE State,
+                                   IN PTHREAD Thread,
+                                   IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
+                                   OUT FILE_NETWORK_OPEN_INFORMATION *FileInformation)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtNotifyChangeDirectoryFile(IN ASYNC_STATE State,
+				     IN PTHREAD Thread,
+				     IN HANDLE FileHandle,
+				     IN HANDLE EventHandle,
+				     IN PIO_APC_ROUTINE ApcRoutine,
+				     IN PVOID ApcContext,
+				     OUT IO_STATUS_BLOCK *IoStatusBlock,
+				     OUT PVOID Buffer,
+				     IN ULONG BufferSize,
+				     IN ULONG CompletionFilter,
+				     IN BOOLEAN WatchTree)
+{
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
@@ -1351,6 +1451,21 @@ out:
     }
 
     ASYNC_END(State, Status);
+}
+
+NTSTATUS NtQueryEaFile(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
+		       IN HANDLE FileHandle,
+		       OUT PIO_STATUS_BLOCK IoStatusBlock,
+		       OUT PVOID Buffer,
+		       IN ULONG Length,
+		       IN BOOLEAN ReturnSingleEntry,
+		       IN OPTIONAL PVOID EaList,
+		       IN ULONG EaListLength,
+		       IN OPTIONAL PULONG EaIndex,
+		       IN BOOLEAN RestartScan)
+{
+    UNIMPLEMENTED;
 }
 
 static NTSTATUS IopOpenTargetDirectory(IN ASYNC_STATE State,
@@ -1716,6 +1831,17 @@ out:
     }
 
     ASYNC_END(State, Status);
+}
+
+NTSTATUS NtSetVolumeInformationFile(IN ASYNC_STATE State,
+				    IN PTHREAD Thread,
+				    IN HANDLE FileHandle,
+				    OUT IO_STATUS_BLOCK *IoStatusBlock,
+				    IN PVOID FsInformation,
+				    IN ULONG Length,
+				    IN FS_INFORMATION_CLASS FsInformationClass)
+{
+    UNIMPLEMENTED;
 }
 
 NTSTATUS NtFlushBuffersFile(IN ASYNC_STATE State,

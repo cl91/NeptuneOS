@@ -348,7 +348,7 @@ NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
                            IN HANDLE TargetProcessHandle,
                            OUT HANDLE *TargetHandle,
                            IN ACCESS_MASK DesiredAccess,
-                           IN BOOLEAN InheritHandle,
+                           IN ULONG HandleAttributes,
                            IN ULONG Options)
 {
     UNIMPLEMENTED;

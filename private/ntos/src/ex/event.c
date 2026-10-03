@@ -182,6 +182,23 @@ NTSTATUS NtResetEvent(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS NtPulseEvent(IN ASYNC_STATE State,
+		      IN PTHREAD Thread,
+		      IN HANDLE EventHandle,
+		      OUT OPTIONAL LONG *PreviousState)
+{
+    PEVENT_OBJECT EventObject = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
+				      (POBJECT *)&EventObject));
+    assert(EventObject != NULL);
+    if (PreviousState) {
+	*PreviousState = EventObject->Event.Header.Signaled;
+    }
+    KePulseEvent(&EventObject->Event);
+    ObDereferenceObject(EventObject);
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS NtClearEvent(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
 		      IN HANDLE EventHandle)
@@ -212,6 +229,46 @@ NTSTATUS NtOpenEvent(IN ASYNC_STATE State,
     ASYNC_END(State, Status);
 }
 
+NTSTATUS NtQueryEvent(IN ASYNC_STATE State,
+                     IN PTHREAD Thread,
+		     IN HANDLE EventHandle,
+		     IN EVENT_INFORMATION_CLASS EventInformationClass,
+		     OUT PVOID EventInformation,
+		     IN ULONG EventInformationLength,
+		     OUT PULONG ReturnLength)
+{
+    assert(ReturnLength);
+    *ReturnLength = 0;
+    if (!EventHandle) {
+	return STATUS_INVALID_HANDLE;
+    }
+
+    switch (EventInformationClass) {
+    case EventBasicInformation:
+	if (EventInformationLength < sizeof(EVENT_BASIC_INFORMATION)) {
+	    return STATUS_INFO_LENGTH_MISMATCH;
+	}
+	break;
+    default:
+	return STATUS_INVALID_INFO_CLASS;
+    }
+
+    PEVENT_OBJECT Event = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle,
+				      OBJECT_TYPE_EVENT, (POBJECT *)&Event));
+
+    if (EventInformationClass == EventBasicInformation) {
+	PEVENT_BASIC_INFORMATION Info = EventInformation;
+	Info->EventType = Event->Event.Header.EventType;
+	Info->EventState = Event->Event.Header.Signaled;
+	*ReturnLength = sizeof(EVENT_BASIC_INFORMATION);
+    } else {
+	assert(FALSE);
+    }
+    ObDereferenceObject(Event);
+    return STATUS_SUCCESS;
+}
+
 /* If the object is a dispatcher object, return the dispatcher header.
  * Otherwise return NULL. */
 static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
@@ -224,6 +281,7 @@ static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
     case OBJECT_TYPE_DEVICE:
     case OBJECT_TYPE_DRIVER:
     case OBJECT_TYPE_KEY:
+    case OBJECT_TYPE_LPC_PORT:
 	/* TODO: These are all dispatcher objects. We should be
 	 * able to sleep on them. This is not implemented yet. */
 	assert(FALSE);
@@ -274,4 +332,71 @@ NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
 	     Thread, Locals.DispatcherObject, Alertable, TimeOut);
     ObDereferenceObject(Locals.Object);
     ASYNC_END(State, Status);
+}
+
+NTSTATUS NtWaitForMultipleObjects(IN ASYNC_STATE State,
+				  IN PTHREAD Thread,
+				  IN ULONG Count,
+				  IN PHANDLE Handles,
+				  IN WAIT_TYPE WaitType,
+				  IN BOOLEAN Alertable,
+				  IN OPTIONAL PLARGE_INTEGER TimeOut)
+{
+    NTSTATUS Status = STATUS_INVALID_PARAMETER;
+    ASYNC_BEGIN(State, Locals, {
+	    POBJECT *Objects;
+	    PDISPATCHER_HEADER *DispatcherObjects;
+	    ULONG ReferencedCount;
+	});
+    if (Count == 0 || !Handles || (WaitType != WaitAny && WaitType != WaitAll)) {
+	ASYNC_RETURN(State, STATUS_INVALID_PARAMETER);
+    }
+
+    Locals.Objects = ExAllocatePoolWithTag(sizeof(POBJECT) * Count,
+					   NTOS_EX_TAG);
+    if (Locals.Objects == NULL) {
+	ASYNC_RETURN(State, STATUS_NO_MEMORY);
+    }
+    Locals.DispatcherObjects = ExAllocatePoolWithTag(sizeof(PDISPATCHER_HEADER) * Count,
+						     NTOS_EX_TAG);
+    if (Locals.DispatcherObjects == NULL) {
+	ExFreePoolWithTag(Locals.Objects, NTOS_EX_TAG);
+	ASYNC_RETURN(State, STATUS_NO_MEMORY);
+    }
+
+    Locals.ReferencedCount = 0;
+    for (ULONG i = 0; i < Count; i++) {
+	Status = ObReferenceObjectByHandle(Thread, Handles[i], OBJECT_TYPE_ANY,
+					   &Locals.Objects[i]);
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
+	Locals.ReferencedCount++;
+	Locals.DispatcherObjects[i] = EiObjectGetDispatcherHeader(Locals.Objects[i]);
+	if (Locals.DispatcherObjects[i] == NULL) {
+	    Status = STATUS_OBJECT_TYPE_MISMATCH;
+	    goto out;
+	}
+    }
+
+    AWAIT_EX(Status, KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
+	     WaitType, Locals.DispatcherObjects, Count, TimeOut);
+
+out:
+    while (Locals.ReferencedCount != 0) {
+	ObDereferenceObject(Locals.Objects[--Locals.ReferencedCount]);
+    }
+    ExFreePoolWithTag(Locals.DispatcherObjects, NTOS_EX_TAG);
+    ExFreePoolWithTag(Locals.Objects, NTOS_EX_TAG);
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS NtSignalAndWaitForSingleObject(IN ASYNC_STATE State,
+					IN PTHREAD Thread,
+					IN HANDLE SignalObject,
+					IN HANDLE WaitObject,
+					IN BOOLEAN Alertable,
+					IN OPTIONAL PLARGE_INTEGER Timeout)
+{
+    UNIMPLEMENTED;
 }

@@ -5,6 +5,7 @@
 #include <ntkeapi.h>
 #include <debug.h>
 #include <guiddef.h>
+#include "iobasedef.h"
 
 #define METHOD_BUFFERED                   0
 #define METHOD_IN_DIRECT                  1
@@ -141,6 +142,13 @@
      FILE_APPEND_DATA |				\
      SYNCHRONIZE)
 
+/* I/O Completion Access Rights */
+#define IO_COMPLETION_QUERY_STATE         0x0001
+#define IO_COMPLETION_MODIFY_STATE        0x0002
+#define IO_COMPLETION_ALL_ACCESS          (STANDARD_RIGHTS_REQUIRED |	\
+					   SYNCHRONIZE |		\
+					   0x3)
+
 /*
  * DEVICE_OBJECT.DeviceType. This is exposed to "userspace"
  * in FILE_FS_DEVICE_INFORMATION.
@@ -251,6 +259,35 @@ typedef ULONG DEVICE_TYPE;
 #define FILE_CHARACTERISTIC_WEBDAV_DEVICE 0x00002000
 #define FILE_PORTABLE_DEVICE              0x00004000
 #define FILE_DEVICE_ALLOW_APPCONTAINER_TRAVERSAL 0x00020000
+
+/* Options for NtCreateNamedPipeFile */
+#define FILE_PIPE_BYTE_STREAM_TYPE          0x00000000
+#define FILE_PIPE_MESSAGE_TYPE              0x00000001
+
+#define FILE_PIPE_ACCEPT_REMOTE_CLIENTS     0x00000000
+#define FILE_PIPE_REJECT_REMOTE_CLIENTS     0x00000002
+
+#define FILE_PIPE_ACCEPT_REMOTE_CLIENTS     0x00000000
+#define FILE_PIPE_REJECT_REMOTE_CLIENTS     0x00000002
+#define FILE_PIPE_TYPE_VALID_MASK           0x00000003
+
+#define FILE_PIPE_BYTE_STREAM_MODE          0x00000000
+#define FILE_PIPE_MESSAGE_MODE              0x00000001
+
+#define FILE_PIPE_QUEUE_OPERATION           0x00000000
+#define FILE_PIPE_COMPLETE_OPERATION        0x00000001
+
+#define FILE_PIPE_INBOUND                   0x00000000
+#define FILE_PIPE_OUTBOUND                  0x00000001
+#define FILE_PIPE_FULL_DUPLEX               0x00000002
+
+#define FILE_PIPE_DISCONNECTED_STATE        0x00000001
+#define FILE_PIPE_LISTENING_STATE           0x00000002
+#define FILE_PIPE_CONNECTED_STATE           0x00000003
+#define FILE_PIPE_CLOSING_STATE             0x00000004
+
+#define FILE_PIPE_CLIENT_END                0x00000000
+#define FILE_PIPE_SERVER_END                0x00000001
 
 /* File System Io Control Codes */
 #define FSCTL_REQUEST_OPLOCK_LEVEL_1    CTL_CODE(FILE_DEVICE_FILE_SYSTEM,  0, METHOD_BUFFERED, FILE_ANY_ACCESS)
@@ -420,6 +457,27 @@ typedef enum _FILE_INFORMATION_CLASS {
     FileNumaNodeInformation,
     FileStandardLinkInformation,
     FileRemoteProtocolInformation,
+    FileRenameInformationBypassAccessCheck,
+    FileLinkInformationBypassAccessCheck,
+    FileVolumeNameInformation,
+    FileIdInformation,
+    FileIdExtdDirectoryInformation,
+    FileReplaceCompletionInformation,
+    FileHardLinkFullIdInformation,
+    FileIdExtdBothDirectoryInformation, // Update 1
+    FileDispositionInformationEx,
+    FileRenameInformationEx,
+    FileRenameInformationExBypassAccessCheck,
+    FileDesiredStorageClassInformation,
+    FileStatInformation,
+    FileMemoryPartitionInformation,
+    FileStatLxInformation,
+    FileCaseSensitiveInformation,
+    FileLinkInformationEx,
+    FileLinkInformationExBypassAccessCheck,
+    FileStorageReserveIdInformation,
+    FileCaseSensitiveInformationForceAccessCheck,
+    FileKnownFolderInformation,
     FileMaximumInformation
 } FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
 
@@ -427,17 +485,6 @@ typedef enum _DIRECTORY_NOTIFY_INFORMATION_CLASS {
     DirectoryNotifyInformation = 1,
     DirectoryNotifyExtendedInformation
 } DIRECTORY_NOTIFY_INFORMATION_CLASS, *PDIRECTORY_NOTIFY_INFORMATION_CLASS;
-
-/*
- * I/O Status Block
- */
-typedef struct _IO_STATUS_BLOCK {
-    union {
-	NTSTATUS Status;
-	PVOID Pointer;
-    };
-    ULONG_PTR Information;
-} IO_STATUS_BLOCK, *PIO_STATUS_BLOCK;
 
 #include <pshpack4.h>
 typedef struct _FILE_BASIC_INFORMATION {
@@ -907,15 +954,47 @@ typedef struct _FILE_FS_VOLUME_INFORMATION {
     WCHAR VolumeLabel[];
 } FILE_FS_VOLUME_INFORMATION, *PFILE_FS_VOLUME_INFORMATION;
 
-//
-// Pipe Structures for IOCTL_PIPE_XXX
-//
-typedef struct _FILE_PIPE_WAIT_FOR_BUFFER {
-    LARGE_INTEGER Timeout;
-    ULONG NameLength;
-    BOOLEAN TimeoutSpecified;
-    WCHAR Name[];
-} FILE_PIPE_WAIT_FOR_BUFFER, *PFILE_PIPE_WAIT_FOR_BUFFER;
+/*
+ * FS CTL codes for name pipes
+ */
+#define FSCTL_PIPE_ASSIGN_EVENT             CTL_CODE(FILE_DEVICE_NAMED_PIPE, 0, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_DISCONNECT               CTL_CODE(FILE_DEVICE_NAMED_PIPE, 1, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_LISTEN                   CTL_CODE(FILE_DEVICE_NAMED_PIPE, 2, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_PEEK                     CTL_CODE(FILE_DEVICE_NAMED_PIPE, 3, METHOD_BUFFERED, FILE_READ_DATA)
+#define FSCTL_PIPE_QUERY_EVENT              CTL_CODE(FILE_DEVICE_NAMED_PIPE, 4, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_TRANSCEIVE               CTL_CODE(FILE_DEVICE_NAMED_PIPE, 5, METHOD_NEITHER,  FILE_READ_DATA | FILE_WRITE_DATA)
+#define FSCTL_PIPE_WAIT                     CTL_CODE(FILE_DEVICE_NAMED_PIPE, 6, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_IMPERSONATE              CTL_CODE(FILE_DEVICE_NAMED_PIPE, 7, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_SET_CLIENT_PROCESS       CTL_CODE(FILE_DEVICE_NAMED_PIPE, 8, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_QUERY_CLIENT_PROCESS     CTL_CODE(FILE_DEVICE_NAMED_PIPE, 9, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_GET_PIPE_ATTRIBUTE       CTL_CODE(FILE_DEVICE_NAMED_PIPE, 10, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_SET_PIPE_ATTRIBUTE       CTL_CODE(FILE_DEVICE_NAMED_PIPE, 11, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_GET_CONNECTION_ATTRIBUTE CTL_CODE(FILE_DEVICE_NAMED_PIPE, 12, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_SET_CONNECTION_ATTRIBUTE CTL_CODE(FILE_DEVICE_NAMED_PIPE, 13, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_GET_HANDLE_ATTRIBUTE     CTL_CODE(FILE_DEVICE_NAMED_PIPE, 14, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_SET_HANDLE_ATTRIBUTE     CTL_CODE(FILE_DEVICE_NAMED_PIPE, 15, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#define FSCTL_PIPE_FLUSH                    CTL_CODE(FILE_DEVICE_NAMED_PIPE, 16, METHOD_BUFFERED, FILE_WRITE_DATA)
+
+#define FSCTL_PIPE_INTERNAL_READ            CTL_CODE(FILE_DEVICE_NAMED_PIPE, 2045, METHOD_BUFFERED, FILE_READ_DATA)
+#define FSCTL_PIPE_INTERNAL_WRITE           CTL_CODE(FILE_DEVICE_NAMED_PIPE, 2046, METHOD_BUFFERED, FILE_WRITE_DATA)
+#define FSCTL_PIPE_INTERNAL_TRANSCEIVE      CTL_CODE(FILE_DEVICE_NAMED_PIPE, 2047, METHOD_NEITHER, FILE_READ_DATA | FILE_WRITE_DATA)
+#define FSCTL_PIPE_INTERNAL_READ_OVFLOW     CTL_CODE(FILE_DEVICE_NAMED_PIPE, 2048, METHOD_BUFFERED, FILE_READ_DATA)
+
+#define FILE_PIPE_READ_DATA                 0x00000000
+#define FILE_PIPE_WRITE_SPACE               0x00000001
+
+typedef struct _FILE_PIPE_ASSIGN_EVENT_BUFFER {
+    HANDLE EventHandle;
+    ULONG KeyValue;
+} FILE_PIPE_ASSIGN_EVENT_BUFFER, *PFILE_PIPE_ASSIGN_EVENT_BUFFER;
+
+typedef struct _FILE_PIPE_EVENT_BUFFER {
+    ULONG NamedPipeState;
+    ULONG EntryType;
+    ULONG ByteCount;
+    ULONG KeyValue;
+    ULONG NumberRequests;
+} FILE_PIPE_EVENT_BUFFER, *PFILE_PIPE_EVENT_BUFFER;
 
 typedef struct _FILE_PIPE_PEEK_BUFFER {
     ULONG NamedPipeState;
@@ -924,6 +1003,27 @@ typedef struct _FILE_PIPE_PEEK_BUFFER {
     ULONG MessageLength;
     CHAR Data[];
 } FILE_PIPE_PEEK_BUFFER, *PFILE_PIPE_PEEK_BUFFER;
+
+typedef struct _FILE_PIPE_WAIT_FOR_BUFFER {
+    LARGE_INTEGER Timeout;
+    ULONG NameLength;
+    BOOLEAN TimeoutSpecified;
+    WCHAR Name[];
+} FILE_PIPE_WAIT_FOR_BUFFER, *PFILE_PIPE_WAIT_FOR_BUFFER;
+
+typedef struct _FILE_PIPE_CLIENT_PROCESS_BUFFER {
+    PVOID ClientSession;
+    PVOID ClientProcess;
+} FILE_PIPE_CLIENT_PROCESS_BUFFER, *PFILE_PIPE_CLIENT_PROCESS_BUFFER;
+
+#define FILE_PIPE_COMPUTER_NAME_LENGTH 15
+
+typedef struct _FILE_PIPE_CLIENT_PROCESS_BUFFER_EX {
+    PVOID ClientSession;
+    PVOID ClientProcess;
+    USHORT ClientComputerNameLength;
+    WCHAR ClientComputerBuffer[FILE_PIPE_COMPUTER_NAME_LENGTH + 1];
+} FILE_PIPE_CLIENT_PROCESS_BUFFER_EX, *PFILE_PIPE_CLIENT_PROCESS_BUFFER_EX;
 
 //
 // I/O Error Log Structures
@@ -981,7 +1081,7 @@ typedef struct _FILE_PROCESS_IDS_USING_FILE_INFORMATION {
     ULONG_PTR ProcessIdList[];
 } FILE_PROCESS_IDS_USING_FILE_INFORMATION, *PFILE_PROCESS_IDS_USING_FILE_INFORMATION;
 
-typedef enum _FSINFOCLASS {
+typedef enum _FS_INFORMATION_CLASS {
     FileFsVolumeInformation = 1,
     FileFsLabelInformation,
     FileFsSizeInformation,
@@ -1143,7 +1243,7 @@ typedef struct _PCI_SLOT_NUMBER {
  * System service interface of the IO manager.
  */
 #ifndef _NTOSKRNL_
-NTAPI NTSYSAPI NTSTATUS NtLoadDriver(IN PUNICODE_STRING DriverServiceName);
+NTAPI NTSYSAPI NTSTATUS NtLoadDriver(IN PCUNICODE_STRING DriverServiceName);
 
 NTAPI NTSYSAPI NTSTATUS NtLoadDriverA(IN PCSTR DriverServiceName);
 
@@ -1171,6 +1271,30 @@ NTAPI NTSYSAPI NTSTATUS NtCreateFileA(OUT PHANDLE FileHandle,
 				      IN PVOID EaBuffer,
 				      IN ULONG EaLength);
 
+NTAPI NTSYSAPI NTSTATUS NtCreateMailslotFile(OUT PHANDLE FileHandle,
+					     IN ACCESS_MASK DesiredAccess,
+					     IN POBJECT_ATTRIBUTES ObjectAttributes,
+					     OUT PIO_STATUS_BLOCK IoStatusBlock,
+					     IN ULONG CreateOptions,
+					     IN ULONG MailslotQuota,
+					     IN ULONG MaxMessageSize,
+					     IN OPTIONAL PLARGE_INTEGER TimeOut);
+
+NTAPI NTSYSAPI NTSTATUS NtCreateNamedPipeFile(OUT PHANDLE FileHandle,
+					      IN ACCESS_MASK DesiredAccess,
+					      IN POBJECT_ATTRIBUTES ObjectAttributes,
+					      OUT PIO_STATUS_BLOCK IoStatusBlock,
+					      IN ULONG ShareAccess,
+					      IN ULONG CreateDisposition,
+					      IN ULONG CreateOptions,
+					      IN ULONG NamedPipeType,
+					      IN ULONG ReadMode,
+					      IN ULONG CompletionMode,
+					      IN ULONG MaximumInstances,
+					      IN ULONG InboundQuota,
+					      IN ULONG OutboundQuota,
+					      IN OPTIONAL PLARGE_INTEGER DefaultTimeout);
+
 NTAPI NTSYSAPI NTSTATUS NtOpenFile(OUT PHANDLE FileHandle,
 				   IN ACCESS_MASK DesiredAccess,
 				   IN POBJECT_ATTRIBUTES ObjectAttributes,
@@ -1195,6 +1319,16 @@ NTAPI NTSYSAPI NTSTATUS NtReadFile(IN HANDLE FileHandle,
 				   IN OPTIONAL PLARGE_INTEGER ByteOffset,
 				   IN OPTIONAL PULONG Key);
 
+NTAPI NTSYSAPI NTSTATUS NtReadFileScatter(IN HANDLE FileHandle,
+					  IN OPTIONAL HANDLE Event,
+					  IN OPTIONAL PIO_APC_ROUTINE UserApcRoutine,
+					  IN OPTIONAL PVOID UserApcContext,
+					  OUT PIO_STATUS_BLOCK UserIoStatusBlock,
+					  IN PVOID BufferDescription,
+					  IN ULONG BufferLength,
+					  IN PLARGE_INTEGER ByteOffset,
+					  IN OPTIONAL PULONG Key);
+
 NTAPI NTSYSAPI NTSTATUS NtWriteFile(IN HANDLE FileHandle,
 				    IN OPTIONAL HANDLE Event,
 				    IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
@@ -1205,7 +1339,33 @@ NTAPI NTSYSAPI NTSTATUS NtWriteFile(IN HANDLE FileHandle,
 				    IN OPTIONAL PLARGE_INTEGER ByteOffset,
 				    IN OPTIONAL PULONG Key);
 
+NTAPI NTSYSAPI NTSTATUS NtWriteFileGather(IN HANDLE FileHandle,
+					  IN OPTIONAL HANDLE Event,
+					  IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
+					  IN OPTIONAL PVOID ApcContext,
+					  OUT PIO_STATUS_BLOCK IoStatusBlock,
+					  IN PVOID BufferDescription,
+					  IN ULONG BufferLength,
+					  IN PLARGE_INTEGER ByteOffset,
+					  IN OPTIONAL PULONG Key);
+
+NTAPI NTSYSAPI NTSTATUS NtLockFile(IN HANDLE FileHandle, IN OPTIONAL HANDLE Event,
+				   IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
+				   IN OPTIONAL PVOID ApcContext,
+				   OUT PIO_STATUS_BLOCK IoStatusBlock,
+				   IN PLARGE_INTEGER ByteOffset, IN PLARGE_INTEGER Length,
+				   IN ULONG Key, IN BOOLEAN FailImmediately,
+				   IN BOOLEAN ExclusiveLock);
+
+NTAPI NTSYSAPI NTSTATUS NtUnlockFile(IN HANDLE FileHandle,
+				     OUT PIO_STATUS_BLOCK IoStatusBlock,
+				     IN PLARGE_INTEGER ByteOffset,
+				     IN PLARGE_INTEGER Length, IN ULONG Key);
+
 NTAPI NTSYSAPI NTSTATUS NtDeleteFile(IN POBJECT_ATTRIBUTES ObjectAttributes);
+
+NTAPI NTSYSAPI NTSTATUS NtCancelIoFile(IN HANDLE FileHandle,
+				       OUT PIO_STATUS_BLOCK IoStatusBlock);
 
 NTAPI NTSYSAPI NTSTATUS NtDeviceIoControlFile(IN HANDLE FileHandle,
 					      IN OPTIONAL HANDLE Event,
@@ -1229,14 +1389,33 @@ NTAPI NTSYSAPI NTSTATUS NtFsControlFile(IN HANDLE FileHandle,
 					OUT PVOID OutputBuffer,
 					IN ULONG OutputBufferLength);
 
+NTAPI NTSYSAPI NTSTATUS NtQueryEaFile(IN HANDLE FileHandle,
+				      OUT PIO_STATUS_BLOCK IoStatusBlock,
+				      OUT PVOID Buffer,
+				      IN ULONG Length,
+				      IN BOOLEAN ReturnSingleEntry,
+				      IN OPTIONAL PVOID EaList,
+				      IN ULONG EaListLength,
+				      IN OPTIONAL PULONG EaIndex,
+				      IN BOOLEAN RestartScan);
+
 NTAPI NTSYSAPI NTSTATUS NtQueryAttributesFile(IN POBJECT_ATTRIBUTES ObjectAttributes,
 					      OUT PFILE_BASIC_INFORMATION FileInformation);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryFullAttributesFile(IN POBJECT_ATTRIBUTES ObjectAttributes,
+						  OUT PFILE_NETWORK_OPEN_INFORMATION FileInfo);
 
 NTAPI NTSYSAPI NTSTATUS NtQueryVolumeInformationFile(IN HANDLE FileHandle,
 						     OUT PIO_STATUS_BLOCK IoStatusBlock,
 						     OUT PVOID FsInformation,
 						     IN ULONG Length,
 						     IN FS_INFORMATION_CLASS FsInformationClass);
+
+NTAPI NTSYSAPI NTSTATUS NtSetVolumeInformationFile(IN HANDLE FileHandle,
+						   OUT PIO_STATUS_BLOCK IoStatusBlock,
+						   IN PVOID FsInformation,
+						   IN ULONG Length,
+						   IN FS_INFORMATION_CLASS InfoClass);
 
 NTAPI NTSYSAPI NTSTATUS NtQueryDirectoryFile(IN HANDLE FileHandle,
 					     IN OPTIONAL HANDLE Event,
@@ -1247,8 +1426,18 @@ NTAPI NTSYSAPI NTSTATUS NtQueryDirectoryFile(IN HANDLE FileHandle,
 					     IN ULONG Length,
 					     IN FILE_INFORMATION_CLASS FileInformationClass,
 					     IN BOOLEAN ReturnSingleEntry,
-					     IN OPTIONAL PUNICODE_STRING FileName,
+					     IN OPTIONAL PCUNICODE_STRING FileName,
 					     IN BOOLEAN RestartScan);
+
+NTAPI NTSYSAPI NTSTATUS NtNotifyChangeDirectoryFile(IN HANDLE FileHandle,
+						    IN OPTIONAL HANDLE Event,
+						    IN OPTIONAL PIO_APC_ROUTINE ApcRoutine,
+						    IN OPTIONAL PVOID ApcContext,
+						    OUT PIO_STATUS_BLOCK IoStatusBlock,
+						    OUT PVOID Buffer,
+						    IN ULONG BufferSize,
+						    IN ULONG CompletionFilter,
+						    IN BOOLEAN WatchTree);
 
 NTAPI NTSYSAPI NTSTATUS NtQueryInformationFile(IN HANDLE FileHandle,
 					       OUT PIO_STATUS_BLOCK IoStatusBlock,
@@ -1264,6 +1453,23 @@ NTAPI NTSYSAPI NTSTATUS NtSetInformationFile(IN HANDLE FileHandle,
 
 NTAPI NTSYSAPI NTSTATUS NtFlushBuffersFile(IN HANDLE FileHandle,
 					   OUT PIO_STATUS_BLOCK IoStatusBlock);
+
+NTAPI NTSYSAPI NTSTATUS NtCreateIoCompletion(OUT PHANDLE IoCompletionHandle,
+					     IN ACCESS_MASK DesiredAccess,
+					     IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
+					     IN ULONG NumberOfConcurrentThreads);
+
+NTAPI NTSYSAPI NTSTATUS NtRemoveIoCompletion(IN HANDLE IoCompletionHandle,
+					     OUT PVOID *CompletionKey,
+					     OUT PVOID *CompletionContext,
+					     OUT PIO_STATUS_BLOCK IoStatusBlock,
+					     IN OPTIONAL PLARGE_INTEGER Timeout);
+
+NTAPI NTSYSAPI NTSTATUS NtSetIoCompletion(IN HANDLE IoCompletionHandle,
+					  IN PVOID CompletionKey,
+					  IN PVOID CompletionContext,
+					  IN NTSTATUS CompletionStatus,
+					  IN SIZE_T CompletionInformation);
 
 #endif	/* !defined(_NTOSKRNL_) */
 
@@ -1309,22 +1515,6 @@ NTAPI NTSYSAPI NTSTATUS NtFlushBuffersFile(IN HANDLE FileHandle,
 #define FILE_128_BYTE_ALIGNMENT         0x0000007f
 #define FILE_256_BYTE_ALIGNMENT         0x000000ff
 #define FILE_512_BYTE_ALIGNMENT         0x000001ff
-
-/* File notification filter flags */
-#define FILE_NOTIFY_CHANGE_FILE_NAME    0x00000001
-#define FILE_NOTIFY_CHANGE_DIR_NAME     0x00000002
-#define FILE_NOTIFY_CHANGE_NAME         0x00000003
-#define FILE_NOTIFY_CHANGE_ATTRIBUTES   0x00000004
-#define FILE_NOTIFY_CHANGE_SIZE         0x00000008
-#define FILE_NOTIFY_CHANGE_LAST_WRITE   0x00000010
-#define FILE_NOTIFY_CHANGE_LAST_ACCESS  0x00000020
-#define FILE_NOTIFY_CHANGE_CREATION     0x00000040
-#define FILE_NOTIFY_CHANGE_EA           0x00000080
-#define FILE_NOTIFY_CHANGE_SECURITY     0x00000100
-#define FILE_NOTIFY_CHANGE_STREAM_NAME  0x00000200
-#define FILE_NOTIFY_CHANGE_STREAM_SIZE  0x00000400
-#define FILE_NOTIFY_CHANGE_STREAM_WRITE 0x00000800
-#define FILE_NOTIFY_VALID_MASK          0x00000fff
 
 /* FILE_NOTIFY_INFORMATION.Action */
 #define FILE_ACTION_ADDED                   0x00000001

@@ -1,0 +1,15 @@
+/*
+ * PROJECT:     ReactOS Win32 Base API
+ * LICENSE:     MIT (https://spdx.org/licenses/MIT)
+ * PURPOSE:     Implementation of IsValidLocaleName
+ * COPYRIGHT:   Copyright 2025 Timo Kreuzer <timo.kreuzer@reactos.org>
+ */
+
+#include "k32.h"
+#include <winnls.h>
+
+WINAPI BOOL IsValidLocaleName(LPCWSTR lpLocaleName)
+{
+    LCID lcid = LocaleNameToLCID(lpLocaleName, LOCALE_ALLOW_NEUTRAL_NAMES);
+    return lcid != 0;
+}

@@ -64,19 +64,19 @@ Explain why complete, line-for-line driver source code compatibility is a non-go
 | drivers/storage/mountmgr  | Mountpoint manager driver            |
 | drivers/linux             | Linkable userspace extension drivers |
 | posix                     | POSIX Subsystem                      |
-| win32                     | Win32 Subsystem (native exes)        |
-| shell                     | Win32 applications (win32 exes)      |
+| win32/base                | Win32 Subsystem (native exes)        |
+| win32/shell               | Win32 applications (win32 exes)      |
 | tools                     | Build tools                          |
 | tools/elfloader           | ELF loader for ARM64 systems         |
 
 All code that makes seL4 calls directly and refers to seL4 headers should go under `private`.
 No code outside `private` can make any seL4 system calls directly or include any seL4 headers.
 
-All executables and DLLs under `base` and `win32` are native NT clients. Projects under
+All executables and DLLs under `base` and `win32/base` are native NT clients. Projects under
 `base` cannot include Win32 headers. Projects under `win32` can (and typically do) include
 Win32 headers.
 
-All executables and DLLs under `shell` are Win32 applications. Projects under `shell`
+All executables and DLLs under `win32/shell` are Win32 applications. Projects under `win32/shell`
 should not make native NT api calls (although we don't explicitly forbid this).
 
 ## NT Executive Components

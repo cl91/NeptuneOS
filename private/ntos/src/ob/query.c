@@ -101,3 +101,11 @@ NTSTATUS NtQueryObject(IN ASYNC_STATE AsyncState,
     ObDereferenceObject(Object);
     return Status;
 }
+
+NTSTATUS NtSetInformationObject(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+				IN HANDLE ObjectHandle,
+				IN OBJECT_INFORMATION_CLASS ObjectInformationClass,
+				IN PVOID ObjectInformation, IN ULONG Length)
+{
+    UNIMPLEMENTED;
+}

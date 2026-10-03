@@ -1,0 +1,142 @@
+/*
+ * COPYRIGHT:       See COPYING in the top level directory
+ * PROJECT:         ReactOS system libraries
+ * PURPOSE:         Vista functions
+ * PROGRAMMERS:     Thomas Weidenmueller (w3seek@reactos.com)
+ *                  Hermes Belusca-Maito (hermes.belusca@sfr.fr)
+ */
+
+/* INCLUDES *******************************************************************/
+
+#include <k32.h>
+
+/* PUBLIC FUNCTIONS ***********************************************************/
+
+#if (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
+
+/*
+ * @implemented
+ */
+WINAPI DECLSPEC_HOTPATCH BOOL
+GetConsoleHistoryInfo(PCONSOLE_HISTORY_INFO lpConsoleHistoryInfo)
+{
+    CONSOLE_API_MESSAGE ApiMessage;
+    PCONSOLE_GETSETHISTORYINFO HistoryInfoRequest = &ApiMessage.Data.HistoryInfoRequest;
+
+    if (lpConsoleHistoryInfo->cbSize != sizeof(CONSOLE_HISTORY_INFO)) {
+	SetLastError(ERROR_INVALID_PARAMETER);
+	return FALSE;
+    }
+
+    CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage, NULL,
+			CSR_CREATE_API_NUMBER(CONSRV_SERVERDLL_INDEX, ConsolepGetHistory),
+			sizeof(*HistoryInfoRequest));
+    if (!NT_SUCCESS(ApiMessage.Status)) {
+	BaseSetLastNTError(ApiMessage.Status);
+	return FALSE;
+    }
+
+    lpConsoleHistoryInfo->HistoryBufferSize = HistoryInfoRequest->HistoryBufferSize;
+    lpConsoleHistoryInfo->NumberOfHistoryBuffers =
+	HistoryInfoRequest->NumberOfHistoryBuffers;
+    lpConsoleHistoryInfo->dwFlags = HistoryInfoRequest->dwFlags;
+
+    return TRUE;
+}
+
+/*
+ * @implemented
+ */
+WINAPI DECLSPEC_HOTPATCH BOOL
+SetConsoleHistoryInfo(IN PCONSOLE_HISTORY_INFO lpConsoleHistoryInfo)
+{
+    CONSOLE_API_MESSAGE ApiMessage;
+    PCONSOLE_GETSETHISTORYINFO HistoryInfoRequest = &ApiMessage.Data.HistoryInfoRequest;
+
+    if (lpConsoleHistoryInfo->cbSize != sizeof(CONSOLE_HISTORY_INFO)) {
+	SetLastError(ERROR_INVALID_PARAMETER);
+	return FALSE;
+    }
+
+    HistoryInfoRequest->HistoryBufferSize = lpConsoleHistoryInfo->HistoryBufferSize;
+    HistoryInfoRequest->NumberOfHistoryBuffers =
+	lpConsoleHistoryInfo->NumberOfHistoryBuffers;
+    HistoryInfoRequest->dwFlags = lpConsoleHistoryInfo->dwFlags;
+
+    CsrClientCallServer((PCSR_API_MESSAGE)&ApiMessage, NULL,
+			CSR_CREATE_API_NUMBER(CONSRV_SERVERDLL_INDEX, ConsolepSetHistory),
+			sizeof(*HistoryInfoRequest));
+    if (!NT_SUCCESS(ApiMessage.Status)) {
+	BaseSetLastNTError(ApiMessage.Status);
+	return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * @unimplemented
+ */
+WINAPI DECLSPEC_HOTPATCH DWORD GetConsoleOriginalTitleW(OUT LPWSTR lpConsoleTitle,
+							IN DWORD nSize)
+{
+    DPRINT1("GetConsoleOriginalTitleW(0x%p, 0x%x) UNIMPLEMENTED!\n", lpConsoleTitle,
+	    nSize);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return 0;
+}
+
+/*
+ * @unimplemented
+ */
+WINAPI DECLSPEC_HOTPATCH DWORD GetConsoleOriginalTitleA(OUT LPSTR lpConsoleTitle,
+							IN DWORD nSize)
+{
+    DPRINT1("GetConsoleOriginalTitleA(0x%p, 0x%x) UNIMPLEMENTED!\n", lpConsoleTitle,
+	    nSize);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return 0;
+}
+
+/*
+ * @unimplemented
+ */
+WINAPI DECLSPEC_HOTPATCH BOOL GetConsoleScreenBufferInfoEx(
+    IN HANDLE hConsoleOutput,
+    OUT PCONSOLE_SCREEN_BUFFER_INFOEX lpConsoleScreenBufferInfoEx)
+{
+    DPRINT1("GetConsoleScreenBufferInfoEx(0x%p, 0x%p) UNIMPLEMENTED!\n", hConsoleOutput,
+	    lpConsoleScreenBufferInfoEx);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+/*
+ * @unimplemented
+ */
+WINAPI DECLSPEC_HOTPATCH BOOL
+SetConsoleScreenBufferInfoEx(IN HANDLE hConsoleOutput,
+			     IN PCONSOLE_SCREEN_BUFFER_INFOEX lpConsoleScreenBufferInfoEx)
+{
+    DPRINT1("SetConsoleScreenBufferInfoEx(0x%p, 0x%p) UNIMPLEMENTED!\n", hConsoleOutput,
+	    lpConsoleScreenBufferInfoEx);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+/*
+ * @unimplemented
+ */
+WINAPI DECLSPEC_HOTPATCH BOOL
+GetCurrentConsoleFontEx(IN HANDLE hConsoleOutput, IN BOOL bMaximumWindow,
+			OUT PCONSOLE_FONT_INFOEX lpConsoleCurrentFontEx)
+{
+    DPRINT1("GetCurrentConsoleFontEx(0x%p, 0x%x, 0x%p) UNIMPLEMENTED!\n", hConsoleOutput,
+	    bMaximumWindow, lpConsoleCurrentFontEx);
+    SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
+    return FALSE;
+}
+
+#endif // (_WIN32_WINNT >= _WIN32_WINNT_VISTA)
+
+/* EOF */

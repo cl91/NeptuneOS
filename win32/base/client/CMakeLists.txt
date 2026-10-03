@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.12.0)
+
+project(client)
+
+add_subdirectory(csrlib)
+add_subdirectory(kernel32)

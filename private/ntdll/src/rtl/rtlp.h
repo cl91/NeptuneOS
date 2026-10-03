@@ -6,6 +6,9 @@
 #define TAG_ASTR        'RTSA'
 #define TAG_OSTR        'RTSO'
 
+/* From winbase.h */
+#define INFINITE 0xFFFFFFFFUL
+
 static inline PVOID RtlpAllocateMemory(UINT Bytes,
 				       ULONG Tag)
 {
@@ -122,11 +125,25 @@ VOID RtlCallVectoredContinueHandlers(IN PEXCEPTION_RECORD ExceptionRecord,
 /* critical.c */
 NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 				       IN HANDLE LockSemaphore,
-				       IN ULONG SpinCount);
+				       IN ULONG SpinCount,
+				       IN ULONG Flags);
 
 /* nls.c */
 WCHAR RtlpUpcaseUnicodeChar(IN WCHAR Source);
 WCHAR RtlpDowncaseUnicodeChar(IN WCHAR Source);
+
+/* res.c */
+IMAGE_RESOURCE_DIRECTORY *RtlpFindFirstResourceEntry(IMAGE_RESOURCE_DIRECTORY *Dir,
+						     PVOID Root,
+						     BOOLEAN WantDir);
+IMAGE_RESOURCE_DIRECTORY *RtlpFindResourceEntryByName(IMAGE_RESOURCE_DIRECTORY *Dir,
+						      LPCWSTR Name,
+						      PVOID Root,
+						      BOOLEAN WantDir);
+
+/* workitem.c */
+extern PRTL_START_POOL_THREAD RtlpStartThreadFunc;
+extern PRTL_EXIT_POOL_THREAD RtlpExitThreadFunc;
 
 #ifndef _M_IX86
 /* dynfntbl.c */
