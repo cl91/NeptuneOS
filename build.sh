@@ -78,7 +78,7 @@ echo "####################################################"
 cd "$(dirname "$0")"
 RTLIB=$(echo ${PWD}/compiler-rt/libclang_rt.builtins-${RTLIB_ARCH}.a)
 
-mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers/linux/{build,install},posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
+mkdir -p $BUILDDIR/{host,ntos,pe_inc,ntdll,wdm,ntpsx,base,drivers/linux/{build,install},win32,posix/{psxdll,psxss},initcpio,ndk_lib,ddk_lib,$IMAGEDIR}
 
 cd $BUILDDIR
 PE_INC=$(echo ${PWD}/pe_inc)
@@ -280,6 +280,26 @@ cmake ../../base \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
+      -DUTF16LE_PATH=${UTF16LE_PATH} \
+      -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
+      -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+      -G Ninja
+ninja || build_failed
+
+# Build Win32 subsystem with the PE toolchain
+cd ../win32
+echo
+echo "---- Building Win32 subsystem ----"
+echo
+cmake ../../win32 \
+      -DArch=${ARCH} \
+      -DTRIPLE=${PE_TRIPLE} \
+      -DMC_COMPILER_ARCH=${MC_COMPILER_ARCH} \
+      -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
+      -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
+      -DNDK_LIB_PATH=${PWD}/../ndk_lib \
+      -DSPEC2DEF_PATH=${SPEC2DEF_PATH} \
       -DUTF16LE_PATH=${UTF16LE_PATH} \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \

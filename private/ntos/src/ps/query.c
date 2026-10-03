@@ -4,7 +4,7 @@
 /*
  * Process Information Classes
  *
- * IMPORTANT: This must match the enum PROCESSINFOCLASS in ntpsapi.h
+ * IMPORTANT: This must match the enum PROCESS_INFORMATION_CLASS in ntpsapi.h
  */
 static const INFORMATION_CLASS_INFO PsProcessInfoClass[] = {
     /* ProcessBasicInformation */
@@ -239,7 +239,7 @@ static const INFORMATION_CLASS_INFO PsProcessInfoClass[] = {
 /*
  * Thread Information Classes
  *
- * IMPORTANT: This must match the enum THREADINFOCLASS in ntpsapi.h
+ * IMPORTANT: This must match the enum THREAD_INFORMATION_CLASS in ntpsapi.h
  */
 static const INFORMATION_CLASS_INFO PsThreadInfoClass[] = {
     /* ThreadBasicInformation */
@@ -403,14 +403,6 @@ static inline NTSTATUS DefaultQueryInfoBufferCheck(ULONG Class,
     }
 
     return STATUS_SUCCESS;
-}
-
-NTSTATUS NtQueryPerformanceCounter(IN ASYNC_STATE State,
-				   IN PTHREAD Thread,
-                                   OUT LARGE_INTEGER *PerformanceCounter,
-                                   OUT OPTIONAL LARGE_INTEGER *PerformanceFrequency)
-{
-    UNIMPLEMENTED;
 }
 
 NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,

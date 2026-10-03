@@ -19,7 +19,7 @@
 #pragma once
 
 #include <string.h>
-#include <ntdef.h>
+#include "ntbasedef.h"
 
 #ifndef GUID_DEFINED
 #define GUID_DEFINED

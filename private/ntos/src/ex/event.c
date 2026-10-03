@@ -182,6 +182,23 @@ NTSTATUS NtResetEvent(IN ASYNC_STATE State,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS NtPulseEvent(IN ASYNC_STATE State,
+		      IN PTHREAD Thread,
+		      IN HANDLE EventHandle,
+		      OUT OPTIONAL LONG *PreviousState)
+{
+    PEVENT_OBJECT EventObject = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
+				      (POBJECT *)&EventObject));
+    assert(EventObject != NULL);
+    if (PreviousState) {
+	*PreviousState = EventObject->Event.Header.Signaled;
+    }
+    KePulseEvent(&EventObject->Event);
+    ObDereferenceObject(EventObject);
+    return STATUS_SUCCESS;
+}
+
 NTSTATUS NtClearEvent(IN ASYNC_STATE State,
 		      IN PTHREAD Thread,
 		      IN HANDLE EventHandle)
@@ -210,6 +227,46 @@ NTSTATUS NtOpenEvent(IN ASYNC_STATE State,
 	     ObjectAttributes, OBJECT_TYPE_EVENT, DesiredAccess,
 	     NULL, EventHandle);
     ASYNC_END(State, Status);
+}
+
+NTSTATUS NtQueryEvent(IN ASYNC_STATE State,
+                     IN PTHREAD Thread,
+		     IN HANDLE EventHandle,
+		     IN EVENT_INFORMATION_CLASS EventInformationClass,
+		     OUT PVOID EventInformation,
+		     IN ULONG EventInformationLength,
+		     OUT PULONG ReturnLength)
+{
+    assert(ReturnLength);
+    *ReturnLength = 0;
+    if (!EventHandle) {
+	return STATUS_INVALID_HANDLE;
+    }
+
+    switch (EventInformationClass) {
+    case EventBasicInformation:
+	if (EventInformationLength < sizeof(EVENT_BASIC_INFORMATION)) {
+	    return STATUS_INFO_LENGTH_MISMATCH;
+	}
+	break;
+    default:
+	return STATUS_INVALID_INFO_CLASS;
+    }
+
+    PEVENT_OBJECT Event = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle,
+				      OBJECT_TYPE_EVENT, (POBJECT *)&Event));
+
+    if (EventInformationClass == EventBasicInformation) {
+	PEVENT_BASIC_INFORMATION Info = EventInformation;
+	Info->EventType = Event->Event.Header.EventType;
+	Info->EventState = Event->Event.Header.Signaled;
+	*ReturnLength = sizeof(EVENT_BASIC_INFORMATION);
+    } else {
+	assert(FALSE);
+    }
+    ObDereferenceObject(Event);
+    return STATUS_SUCCESS;
 }
 
 /* If the object is a dispatcher object, return the dispatcher header.

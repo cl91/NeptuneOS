@@ -2,6 +2,7 @@
 
 #include "ntdef.h"
 #include "ntstatus.h"
+#include "kebasedef.h"
 #include "nls.h"
 
 //
@@ -262,5 +263,8 @@ NTAPI NTSYSAPI NTSTATUS NtDelayExecution(IN BOOLEAN Alertable,
 NTAPI NTSYSAPI ULONG NtGetCurrentProcessorNumber(VOID);
 
 NTAPI NTSYSAPI NTSTATUS NtQuerySystemTime(OUT PLARGE_INTEGER CurrentTime);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryPerformanceCounter(OUT PLARGE_INTEGER Counter,
+						  OUT OPTIONAL PLARGE_INTEGER Frequency);
 
 #endif

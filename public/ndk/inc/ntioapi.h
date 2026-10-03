@@ -5,6 +5,7 @@
 #include <ntkeapi.h>
 #include <debug.h>
 #include <guiddef.h>
+#include "iobasedef.h"
 
 #define METHOD_BUFFERED                   0
 #define METHOD_IN_DIRECT                  1
@@ -981,7 +982,7 @@ typedef struct _FILE_PROCESS_IDS_USING_FILE_INFORMATION {
     ULONG_PTR ProcessIdList[];
 } FILE_PROCESS_IDS_USING_FILE_INFORMATION, *PFILE_PROCESS_IDS_USING_FILE_INFORMATION;
 
-typedef enum _FSINFOCLASS {
+typedef enum _FS_INFORMATION_CLASS {
     FileFsVolumeInformation = 1,
     FileFsLabelInformation,
     FileFsSizeInformation,

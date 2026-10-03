@@ -2,6 +2,7 @@
 
 #include <ntmmapi.h>
 #include <ntimage.h>
+#include "rtlbasedef.h"
 
 typedef struct _CLIENT_ID {
     HANDLE UniqueProcess;
@@ -78,18 +79,6 @@ typedef ULONG (NTAPI *PTHREAD_START_ROUTINE)(PVOID Parameter);
 #define IS_DISPATCHING(Flag) ((Flag & EXCEPTION_UNWIND) == 0)
 #define IS_TARGET_UNWIND(Flag) (Flag & EXCEPTION_TARGET_UNWIND)
 
-#define EXCEPTION_MAXIMUM_PARAMETERS 15
-
-/* Exception records */
-typedef struct _EXCEPTION_RECORD {
-    NTSTATUS ExceptionCode;
-    ULONG ExceptionFlags;
-    struct _EXCEPTION_RECORD *ExceptionRecord;
-    PVOID ExceptionAddress;
-    ULONG NumberParameters;
-    ULONG_PTR ExceptionInformation[EXCEPTION_MAXIMUM_PARAMETERS];
-} EXCEPTION_RECORD, *PEXCEPTION_RECORD;
-
 /* Pseudo handle values for current process and thread */
 static inline HANDLE NtCurrentProcess(VOID)
 {
@@ -159,6 +148,55 @@ NTAPI NTSYSAPI CCHAR RtlFindLeastSignificantBit(IN ULONGLONG Set);
  */
 #define RtlFillMemory(Destination, Length, Fill)	\
     memset(Destination, Fill, Length)
+
+/*
+ * RtlUshortByteSwap
+ *
+ * Swap the bytes of an unsigned short value.
+ *
+ * NOTES
+ * Based on the inline versions in Wine winternl.h
+ *
+ * @implemented
+ */
+FORCEINLINE USHORT RtlUshortByteSwap(IN USHORT Source)
+{
+    return (Source >> 8) | (Source << 8);
+}
+
+/*
+ * RtlUlongByteSwap
+ *
+ * Swap the bytes of an unsigned int value.
+ *
+ * NOTES
+ * Based on the inline versions in Wine winternl.h
+ *
+ * @implemented
+ */
+FORCEINLINE ULONG RtlUlongByteSwap(IN ULONG Source)
+{
+    return ((ULONG)RtlUshortByteSwap((USHORT)Source) << 16) |
+	RtlUshortByteSwap((USHORT)(Source >> 16));
+}
+
+/*
+ * RtlUlonglongByteSwap
+ *
+ * Swap the bytes of an unsigned long long value.
+ *
+ * PARAMS
+ *  i [I] Value to swap bytes of
+ *
+ * RETURNS
+ *  The value with its bytes swapped.
+ *
+ * @implemented
+ */
+FORCEINLINE ULONGLONG RtlUlonglongByteSwap(IN ULONGLONG Source)
+{
+    return ((ULONGLONG)RtlUlongByteSwap(Source) << 32) | RtlUlongByteSwap(Source >> 32);
+}
 
 /*
  * Time Functions

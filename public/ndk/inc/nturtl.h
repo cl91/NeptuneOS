@@ -13,6 +13,7 @@
 #error "Only PE targets support the APIs defined in this file."
 #endif
 
+#include <intrin.h>
 #include <ntmmapi.h>
 #include <ntpsapi.h>
 #include <ntseapi.h>
@@ -379,9 +380,10 @@ typedef struct _TEB {                                        /* win32/win64 */
             PVOID           ThreadInfo;                        /* 168/320 */
             ULONG           ClientInfo[31];                    /* 1e8/328 (user32) */
             ULONG           GuaranteedStackBytes;              /* 1ec/3a4 */
-            PVOID           SystemReserved1[54];               /* 1f0/3b0 (kernel32) */
-            UNICODE_STRING  StaticUnicodeString;               /* 2c8/560 (advapi32) */
-            WCHAR           StaticUnicodeBuffer[261];          /* 2d0/570 (advapi32) */
+	    PVOID           ActivationContextStackPointer;     /* 1f0/3b0 */
+            PVOID           SystemReserved1[53];               /* 1f4/3b8 */
+            UNICODE_STRING  StaticUnicodeString;               /* 2c8/560 (kernel32) */
+            WCHAR           StaticUnicodeBuffer[261];          /* 2d0/570 (kernel32) */
         } Win32;
     };
 } TEB, *PTEB;
@@ -403,25 +405,6 @@ typedef struct _EXCEPTION_REGISTRATION_RECORD {
     struct _EXCEPTION_REGISTRATION_RECORD *Next;
     PEXCEPTION_ROUTINE Handler;
 } EXCEPTION_REGISTRATION_RECORD, *PEXCEPTION_REGISTRATION_RECORD;
-
-/*
- * Exception pointers
- */
-typedef struct _EXCEPTION_POINTERS {
-  PEXCEPTION_RECORD ExceptionRecord;
-  PCONTEXT ContextRecord;
-} EXCEPTION_POINTERS, *PEXCEPTION_POINTERS;
-
-/*
- * Unhandled Exception Filter
- */
-typedef ULONG (NTAPI *RTLP_UNHANDLED_EXCEPTION_FILTER)(IN struct _EXCEPTION_POINTERS *ExceptionInfo);
-typedef RTLP_UNHANDLED_EXCEPTION_FILTER *PRTLP_UNHANDLED_EXCEPTION_FILTER;
-
-/*
- * Handler during Vectored RTL Exceptions
- */
-typedef LONG (NTAPI *PVECTORED_EXCEPTION_HANDLER)(PEXCEPTION_POINTERS ExceptionPointers);
 
 /*
  * Exception Code
@@ -676,14 +659,6 @@ typedef struct _RTL_HEAP_TAG_INFO {
 } RTL_HEAP_TAG_INFO, *PRTL_HEAP_TAG_INFO;
 
 /*
- * Heap Information Class
- */
-typedef enum _HEAP_INFORMATION_CLASS {
-    HeapCompatibilityInformation,
-    HeapEnableTerminationOnCorruption
-} HEAP_INFORMATION_CLASS;
-
-/*
  * ACE Structure
  */
 typedef struct _ACE {
@@ -767,11 +742,6 @@ NTAPI NTSYSAPI NTSTATUS RtlAddAce(IN PACL Acl,
 				  IN ULONG AceListLength);
 
 NTAPI NTSYSAPI NTSTATUS RtlDeleteAce(IN PACL Acl, IN ULONG AceIndex);
-
-typedef enum _ACL_INFORMATION_CLASS {
-    AclRevisionInformation = 1,
-    AclSizeInformation
-} ACL_INFORMATION_CLASS;
 
 typedef struct _ACL_REVISION_INFORMATION {
     DWORD AclRevision;
@@ -1162,30 +1132,6 @@ typedef struct _RTL_AVL_TABLE {
 #define PRTL_GENERIC_FREE_ROUTINE       PRTL_AVL_FREE_ROUTINE
 
 /*
- * RTL Critical Section Structures
- */
-typedef struct _RTL_CRITICAL_SECTION_DEBUG {
-    USHORT Type;
-    USHORT CreatorBackTraceIndex;
-    struct _RTL_CRITICAL_SECTION *CriticalSection;
-    LIST_ENTRY ProcessLocksList;
-    ULONG EntryCount;
-    ULONG ContentionCount;
-    ULONG Flags;
-    USHORT CreatorBackTraceIndexHigh;
-    USHORT SpareWORD;
-} RTL_CRITICAL_SECTION_DEBUG, *PRTL_CRITICAL_SECTION_DEBUG, RTL_RESOURCE_DEBUG, *PRTL_RESOURCE_DEBUG;
-
-typedef struct _RTL_CRITICAL_SECTION {
-    PRTL_CRITICAL_SECTION_DEBUG DebugInfo;
-    LONG LockCount;
-    LONG RecursionCount;
-    HANDLE OwningThread;
-    HANDLE LockSemaphore;
-    ULONG_PTR SpinCount;
-} RTL_CRITICAL_SECTION, *PRTL_CRITICAL_SECTION;
-
-/*
  * RTL Resource
  */
 #define RTL_RESOURCE_FLAG_LONG_TERM ((ULONG)0x00000001)
@@ -1207,15 +1153,6 @@ typedef struct _RTL_RESOURCE {
  */
 #define RTL_CRITSECT_TYPE	0
 #define RTL_RESOURCE_TYPE	1
-
-/*
- * Slim Read/Write lock
- */
-#define RTL_SRWLOCK_INIT {0}
-
-typedef struct _RTL_SRWLOCK {
-    PVOID Ptr;
-} RTL_SRWLOCK, *PRTL_SRWLOCK;
 
 /*
  * Trace Database
@@ -1335,11 +1272,36 @@ typedef struct _RTL_TIME_ZONE_INFORMATION {
 } RTL_TIME_ZONE_INFORMATION, *PRTL_TIME_ZONE_INFORMATION;
 
 /*
+ * C++ CONST casting
+ */
+#if defined(__cplusplus)
+#define RTL_CONST_CAST(type)                    const_cast<type>
+#else
+#define RTL_CONST_CAST(type)                    (type)
+#endif
+
+/*
  * Constant String Macro
  */
 #define RTL_CONSTANT_STRING(__SOURCE_STRING__) {		\
     sizeof(__SOURCE_STRING__) - sizeof((__SOURCE_STRING__)[0]),	\
     sizeof(__SOURCE_STRING__), (__SOURCE_STRING__) }
+
+/*
+ * Constant Object Attributes Macro
+ */
+#define RTL_CONSTANT_OBJECT_ATTRIBUTES(n, a)                    \
+{                                                               \
+    sizeof(OBJECT_ATTRIBUTES),                                  \
+    NULL,                                                       \
+    RTL_CONST_CAST(PUNICODE_STRING)(n),                         \
+    a,                                                          \
+    NULL,                                                       \
+    NULL                                                        \
+}
+
+#define RTL_INIT_OBJECT_ATTRIBUTES(n, a)                        \
+    RTL_CONSTANT_OBJECT_ATTRIBUTES(n, a)
 
 /*
  * PE image routines
@@ -2300,6 +2262,8 @@ NTAPI NTSYSAPI VOID RtlSetLastWin32Error(IN ULONG LastError);
 
 NTAPI NTSYSAPI VOID RtlSetLastWin32ErrorAndNtStatusFromNtStatus(IN NTSTATUS Status);
 
+NTAPI NTSYSAPI ULONG RtlNtStatusToDosError(IN NTSTATUS Status);
+
 NTAPI NTSYSAPI NTSTATUS RtlSetThreadErrorMode(IN ULONG NewMode,
 					      OUT OPTIONAL PULONG OldMode);
 
@@ -2792,29 +2756,6 @@ NTAPI NTSYSAPI NTSTATUS RtlConvertSidToUnicodeString(IN PUNICODE_STRING String,
  */
 NTAPI NTSYSAPI NTSTATUS
 RtlCreateSystemVolumeInformationFolder(IN PUNICODE_STRING VolumeRootPath);
-
-typedef struct _OSVERSIONINFO {
-  ULONG dwOSVersionInfoSize;
-  ULONG dwMajorVersion;
-  ULONG dwMinorVersion;
-  ULONG dwBuildNumber;
-  ULONG dwPlatformId;
-  WCHAR szCSDVersion[128];
-} RTL_OSVERSIONINFO, *PRTL_OSVERSIONINFO;
-
-typedef struct _OSVERSIONINFOEX {
-    ULONG dwOSVersionInfoSize;
-    ULONG dwMajorVersion;
-    ULONG dwMinorVersion;
-    ULONG dwBuildNumber;
-    ULONG dwPlatformId;
-    WCHAR szCSDVersion[128];
-    USHORT wServicePackMajor;
-    USHORT wServicePackMinor;
-    USHORT wSuiteMask;
-    UCHAR wProductType;
-    UCHAR wReserved;
-} RTL_OSVERSIONINFOEX, *PRTL_OSVERSIONINFOEX;
 
 /* SuiteMask */
 #define VER_WORKSTATION_NT                  0x40000000

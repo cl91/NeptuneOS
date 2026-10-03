@@ -3,21 +3,7 @@
 #include <ntdef.h>
 #include <ntstatus.h>
 #include <guiddef.h>
-
-typedef PVOID PSECURITY_DESCRIPTOR;
-
-typedef PVOID PACCESS_TOKEN;
-typedef PVOID PSID;
-
-typedef ULONG ACCESS_MASK, *PACCESS_MASK;
-typedef ULONG SECURITY_INFORMATION, *PSECURITY_INFORMATION;
-
-#ifndef SID_IDENTIFIER_AUTHORITY_DEFINED
-#define SID_IDENTIFIER_AUTHORITY_DEFINED
-typedef struct _SID_IDENTIFIER_AUTHORITY {
-    UCHAR Value[6];
-} SID_IDENTIFIER_AUTHORITY, *PSID_IDENTIFIER_AUTHORITY, *LPSID_IDENTIFIER_AUTHORITY;
-#endif
+#include "sebasedef.h"
 
 #ifndef SID_DEFINED
 #define SID_DEFINED
@@ -25,7 +11,7 @@ typedef struct _SID {
     UCHAR Revision;
     UCHAR SubAuthorityCount;
     SID_IDENTIFIER_AUTHORITY IdentifierAuthority;
-    ULONG SubAuthority[];
+    ULONG SubAuthority[ANYSIZE_ARRAY];
 } SID, *PISID;
 #endif
 
@@ -123,18 +109,6 @@ typedef struct _SID {
 
 #define TOKEN_EXECUTE (STANDARD_RIGHTS_EXECUTE)
 
-typedef enum _TOKEN_TYPE {
-    TokenPrimary = 1,
-    TokenImpersonation
-} TOKEN_TYPE, *PTOKEN_TYPE;
-
-typedef struct _GENERIC_MAPPING {
-    ACCESS_MASK GenericRead;
-    ACCESS_MASK GenericWrite;
-    ACCESS_MASK GenericExecute;
-    ACCESS_MASK GenericAll;
-} GENERIC_MAPPING, *PGENERIC_MAPPING;
-
 #define ACL_REVISION    2
 #define ACL_REVISION_DS 4
 
@@ -144,14 +118,6 @@ typedef struct _GENERIC_MAPPING {
 #define ACL_REVISION4    4
 #define MIN_ACL_REVISION ACL_REVISION2
 #define MAX_ACL_REVISION ACL_REVISION4
-
-typedef struct _ACL {
-    UCHAR AclRevision;
-    UCHAR Sbz1;
-    USHORT AclSize;
-    USHORT AceCount;
-    USHORT Sbz2;
-} ACL, *PACL;
 
 /* Current security descriptor revision value */
 #define SECURITY_DESCRIPTOR_REVISION     (1)
@@ -168,43 +134,6 @@ typedef struct _ACL {
                                          SE_PRIVILEGE_REMOVED            | \
                                          SE_PRIVILEGE_USED_FOR_ACCESS)
 
-#include <pshpack4.h>
-typedef struct _LUID_AND_ATTRIBUTES {
-    LUID Luid;
-    ULONG Attributes;
-} LUID_AND_ATTRIBUTES, *PLUID_AND_ATTRIBUTES;
-#include <poppack.h>
-
-typedef LUID_AND_ATTRIBUTES LUID_AND_ATTRIBUTES_ARRAY[ANYSIZE_ARRAY];
-typedef LUID_AND_ATTRIBUTES_ARRAY *PLUID_AND_ATTRIBUTES_ARRAY;
-
-/* Privilege sets */
-#define PRIVILEGE_SET_ALL_NECESSARY (1)
-
-typedef struct _PRIVILEGE_SET {
-    ULONG PrivilegeCount;
-    ULONG Control;
-    LUID_AND_ATTRIBUTES Privilege[ANYSIZE_ARRAY];
-} PRIVILEGE_SET, *PPRIVILEGE_SET;
-
-typedef enum _SID_NAME_USE {
-    SidTypeUser = 1,
-    SidTypeGroup,
-    SidTypeDomain,
-    SidTypeAlias,
-    SidTypeWellKnownGroup,
-    SidTypeDeletedAccount,
-    SidTypeInvalid,
-    SidTypeUnknown,
-    SidTypeComputer,
-    SidTypeLabel
-} SID_NAME_USE, *PSID_NAME_USE;
-
-typedef struct _SID_AND_ATTRIBUTES {
-    PSID Sid;
-    ULONG Attributes;
-} SID_AND_ATTRIBUTES, *PSID_AND_ATTRIBUTES;
-
 typedef enum _MANDATORY_LEVEL {
     MandatoryLevelUntrusted = 0,
     MandatoryLevelLow,
@@ -214,13 +143,6 @@ typedef enum _MANDATORY_LEVEL {
     MandatoryLevelSecureProcess,
     MandatoryLevelCount
 } MANDATORY_LEVEL, *PMANDATORY_LEVEL;
-
-typedef enum _SECURITY_IMPERSONATION_LEVEL {
-    SecurityAnonymous,
-    SecurityIdentification,
-    SecurityImpersonation,
-    SecurityDelegation
-} SECURITY_IMPERSONATION_LEVEL, *PSECURITY_IMPERSONATION_LEVEL;
 
 #define SECURITY_MAX_IMPERSONATION_LEVEL SecurityDelegation
 #define SECURITY_MIN_IMPERSONATION_LEVEL SecurityAnonymous
@@ -259,64 +181,6 @@ typedef struct _SE_IMPERSONATION_STATE {
 #define UNPROTECTED_DACL_SECURITY_INFORMATION (0x20000000L)
 #define UNPROTECTED_SACL_SECURITY_INFORMATION (0x10000000L)
 
-
-typedef enum _TOKEN_INFORMATION_CLASS {
-    TokenUser = 1,
-    TokenGroups,
-    TokenPrivileges,
-    TokenOwner,
-    TokenPrimaryGroup,
-    TokenDefaultDacl,
-    TokenSource,
-    TokenType,
-    TokenImpersonationLevel,
-    TokenStatistics,
-    TokenRestrictedSids,
-    TokenSessionId,
-    TokenGroupsAndPrivileges,
-    TokenSessionReference,
-    TokenSandBoxInert,
-    TokenAuditPolicy,
-    TokenOrigin,
-    TokenElevationType,
-    TokenLinkedToken,
-    TokenElevation,
-    TokenHasRestrictions,
-    TokenAccessInformation,
-    TokenVirtualizationAllowed,
-    TokenVirtualizationEnabled,
-    TokenIntegrityLevel,
-    TokenUIAccess,
-    TokenMandatoryPolicy,
-    TokenLogonSid,
-    TokenIsAppContainer,
-    TokenCapabilities,
-    TokenAppContainerSid,
-    TokenAppContainerNumber,
-    TokenUserClaimAttributes,
-    TokenDeviceClaimAttributes,
-    TokenRestrictedUserClaimAttributes,
-    TokenRestrictedDeviceClaimAttributes,
-    TokenDeviceGroups,
-    TokenRestrictedDeviceGroups,
-    TokenSecurityAttributes,
-    TokenIsRestricted,
-    MaxTokenInfoClass
-} TOKEN_INFORMATION_CLASS, *PTOKEN_INFORMATION_CLASS;
-
-typedef struct _TOKEN_GROUPS {
-    ULONG GroupCount;
-#ifdef MIDL_PASS
-    [size_is(GroupCount)] SID_AND_ATTRIBUTES Groups[*];
-#else
-    SID_AND_ATTRIBUTES Groups[ANYSIZE_ARRAY];
-#endif
-} TOKEN_GROUPS, *PTOKEN_GROUPS, *LPTOKEN_GROUPS;
-
-typedef struct _TOKEN_PRIVILEGES {
-    ULONG PrivilegeCount;
-    LUID_AND_ATTRIBUTES Privileges[ANYSIZE_ARRAY];
-} TOKEN_PRIVILEGES, *PTOKEN_PRIVILEGES, *LPTOKEN_PRIVILEGES;
 
 typedef struct _TOKEN_OWNER {
     PSID Owner;
@@ -708,8 +572,6 @@ typedef struct _SYSTEM_MANDATORY_LABEL_ACE {
                                               SYSTEM_MANDATORY_LABEL_NO_EXECUTE_UP)
 
 #define SECURITY_DESCRIPTOR_MIN_LENGTH (sizeof(SECURITY_DESCRIPTOR))
-
-typedef USHORT SECURITY_DESCRIPTOR_CONTROL, *PSECURITY_DESCRIPTOR_CONTROL;
 
 #define SE_OWNER_DEFAULTED       0x0001
 #define SE_GROUP_DEFAULTED       0x0002

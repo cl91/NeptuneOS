@@ -1,5 +1,101 @@
 #pragma once
 
+#include "exbasedef.h"
+
+/*
+ * Firmware variable attributes
+ */
+#define VARIABLE_ATTRIBUTE_NON_VOLATILE                             0x00000001
+#define VARIABLE_ATTRIBUTE_BOOTSERVICE_ACCESS                       0x00000002
+#define VARIABLE_ATTRIBUTE_RUNTIME_ACCESS                           0x00000004
+#define VARIABLE_ATTRIBUTE_HARDWARE_ERROR_RECORD                    0x00000008
+#define VARIABLE_ATTRIBUTE_AUTHENTICATED_WRITE_ACCESS               0x00000010
+#define VARIABLE_ATTRIBUTE_TIME_BASED_AUTHENTICATED_WRITE_ACCESS    0x00000020
+#define VARIABLE_ATTRIBUTE_APPEND_WRITE                             0x00000040
+
+/*
+ * Event Types
+ */
+typedef enum _EVENT_TYPE {
+    NotificationEvent,
+    SynchronizationEvent
+} EVENT_TYPE;
+
+/*
+ * Timer Types
+ */
+typedef enum _TIMER_TYPE {
+    NotificationTimer,
+    SynchronizationTimer
+} TIMER_TYPE;
+
+#define TIMER_QUERY_STATE	0x0001
+#define TIMER_MODIFY_STATE	0x0002
+#define TIMER_ALL_ACCESS	(STANDARD_RIGHTS_REQUIRED |	\
+				 SYNCHRONIZE |			\
+				 TIMER_QUERY_STATE |		\
+				 TIMER_MODIFY_STATE)
+
+/*
+ * Timer APC Routine
+ */
+typedef VOID (NTAPI *PTIMER_APC_ROUTINE)(IN PVOID TimerContext,
+					 IN ULONG TimerLowValue,
+					 IN LONG TimerHighValue);
+
+/*
+ * Shutdown types for NtShutdownSystem
+ */
+typedef enum _SHUTDOWN_ACTION {
+    ShutdownNoReboot,
+    ShutdownReboot,
+    ShutdownPowerOff
+} SHUTDOWN_ACTION;
+
+/*
+ * Responses for NtRaiseHardError
+ */
+typedef enum _HARDERROR_RESPONSE_OPTION {
+    OptionAbortRetryIgnore,
+    OptionOk,
+    OptionOkCancel,
+    OptionRetryCancel,
+    OptionYesNo,
+    OptionYesNoCancel,
+    OptionShutdownSystem,
+    OptionOkNoWait,
+    OptionCancelTryContinue
+} HARDERROR_RESPONSE_OPTION, *PHARDERROR_RESPONSE_OPTION;
+
+typedef enum _HARDERROR_RESPONSE {
+    ResponseReturnToCaller,
+    ResponseNotHandled,
+    ResponseAbort,
+    ResponseCancel,
+    ResponseIgnore,
+    ResponseNo,
+    ResponseOk,
+    ResponseRetry,
+    ResponseYes,
+    ResponseTryAgain,
+    ResponseContinue
+} HARDERROR_RESPONSE, *PHARDERROR_RESPONSE;
+
+/*
+ * System Information Classes for NtQueryEvent
+ */
+typedef enum _EVENT_INFORMATION_CLASS {
+    EventBasicInformation
+} EVENT_INFORMATION_CLASS;
+
+/*
+ * Information Structures for NtQueryEvent
+ */
+typedef struct _EVENT_BASIC_INFORMATION {
+    EVENT_TYPE EventType;
+    LONG EventState;
+} EVENT_BASIC_INFORMATION, *PEVENT_BASIC_INFORMATION;
+
 /*
  *  System Information Classes for NtQuerySystemInformation
  */
@@ -768,45 +864,6 @@ typedef struct _SYSTEM_HANDLE_INFORMATION_EX {
 
 // TODO: Class 65-97
 
-/*
- * Shutdown types for NtShutdownSystem
- */
-typedef enum _SHUTDOWN_ACTION {
-    ShutdownNoReboot,
-    ShutdownReboot,
-    ShutdownPowerOff
-} SHUTDOWN_ACTION;
-
-/*
- * Responses for NtRaiseHardError
- */
-typedef enum _HARDERROR_RESPONSE_OPTION {
-    OptionAbortRetryIgnore,
-    OptionOk,
-    OptionOkCancel,
-    OptionRetryCancel,
-    OptionYesNo,
-    OptionYesNoCancel,
-    OptionShutdownSystem,
-    OptionOkNoWait,
-    OptionCancelTryContinue
-} HARDERROR_RESPONSE_OPTION, *PHARDERROR_RESPONSE_OPTION;
-
-typedef enum _HARDERROR_RESPONSE {
-    ResponseReturnToCaller,
-    ResponseNotHandled,
-    ResponseAbort,
-    ResponseCancel,
-    ResponseIgnore,
-    ResponseNo,
-    ResponseOk,
-    ResponseRetry,
-    ResponseYes,
-    ResponseTryAgain,
-    ResponseContinue
-} HARDERROR_RESPONSE, *PHARDERROR_RESPONSE;
-
-
 #ifndef _NTOSKRNL_
 NTAPI NTSYSAPI NTSTATUS NtDisplayString(IN PUNICODE_STRING String);
 
@@ -818,45 +875,7 @@ NTAPI NTSYSAPI NTSTATUS NtRaiseHardError(IN NTSTATUS ErrorStatus,
 					 IN PULONG_PTR Parameters,
 					 IN HARDERROR_RESPONSE_OPTION ResponseOption,
 					 OUT PHARDERROR_RESPONSE Response);
-#endif
 
-#define INVALID_HANDLE_VALUE ((HANDLE)(-1))
-
-/*
- * Event Types
- */
-typedef enum _EVENT_TYPE {
-    NotificationEvent,
-    SynchronizationEvent
-} EVENT_TYPE;
-
-#define EVENT_QUERY_STATE (0x0001)
-#define EVENT_MODIFY_STATE (0x0002)
-#define EVENT_ALL_ACCESS (STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0x3)
-
-/*
- * Timer Types
- */
-typedef enum _TIMER_TYPE {
-    NotificationTimer,
-    SynchronizationTimer
-} TIMER_TYPE;
-
-#define TIMER_QUERY_STATE	0x0001
-#define TIMER_MODIFY_STATE	0x0002
-#define TIMER_ALL_ACCESS	(STANDARD_RIGHTS_REQUIRED |	\
-				 SYNCHRONIZE |			\
-				 TIMER_QUERY_STATE |		\
-				 TIMER_MODIFY_STATE)
-
-/*
- * Timer APC Routine
- */
-typedef VOID (NTAPI *PTIMER_APC_ROUTINE)(IN PVOID TimerContext,
-					 IN ULONG TimerLowValue,
-					 IN LONG TimerHighValue);
-
-#ifndef _NTOSKRNL_
 NTAPI NTSYSAPI NTSTATUS NtCreateTimer(OUT PHANDLE TimerHandle,
 				      IN ACCESS_MASK DesiredAccess,
 				      IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
@@ -888,10 +907,26 @@ NTAPI NTSYSAPI NTSTATUS NtOpenEvent(OUT HANDLE *EventHandle,
 				    IN ACCESS_MASK DesiredAccess,
 				    IN POBJECT_ATTRIBUTES ObjectAttributes);
 
+NTAPI NTSYSAPI NTSTATUS NtPulseEvent(IN HANDLE EventHandle,
+				     IN OPTIONAL PLONG PulseCount);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryEvent(IN HANDLE EventHandle,
+				     IN EVENT_INFORMATION_CLASS EventInformationClass,
+				     OUT PVOID EventInformation,
+				     IN ULONG EventInformationLength,
+				     OUT PULONG ReturnLength);
+
 NTAPI NTSYSAPI NTSTATUS NtSetDefaultLocale(IN BOOLEAN UserProfile,
 					   IN LCID DefaultLocaleId);
 
-NTAPI NTSYSAPI NTSTATUS NtQuerySystemInformation(IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
+NTAPI NTSYSAPI NTSTATUS NtQueryDefaultLocale(IN BOOLEAN UserProfile,
+					     OUT PLCID DefaultLocaleId);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryDefaultUILanguage(OUT LANGID *LanguageId);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryInstallUILanguage(OUT LANGID* LanguageId);
+
+NTAPI NTSYSAPI NTSTATUS NtQuerySystemInformation(IN SYSTEM_INFORMATION_CLASS InfoClass,
 						 OUT PVOID SystemInformation,
 						 IN ULONG SystemInformationLength,
 						 OUT OPTIONAL PULONG ReturnLength);

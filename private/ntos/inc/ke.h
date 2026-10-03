@@ -636,11 +636,6 @@ static inline VOID KiCheckAsyncStack(IN ASYNC_STATE State)
  * evaluated and if it is satisfied, the thread is added to the ready
  * thread list and resumed by the executive service dispatcher.
  */
-typedef enum _WAIT_TYPE {
-    WaitAny,
-    WaitAll
-} WAIT_TYPE;
-
 typedef struct _DISPATCHER_HEADER {
     LIST_ENTRY WaitBlockList;	/* List of KWAIT_BLOCK satisfied when this
 				 * dispatcher object is signaled. */
@@ -735,6 +730,12 @@ static inline VOID KeSetEvent(IN PKEVENT Event)
 static inline VOID KeResetEvent(IN PKEVENT Event)
 {
     Event->Header.Signaled = FALSE;
+}
+
+static inline VOID KePulseEvent(IN PKEVENT Event)
+{
+    KeSetEvent(Event);
+    KeResetEvent(Event);
 }
 
 static inline VOID KeUninitializeEvent(IN PKEVENT Event)

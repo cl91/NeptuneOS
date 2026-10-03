@@ -103,6 +103,11 @@
     <parameter annotation="out opt" type="ptr::LONG" name="PreviousState" />
   </svc>
 
+  <svc name="NtPulseEvent">
+    <parameter annotation="in" type="HANDLE" name="EventHandle" />
+    <parameter annotation="out opt" type="ptr::LONG" name="PreviousState" />
+  </svc>
+
   <svc name="NtClearEvent">
     <parameter annotation="in" type="HANDLE" name="EventHandle" />
   </svc>
@@ -111,6 +116,14 @@
     <parameter annotation="out" type="ptr::HANDLE" name="EventHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
     <parameter annotation="in" type="ObjectAttributes" name="ObjectAttributes" />
+  </svc>
+
+  <svc name="NtQueryEvent">
+    <parameter annotation="in" type="HANDLE" name="EventHandle" />
+    <parameter annotation="in" type="EVENT_INFORMATION_CLASS" name="EventInfoClass" />
+    <parameter annotation="out" type="buf::Void" name="InformationBuffer" />
+    <parameter annotation="in" type="bufsize::ULONG" name="BufferSize" />
+    <parameter annotation="out" type="bufsize::ULONG" name="ResultLength" />
   </svc>
 
   <svc name="NtCreatePort">
@@ -219,11 +232,6 @@
     <parameter annotation="in out" type="ptr::SIZE_T" name="NumberOfBytesToProtect" />
     <parameter annotation="in" type="ULONG" name="NewAccessProtection" />
     <parameter annotation="out opt" type="ptr::ULONG" name="OldAccessProtection" />
-  </svc>
-
-  <svc name="NtQueryPerformanceCounter">
-    <parameter annotation="out" type="ptr::LARGE_INTEGER" name="PerformanceCounter" />
-    <parameter annotation="out opt" type="ptr::LARGE_INTEGER" name="PerformanceFrequency" />
   </svc>
 
   <svc name="NtWriteVirtualMemory">

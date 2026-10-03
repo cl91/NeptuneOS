@@ -1,51 +1,9 @@
 #pragma once
 
-#ifdef __i386__
-#ifndef _M_IX86
-#define _M_IX86
-#endif
-#endif
-
-#ifdef __x86_64__
-#ifndef _M_AMD64
-#define _M_AMD64
-#define _WIN64
-#endif
-#endif
-
-#ifdef __aarch64__
-#ifndef _M_ARM64
-#define _M_ARM64
-#define _WIN64
-#endif
-#endif
-
-#include <stdint.h>
+#include <ntbasedef.h>
 #include <stddef.h>
 #include <excpt.h>
 #include <limits.h>
-
-#ifdef _M_IX86
-#define FASTCALL __fastcall
-#define NTAPI __stdcall
-#else
-#define FASTCALL
-#define NTAPI
-#endif
-
-#define STDAPICALLTYPE		__stdcall
-
-#define DECLSPEC_IMPORT		__declspec(dllimport)
-
-#define DECLSPEC_NORETURN	__attribute__((noreturn))
-#define DECLSPEC_DEPRECATED	__attribute__((deprecated))
-#define DEPRECATED(x)		__attribute__((deprecated(x)))
-#define FORCEINLINE		static inline __attribute__((always_inline))
-#define __ALIGNED(x)		__attribute__((aligned(x)))
-#define DECLSPEC_ALIGN(x)	__ALIGNED(x)
-
-/* 64 bytes seem to be a safe assumption for most modern Intel and ARM64 systems. */
-#define SYSTEM_CACHE_ALIGNMENT_SIZE 64
 
 #if defined(_M_IX86) || defined(_M_AMD64)
 #define DECLSPEC_NOFPU		__attribute__((target("general-regs-only")))
@@ -55,210 +13,10 @@
 #error "Unsupported architecture"
 #endif
 
-#define DECLSPEC_CACHEALIGN DECLSPEC_ALIGN(SYSTEM_CACHE_ALIGNMENT_SIZE)
-
 #define DEPRECATED_BY(msg, repl)	__attribute__((deprecated(msg " Use " #repl ".", #repl)))
 
-#if !defined(_NTSYSTEM_) && !defined(_NTOSKRNL_) && !defined(_NTPSX_)
-#define NTSYSAPI	DECLSPEC_IMPORT
-#define NTSYSCALLAPI	DECLSPEC_IMPORT
-#else
-#define NTSYSAPI
-#define NTSYSCALLAPI
-#endif
-
-#define IN
-#define OUT
-#define OPTIONAL
-
-#define _ANONYMOUS_UNION
-#define _ANONYMOUS_STRUCT
-#define DUMMYSTRUCTNAME
-#define DUMMYSTRUCTNAME2
-#define DUMMYSTRUCTNAME3
-#define DUMMYSTRUCTNAME4
-#define DUMMYSTRUCTNAME5
-#define DUMMYUNIONNAME
-#define DUMMYUNIONNAME2
-#define ANYSIZE_ARRAY 1
-
-#undef CONST
-#define CONST const
-#define VOID void
-typedef void *PVOID, *LPVOID, **PPVOID;
-typedef CONST VOID *PCVOID;
-
-typedef char CHAR, CCHAR;
-typedef unsigned char UCHAR;
-typedef signed char SCHAR;
-typedef CHAR *PCHAR, *PCCHAR;
-typedef UCHAR *PUCHAR;
-typedef CONST CHAR *PCSTR, *LPCSTR, *PCSZ;
-typedef unsigned char BYTE, *PBYTE;
-typedef CHAR *LPCH, *PCH, *PNZCH, *PSZ;
-typedef CONST CHAR *LPCCH, *PCCH, *PCNZCH;
-
-typedef int8_t INT8;
-typedef uint8_t UINT8, *PUINT8;
-
-typedef wchar_t WCHAR;
-typedef WCHAR *PWCHAR, *PWCH, *PWSTR, *LPWSTR;
-typedef CONST WCHAR *PCWCH, *PCWSTR, *LPCWSTR;
-
-// This differs from Windows (Windows defines BOOLEAN as UCHAR)
-typedef _Bool BOOLEAN, BOOL;
-typedef BOOLEAN *PBOOLEAN;
-#define TRUE (1)
-#define FALSE (0)
-
-typedef short SHORT, CSHORT;
-typedef unsigned short USHORT;
-typedef SHORT *PSHORT;
-typedef USHORT *PUSHORT;
-typedef unsigned short WORD;
-
-typedef int16_t INT16;
-typedef uint16_t UINT16, *PUINT16;
-
-typedef int INT;
-typedef unsigned int UINT;
-
-typedef int32_t LONG, *PLONG;
-typedef uint32_t ULONG, *PULONG, CLONG, *PCLONG, UINT32, *PUINT32, DWORD, *LPDWORD;
-
-typedef uint64_t ULONGLONG, *PULONGLONG;
-typedef int64_t LONGLONG, *PLONGLONG;
-
-typedef uintptr_t ULONG_PTR, SIZE_T, *PSIZE_T, *PULONG_PTR, DWORD_PTR, UINT_PTR, *PUINT_PTR;
-typedef intptr_t LONG_PTR, SSIZE_T, *PSSIZE_T, *PLONG_PTR, INT_PTR, *PINT_PTR;
-
-typedef int64_t LONG64, *PLONG64;
-typedef int64_t INT64,  *PINT64;
-typedef uint64_t ULONG64, *PULONG64;
-typedef uint64_t DWORD64, *PDWORD64;
-typedef uint64_t UINT64,  *PUINT64;
-
-#if defined(_MSC_VER) && !defined(MIDL_PASS) && !defined(RC_INVOKED)
-#define POINTER_64 __ptr64
-#ifdef _WIN64
-#define POINTER_32 __ptr32
-#else
-#define POINTER_32
-#endif
-#else
-#define POINTER_64
-#define POINTER_32
-#endif /* defined(_MSC_VER) && !defined(MIDL_PASS) && !defined(RC_INVOKED) */
-
-#define BYTE_MAX INT8_MAX
-#define SHORT_MAX INT16_MAX
-#define USHORT_MAX UINT16_MAX
-#define WORD_MAX USHORT_MAX
-#define DWORD_MAX ULONG_MAX
-#define LONGLONG_MAX INT64_MAX
-#define LONG64_MAX INT64_MAX
-#define ULONGLONG_MAX UINT64_MAX
-#define DWORDLONG_MAX UINT64_MAX
-#define ULONG64_MAX UINT64_MAX
-#define DWORD64_MAX UINT64_MAX
-#define INT_PTR_MAX INTPTR_MAX
-#define UINT_PTR_MAX UINTPTR_MAX
-#define LONG_PTR_MAX INTPTR_MAX
-#define ULONG_PTR_MAX UINTPTR_MAX
-#define DWORD_PTR_MAX ULONG_PTR_MAX
-#define PTRDIFF_T_MAX PTRDIFF_MAX
-#define SIZE_T_MAX UINTPTR_MAX
-#define SSIZE_T_MAX INTPTR_MAX
-#define _SIZE_T_MAX SIZE_T_MAX
-
-#define BYTE_MIN INT8_MIN
-#define SHORT_MIN INT16_MIN
-#define USHORT_MIN UINT16_MIN
-#define WORD_MIN USHORT_MIN
-#define DWORD_MIN ULONG_MIN
-#define LONGLONG_MIN INT64_MIN
-#define LONG64_MIN INT64_MIN
-#define ULONGLONG_MIN UINT64_MIN
-#define DWORDLONG_MIN UINT64_MIN
-#define ULONG64_MIN UINT64_MIN
-#define DWORD64_MIN UINT64_MIN
-#define INT_PTR_MIN INTPTR_MIN
-#define UINT_PTR_MIN UINTPTR_MIN
-#define LONG_PTR_MIN INTPTR_MIN
-#define ULONG_PTR_MIN UINTPTR_MIN
-#define DWORD_PTR_MIN ULONG_PTR_MIN
-#define PTRDIFF_T_MIN PTRDIFF_MIN
-#define SIZE_T_MIN UINTPTR_MIN
-#define SSIZE_T_MIN INTPTR_MIN
-#define _SIZE_T_MIN SIZE_T_MIN
-
-#define MAXUCHAR	(0xFF)
-#define MAXUSHORT	USHORT_MAX
-#define MAXSHORT        (0X7FFF)
-#define MAXULONG	ULONG_MAX
-#define MAXULONGLONG	ULONG64_MAX
-#define MAXULONG_PTR	ULONG_PTR_MAX
-#define MAXLONG_PTR	LONG_PTR_MAX
-#define MAXLONG		LONG_MAX
-#define MAXLONGLONG	LONGLONG_MAX
-
-#define MINUSHORT	USHORT_MIN
-#define MINULONG	ULONG_MIN
-#define MINULONGLONG	ULONG64_MIN
-#define MINULONG_PTR	ULONG_PTR_MIN
-#define MINLONG_PTR	LONG_PTR_MIN
-#define MINLONG		LONG_MIN
-#define MINLONGLONG	LONGLONG_MIN
-
-typedef PVOID HANDLE, HMODULE, HINSTANCE;
-#define DECLARE_HANDLE(name) typedef HANDLE name
-typedef HANDLE *PHANDLE;
 /* A LOCAL_HANDLE is an seL4 capability pointer in the current thread's CSpace */
 typedef ULONG_PTR LOCAL_HANDLE, *PLOCAL_HANDLE;
-typedef LONG HRESULT;
-
-#define HandleToUlong(h) ((ULONG)(ULONG_PTR)(h))
-#define HandleToLong(h) ((LONG)(LONG_PTR)(h))
-#define ULongToHandle(h) ((HANDLE)(ULONG_PTR) (h))
-#define LongToHandle(h) ((HANDLE)(LONG_PTR) (h))
-#define PtrToUlong(p) ((ULONG)(ULONG_PTR) (p))
-#define PtrToLong(p) ((LONG)(LONG_PTR) (p))
-#define PtrToUint(p) ((UINT)(UINT_PTR) (p))
-#define PtrToInt(p) ((INT)(INT_PTR) (p))
-#define PtrToUshort(p) ((USHORT)(ULONG_PTR)(p))
-#define PtrToShort(p) ((SHORT)(LONG_PTR)(p))
-#define IntToPtr(i)    ((VOID*)(INT_PTR)((INT)i))
-#define UIntToPtr(ui)  ((VOID*)(UINT_PTR)((UINT)ui))
-#define LongToPtr(l)   ((VOID*)(LONG_PTR)((LONG)l))
-#define ULongToPtr(ul)  ((VOID*)(ULONG_PTR)((ULONG)ul))
-
-#define HandleToULong(h) HandleToUlong(h)
-
-#define UlongToHandle(ul) ULongToHandle(ul)
-#define UlongToPtr(ul) ULongToPtr(ul)
-#define UintToPtr(ui) UIntToPtr(ui)
-
-typedef union _LARGE_INTEGER {
-    struct {
-        ULONG LowPart;
-        LONG HighPart;
-    };
-    LONGLONG QuadPart;
-} LARGE_INTEGER, *PLARGE_INTEGER;
-
-typedef union _ULARGE_INTEGER {
-    struct {
-        ULONG LowPart;
-        ULONG HighPart;
-    };
-    ULONGLONG QuadPart;
-} ULARGE_INTEGER, *PULARGE_INTEGER;
-
-/* Locally Unique Identifier */
-typedef struct _LUID {
-    ULONG LowPart;
-    LONG HighPart;
-} LUID, *PLUID;
 
 /*
  * LUID helper routines
@@ -286,7 +44,6 @@ FORCEINLINE LUID RtlConvertUlongToLuid(IN ULONG Ulong)
 #define UNREFERENCED_PARAMETER(P) ((void)(P))
 #define ARGUMENT_PRESENT(ArgumentPointer)			\
     ((CHAR*)((ULONG_PTR)(ArgumentPointer)) != (CHAR*)NULL)
-#define C_ASSERT(expr) extern char (*c_assert(void)) [(expr) ? 1 : -1]
 
 #define UNICODE_NULL ((WCHAR)0)
 #define UNICODE_STRING_MAX_BYTES ((USHORT) 65534)
@@ -328,15 +85,6 @@ typedef EXCEPTION_DISPOSITION
 		       IN PVOID EstablisherFrame,
 		       IN OUT struct _CONTEXT *ContextRecord,
 		       IN OUT PVOID DispatcherContext);
-
-/*
- * Doubly-linked list and related list routines
- */
-typedef struct _LIST_ENTRY
-{
-    struct _LIST_ENTRY *Flink;
-    struct _LIST_ENTRY *Blink;
-} LIST_ENTRY, *PLIST_ENTRY;
 
 /* Returns the base address of a structure from a structure member */
 #define CONTAINING_RECORD(address, type, field)				\
@@ -446,11 +194,6 @@ typedef struct _OBJECT_ATTRIBUTES_ANSI {
     PVOID SecurityDescriptor;
     PVOID SecurityQualityOfService;
 } OBJECT_ATTRIBUTES_ANSI, *POBJECT_ATTRIBUTES_ANSI;
-
-/*
- * Returns the byte offset of a field in a structure of the given type.
- */
-#define FIELD_OFFSET(t,f)	((LONG)__builtin_offsetof(t,f))
 
 /*
  * Returns the size of a field in a structure of the given type.
