@@ -12,6 +12,7 @@
 extern LIST_ENTRY LdrpHashTable[LDRP_HASH_TABLE_ENTRIES];
 extern BOOLEAN LdrpInLdrInit;
 extern BOOLEAN LdrpDriverProcess;
+extern BOOLEAN LdrpShutdownInProgress;
 extern PVOID LdrpHeap;
 extern RTL_CRITICAL_SECTION LdrpLoaderLock;
 extern PLDR_DATA_TABLE_ENTRY LdrpImageEntry;
@@ -74,6 +75,9 @@ ULONG LdrpRelocateImageWithBias(IN PVOID BaseAddress,
 				IN ULONG Invalid);
 NTSTATUS LdrpWalkImportDescriptor(IN PLDR_DATA_TABLE_ENTRY LdrEntry);
 PVOID LdrpFetchAddressOfEntryPoint(IN PVOID ImageBase);
+
+/* ../rtl/actctx.c */
+NTSTATUS RtlpInitializeActCtx(VOID);
 
 /* ../rtl/critical.c */
 VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore);

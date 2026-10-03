@@ -681,14 +681,14 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     /* Map the KUSER_SHARED_DATA into the client address space (read-only). */
     PMMVAD ClientSharedDataVad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
+    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_SHARED_DATA,
 				     0, sizeof(KUSER_SHARED_DATA), 0, 0,
 				     MEM_RESERVE_MIRRORED_MEMORY | MEM_RESERVE_READ_ONLY,
 				     &ClientSharedDataVad));
     assert(ClientSharedDataVad != NULL);
-    assert(ClientSharedDataVad->AvlNode.Key == KUSER_SHARED_DATA_CLIENT_ADDR);
+    assert(ClientSharedDataVad->AvlNode.Key == USER_SHARED_DATA);
     MmRegisterMirroredVad(ClientSharedDataVad, PspUserSharedDataVad, MmCached);
-    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
+    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, USER_SHARED_DATA,
 				    sizeof(KUSER_SHARED_DATA)));
 
     if (DriverObject) {

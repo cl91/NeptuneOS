@@ -2,6 +2,7 @@
 
 #include <guiddef.h>
 #include <ntioapi.h>
+#include "cmbasedef.h"
 
 #define CM_PROB_NOT_CONFIGURED              0x00000001
 #define CM_PROB_DEVLOADER_FAILED            0x00000002
@@ -340,14 +341,6 @@ typedef enum _CM_SHARE_DISPOSITION {
                                   KEY_CREATE_LINK)		\
 				 & (~SYNCHRONIZE))
 
-/* Registry Open/Create Options */
-#define REG_OPTION_RESERVED         (0x00000000L)
-#define REG_OPTION_NON_VOLATILE     (0x00000000L)
-#define REG_OPTION_VOLATILE         (0x00000001L)
-#define REG_OPTION_CREATE_LINK      (0x00000002L)
-#define REG_OPTION_BACKUP_RESTORE   (0x00000004L)
-#define REG_OPTION_OPEN_LINK        (0x00000008L)
-
 #define REG_LEGAL_OPTION			\
     (REG_OPTION_RESERVED            |		\
      REG_OPTION_NON_VOLATILE        |		\
@@ -365,10 +358,6 @@ typedef enum _CM_SHARE_DISPOSITION {
 #define REG_LATEST_FORMAT              2
 #define REG_NO_COMPRESSION             4
 
-/* Key creation/open disposition */
-#define REG_CREATED_NEW_KEY         (0x00000001L)
-#define REG_OPENED_EXISTING_KEY     (0x00000002L)
-
 /* Key restore & hive load flags */
 #define REG_WHOLE_HIVE_VOLATILE         (0x00000001L)
 #define REG_REFRESH_HIVE                (0x00000002L)
@@ -384,12 +373,6 @@ typedef enum _CM_SHARE_DISPOSITION {
 
 /* Unload Flags */
 #define REG_FORCE_UNLOAD            1
-
-/* Notify Filter Values */
-#define REG_NOTIFY_CHANGE_NAME          (0x00000001L)
-#define REG_NOTIFY_CHANGE_ATTRIBUTES    (0x00000002L)
-#define REG_NOTIFY_CHANGE_LAST_SET      (0x00000004L)
-#define REG_NOTIFY_CHANGE_SECURITY      (0x00000008L)
 
 #define REG_LEGAL_CHANGE_FILTER                 \
     (REG_NOTIFY_CHANGE_NAME          |		\

@@ -69,6 +69,11 @@ NTAPI NTSTATUS LdrFindEntryForAddress(IN PVOID Address,
     return STATUS_NO_MORE_ENTRIES;
 }
 
+NTAPI VOID LdrSetDllManifestProber(_In_ PLDR_MANIFEST_PROBER_ROUTINE Routine)
+{
+    /* Do nothing */
+}
+
 /*
  * @implemented
  */
@@ -266,6 +271,245 @@ NTAPI NTSTATUS LdrUnlockLoaderLock(IN OPTIONAL ULONG Flags,
 /*
  * @implemented
  */
+NTAPI NTSTATUS LdrDisableThreadCalloutsForDll(IN PVOID BaseAddress)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    NTSTATUS Status;
+    BOOLEAN LockHeld;
+    ULONG_PTR Cookie;
+    DPRINT("LdrDisableThreadCalloutsForDll (BaseAddress %p)\n", BaseAddress);
+
+    /* Don't do it during shutdown */
+    if (LdrpShutdownInProgress)
+	return STATUS_SUCCESS;
+
+    /* Check if we should grab the lock */
+    LockHeld = FALSE;
+    if (!LdrpInLdrInit) {
+	/* Grab the lock */
+	Status = LdrLockLoaderLock(0, NULL, &Cookie);
+	if (!NT_SUCCESS(Status))
+	    return Status;
+	LockHeld = TRUE;
+    }
+
+    /* Make sure the DLL is valid and get its entry */
+    Status = STATUS_DLL_NOT_FOUND;
+    if (LdrpCheckForLoadedDllHandle(BaseAddress, &LdrEntry)) {
+	/* Get if it has a TLS slot */
+	if (!LdrEntry->TlsIndex) {
+	    /* It doesn't, so you're allowed to call this */
+	    LdrEntry->Flags |= LDRP_DONT_CALL_FOR_THREADS;
+	    Status = STATUS_SUCCESS;
+	}
+    }
+
+    /* Check if the lock was held */
+    if (LockHeld) {
+	/* Release it */
+	LdrUnlockLoaderLock(LDR_UNLOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS, Cookie);
+    }
+
+    /* Return the status */
+    return Status;
+}
+
+/*
+ * @implemented
+ */
+NTAPI NTSTATUS LdrAddRefDll(IN ULONG Flags, IN PVOID BaseAddress)
+{
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    NTSTATUS Status = STATUS_SUCCESS;
+    ULONG_PTR Cookie;
+    BOOLEAN Locked = FALSE;
+
+    /* Check for invalid flags */
+    if (Flags & ~(LDR_ADDREF_DLL_PIN)) {
+	/* Fail with invalid parameter status if so */
+	Status = STATUS_INVALID_PARAMETER;
+	goto quickie;
+    }
+
+    /* Acquire the loader lock if not in init phase */
+    if (!LdrpInLdrInit) {
+	/* Acquire the lock */
+	Status = LdrLockLoaderLock(0, NULL, &Cookie);
+	if (!NT_SUCCESS(Status))
+	    goto quickie;
+	Locked = TRUE;
+    }
+
+    /* Get this module's data table entry */
+    if (LdrpCheckForLoadedDllHandle(BaseAddress, &LdrEntry)) {
+	if (!LdrEntry) {
+	    /* Shouldn't happen */
+	    Status = STATUS_INTERNAL_ERROR;
+	    goto quickie;
+	}
+
+	/* If this is not a pinned module */
+	if (LdrEntry->LoadCount != 0xFFFF) {
+	    /* Update its load count */
+	    if (Flags & LDR_ADDREF_DLL_PIN) {
+		/* Pin it by setting load count to -1 */
+		LdrEntry->LoadCount = 0xFFFF;
+	    } else {
+		/* Increase its load count by one */
+		LdrEntry->LoadCount++;
+	    }
+	}
+    } else {
+	/* There was an error getting this module's handle, return invalid param status */
+	Status = STATUS_INVALID_PARAMETER;
+    }
+
+quickie:
+    /* Check for error case */
+    if (!NT_SUCCESS(Status)) {
+	/* Print debug information */
+	DPRINT1("LDR: LdrAddRefDll(%p) error 0x%08x\n", BaseAddress, Status);
+    }
+
+    /* Release the lock if needed */
+    if (Locked)
+	LdrUnlockLoaderLock(LDR_UNLOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS, Cookie);
+    return Status;
+}
+
+/*
+ * @implemented
+ */
+NTAPI NTSTATUS LdrGetDllHandle(IN OPTIONAL PWSTR DllPath,
+			       IN OPTIONAL PULONG DllCharacteristics,
+			       IN PUNICODE_STRING DllName,
+			       OUT PVOID *DllHandle)
+{
+    /* Call the newer API */
+    return LdrGetDllHandleEx(LDR_GET_DLL_HANDLE_EX_UNCHANGED_REFCOUNT, DllPath,
+			     DllCharacteristics, DllName, DllHandle);
+}
+
+/*
+ * @implemented
+ */
+NTAPI NTSTATUS LdrGetDllHandleEx(IN ULONG Flags,
+				 IN OPTIONAL PWSTR DllPath,
+				 IN OPTIONAL PULONG DllCharacteristics,
+				 IN PUNICODE_STRING DllName,
+				 OUT OPTIONAL PVOID *DllHandle)
+{
+    NTSTATUS Status;
+    PLDR_DATA_TABLE_ENTRY LdrEntry = NULL;
+    CHAR RawDllName[512] = {};
+    BOOLEAN Locked = FALSE;
+    ULONG_PTR Cookie = 0;
+
+    /* Clear the handle */
+    if (DllHandle)
+	*DllHandle = NULL;
+
+    /* Check for a valid flag combination */
+    if ((Flags &
+	 ~(LDR_GET_DLL_HANDLE_EX_PIN | LDR_GET_DLL_HANDLE_EX_UNCHANGED_REFCOUNT)) ||
+	(!DllHandle && !(Flags & LDR_GET_DLL_HANDLE_EX_PIN))) {
+	DPRINT1("Flags are invalid or no DllHandle given\n");
+	Status = STATUS_INVALID_PARAMETER;
+	goto Quickie;
+    }
+
+    /* If not initializing */
+    if (!LdrpInLdrInit) {
+	/* Acquire the lock */
+	Status = LdrLockLoaderLock(0, NULL, &Cookie);
+	if (!NT_SUCCESS(Status))
+	    goto Quickie;
+
+	/* Remember we own it */
+	Locked = TRUE;
+    }
+
+    /* Set default failure code */
+    Status = STATUS_DLL_NOT_FOUND;
+
+    /* Locate the last path separator in the DllName, if any. */
+    PCWSTR p = DllName->Buffer + DllName->Length / sizeof(WCHAR);
+    ULONG DllNameLength = 0;
+    while (*p != OBJ_NAME_PATH_SEPARATOR) {
+	p--;
+	DllNameLength++;
+	if (p == DllName->Buffer) {
+	    break;
+	}
+    }
+    assert(p >= DllName->Buffer);
+    if (*p == OBJ_NAME_PATH_SEPARATOR) {
+	p++;
+	assert(DllNameLength > 0);
+	DllNameLength--;
+    }
+
+    /* Convert the unicode string into utf-8 */
+    ULONG BytesWritten = 0;
+    RtlUnicodeToUTF8N(RawDllName, sizeof(RawDllName) - 1, &BytesWritten,
+		      p, DllNameLength * sizeof(WCHAR));
+    RawDllName[BytesWritten] = '\0';
+
+    /* Append ".dll" if the name does not have an extension */
+    if (!strchr(RawDllName, '.')) {
+	strcat_s(RawDllName, sizeof(RawDllName), ".dll");
+    }
+
+    /* Display debug string */
+    DPRINT1("LDR: LdrGetDllHandleEx, searching for %s from %ws\n", RawDllName,
+	    DllPath ? ((ULONG_PTR)DllPath == 1 ? L"" : DllPath) : L"");
+
+    /* Do the lookup */
+    if (LdrpCheckForLoadedDll(RawDllName, &LdrEntry)) {
+	/* Return success */
+	Status = STATUS_SUCCESS;
+    } else {
+	/* Make sure to NULL this */
+	LdrEntry = NULL;
+    }
+
+Quickie:
+    /* The success path must have a valid loader entry */
+    ASSERT((LdrEntry != NULL) == NT_SUCCESS(Status));
+
+    /* Check if we got an entry and success */
+    DPRINT("Got LdrEntry->BaseDllName %wZ\n", LdrEntry ? &LdrEntry->BaseDllName : NULL);
+    if ((LdrEntry) && (NT_SUCCESS(Status))) {
+	/* Check if the DLL is locked */
+	if ((LdrEntry->LoadCount != 0xFFFF) &&
+	    !(Flags & LDR_GET_DLL_HANDLE_EX_UNCHANGED_REFCOUNT)) {
+	    /* Check what to do with the load count */
+	    if (Flags & LDR_GET_DLL_HANDLE_EX_PIN) {
+		/* Pin it */
+		LdrEntry->LoadCount = 0xFFFF;
+	    } else {
+		/* Increase the load count */
+		LdrEntry->LoadCount++;
+	    }
+	}
+
+	/* Check if the caller is requesting the handle */
+	if (DllHandle)
+	    *DllHandle = LdrEntry->DllBase;
+    }
+
+    /* Release lock */
+    if (Locked) {
+	LdrUnlockLoaderLock(LDR_UNLOCK_LOADER_LOCK_FLAG_RAISE_ON_ERRORS, Cookie);
+    }
+
+    /* Return */
+    return Status;
+}
+
+/*
+ * @implemented
+ */
 NTAPI NTSTATUS LdrLoadDll(IN OPTIONAL PWSTR SearchPath,
 			  IN OPTIONAL PULONG DllCharacteristics,
 			  IN PUNICODE_STRING DllName,
@@ -309,6 +553,64 @@ NTAPI NTSTATUS LdrUnloadDll(IN PVOID BaseAddress)
 {
     UNIMPLEMENTED;
     return STATUS_NOT_IMPLEMENTED;
+}
+
+/*
+ * @implemented
+ */
+NTAPI NTSTATUS LdrEnumerateLoadedModules(IN ULONG ReservedFlag,
+					 IN PLDR_ENUM_CALLBACK EnumProc,
+					 IN OPTIONAL PVOID Context)
+{
+    PLIST_ENTRY ListHead, ListEntry;
+    PLDR_DATA_TABLE_ENTRY LdrEntry;
+    NTSTATUS Status;
+    ULONG_PTR Cookie;
+    BOOLEAN Stop = FALSE;
+
+    /* Check parameters */
+    if ((ReservedFlag) || !(EnumProc))
+	return STATUS_INVALID_PARAMETER;
+
+    /* Acquire the loader lock */
+    Status = LdrLockLoaderLock(0, NULL, &Cookie);
+    if (!NT_SUCCESS(Status))
+	return Status;
+
+    /* Loop all the modules and call enum proc */
+    ListHead = &NtCurrentPeb()->LdrData->InLoadOrderModuleList;
+    ListEntry = ListHead->Flink;
+    while (ListHead != ListEntry) {
+	/* Get the entry */
+	LdrEntry = CONTAINING_RECORD(ListEntry, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+
+	/* Call the enumeration proc inside SEH */
+	__try {
+	    EnumProc(LdrEntry, Context, &Stop);
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
+	    /* Ignoring the exception */
+	}
+
+	/* Break if we were asked to stop enumeration */
+	if (Stop) {
+	    break;
+	}
+
+	/* Advance to the next module */
+	ListEntry = ListEntry->Flink;
+    }
+
+    /* Release loader lock */
+    Status = LdrUnlockLoaderLock(0, Cookie);
+    ASSERT(NT_SUCCESS(Status));
+
+    /* Reset any successful status to STATUS_SUCCESS,
+     * but leave failure to the caller */
+    if (NT_SUCCESS(Status))
+	Status = STATUS_SUCCESS;
+
+    /* Return any possible failure status */
+    return Status;
 }
 
 static NTSTATUS LdrpRegisterElfModule(IN PVOID BaseAddress,

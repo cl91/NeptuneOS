@@ -1780,6 +1780,40 @@ NTAPI LONG RtlCompareUnicodeString(IN PCUNICODE_STRING s1,
 /*
  * @implemented
  */
+NTAPI LONG RtlCompareUnicodeStrings(IN PCWCH String1,
+				    IN SIZE_T String1Length,
+				    IN PCWCH String2,
+				    IN SIZE_T String2Length,
+				    IN BOOLEAN CaseInSensitive)
+{
+    LONG Result = 0;
+    SIZE_T MinStringLength = min(String1Length, String2Length);
+    SIZE_T Index;
+
+    if (CaseInSensitive) {
+	for (Index = 0; Index < MinStringLength; Index++) {
+	    WCHAR Char1 = RtlUpcaseUnicodeChar(String1[Index]);
+	    WCHAR Char2 = RtlUpcaseUnicodeChar(String2[Index]);
+	    Result = Char1 - Char2;
+	    if (Result != 0) {
+		return Result;
+	    }
+	}
+    } else {
+	for (Index = 0; Index < MinStringLength; Index++) {
+	    Result = String1[Index] - String2[Index];
+	    if (Result != 0) {
+		return Result;
+	    }
+	}
+    }
+
+    return String1Length - String2Length;
+}
+
+/*
+ * @implemented
+ */
 NTAPI VOID RtlCopyString(IN OUT PSTRING DestinationString,
 			 IN OPTIONAL const STRING *SourceString)
 {

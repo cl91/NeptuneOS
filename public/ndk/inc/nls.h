@@ -7,15 +7,24 @@
 
 #pragma once
 
-#include "ntdef.h"
-#include "ntstatus.h"
+#include "ntbasedef.h"
 
 typedef ULONG LCID, *PLCID;
 
-#define MAKELANGID(p, s) ((((WORD)(s)) << 10) | (WORD)(p))
-#define PRIMARYLANGID(l) ((WORD)(l) & 0x3ff)
-#define SUBLANGID(l) ((WORD)(l) >> 10)
-#define LANGIDFROMLCID(l) ((WORD)(l))
+/* LangID and NLS */
+#define MAKELANGID(p, s) ((((USHORT)(s)) << 10) | (USHORT)(p))
+#define PRIMARYLANGID(lgid) ((USHORT)(lgid) & 0x3ff)
+#define SUBLANGID(lgid) ((USHORT)(lgid) >> 10)
+#define MAKELCID(lgid, srtid) \
+    ((ULONG)((((ULONG)((USHORT)(srtid))) << 16) | ((ULONG)((USHORT)(lgid)))))
+#define MAKESORTLCID(lgid, srtid, ver) \
+    ((ULONG)((MAKELCID(lgid, srtid)) | (((ULONG)((USHORT)(ver))) << 20)))
+#define LANGIDFROMLCID(lcid) ((USHORT)(lcid))
+#define SORTIDFROMLCID(lcid) ((USHORT)((((ULONG)(lcid)) >> 16) & 0xf))
+#define SORTVERSIONFROMLCID(lcid) ((USHORT)((((ULONG)(lcid)) >> 20) & 0xf))
+
+#define NLS_VALID_LOCALE_MASK  0x000fffff
+#define LOCALE_NAME_MAX_LENGTH   85
 
 #define CP_UTF8 65001
 
@@ -407,6 +416,41 @@ typedef ULONG LCID, *PLCID;
 #define SUBLANG_GAELIC 0x01
 #define SUBLANG_GAELIC_SCOTTISH 0x02
 #define SUBLANG_GAELIC_MANX 0x03
+
+#define SORT_DEFAULT                     0x0
+#define SORT_INVARIANT_MATH              0x1
+#define SORT_JAPANESE_XJIS               0x0
+#define SORT_JAPANESE_UNICODE            0x1
+#define SORT_JAPANESE_RADICALSTROKE      0x4
+#define SORT_CHINESE_BIG5                0x0
+#define SORT_CHINESE_PRCP                0x0
+#define SORT_CHINESE_UNICODE             0x1
+#define SORT_CHINESE_PRC                 0x2
+#define SORT_CHINESE_BOPOMOFO            0x3
+#define SORT_CHINESE_RADICALSTROKE       0x4
+#define SORT_KOREAN_KSC                  0x0
+#define SORT_KOREAN_UNICODE              0x1
+#define SORT_GERMAN_PHONE_BOOK           0x1
+#define SORT_HUNGARIAN_DEFAULT           0x0
+#define SORT_HUNGARIAN_TECHNICAL         0x1
+#define SORT_GEORGIAN_TRADITIONAL        0x0
+#define SORT_GEORGIAN_MODERN             0x1
+
+#define LANG_SYSTEM_DEFAULT       MAKELANGID(LANG_NEUTRAL, SUBLANG_SYS_DEFAULT)
+#define LANG_USER_DEFAULT         MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT)
+
+#define LOCALE_SYSTEM_DEFAULT     MAKELCID(LANG_SYSTEM_DEFAULT, SORT_DEFAULT)
+#define LOCALE_USER_DEFAULT       MAKELCID(LANG_USER_DEFAULT, SORT_DEFAULT)
+#define LOCALE_CUSTOM_DEFAULT     MAKELCID(MAKELANGID(LANG_NEUTRAL, SUBLANG_CUSTOM_DEFAULT), \
+					   SORT_DEFAULT)
+#define LOCALE_CUSTOM_UNSPECIFIED MAKELCID(MAKELANGID(LANG_NEUTRAL, SUBLANG_CUSTOM_UNSPECIFIED), \
+					   SORT_DEFAULT)
+#define LOCALE_CUSTOM_UI_DEFAULT  MAKELCID(MAKELANGID(LANG_NEUTRAL, SUBLANG_UI_CUSTOM_DEFAULT), \
+					   SORT_DEFAULT)
+#define LOCALE_NEUTRAL            MAKELCID(MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL), \
+					   SORT_DEFAULT)
+#define LOCALE_INVARIANT          MAKELCID(MAKELANGID(LANG_INVARIANT, SUBLANG_NEUTRAL), \
+					   SORT_DEFAULT)
 
 #ifndef _NTOSKRNL_
 NTAPI NTSYSAPI NTSTATUS NtQueryDefaultLocale(IN BOOLEAN UserProfile,

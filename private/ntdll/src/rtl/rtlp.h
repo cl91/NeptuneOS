@@ -128,6 +128,15 @@ NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 WCHAR RtlpUpcaseUnicodeChar(IN WCHAR Source);
 WCHAR RtlpDowncaseUnicodeChar(IN WCHAR Source);
 
+/* res.c */
+IMAGE_RESOURCE_DIRECTORY *RtlpFindFirstResourceEntry(IMAGE_RESOURCE_DIRECTORY *Dir,
+						     PVOID Root,
+						     BOOLEAN WantDir);
+IMAGE_RESOURCE_DIRECTORY *RtlpFindResourceEntryByName(IMAGE_RESOURCE_DIRECTORY *Dir,
+						      LPCWSTR Name,
+						      PVOID Root,
+						      BOOLEAN WantDir);
+
 #ifndef _M_IX86
 /* dynfntbl.c */
 PRUNTIME_FUNCTION RtlpLookupDynamicFunctionEntry(IN DWORD64 ControlPc,

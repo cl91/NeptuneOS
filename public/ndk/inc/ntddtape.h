@@ -79,4 +79,80 @@ typedef enum _TAPE_DRIVE_PROBLEM_TYPE {
     TapeDriveSnappedTape
 } TAPE_DRIVE_PROBLEM_TYPE;
 
+typedef struct _FILE_NOTIFY_INFORMATION {
+    DWORD NextEntryOffset;
+    DWORD Action;
+    DWORD FileNameLength;
+    WCHAR FileName[1];
+} FILE_NOTIFY_INFORMATION, *PFILE_NOTIFY_INFORMATION;
+
+typedef struct _TAPE_ERASE {
+    DWORD Type;
+    BOOLEAN Immediate;
+} TAPE_ERASE, *PTAPE_ERASE;
+
+typedef struct _TAPE_GET_DRIVE_PARAMETERS {
+    BOOLEAN ECC;
+    BOOLEAN Compression;
+    BOOLEAN DataPadding;
+    BOOLEAN ReportSetmarks;
+    DWORD DefaultBlockSize;
+    DWORD MaximumBlockSize;
+    DWORD MinimumBlockSize;
+    DWORD MaximumPartitionCount;
+    DWORD FeaturesLow;
+    DWORD FeaturesHigh;
+    DWORD EOTWarningZoneSize;
+} TAPE_GET_DRIVE_PARAMETERS, *PTAPE_GET_DRIVE_PARAMETERS;
+
+typedef struct _TAPE_GET_MEDIA_PARAMETERS {
+    LARGE_INTEGER Capacity;
+    LARGE_INTEGER Remaining;
+    DWORD BlockSize;
+    DWORD PartitionCount;
+    BOOLEAN WriteProtected;
+} TAPE_GET_MEDIA_PARAMETERS, *PTAPE_GET_MEDIA_PARAMETERS;
+
+typedef struct _TAPE_GET_POSITION {
+    DWORD Type;
+    DWORD Partition;
+    LARGE_INTEGER Offset;
+} TAPE_GET_POSITION, *PTAPE_GET_POSITION;
+
+typedef struct _TAPE_PREPARE {
+    DWORD Operation;
+    BOOLEAN Immediate;
+} TAPE_PREPARE, *PTAPE_PREPARE;
+
+typedef struct _TAPE_SET_DRIVE_PARAMETERS {
+    BOOLEAN ECC;
+    BOOLEAN Compression;
+    BOOLEAN DataPadding;
+    BOOLEAN ReportSetmarks;
+    DWORD EOTWarningZoneSize;
+} TAPE_SET_DRIVE_PARAMETERS, *PTAPE_SET_DRIVE_PARAMETERS;
+
+typedef struct _TAPE_SET_MEDIA_PARAMETERS {
+    DWORD BlockSize;
+} TAPE_SET_MEDIA_PARAMETERS, *PTAPE_SET_MEDIA_PARAMETERS;
+
+typedef struct _TAPE_SET_POSITION {
+    DWORD Method;
+    DWORD Partition;
+    LARGE_INTEGER Offset;
+    BOOLEAN Immediate;
+} TAPE_SET_POSITION, *PTAPE_SET_POSITION;
+
+typedef struct _TAPE_WRITE_MARKS {
+    DWORD Type;
+    DWORD Count;
+    BOOLEAN Immediate;
+} TAPE_WRITE_MARKS, *PTAPE_WRITE_MARKS;
+
+typedef struct _TAPE_CREATE_PARTITION {
+    DWORD Method;
+    DWORD Count;
+    DWORD Size;
+} TAPE_CREATE_PARTITION, *PTAPE_CREATE_PARTITION;
+
 #endif /* _NTDDTAPE_ */
