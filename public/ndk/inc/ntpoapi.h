@@ -12,16 +12,6 @@
 #define PO_CB_PROCESSOR_POWER_POLICY             5
 
 /*
- * Information Structures for NtPowerInformation
- */
-typedef struct _SYSTEM_POWER_INFORMATION {
-    ULONG MaxIdlenessAllowed;
-    ULONG Idleness;
-    ULONG TimeRemaining;
-    UCHAR CoolingMode;
-} SYSTEM_POWER_INFORMATION, *PSYSTEM_POWER_INFORMATION;
-
-/*
  * Power States/Levels
  */
 typedef enum _SYSTEM_POWER_STATE {
@@ -67,6 +57,72 @@ typedef enum {
     PowerActionWarmEject
 } POWER_ACTION, *PPOWER_ACTION;
 
+typedef enum _POWER_INFORMATION_LEVEL {
+    SystemPowerPolicyAc,
+    SystemPowerPolicyDc,
+    VerifySystemPolicyAc,
+    VerifySystemPolicyDc,
+    SystemPowerCapabilities,
+    SystemBatteryState,
+    SystemPowerStateHandler,
+    ProcessorStateHandler,
+    SystemPowerPolicyCurrent,
+    AdministratorPowerPolicy,
+    SystemReserveHiberFile,
+    ProcessorInformation,
+    SystemPowerInformation,
+    ProcessorStateHandler2,
+    LastWakeTime,
+    LastSleepTime,
+    SystemExecutionState,
+    SystemPowerStateNotifyHandler,
+    ProcessorPowerPolicyAc,
+    ProcessorPowerPolicyDc,
+    VerifyProcessorPowerPolicyAc,
+    VerifyProcessorPowerPolicyDc,
+    ProcessorPowerPolicyCurrent,
+    SystemPowerStateLogging,
+    SystemPowerLoggingEntry,
+    SetPowerSettingValue,
+    NotifyUserPowerSetting,
+    PowerInformationLevelUnused0,
+    PowerInformationLevelUnused1,
+    SystemVideoState,
+    TraceApplicationPowerMessage,
+    TraceApplicationPowerMessageEnd,
+    ProcessorPerfStates,
+    ProcessorIdleStates,
+    ProcessorCap,
+    SystemWakeSource,
+    SystemHiberFileInformation,
+    TraceServicePowerMessage,
+    ProcessorLoad,
+    PowerShutdownNotification,
+    MonitorCapabilities,
+    SessionPowerInit,
+    SessionDisplayState,
+    PowerRequestCreate,
+    PowerRequestAction,
+    GetPowerRequestList,
+    ProcessorInformationEx,
+    NotifyUserModeLegacyPowerEvent,
+    GroupPark,
+    ProcessorIdleDomains,
+    WakeTimerList,
+    SystemHiberFileSize,
+    PowerInformationLevelMaximum
+} POWER_INFORMATION_LEVEL;
+
+/*
+ * Information Structures for NtPowerInformation
+ */
+typedef struct _SYSTEM_POWER_INFORMATION {
+    ULONG MaxIdlenessAllowed;
+    ULONG Idleness;
+    ULONG TimeRemaining;
+    UCHAR CoolingMode;
+} SYSTEM_POWER_INFORMATION, *PSYSTEM_POWER_INFORMATION;
+
 typedef enum _MONITOR_DISPLAY_STATE {
     PowerMonitorOff = 0,
     PowerMonitorOn,
@@ -81,6 +137,24 @@ typedef enum _SYSTEM_DOCK_STATE {
     SystemUndocked,
     SystemDocked
 } SYSTEM_DOCK_STATE, *PSYSTEM_DOCK_STATE;
+
+/*
+ * Battery states
+ */
+typedef struct {
+    BOOLEAN AcOnLine;
+    BOOLEAN BatteryPresent;
+    BOOLEAN Charging;
+    BOOLEAN Discharging;
+    BOOLEAN Spare1[3];
+    UCHAR Tag;
+    ULONG MaxCapacity;
+    ULONG RemainingCapacity;
+    ULONG Rate;
+    ULONG EstimatedTime;
+    ULONG DefaultAlert1;
+    ULONG DefaultAlert2;
+} SYSTEM_BATTERY_STATE, *PSYSTEM_BATTERY_STATE;
 
 /*
  * Battery reporting scale
@@ -362,3 +436,10 @@ DEFINE_GUID(GUID_PCIEXPRESS_ASPM_POLICY,
 	    0xee12f906, 0xd277, 0x404b, 0xb6, 0xda, 0xe5, 0xfa, 0x1a, 0x57, 0x6d, 0xf5);
 DEFINE_GUID(GUID_ENABLE_SWITCH_FORCED_SHUTDOWN,
 	    0x833a6b62, 0xdfa4, 0x46d1, 0x82, 0xf8, 0xe0, 0x9e, 0x34, 0xd0, 0x29, 0xd6);
+
+typedef ULONG EXECUTION_STATE, *PEXECUTION_STATE;
+
+typedef enum {
+    LT_DONT_CARE,
+    LT_LOWEST_LATENCY
+} LATENCY_TIME;

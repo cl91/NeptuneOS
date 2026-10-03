@@ -34,8 +34,6 @@
 #define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
 #define ROUND_UP(x, align)	ALIGN_UP_BY(x, align)
 
-#define SharedUserData ((KUSER_SHARED_DATA *CONST) KUSER_SHARED_DATA_CLIENT_ADDR)
-
 /* ke/time.c */
 VOID KiInitTime(VOID);
 

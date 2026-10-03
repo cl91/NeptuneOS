@@ -2,6 +2,7 @@
 
 #include "ntdef.h"
 #include "ntstatus.h"
+#include "kebasedef.h"
 #include "nls.h"
 
 //
@@ -235,6 +236,10 @@ typedef struct DECLSPEC_ALIGN(16) _XMM_SAVE_AREA32 {
 #include <ntarm64.h>
 #endif
 
+typedef VOID (NTAPI *PKNORMAL_ROUTINE)(IN PVOID NormalContext OPTIONAL,
+				       IN PVOID SystemArgument1 OPTIONAL,
+				       IN PVOID SystemArgument2 OPTIONAL);
+
 FORCEINLINE KAFFINITY AFFINITY_MASK(ULONG Index)
 {
     return (KAFFINITY)1 << Index;
@@ -259,8 +264,13 @@ NTAPI NTSYSAPI NTSTATUS NtTestAlert(VOID);
 NTAPI NTSYSAPI NTSTATUS NtDelayExecution(IN BOOLEAN Alertable,
 					 IN LARGE_INTEGER *Interval);
 
+NTAPI NTSYSAPI NTSTATUS NtYieldExecution(VOID);
+
 NTAPI NTSYSAPI ULONG NtGetCurrentProcessorNumber(VOID);
 
 NTAPI NTSYSAPI NTSTATUS NtQuerySystemTime(OUT PLARGE_INTEGER CurrentTime);
+
+NTAPI NTSYSAPI NTSTATUS NtQueryPerformanceCounter(OUT PLARGE_INTEGER Counter,
+						  OUT OPTIONAL PLARGE_INTEGER Frequency);
 
 #endif

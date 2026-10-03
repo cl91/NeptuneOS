@@ -1120,6 +1120,14 @@ NTSTATUS NtDeleteFile(IN ASYNC_STATE State,
     ASYNC_END(State, STATUS_SUCCESS);
 }
 
+NTSTATUS NtCancelIoFile(IN ASYNC_STATE State,
+			IN PTHREAD Thread,
+			IN HANDLE FileHandle,
+			OUT PIO_STATUS_BLOCK IoStatusBlock)
+{
+    UNIMPLEMENTED;
+}
+
 /* TODO: We need to cache basic file info since this is accessed frequently. */
 NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
                                IN PTHREAD Thread,
@@ -1351,6 +1359,21 @@ out:
     }
 
     ASYNC_END(State, Status);
+}
+
+NTSTATUS NtQueryEaFile(IN ASYNC_STATE State,
+		       IN PTHREAD Thread,
+		       IN HANDLE FileHandle,
+		       OUT PIO_STATUS_BLOCK IoStatusBlock,
+		       OUT PVOID Buffer,
+		       IN ULONG Length,
+		       IN BOOLEAN ReturnSingleEntry,
+		       IN OPTIONAL PVOID EaList,
+		       IN ULONG EaListLength,
+		       IN OPTIONAL PULONG EaIndex,
+		       IN BOOLEAN RestartScan)
+{
+    UNIMPLEMENTED;
 }
 
 static NTSTATUS IopOpenTargetDirectory(IN ASYNC_STATE State,

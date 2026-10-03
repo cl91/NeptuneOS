@@ -3,12 +3,13 @@ CheckOptions:
   - { key: readability-identifier-naming.StructCase,                  value: UPPER_CASE }
   - { key: readability-identifier-naming.StructIgnoredRegexp,         value: '_[A-Z0-9_]+' }
   - { key: readability-identifier-naming.FunctionCase,                value: CamelCase }
-  - { key: readability-identifier-naming.FunctionIgnoredRegexp,       value: '[A-Za-z]+(_[A-Za-z]+)?_[A-Za-z0-9]+' }
+  - { key: readability-identifier-naming.FunctionIgnoredRegexp,       value: '^[A-Z][a-zA-Z0-9]*(_[A-Z][a-zA-Z0-9]*)+$' }
   - { key: readability-identifier-naming.VariableCase,                value: CamelCase }
-  - { key: readability-identifier-naming.VariableIgnoredRegexp,       value: '[a-z]|p([A-Z][a-z0-9]+)+' }
+  - { key: readability-identifier-naming.VariableIgnoredRegexp,       value: '(^[A-Za-z]$|^(b|c|d|f|h|i|l|n|p|u|w|cb|li|lp|ul|dw|ll|pc|pv|ph|pp|sz|cch|pcb|pdw|pfn|psz|lpn|lpdw|lpsz|lpfn|lpszz)[A-Z][a-z0-9]*([A-Z][a-z0-9]*)*$)' }
   - { key: readability-identifier-naming.MemberCase,                  value: CamelCase }
+  - { key: readability-identifier-naming.MemberIgnoredRegexp,         value: '(^[A-Za-z]$|^(b|c|d|f|h|i|l|n|p|u|w|cb|li|lp|ul|dw|ll|pc|pv|ph|pp|sz|cch|pcb|pdw|pfn|psz|lpn|lpdw|lpsz|lpfn|lpszz)[A-Z][a-z0-9]*([A-Z][a-z0-9]*)*$)' }
   - { key: readability-identifier-naming.ParameterCase,               value: CamelCase }
-  - { key: readability-identifier-naming.ParameterIgnoredRegexp,      value: '[a-z]|p([A-Z][a-z0-9]+)+' }
+  - { key: readability-identifier-naming.ParameterIgnoredRegexp,      value: '(^[A-Za-z]$|^(b|c|d|f|h|i|l|n|p|u|w|cb|li|lp|ul|dw|ll|pc|pv|ph|pp|sz|cch|pcb|pdw|pfn|psz|lpn|lpdw|lpsz|lpfn|lpszz)[A-Z][a-z0-9]*([A-Z][a-z0-9]*)*$)' }
   - { key: readability-identifier-naming.GlobalConstantCase,          value: CamelCase }
   - { key: readability-identifier-naming.GlobalConstantIgnoredRegexp, value: '_[A-Za-z0-9_]+' }
   - { key: readability-identifier-naming.GlobalVariableCase,          value: CamelCase }

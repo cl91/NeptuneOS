@@ -681,14 +681,14 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     /* Map the KUSER_SHARED_DATA into the client address space (read-only). */
     PMMVAD ClientSharedDataVad = NULL;
-    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
+    RET_ERR(MmReserveVirtualMemoryEx(&Process->VSpace, USER_SHARED_DATA,
 				     0, sizeof(KUSER_SHARED_DATA), 0, 0,
 				     MEM_RESERVE_MIRRORED_MEMORY | MEM_RESERVE_READ_ONLY,
 				     &ClientSharedDataVad));
     assert(ClientSharedDataVad != NULL);
-    assert(ClientSharedDataVad->AvlNode.Key == KUSER_SHARED_DATA_CLIENT_ADDR);
+    assert(ClientSharedDataVad->AvlNode.Key == USER_SHARED_DATA);
     MmRegisterMirroredVad(ClientSharedDataVad, PspUserSharedDataVad, MmCached);
-    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, KUSER_SHARED_DATA_CLIENT_ADDR,
+    RET_ERR(MmCommitVirtualMemoryEx(&Process->VSpace, USER_SHARED_DATA,
 				    sizeof(KUSER_SHARED_DATA)));
 
     if (DriverObject) {
@@ -926,6 +926,12 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
      * done in PsTerminateProcess, when the process exits. */
     RET_ERR_EX(ObCreateHandle(Thread->Process, Process, FALSE, ProcessHandle, NULL),
 	       ObDereferenceObject(Process));
+
+    /* The NT kernel sets the ArbitraryUserPointer member of the calling thread's TIB
+     * to the newly created thread's PEB address so the usermode loader (which runs
+     * inside the calling thread) knows where the PEB of the new process is. */
+    ((PNT_TIB)Thread->IpcBufferServerAddr + NT_TIB_OFFSET)->ArbitraryUserPointer =
+	(PVOID)Process->InitInfo.PebAddress;
 
     return STATUS_SUCCESS;
 }

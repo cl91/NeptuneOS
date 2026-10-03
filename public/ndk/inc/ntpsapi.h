@@ -2,13 +2,14 @@
 
 #pragma once
 
-#include <ldrtypes.h>
 #include <ntstatus.h>
-#include <ntrtl.h>
 #include <ntkeapi.h>
+#include <ntseapi.h>
+#include "psbasedef.h"
 
 /* This is placed at the same address for both i386 and amd64 */
 #define USER_SHARED_DATA                        0x7FFE0000
+#define SharedUserData ((CONST KUSER_SHARED_DATA *CONST)USER_SHARED_DATA)
 
 /*
  * Global Flags
@@ -40,6 +41,21 @@
 #define FLG_HEAP_PAGE_ALLOCS                    0x02000000
 #define FLG_DEBUG_INITIAL_COMMAND_EX            0x04000000
 #define FLG_VALID_BITS                          0x07FFFFFF
+
+/*
+ * Flags for NtCreateProcessEx
+ */
+#define PROCESS_CREATE_FLAGS_BREAKAWAY              0x00000001
+#define PROCESS_CREATE_FLAGS_NO_DEBUG_INHERIT       0x00000002
+#define PROCESS_CREATE_FLAGS_INHERIT_HANDLES        0x00000004
+#define PROCESS_CREATE_FLAGS_OVERRIDE_ADDRESS_SPACE 0x00000008
+#define PROCESS_CREATE_FLAGS_LARGE_PAGES            0x00000010
+#define PROCESS_CREATE_FLAGS_ALL_LARGE_PAGE_FLAGS   PROCESS_CREATE_FLAGS_LARGE_PAGES
+#define PROCESS_CREATE_FLAGS_LEGAL_MASK             (PROCESS_CREATE_FLAGS_BREAKAWAY | \
+                                                     PROCESS_CREATE_FLAGS_NO_DEBUG_INHERIT | \
+                                                     PROCESS_CREATE_FLAGS_INHERIT_HANDLES | \
+                                                     PROCESS_CREATE_FLAGS_OVERRIDE_ADDRESS_SPACE | \
+                                                     PROCESS_CREATE_FLAGS_ALL_LARGE_PAGE_FLAGS)
 
 /*
  * Thread Access Rights
@@ -82,15 +98,6 @@
 #define PROCESS_HANDLE_TRACE_TYPE_BADREF        3
 #define PROCESS_HANDLE_TRACING_MAX_STACKS       16
 
-typedef struct _QUOTA_LIMITS {
-    SIZE_T PagedPoolLimit;
-    SIZE_T NonPagedPoolLimit;
-    SIZE_T MinimumWorkingSetSize;
-    SIZE_T MaximumWorkingSetSize;
-    SIZE_T PagefileLimit;
-    LARGE_INTEGER TimeLimit;
-} QUOTA_LIMITS, *PQUOTA_LIMITS;
-
 typedef union _RATE_QUOTA_LIMIT {
     ULONG RateData;
     struct {
@@ -113,15 +120,6 @@ typedef struct _QUOTA_LIMITS_EX {
     ULONG Flags;
     RATE_QUOTA_LIMIT CpuRateLimit;
 } QUOTA_LIMITS_EX, *PQUOTA_LIMITS_EX;
-
-typedef struct _IO_COUNTERS {
-    ULONGLONG ReadOperationCount;
-    ULONGLONG WriteOperationCount;
-    ULONGLONG OtherOperationCount;
-    ULONGLONG ReadTransferCount;
-    ULONGLONG WriteTransferCount;
-    ULONGLONG OtherTransferCount;
-} IO_COUNTERS, *PIO_COUNTERS;
 
 typedef struct _VM_COUNTERS {
     SIZE_T PeakVirtualSize;
@@ -174,7 +172,7 @@ typedef struct _PROCESS_EXCEPTION_PORT {
     ULONG StateFlags;
 } PROCESS_EXCEPTION_PORT, *PPROCESS_EXCEPTION_PORT;
 
-typedef enum _PROCESSINFOCLASS {
+typedef enum _PROCESS_INFORMATION_CLASS {
     ProcessBasicInformation,
     ProcessQuotaLimits,
     ProcessIoCounters,
@@ -227,9 +225,9 @@ typedef enum _PROCESSINFOCLASS {
     ProcessConsoleHostProcess,
     ProcessWindowInformation,
     MaxProcessInfoClass
-} PROCESSINFOCLASS, PROCESS_INFORMATION_CLASS;
+} PROCESS_INFORMATION_CLASS;
 
-typedef enum _THREADINFOCLASS {
+typedef enum _THREAD_INFORMATION_CLASS {
     ThreadBasicInformation,
     ThreadTimes,
     ThreadPriority,
@@ -264,8 +262,30 @@ typedef enum _THREADINFOCLASS {
     ThreadUmsInformation,
     ThreadCounterProfiling,
     ThreadIdealProcessorEx,
+    ThreadCpuAccountingInformation, // 6.2
+    ThreadSuspendCount, // 6.3
+    ThreadHeterogeneousCpuPolicy, // 10.0+
+    ThreadContainerId,
+    ThreadNameInformation,
+    ThreadSelectedCpuSets,
+    ThreadSystemThreadInformation,
+    ThreadActualGroupAffinity,
+    ThreadDynamicCodePolicyInfo,
+    ThreadExplicitCaseSensitivity,
+    ThreadWorkOnBehalfTicket,
+    ThreadSubsystemInformation,
+    ThreadDbgkWerReportActive,
+    ThreadAttachContainer,
+    ThreadManageWritesToExecutableMemory,
+    ThreadPowerThrottlingState,
+    ThreadWorkloadClass,
+    ThreadCreateStateChange,
+    ThreadApplyStateChange,
+    ThreadStrongerBadHandleChecks,
+    ThreadEffectiveIoPriority,
+    ThreadEffectivePagePriority,
     MaxThreadInfoClass
-} THREADINFOCLASS, THREAD_INFORMATION_CLASS;
+} THREAD_INFORMATION_CLASS;
 
 /*
  * Initial TEB
@@ -278,23 +298,30 @@ typedef struct _INITIAL_TEB {
     PVOID AllocatedStackBase;	/* Bottom of the initial stack reserve */
 } INITIAL_TEB, *PINITIAL_TEB;
 
+typedef struct _CLIENT_ID {
+    HANDLE UniqueProcess;
+    HANDLE UniqueThread;
+} CLIENT_ID, *PCLIENT_ID;
+
 /*
  * Thread information block common to all NT subsystems, including Win32 and Posix
  */
-typedef struct _NT_TIB {
+typedef struct POINTER_ALIGNMENT _NT_TIB {
     struct _EXCEPTION_REGISTRATION_RECORD *ExceptionList;
     PVOID StackBase;
     PVOID StackLimit;
-    PVOID SubSystemTib;
+    PVOID DeallocationStack;
     PVOID FiberData;
     PVOID ArbitraryUserPointer;
     struct _NT_TIB *Self;
     ULONG_PTR SystemServiceCap;
     CLIENT_ID ClientId;
+    BOOLEAN FreeStackOnTermination;
+    BOOLEAN IsImpersonating;
 } NT_TIB, *PNT_TIB;
 
 /*
- * Process Information Structures for NtQueryProcessInformation
+ * Process Information Structures for NtQueryInformationProcess
  */
 typedef struct _PROCESS_BASIC_INFORMATION {
     NTSTATUS ExitStatus;
@@ -386,7 +413,7 @@ typedef struct _PROCESS_FOREGROUND_BACKGROUND {
 } PROCESS_FOREGROUND_BACKGROUND, *PPROCESS_FOREGROUND_BACKGROUND;
 
 /*
- * Thread Information Structures for NtQueryProcessInformation
+ * Thread Information Structures for NtQueryInformationThread
  */
 typedef struct _THREAD_BASIC_INFORMATION {
     NTSTATUS ExitStatus;
@@ -396,6 +423,10 @@ typedef struct _THREAD_BASIC_INFORMATION {
     KPRIORITY Priority;
     KPRIORITY BasePriority;
 } THREAD_BASIC_INFORMATION, *PTHREAD_BASIC_INFORMATION;
+
+typedef struct _THREAD_NAME_INFORMATION {
+    UNICODE_STRING ThreadName;
+} THREAD_NAME_INFORMATION, *PTHREAD_NAME_INFORMATION;
 
 /*
  * Native Calls. These are only available for client threads.
@@ -422,16 +453,26 @@ NTAPI NTSYSAPI NTSTATUS NtCreateThread(OUT PHANDLE ThreadHandle,
 				       IN BOOLEAN CreateSuspended);
 
 NTAPI NTSYSAPI NTSTATUS NtQueryInformationProcess(IN HANDLE ProcessHandle,
-						  IN PROCESSINFOCLASS ProcessInformationClass,
+						  IN PROCESS_INFORMATION_CLASS ProcessInformationClass,
 						  OUT PVOID ProcessInformation,
 						  IN ULONG ProcessInformationLength,
 						  OUT OPTIONAL PULONG ReturnLength);
 
 NTAPI NTSYSAPI NTSTATUS NtQueryInformationThread(IN HANDLE ThreadHandle,
-						 IN THREADINFOCLASS ThreadInformationClass,
+						 IN THREAD_INFORMATION_CLASS ThreadInformationClass,
 						 OUT PVOID ThreadInformation,
 						 IN ULONG ThreadInformationLength,
 						 OUT OPTIONAL PULONG ReturnLength);
+
+NTAPI NTSYSAPI NTSTATUS NtSetInformationProcess(IN HANDLE ProcessHandle,
+						IN PROCESS_INFORMATION_CLASS ProcessInformationClass,
+						IN PVOID ProcessInformation,
+						IN ULONG ProcessInformationLength);
+
+NTAPI NTSYSAPI NTSTATUS NtSetInformationThread(IN HANDLE ThreadHandle,
+					       IN THREAD_INFORMATION_CLASS ThreadInformationClass,
+					       IN PVOID ThreadInformation,
+					       IN ULONG ThreadInformationLength);
 
 NTAPI NTSYSAPI NTSTATUS NtTerminateProcess(IN HANDLE ProcessHandle,
 					   IN NTSTATUS ExitStatus);

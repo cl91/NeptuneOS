@@ -104,7 +104,8 @@ typedef struct _PEB {
  */
 typedef struct _TEB {
     NT_TIB NtTib;
-    PPEB Peb;
+    PVOID SubsystemThreadObject;
+    PPEB ProcessEnvironmentBlock;
 } TEB, *PTEB;
 
 FORCEINLINE NTAPI PTEB NtCurrentTeb(VOID)
@@ -114,5 +115,5 @@ FORCEINLINE NTAPI PTEB NtCurrentTeb(VOID)
 
 FORCEINLINE NTAPI PPEB NtCurrentPeb(VOID)
 {
-    return NtCurrentTeb()->Peb;
+    return NtCurrentTeb()->ProcessEnvironmentBlock;
 }
