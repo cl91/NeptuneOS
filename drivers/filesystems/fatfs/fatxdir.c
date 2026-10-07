@@ -261,7 +261,7 @@ static NTSTATUS GetNextDirEntry(PVOID *pContext, PVOID *pCluster, IN PFATFCB Dir
 	/* need to add . and .. entries */
 	switch (DirContext->DirIndex) {
 	case 0:		/* entry . */
-	    wcscpy_s(DirContext->LongNameU.Buffer, sizeof(WCHAR), L".");
+	    wcscpy_s(DirContext->LongNameU.Buffer, 2, L".");
 	    DirContext->LongNameU.Length = sizeof(WCHAR);
 	    DirContext->ShortNameU = DirContext->LongNameU;
 	    RtlCopyMemory(&DirContext->DirEntry.FatX, &DirFcb->Entry.FatX,
@@ -272,7 +272,7 @@ static NTSTATUS GetNextDirEntry(PVOID *pContext, PVOID *pCluster, IN PFATFCB Dir
 	    return STATUS_SUCCESS;
 
 	case 1:		/* entry .. */
-	    wcscpy_s(DirContext->LongNameU.Buffer, 2 * sizeof(WCHAR), L"..");
+	    wcscpy_s(DirContext->LongNameU.Buffer, 3, L"..");
 	    DirContext->LongNameU.Length = 2 * sizeof(WCHAR);
 	    DirContext->ShortNameU = DirContext->LongNameU;
 	    RtlCopyMemory(&DirContext->DirEntry.FatX, &DirFcb->Entry.FatX,

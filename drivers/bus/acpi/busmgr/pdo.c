@@ -128,7 +128,7 @@ static NTSTATUS Bus_PDO_QueryDeviceId(PPDO_DEVICE_DATA DeviceData, PIRP Irp)
 
 	    if (strcmp(Device->Pnp.HardwareId, "Processor") == 0) {
 		Length = wcslen(ProcessorIdString);
-		wcscpy_s(Temp, sizeof(Temp), ProcessorIdString);
+		wcscpy_s(Temp, ARRAY_SIZE(Temp), ProcessorIdString);
 	    } else {
 		Length = swprintf(Temp, L"ACPI\\%hs", Device->Pnp.HardwareId);
 	    }
