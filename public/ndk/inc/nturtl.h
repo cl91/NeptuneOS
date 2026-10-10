@@ -244,19 +244,6 @@ typedef struct _RTL_USER_PROCESS_PARAMETERS {
     SIZE_T EnvironmentVersion;
 } RTL_USER_PROCESS_PARAMETERS, *PRTL_USER_PROCESS_PARAMETERS;
 
-typedef struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME {
-    struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME *Previous;
-    struct _ACTIVATION_CONTEXT                 *ActivationContext;
-    ULONG                                       Flags;
-} RTL_ACTIVATION_CONTEXT_STACK_FRAME, *PRTL_ACTIVATION_CONTEXT_STACK_FRAME;
-
-typedef struct _ACTIVATION_CONTEXT_STACK {
-    ULONG Flags;
-    ULONG NextCookieSequenceNumber;
-    RTL_ACTIVATION_CONTEXT_STACK_FRAME *ActiveFrame;
-    LIST_ENTRY FrameListCache;
-} ACTIVATION_CONTEXT_STACK, *PACTIVATION_CONTEXT_STACK;
-
 typedef VOID (NTAPI *PPS_POST_PROCESS_INIT_ROUTINE)(VOID);
 typedef VOID (NTAPI *PFLS_CALLBACK_FUNCTION)(PVOID);
 
@@ -2919,3 +2906,275 @@ NTAPI NTSYSAPI NTSTATUS RtlGetVersion(OUT PRTL_OSVERSIONINFO lpVersionInformatio
 NTAPI NTSYSAPI NTSTATUS RtlVerifyVersionInfo(IN PRTL_OSVERSIONINFOEX VersionInfo,
 					     IN ULONG TypeMask,
 					     IN ULONGLONG ConditionMask);
+
+/*
+ * Activation context related definitions
+ */
+typedef struct _ACTIVATION_CONTEXT_DATA {
+    ULONG Magic;
+    ULONG HeaderSize;
+    ULONG FormatVersion;
+    ULONG TotalSize;
+    ULONG DefaultTocOffset;
+    ULONG ExtendedTocOffset;
+    ULONG AssemblyRosterOffset;
+    ULONG Flags;
+} ACTIVATION_CONTEXT_DATA, *PACTIVATION_CONTEXT_DATA;
+
+typedef enum _ACTIVATION_CONTEXT_INFO_CLASS {
+    ActivationContextBasicInformation = 1,
+    ActivationContextDetailedInformation = 2,
+    AssemblyDetailedInformationInActivationContext = 3,
+    FileInformationInAssemblyOfAssemblyInActivationContext = 4,
+    RunlevelInformationInActivationContext = 5,
+    CompatibilityInformationInActivationContext = 6,
+    ActivationContextManifestResourceName = 7,
+    MaxActivationContextInfoClass,
+    /* For compatibility with the old names */
+    AssemblyDetailedInformationInActivationContxt = 3,
+    FileInformationInAssemblyOfAssemblyInActivationContxt = 4
+} ACTIVATION_CONTEXT_INFO_CLASS;
+
+typedef struct _ACTIVATION_CONTEXT_BASIC_INFORMATION {
+    HANDLE hActCtx;
+    DWORD dwFlags;
+} ACTIVATION_CONTEXT_BASIC_INFORMATION, *PACTIVATION_CONTEXT_BASIC_INFORMATION;
+typedef const struct _ACTIVATION_CONTEXT_BASIC_INFORMATION
+    *PCACTIVATION_CONTEXT_BASIC_INFORMATION;
+
+typedef struct _ACTIVATION_CONTEXT_DETAILED_INFORMATION {
+    DWORD dwFlags;
+    DWORD ulFormatVersion;
+    DWORD ulAssemblyCount;
+    DWORD ulRootManifestPathType;
+    DWORD ulRootManifestPathChars;
+    DWORD ulRootConfigurationPathType;
+    DWORD ulRootConfigurationPathChars;
+    DWORD ulAppDirPathType;
+    DWORD ulAppDirPathChars;
+    PCWSTR lpRootManifestPath;
+    PCWSTR lpRootConfigurationPath;
+    PCWSTR lpAppDirPath;
+} ACTIVATION_CONTEXT_DETAILED_INFORMATION, *PACTIVATION_CONTEXT_DETAILED_INFORMATION;
+typedef const ACTIVATION_CONTEXT_DETAILED_INFORMATION
+    *PCACTIVATION_CONTEXT_DETAILED_INFORMATION;
+
+typedef struct _ACTIVATION_CONTEXT_ASSEMBLY_DETAILED_INFORMATION {
+    DWORD ulFlags;
+    DWORD ulEncodedAssemblyIdentityLength;
+    DWORD ulManifestPathType;
+    DWORD ulManifestPathLength;
+    LARGE_INTEGER liManifestLastWriteTime;
+    DWORD ulPolicyPathType;
+    DWORD ulPolicyPathLength;
+    LARGE_INTEGER liPolicyLastWriteTime;
+    DWORD ulMetadataSatelliteRosterIndex;
+    DWORD ulManifestVersionMajor;
+    DWORD ulManifestVersionMinor;
+    DWORD ulPolicyVersionMajor;
+    DWORD ulPolicyVersionMinor;
+    DWORD ulAssemblyDirectoryNameLength;
+    PCWSTR lpAssemblyEncodedAssemblyIdentity;
+    PCWSTR lpAssemblyManifestPath;
+    PCWSTR lpAssemblyPolicyPath;
+    PCWSTR lpAssemblyDirectoryName;
+    DWORD ulFileCount;
+} ACTIVATION_CONTEXT_ASSEMBLY_DETAILED_INFORMATION,
+    *PACTIVATION_CONTEXT_ASSEMBLY_DETAILED_INFORMATION;
+typedef const ACTIVATION_CONTEXT_ASSEMBLY_DETAILED_INFORMATION
+    *PCACTIVATION_CONTEXT_ASSEMBLY_DETAILED_INFORMATION;
+
+typedef struct _ACTIVATION_CONTEXT_QUERY_INDEX {
+    DWORD ulAssemblyIndex;
+    DWORD ulFileIndexInAssembly;
+} ACTIVATION_CONTEXT_QUERY_INDEX, *PACTIVATION_CONTEXT_QUERY_INDEX;
+typedef const ACTIVATION_CONTEXT_QUERY_INDEX *PCACTIVATION_CONTEXT_QUERY_INDEX;
+
+typedef struct _ASSEMBLY_FILE_DETAILED_INFORMATION {
+    DWORD ulFlags;
+    DWORD ulFilenameLength;
+    DWORD ulPathLength;
+    PCWSTR lpFileName;
+    PCWSTR lpFilePath;
+} ASSEMBLY_FILE_DETAILED_INFORMATION, *PASSEMBLY_FILE_DETAILED_INFORMATION;
+typedef const ASSEMBLY_FILE_DETAILED_INFORMATION *PCASSEMBLY_FILE_DETAILED_INFORMATION;
+
+typedef enum {
+    ACTCTX_RUN_LEVEL_UNSPECIFIED = 0,
+    ACTCTX_RUN_LEVEL_AS_INVOKER,
+    ACTCTX_RUN_LEVEL_HIGHEST_AVAILABLE,
+    ACTCTX_RUN_LEVEL_REQUIRE_ADMIN,
+    ACTCTX_RUN_LEVEL_NUMBERS
+} ACTCTX_REQUESTED_RUN_LEVEL;
+
+typedef struct _ACTIVATION_CONTEXT_RUN_LEVEL_INFORMATION {
+    DWORD ulFlags;
+    ACTCTX_REQUESTED_RUN_LEVEL RunLevel;
+    DWORD UiAccess;
+} ACTIVATION_CONTEXT_RUN_LEVEL_INFORMATION, *PACTIVATION_CONTEXT_RUN_LEVEL_INFORMATION;
+
+#define ACTIVATION_CONTEXT_PATH_TYPE_NONE         1
+#define ACTIVATION_CONTEXT_PATH_TYPE_WIN32_FILE   2
+#define ACTIVATION_CONTEXT_PATH_TYPE_URL          3
+#define ACTIVATION_CONTEXT_PATH_TYPE_ASSEMBLYREF  4
+
+/*
+ * Activation Context Frame
+ */
+typedef struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME {
+    struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME *Previous;
+    PACTIVATION_CONTEXT ActivationContext;
+    ULONG Flags;
+} RTL_ACTIVATION_CONTEXT_STACK_FRAME, *PRTL_ACTIVATION_CONTEXT_STACK_FRAME;
+
+typedef struct _ACTIVATION_CONTEXT_STACK {
+    struct _RTL_ACTIVATION_CONTEXT_STACK_FRAME *ActiveFrame;
+    LIST_ENTRY FrameListCache;
+    ULONG Flags;
+    ULONG NextCookieSequenceNumber;
+    ULONG StackId;
+} ACTIVATION_CONTEXT_STACK, *PACTIVATION_CONTEXT_STACK;
+
+typedef struct _RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_BASIC {
+    SIZE_T Size;
+    ULONG Format;
+    RTL_ACTIVATION_CONTEXT_STACK_FRAME Frame;
+} RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_BASIC,
+    *PRTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_BASIC;
+
+typedef struct _RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED {
+    SIZE_T Size;
+    ULONG Format;
+    RTL_ACTIVATION_CONTEXT_STACK_FRAME Frame;
+    PVOID Extra1;
+    PVOID Extra2;
+    PVOID Extra3;
+    PVOID Extra4;
+} RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED,
+    *PRTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED;
+
+typedef RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED
+    RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME;
+typedef PRTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED
+    PRTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME;
+
+typedef struct _RTL_HEAP_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME {
+    RTL_ACTIVATION_CONTEXT_STACK_FRAME Frame;
+    ULONG_PTR Cookie;
+    PVOID ActivationStackBackTrace[8];
+} RTL_HEAP_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME,
+    *PRTL_HEAP_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME;
+
+/*
+ * Flags in RTL_ACTIVATION_CONTEXT_STACK_FRAME (from Checked NTDLL)
+ */
+#define RTL_ACTIVATION_CONTEXT_STACK_FRAME_FLAG_RELEASE_ON_DEACTIVATION         0x01
+#define RTL_ACTIVATION_CONTEXT_STACK_FRAME_FLAG_NO_DEACTIVATE                   0x02
+#define RTL_ACTIVATION_CONTEXT_STACK_FRAME_FLAG_ON_FREE_LIST                    0x04
+#define RTL_ACTIVATION_CONTEXT_STACK_FRAME_FLAG_HEAP_ALLOCATED                  0x08
+#define RTL_ACTIVATION_CONTEXT_STACK_FRAME_FLAG_NOT_REALLY_ACTIVATED            0x10
+#define RTL_ACTIVATION_CONTEXT_STACK_FRAME_FLAG_ACTIVATED                       0x20
+#define RTL_ACTIVATION_CONTEXT_STACK_FRAME_FLAG_DEACTIVATED                     0x40
+
+/*
+ * Activation Context Frame Flags (from Checked NTDLL)
+ */
+#define RTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_FORMAT_WHISTLER     0x01
+
+/*
+ * RtlActivateActivationContextEx Flags (from Checked NTDLL)
+ */
+#define RTL_ACTIVATE_ACTIVATION_CONTEXT_EX_FLAG_RELEASE_ON_STACK_DEALLOCATION   0x01
+
+/*
+ * RtlDeactivateActivationContext Flags (based on Win32 flag and name of above)
+ */
+#define RTL_DEACTIVATE_ACTIVATION_CONTEXT_FLAG_FORCE_EARLY_DEACTIVATION         0x01
+
+/*
+ * RtlQueryActivationContext Flags (based on Win32 flag and name of above)
+ */
+#define RTL_QUERY_ACTIVATION_CONTEXT_FLAG_USE_ACTIVE_ACTIVATION_CONTEXT         0x01
+#define RTL_QUERY_ACTIVATION_CONTEXT_FLAG_IS_HMODULE                            0x02
+#define RTL_QUERY_ACTIVATION_CONTEXT_FLAG_IS_ADDRESS                            0x04
+#define RTL_QUERY_ACTIVATION_CONTEXT_FLAG_NO_ADDREF                             0x80000000
+
+typedef struct _ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION {
+    ULONG Size;
+    ULONG Flags;
+    ULONG TotalPathLength;
+    ULONG PathSegmentCount;
+    ULONG PathSegmentOffset;
+} ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION, *PACTIVATION_CONTEXT_DATA_DLL_REDIRECTION;
+
+typedef struct _ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_SEGMENT {
+    ULONG Length;
+    ULONG Offset;
+} ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_SEGMENT,
+    *PACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_SEGMENT;
+
+#define ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_INCLUDES_BASE_NAME                     1
+#define ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_OMITS_ASSEMBLY_ROOT                    2
+#define ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_EXPAND                                 4
+#define ACTIVATION_CONTEXT_DATA_DLL_REDIRECTION_PATH_SYSTEM_DEFAULT_REDIRECTED_SYSTEM32_DLL 8
+
+/*
+ * Activation Context Functions
+ */
+NTAPI NTSYSAPI NTSTATUS RtlActivateActivationContextEx(IN ULONG Flags, IN PTEB Teb,
+						       IN PVOID Context,
+						       OUT PULONG_PTR Cookie);
+
+NTAPI NTSYSAPI NTSTATUS RtlActivateActivationContext(IN ULONG Flags, IN HANDLE Handle,
+						     OUT PULONG_PTR Cookie);
+
+NTAPI NTSYSAPI VOID RtlAddRefActivationContext(IN PVOID Context);
+
+FASTCALL NTSYSAPI PRTL_ACTIVATION_CONTEXT_STACK_FRAME
+RtlActivateActivationContextUnsafeFast(
+    IN PRTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED Frame,
+    IN PVOID Context);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlAllocateActivationContextStack(IN PACTIVATION_CONTEXT_STACK *Stack);
+
+NTAPI NTSYSAPI NTSTATUS RtlCreateActivationContext(
+    IN ULONG Flags, IN PACTIVATION_CONTEXT_DATA ActivationContextData,
+    IN ULONG ExtraBytes, IN PVOID NotificationRoutine, IN PVOID NotificationContext,
+    OUT PACTIVATION_CONTEXT *ActCtx);
+
+NTAPI NTSYSAPI NTSTATUS RtlGetActiveActivationContext(IN PVOID *Context);
+
+NTAPI NTSYSAPI VOID RtlReleaseActivationContext(IN HANDLE handle);
+
+NTAPI NTSYSAPI NTSTATUS RtlDeactivateActivationContext(IN ULONG dwFlags,
+						       IN ULONG_PTR ulCookie);
+
+NTAPI NTSYSAPI VOID RtlFreeActivationContextStack(IN PACTIVATION_CONTEXT_STACK Stack);
+
+NTAPI NTSYSAPI VOID RtlFreeThreadActivationContextStack(VOID);
+
+FASTCALL NTSYSAPI PRTL_ACTIVATION_CONTEXT_STACK_FRAME
+RtlDeactivateActivationContextUnsafeFast(
+    IN PRTL_CALLER_ALLOCATED_ACTIVATION_CONTEXT_STACK_FRAME_EXTENDED Frame);
+
+NTAPI NTSYSAPI NTSTATUS RtlDosApplyFileIsolationRedirection_Ustr(
+    IN ULONG Flags, IN PUNICODE_STRING OriginalName, IN PUNICODE_STRING Extension,
+    IN OUT PUNICODE_STRING StaticString, IN OUT PUNICODE_STRING DynamicString,
+    IN OUT PUNICODE_STRING *NewName, IN PULONG NewFlags, IN PSIZE_T FileNameSize,
+    IN PSIZE_T RequiredLength);
+
+NTAPI NTSYSAPI NTSTATUS RtlFindActivationContextSectionString(
+    IN ULONG dwFlags, IN const GUID *ExtensionGuid, IN ULONG SectionType,
+    IN const UNICODE_STRING *SectionName, IN OUT PVOID ReturnedData);
+
+NTAPI NTSYSAPI NTSTATUS RtlQueryInformationActivationContext(
+    IN DWORD dwFlags, IN OPTIONAL PVOID Context, IN OPTIONAL PVOID pvSubInstance,
+    IN ULONG ulInfoClass, OUT PVOID pvBuffer, IN OPTIONAL SIZE_T cbBuffer,
+    OUT OPTIONAL SIZE_T *pcbWrittenOrRequired);
+
+NTAPI NTSYSAPI NTSTATUS RtlQueryInformationActiveActivationContext(
+    IN ULONG ulInfoClass, OUT PVOID pvBuffer, IN OPTIONAL SIZE_T cbBuffer,
+    OUT OPTIONAL SIZE_T *pcbWrittenOrRequired);
+
+NTAPI NTSYSAPI NTSTATUS RtlZombifyActivationContext(PVOID Context);
