@@ -497,6 +497,19 @@ static inline NTSTATUS KiServiceMapPfnDb(IN PTHREAD Thread,
 			      ClientAddress, PfnCount * sizeof(ULONG_PTR));
 }
 
+static inline NTSTATUS KiServiceMapHandleArray(IN PTHREAD Thread,
+					       OUT BOOLEAN *Mapped,
+					       OUT PHANDLE *ServerAddress,
+					       IN MWORD ClientAddress,
+					       IN MWORD HandleCount)
+{
+    if (HandleCount == 0 || HandleCount > MAXIMUM_WAIT_OBJECTS) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    return KiServiceMapBuffer(Thread, Mapped, (PPVOID)ServerAddress,
+			      ClientAddress, HandleCount * sizeof(HANDLE));
+}
+
 static inline NTSTATUS KiServiceMapPnpControlBuffer(IN PTHREAD Thread,
 						    OUT BOOLEAN *Mapped,
 						    OUT PVOID *ServerAddress,

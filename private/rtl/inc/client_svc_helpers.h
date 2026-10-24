@@ -246,6 +246,22 @@ static inline NTSTATUS KiServiceMarshalPfnDb(IN OPTIONAL PULONG_PTR ClientBuffer
     return STATUS_SUCCESS;
 }
 
+static inline NTSTATUS KiServiceMarshalHandleArray(IN OPTIONAL PHANDLE ClientBuffer,
+						   IN ULONG HandleCount,
+						   OUT SERVICE_ARGUMENT *BufferArg,
+						   OUT SERVICE_ARGUMENT *SizeArg,
+						   IN BOOLEAN InParam,
+						   OUT ULONG *MsgBufOffset)
+{
+    if (HandleCount == 0 || HandleCount > MAXIMUM_WAIT_OBJECTS) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    RET_ERR(KiServiceMarshalBuffer(ClientBuffer, HandleCount * sizeof(HANDLE),
+				   BufferArg, SizeArg, InParam, MsgBufOffset));
+    SizeArg->Word = HandleCount;
+    return STATUS_SUCCESS;
+}
+
 static inline NTSTATUS KiServiceUnmarshalPfnDb(IN PULONG_PTR ClientBuffer,
 					       IN SERVICE_ARGUMENT BufferArg,
 					       IN NTSTATUS Status,

@@ -177,6 +177,14 @@
     <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="TimeOut" />
   </svc>
 
+  <svc name="NtWaitForMultipleObjects">
+    <parameter annotation="in" type="bufsize::ULONG" name="Count" />
+    <parameter annotation="in" type="buf::HandleArray" name="Handles" />
+    <parameter annotation="in" type="WAIT_TYPE" name="WaitType" />
+    <parameter annotation="in" type="BOOLEAN" name="Alertable" />
+    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="TimeOut" />
+  </svc>
+
   <svc name="NtAllocateVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in out opt" type="ptr::PVOID" name="BaseAddress" />

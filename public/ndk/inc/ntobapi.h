@@ -99,6 +99,12 @@ NTAPI NTSYSAPI NTSTATUS NtWaitForSingleObject(IN HANDLE WaitObject,
                                               IN BOOLEAN Alertable,
                                               IN PLARGE_INTEGER Time);
 
+NTAPI NTSYSAPI NTSTATUS NtWaitForMultipleObjects(IN ULONG Count,
+						 IN PHANDLE Handles,
+						 IN WAIT_TYPE WaitType,
+						 IN BOOLEAN Alertable,
+						 IN PLARGE_INTEGER Timeout);
+
 NTAPI NTSYSAPI NTSTATUS NtCreateDirectoryObject(OUT PHANDLE DirectoryHandle,
 						IN ACCESS_MASK DesiredAccess,
 						IN POBJECT_ATTRIBUTES ObjectAttributes);

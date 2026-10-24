@@ -37,6 +37,7 @@
 @ stdcall NtCreateTimer(ptr long ptr long)
 @ stdcall NtSetTimer(long ptr ptr ptr long long ptr)
 @ stdcall NtWaitForSingleObject(long long long)
+@ stdcall NtWaitForMultipleObjects(long ptr long long ptr)
 @ stdcall NtCreateEvent(long long long long long)
 @ stdcall NtSetEvent(ptr ptr)
 @ stdcall NtResetEvent(ptr ptr)

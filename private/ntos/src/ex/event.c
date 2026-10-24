@@ -281,6 +281,7 @@ static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
     case OBJECT_TYPE_DEVICE:
     case OBJECT_TYPE_DRIVER:
     case OBJECT_TYPE_KEY:
+    case OBJECT_TYPE_LPC_PORT:
 	/* TODO: These are all dispatcher objects. We should be
 	 * able to sleep on them. This is not implemented yet. */
 	assert(FALSE);
@@ -330,5 +331,64 @@ NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
     AWAIT_EX(Status, KeWaitForSingleObject, State, Locals,
 	     Thread, Locals.DispatcherObject, Alertable, TimeOut);
     ObDereferenceObject(Locals.Object);
+    ASYNC_END(State, Status);
+}
+
+NTSTATUS NtWaitForMultipleObjects(IN ASYNC_STATE State,
+				  IN PTHREAD Thread,
+				  IN ULONG Count,
+				  IN PHANDLE Handles,
+				  IN WAIT_TYPE WaitType,
+				  IN BOOLEAN Alertable,
+				  IN OPTIONAL PLARGE_INTEGER TimeOut)
+{
+    NTSTATUS Status = STATUS_INVALID_PARAMETER;
+    ASYNC_BEGIN(State, Locals, {
+	    POBJECT *Objects;
+	    PDISPATCHER_HEADER *DispatcherObjects;
+	    ULONG ReferencedCount;
+	});
+    if (Count == 0 || Count > MAXIMUM_WAIT_OBJECTS || !Handles ||
+	(WaitType != WaitAny && WaitType != WaitAll)) {
+	ASYNC_RETURN(State, STATUS_INVALID_PARAMETER);
+    }
+
+    Locals.Objects = ExAllocatePoolWithTag(sizeof(*Locals.Objects) * Count,
+					   NTOS_EX_TAG);
+    if (Locals.Objects == NULL) {
+	ASYNC_RETURN(State, STATUS_NO_MEMORY);
+    }
+    Locals.DispatcherObjects =
+	ExAllocatePoolWithTag(sizeof(*Locals.DispatcherObjects) * Count,
+			      NTOS_EX_TAG);
+    if (Locals.DispatcherObjects == NULL) {
+	ExFreePoolWithTag(Locals.Objects, NTOS_EX_TAG);
+	ASYNC_RETURN(State, STATUS_NO_MEMORY);
+    }
+
+    Locals.ReferencedCount = 0;
+    for (ULONG i = 0; i < Count; i++) {
+	Status = ObReferenceObjectByHandle(Thread, Handles[i], OBJECT_TYPE_ANY,
+					   &Locals.Objects[i]);
+	if (!NT_SUCCESS(Status)) {
+	    goto out;
+	}
+	Locals.ReferencedCount++;
+	Locals.DispatcherObjects[i] = EiObjectGetDispatcherHeader(Locals.Objects[i]);
+	if (Locals.DispatcherObjects[i] == NULL) {
+	    Status = STATUS_OBJECT_TYPE_MISMATCH;
+	    goto out;
+	}
+    }
+
+    AWAIT_EX(Status, KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
+	     WaitType, Locals.DispatcherObjects, Count, TimeOut);
+
+out:
+    while (Locals.ReferencedCount != 0) {
+	ObDereferenceObject(Locals.Objects[--Locals.ReferencedCount]);
+    }
+    ExFreePoolWithTag(Locals.DispatcherObjects, NTOS_EX_TAG);
+    ExFreePoolWithTag(Locals.Objects, NTOS_EX_TAG);
     ASYNC_END(State, Status);
 }
