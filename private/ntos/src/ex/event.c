@@ -348,19 +348,17 @@ NTSTATUS NtWaitForMultipleObjects(IN ASYNC_STATE State,
 	    PDISPATCHER_HEADER *DispatcherObjects;
 	    ULONG ReferencedCount;
 	});
-    if (Count == 0 || Count > MAXIMUM_WAIT_OBJECTS || !Handles ||
-	(WaitType != WaitAny && WaitType != WaitAll)) {
+    if (Count == 0 || !Handles || (WaitType != WaitAny && WaitType != WaitAll)) {
 	ASYNC_RETURN(State, STATUS_INVALID_PARAMETER);
     }
 
-    Locals.Objects = ExAllocatePoolWithTag(sizeof(*Locals.Objects) * Count,
+    Locals.Objects = ExAllocatePoolWithTag(sizeof(POBJECT) * Count,
 					   NTOS_EX_TAG);
     if (Locals.Objects == NULL) {
 	ASYNC_RETURN(State, STATUS_NO_MEMORY);
     }
-    Locals.DispatcherObjects =
-	ExAllocatePoolWithTag(sizeof(*Locals.DispatcherObjects) * Count,
-			      NTOS_EX_TAG);
+    Locals.DispatcherObjects = ExAllocatePoolWithTag(sizeof(PDISPATCHER_HEADER) * Count,
+						     NTOS_EX_TAG);
     if (Locals.DispatcherObjects == NULL) {
 	ExFreePoolWithTag(Locals.Objects, NTOS_EX_TAG);
 	ASYNC_RETURN(State, STATUS_NO_MEMORY);

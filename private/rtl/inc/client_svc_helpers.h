@@ -253,9 +253,6 @@ static inline NTSTATUS KiServiceMarshalHandleArray(IN OPTIONAL PHANDLE ClientBuf
 						   IN BOOLEAN InParam,
 						   OUT ULONG *MsgBufOffset)
 {
-    if (HandleCount == 0 || HandleCount > MAXIMUM_WAIT_OBJECTS) {
-	return STATUS_INVALID_PARAMETER;
-    }
     RET_ERR(KiServiceMarshalBuffer(ClientBuffer, HandleCount * sizeof(HANDLE),
 				   BufferArg, SizeArg, InParam, MsgBufOffset));
     SizeArg->Word = HandleCount;

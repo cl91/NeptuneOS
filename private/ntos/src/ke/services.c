@@ -503,9 +503,6 @@ static inline NTSTATUS KiServiceMapHandleArray(IN PTHREAD Thread,
 					       IN MWORD ClientAddress,
 					       IN MWORD HandleCount)
 {
-    if (HandleCount == 0 || HandleCount > MAXIMUM_WAIT_OBJECTS) {
-	return STATUS_INVALID_PARAMETER;
-    }
     return KiServiceMapBuffer(Thread, Mapped, (PPVOID)ServerAddress,
 			      ClientAddress, HandleCount * sizeof(HANDLE));
 }
