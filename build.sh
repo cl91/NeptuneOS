@@ -284,6 +284,7 @@ echo
 echo "---- Building base NT clients ----"
 echo
 cmake ../../base \
+      -DArch=${ARCH} \
       -DTRIPLE=${PE_TRIPLE} \
       -DMC_COMPILER_ARCH=${MC_COMPILER_ARCH} \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-pe.cmake \
@@ -302,6 +303,7 @@ echo
 echo "---- Building Win32 subsystem ----"
 echo
 cp ../ntdll/ks*.h .
+cp ../base/sm/smlib/smdll.lib .
 cmake ../../win32 \
       -DArch=${ARCH} \
       -DTRIPLE=${PE_TRIPLE} \
@@ -326,6 +328,7 @@ cmake ../../../posix/psxdll \
       -DCMAKE_TOOLCHAIN_FILE=../../${TOOLCHAIN}-elf.cmake \
       -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
       -DNTPSX_LIB_PATH=${PWD}/../../ntpsx \
+      -DRTLIB_PATH=${RTLIB} \
       -DGIT_HEAD_SHA_SHORT="$(git rev-parse --short HEAD)" \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
@@ -374,7 +377,7 @@ echo "---- Building INITCPIO ----"
 echo
 cd ../../initcpio
 PE_COPY_LIST='ntdll/ntdll.dll wdm/wdm.dll'
-BASE_COPY_LIST='smss/smss.exe ntcmd/ntcmd.exe'
+BASE_COPY_LIST='sm/smlib/smdll.dll sm/smss/smss.exe ntcmd/ntcmd.exe'
 DRIVER_COPY_LIST='base/null/null.sys base/beep/beep.sys base/pnp/pnp.sys
 base/mem/mem.sys base/pvpanic/pvpanic.sys
 bus/acpi/acpi.sys bus/pci/pci.sys input/kbdclass/kbdclass.sys

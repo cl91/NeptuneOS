@@ -421,6 +421,7 @@ typedef struct _TEB {                                        /* win32/win64 */
             PVOID           SubProcessTag;                     /* 174/2d0 (advapi32) */
             UNICODE_STRING  StaticUnicodeString;               /* 178/2d8 (kernel32) */
             WCHAR           StaticUnicodeBuffer[264];          /* 180/2e8 (kernel32) */
+	    ULONG_PTR       Win32ClientInfo[62];               /* 390/4f8 (user32) */
         } Win32;
     };
 } TEB, *PTEB;
@@ -428,10 +429,10 @@ typedef struct _TEB {                                        /* win32/win64 */
 
 #ifdef _WIN64
 C_ASSERT(FIELD_OFFSET(TEB, Wdm.IsMainThread) == 0x2cd);
-C_ASSERT(FIELD_OFFSET(TEB, Win32.StaticUnicodeBuffer) == 0x2e8);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.Win32ClientInfo) == 0x4f8);
 #else
 C_ASSERT(FIELD_OFFSET(TEB, Wdm.IsMainThread) == 0x16d);
-C_ASSERT(FIELD_OFFSET(TEB, Win32.StaticUnicodeBuffer) == 0x180);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.Win32ClientInfo) == 0x390);
 #endif
 
 /* The driver process's IO packet buffer pointers are placed at the end of the TEB page,
@@ -1894,7 +1895,12 @@ NTAPI NTSYSAPI USHORT RtlCaptureStackBackTrace(IN ULONG FramesToSkip,
 					       OUT PVOID *BackTrace,
 					       OUT OPTIONAL PULONG BackTraceHash);
 
-NTAPI NTSYSAPI VOID RtlSetUnhandledExceptionFilter(IN PRTLP_UNHANDLED_EXCEPTION_FILTER TopLevelExceptionFilter);
+NTAPI NTSYSAPI VOID RtlSetUnhandledExceptionFilter(IN PRTLP_UNHANDLED_EXCEPTION_FILTER Flt);
+
+NTAPI NTSYSAPI LONG RtlUnhandledExceptionFilter(IN PEXCEPTION_POINTERS ExceptionInfo);
+
+NTAPI NTSYSAPI LONG RtlUnhandledExceptionFilter2(IN PEXCEPTION_POINTERS ExceptionInfo,
+						 IN ULONG Flags);
 
 /*
  * Tracing Functions
@@ -2705,6 +2711,10 @@ NTAPI NTSYSAPI VOID RtlInitializeContext(IN HANDLE ProcessHandle,
 					 IN OPTIONAL PVOID ThreadStartParam,
 					 IN PTHREAD_START_ROUTINE ThreadStartAddress,
 					 IN PINITIAL_TEB InitialTeb);
+
+NTAPI NTSYSAPI NTSTATUS RtlSetProcessIsCritical(IN BOOLEAN NewValue,
+						OUT PBOOLEAN OldValue OPTIONAL,
+						IN BOOLEAN NeedBreaks);
 
 /*
  * Worker Thread Callback for Rtl

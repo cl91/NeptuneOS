@@ -367,9 +367,9 @@ NTAPI PVOID RtlDecodeSystemPointer(IN PVOID Pointer)
  *   Implementation based on the documentation from:
  *   http://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/peb/setprocessiscritical.htm
  */
-__cdecl NTSTATUS RtlSetProcessIsCritical(IN BOOLEAN NewValue,
-					 OUT PBOOLEAN OldValue OPTIONAL,
-					 IN BOOLEAN NeedBreaks)
+NTAPI NTSTATUS RtlSetProcessIsCritical(IN BOOLEAN NewValue,
+				       OUT PBOOLEAN OldValue OPTIONAL,
+				       IN BOOLEAN NeedBreaks)
 {
     ULONG BreakOnTermination;
 

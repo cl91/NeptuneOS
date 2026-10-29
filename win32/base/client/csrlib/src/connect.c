@@ -32,7 +32,7 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
 {
     NTSTATUS Status;
     SIZE_T PortNameLength;
-    UNICODE_STRING PortName;
+    UNICODE_STRING PortName = {};
     LARGE_INTEGER CsrSectionViewSize;
     HANDLE CsrSectionHandle;
     PORT_VIEW LpcWrite;
@@ -69,13 +69,24 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
     RtlAppendUnicodeToString(&PortName, L"\\");
     RtlAppendUnicodeToString(&PortName, CSR_PORT_NAME);
 
+    /* Open the specified LPC port */
+    OBJECT_ATTRIBUTES PortObjAttr;
+    InitializeObjectAttributes(&PortObjAttr, &PortName, 0, NULL, NULL);
+    Status = NtOpenPort(&CsrApiPort, &PortObjAttr, PORT_ALL_ACCESS);
+    RtlFreeHeap(RtlGetProcessHeap(), 0, PortName.Buffer);
+    PortName.Buffer = NULL;
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failure opening port, status 0x%x\n", Status);
+	goto Err;
+    }
+
     /* Create a section for the port memory */
     CsrSectionViewSize.QuadPart = CSR_CSRSS_SECTION_SIZE;
     Status = NtCreateSection(&CsrSectionHandle, SECTION_ALL_ACCESS, NULL,
 			     &CsrSectionViewSize, PAGE_READWRITE, SEC_RESERVE, NULL);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("Failure allocating CSR Section\n");
-	return Status;
+	DPRINT1("Failure allocating CSR Section, status 0x%x\n", Status);
+	goto Err;
     }
 
     /* Set up the port view structures to match them with the section */
@@ -102,7 +113,7 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
 	/* Failure */
 	DPRINT1("Couldn't allocate SID\n");
 	NtClose(CsrSectionHandle);
-	return Status;
+	goto Err;
     }
 
     /* Connect to the port */
@@ -113,7 +124,7 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
     if (!NT_SUCCESS(Status)) {
 	/* Failure */
 	DPRINT1("Couldn't connect to CSR port\n");
-	return Status;
+	goto Err;
     }
 
     /* Save the delta between the sections, for capture usage later */
@@ -131,11 +142,8 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
     if (CsrPortHeap == NULL) {
 	/* Failure */
 	DPRINT1("Couldn't create heap for CSR port\n");
-	NtClose(CsrApiPort);
-	CsrApiPort = NULL;
-	NtDisconnectPort(CsrCommPort);
-	CsrCommPort = 0;
-	return STATUS_INSUFFICIENT_RESOURCES;
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto Err;
     }
 
     /* The CSR connection is process infrastructure, not an application handle. */
@@ -146,17 +154,26 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
 				    sizeof(HandleInfo));
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Couldn't protect CSR port handle (Status 0x%x)\n", Status);
-	RtlDestroyHeap(CsrPortHeap);
-	CsrPortHeap = NULL;
-	NtClose(CsrApiPort);
-	CsrApiPort = NULL;
-	NtDisconnectPort(CsrCommPort);
-	CsrCommPort = 0;
-	return Status;
+	goto Err;
     }
 
     /* Return success */
     return STATUS_SUCCESS;
+
+Err:
+    if (CsrPortHeap) {
+	RtlDestroyHeap(CsrPortHeap);
+	CsrPortHeap = NULL;
+    }
+    if (CsrApiPort) {
+	NtClose(CsrApiPort);
+	CsrApiPort = NULL;
+    }
+    if (CsrCommPort) {
+	NtDisconnectPort(CsrCommPort);
+	CsrCommPort = 0;
+    }
+    return Status;
 }
 
 /*

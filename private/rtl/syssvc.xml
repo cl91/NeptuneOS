@@ -46,6 +46,16 @@
     <parameter annotation="in" type="HANDLE" name="PortHandle" />
   </svc>
 
+  <svc name="NtSetThreadHardErrorPort">
+    <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
+    <parameter annotation="in" type="LOCAL_HANDLE" name="HardErrorPort" />
+  </svc>
+
+  <svc name="NtGetThreadHardErrorPort">
+    <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
+    <parameter annotation="out" type="ptr::LOCAL_HANDLE" name="HardErrorPort" />
+  </svc>
+
   <svc name="NtTerminateThread">
     <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
     <parameter annotation="in" type="NTSTATUS" name="ExitStatus" />
@@ -176,15 +186,6 @@
     <parameter annotation="in" type="JOB_OBJECT_INFORMATION_CLASS" name="InfoClass" />
     <parameter annotation="in" type="buf::Void" name="JobInformation" />
     <parameter annotation="in" type="bufsize::ULONG" name="JobInformationLength" />
-  </svc>
-
-  <svc name="NtRaiseHardError">
-    <parameter annotation="in" type="NTSTATUS" name="ErrorStatus" />
-    <parameter annotation="in" type="ULONG" name="NumberOfParameters" />
-    <parameter annotation="in" type="ULONG" name="UnicodeStringParameterMask" />
-    <parameter annotation="in" type="ptr::ULONG_PTR" name="Parameters" />
-    <parameter annotation="in" type="HARDERROR_RESPONSE_OPTION" name="ResponseOption" />
-    <parameter annotation="out" type="ptr::HARDERROR_RESPONSE" name="Response" />
   </svc>
 
   <svc name="NtCreateEvent">

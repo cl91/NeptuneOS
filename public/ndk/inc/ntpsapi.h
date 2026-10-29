@@ -514,6 +514,12 @@ NTAPI NTSYSAPI NTSTATUS NtSuspendThread(IN HANDLE ThreadHandle,
 
 NTAPI NTSYSAPI NTSTATUS NtRegisterThreadTerminatePort(IN HANDLE PortHandle);
 
+NTAPI NTSYSAPI NTSTATUS NtSetThreadHardErrorPort(IN HANDLE ThreadHandle,
+						 IN LOCAL_HANDLE HardErrorPort);
+
+NTAPI NTSYSAPI NTSTATUS NtGetThreadHardErrorPort(IN HANDLE ThreadHandle,
+						 OUT LOCAL_HANDLE *HardErrorPort);
+
 NTAPI NTSYSAPI NTSTATUS NtTerminateThread(IN HANDLE ThreadHandle,
 					  IN NTSTATUS ExitStatus);
 

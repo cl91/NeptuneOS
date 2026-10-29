@@ -3,6 +3,7 @@
 #define RTLP_DBGTRACE_MODULE_NAME	"NTPSX"
 
 #include <nt.h>
+#include <timesvc.h>
 #include <ntpsx.h>
 #include <psxdll.h>
 #include <services.h>

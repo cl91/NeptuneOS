@@ -36,6 +36,9 @@ typedef struct _THREAD {
 			      * the APCs here may or may not be queued (this depends on
 			      * whether they have expired). */
     LIST_ENTRY LpcConnectionList; /* List of all queued or connected LPC port connections. */
+    LOCAL_HANDLE HardErrorPort;	  /* Local handle of the LPC communication port. The NT
+				   * Executive does not interpret this field and passes
+				   * it verbatim to the client when requested. */
     PIPC_ENDPOINT SystemServiceEndpoint;
     PIPC_ENDPOINT WdmServiceEndpoint;
     PIPC_ENDPOINT FaultEndpoint;

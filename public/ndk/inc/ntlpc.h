@@ -1,7 +1,16 @@
 #pragma once
 
-#include "ntrtl.h"
-#include "ntseapi.h"
+#include <ntrtl.h>
+#include <ntseapi.h>
+#include <ntexapi.h>
+
+/*
+ * Port Object Access Masks
+ */
+#define PORT_CONNECT                    0x1
+#define PORT_ALL_ACCESS                 (STANDARD_RIGHTS_REQUIRED | \
+                                         SYNCHRONIZE | \
+                                         PORT_CONNECT)
 
 typedef struct _PORT_MESSAGE {
     ULONG TotalLength;
@@ -31,6 +40,47 @@ typedef struct _REMOTE_PORT_VIEW {
 
 #define LPC_MAX_MESSAGE_LENGTH PORT_MAXIMUM_MESSAGE_LENGTH
 #define LPC_MAX_DATA_LENGTH (LPC_MAX_MESSAGE_LENGTH - sizeof(PORT_MESSAGE))
+
+/*
+ * LPC Message Types
+ */
+typedef enum _LPC_TYPE {
+    LPC_NEW_MESSAGE,
+    LPC_REQUEST,
+    LPC_REPLY,
+    LPC_DATAGRAM,
+    LPC_LOST_REPLY,
+    LPC_PORT_CLOSED,
+    LPC_CLIENT_DIED,
+    LPC_EXCEPTION,
+    LPC_DEBUG_EVENT,
+    LPC_ERROR_EVENT,
+    LPC_CONNECTION_REQUEST,
+    LPC_CONNECTION_REFUSED,
+    LPC_MAXIMUM
+} LPC_TYPE;
+
+/*
+ * Client Died LPC Message
+ */
+typedef struct _CLIENT_DIED_MSG {
+    PORT_MESSAGE Header;
+    LARGE_INTEGER CreateTime;
+} CLIENT_DIED_MSG, *PCLIENT_DIED_MSG;
+
+/*
+ * Hard Error LPC Message
+ */
+typedef struct _HARDERROR_MSG {
+    PORT_MESSAGE Header;
+    NTSTATUS Status;
+    LARGE_INTEGER ErrorTime;
+    ULONG ValidResponseOptions;
+    ULONG Response;
+    ULONG NumberOfParameters;
+    ULONG UnicodeStringParameterMask;
+    ULONG_PTR Parameters[MAXIMUM_HARDERROR_PARAMETERS];
+} HARDERROR_MSG, *PHARDERROR_MSG;
 
 #ifndef _NTOSKRNL_
 

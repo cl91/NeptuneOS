@@ -1,0 +1,45 @@
+/*
+ * COPYRIGHT:       See COPYING in the top level directory
+ * PROJECT:         ReactOS Client/Server Runtime SubSystem
+ * FILE:            subsystems/win32/csrsrv/srv.h
+ * PURPOSE:         Main header - Definitions
+ * PROGRAMMERS:     Alex Ionescu (alex@relsoft.net)
+ *                  ReactOS Portable Systems Group
+ */
+
+#ifndef _SRV_H
+#define _SRV_H
+
+/* PSDK/NDK Headers */
+#include <nt.h>
+#include <stdio.h>
+#define WIN32_NO_STATUS
+#include <windef.h>
+#include <winbase.h>
+
+/* CSR Header */
+#include <csrsrv.h>
+
+/* Subsystem Manager Header */
+#include <smlib.h>
+
+/* Internal CSRSS Header */
+#include "api.h"
+
+/* Defines */
+#define SM_REG_KEY \
+    L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Session Manager"
+
+#define SESSION_ROOT L"\\Sessions"
+#define GLOBAL_ROOT L"\\GLOBAL??"
+#define SYMLINK_NAME L"SymbolicLink"
+#define SB_PORT_NAME L"SbApiPort"
+#define CSR_PORT_NAME L"ApiPort"
+#define UNICODE_PATH_SEP L"\\"
+
+#define ROUND_UP(n, align) ROUND_DOWN(((ULONG)(n)) + (align) - 1, (align))
+#define ROUND_DOWN(n, align) (((ULONG)(n)) & ~((align) - 1l))
+#define InterlockedIncrementUL(Value) (ULONG) _InterlockedIncrement((volatile long *)(Value))
+#define InterlockedDecrementUL(Value) (ULONG) _InterlockedDecrement((volatile long *)(Value))
+
+#endif /* _SRV_H */
