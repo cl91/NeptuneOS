@@ -104,7 +104,7 @@ WINAPI LPVOID ConvertThreadToFiberEx(_In_opt_ LPVOID lpParameter, _In_ DWORD dwF
     Fiber->StackLimit = Teb->NtTib.StackLimit;
     Fiber->DeallocationStack = Teb->NtTib.DeallocationStack;
     Fiber->FlsData = Teb->FlsData;
-    Fiber->GuaranteedStackBytes = Teb->Win32.GuaranteedStackBytes;
+    Fiber->GuaranteedStackBytes = Teb->GuaranteedStackBytes;
     Fiber->ActivationContextStackPointer = Teb->ActivationContextStackPointer;
 
     /* Save FPU State if requested, otherwise just the basic registers */

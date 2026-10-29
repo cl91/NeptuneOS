@@ -13,18 +13,12 @@
 
 /* GLOBALS ********************************************************************/
 
-HANDLE CsrApiPort;
 HANDLE CsrProcessId;
 HANDLE CsrPortHeap;
-BOOLEAN InsideCsrProcess = FALSE;
+LOCAL_HANDLE CsrCommPort;
 
-static LOCAL_HANDLE CsrCommPort;
+static HANDLE CsrApiPort;
 static ULONG_PTR CsrPortMemoryDelta;
-
-typedef NTSTATUS (NTAPI *PCSR_SERVER_API_ROUTINE)(_In_ PCSR_API_MESSAGE Request,
-						  _Inout_ PCSR_API_MESSAGE Reply);
-
-PCSR_SERVER_API_ROUTINE CsrServerApiRoutine;
 
 /* FUNCTIONS ******************************************************************/
 
@@ -32,7 +26,7 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
 {
     NTSTATUS Status;
     SIZE_T PortNameLength;
-    UNICODE_STRING PortName;
+    UNICODE_STRING PortName = {};
     LARGE_INTEGER CsrSectionViewSize;
     HANDLE CsrSectionHandle;
     PORT_VIEW LpcWrite;
@@ -69,13 +63,24 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
     RtlAppendUnicodeToString(&PortName, L"\\");
     RtlAppendUnicodeToString(&PortName, CSR_PORT_NAME);
 
+    /* Open the specified LPC port */
+    OBJECT_ATTRIBUTES PortObjAttr;
+    InitializeObjectAttributes(&PortObjAttr, &PortName, 0, NULL, NULL);
+    Status = NtOpenPort(&CsrApiPort, &PortObjAttr, PORT_ALL_ACCESS);
+    RtlFreeHeap(RtlGetProcessHeap(), 0, PortName.Buffer);
+    PortName.Buffer = NULL;
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failure opening port, status 0x%x\n", Status);
+	goto Err;
+    }
+
     /* Create a section for the port memory */
     CsrSectionViewSize.QuadPart = CSR_CSRSS_SECTION_SIZE;
     Status = NtCreateSection(&CsrSectionHandle, SECTION_ALL_ACCESS, NULL,
 			     &CsrSectionViewSize, PAGE_READWRITE, SEC_RESERVE, NULL);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("Failure allocating CSR Section\n");
-	return Status;
+	DPRINT1("Failure allocating CSR Section, status 0x%x\n", Status);
+	goto Err;
     }
 
     /* Set up the port view structures to match them with the section */
@@ -102,7 +107,7 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
 	/* Failure */
 	DPRINT1("Couldn't allocate SID\n");
 	NtClose(CsrSectionHandle);
-	return Status;
+	goto Err;
     }
 
     /* Connect to the port */
@@ -113,7 +118,7 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
     if (!NT_SUCCESS(Status)) {
 	/* Failure */
 	DPRINT1("Couldn't connect to CSR port\n");
-	return Status;
+	goto Err;
     }
 
     /* Save the delta between the sections, for capture usage later */
@@ -131,11 +136,8 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
     if (CsrPortHeap == NULL) {
 	/* Failure */
 	DPRINT1("Couldn't create heap for CSR port\n");
-	NtClose(CsrApiPort);
-	CsrApiPort = NULL;
-	NtDisconnectPort(CsrCommPort);
-	CsrCommPort = 0;
-	return STATUS_INSUFFICIENT_RESOURCES;
+	Status = STATUS_INSUFFICIENT_RESOURCES;
+	goto Err;
     }
 
     /* The CSR connection is process infrastructure, not an application handle. */
@@ -146,140 +148,91 @@ static NTSTATUS CsrpConnectToServer(_In_ PCWSTR ObjectDirectory)
 				    sizeof(HandleInfo));
     if (!NT_SUCCESS(Status)) {
 	DPRINT1("Couldn't protect CSR port handle (Status 0x%x)\n", Status);
-	RtlDestroyHeap(CsrPortHeap);
-	CsrPortHeap = NULL;
-	NtClose(CsrApiPort);
-	CsrApiPort = NULL;
-	NtDisconnectPort(CsrCommPort);
-	CsrCommPort = 0;
-	return Status;
+	goto Err;
     }
 
     /* Return success */
     return STATUS_SUCCESS;
+
+Err:
+    if (CsrPortHeap) {
+	RtlDestroyHeap(CsrPortHeap);
+	CsrPortHeap = NULL;
+    }
+    if (CsrApiPort) {
+	NtClose(CsrApiPort);
+	CsrApiPort = NULL;
+    }
+    if (CsrCommPort) {
+	NtDisconnectPort(CsrCommPort);
+	CsrCommPort = 0;
+    }
+    return Status;
 }
 
 /*
  * @implemented
  */
-NTAPI NTSTATUS CsrClientConnectToServer(_In_ PCWSTR ObjectDirectory, _In_ ULONG ServerId,
+NTAPI NTSTATUS CsrClientConnectToServer(_In_ PCWSTR ObjectDirectory,
+					_In_ ULONG ServerId,
 					_In_ PVOID ConnectionInfo,
-					_Inout_ PULONG ConnectionInfoSize,
-					_Out_ PBOOLEAN ServerToServerCall)
+					_Inout_ PULONG ConnectionInfoSize)
 {
-    NTSTATUS Status;
-    PIMAGE_NT_HEADERS NtHeader;
-
     DPRINT("CsrClientConnectToServer: %x %p\n", ServerId, ConnectionInfo);
 
     /* Validate the Connection Info */
-    if (ConnectionInfo && (!ConnectionInfoSize || !*ConnectionInfoSize)) {
-	DPRINT1("Connection info given, but no length\n");
+    if (!ConnectionInfo || !ConnectionInfoSize || !*ConnectionInfoSize) {
 	return STATUS_INVALID_PARAMETER;
     }
 
-    /* Check if we're inside a CSR Process */
-    if (InsideCsrProcess) {
-	/* Tell the client that we're already inside CSR */
-	if (ServerToServerCall)
-	    *ServerToServerCall = TRUE;
-	return STATUS_SUCCESS;
-    }
-
-    /*
-     * We might be in a CSR Process but not know it, if this is the first call.
-     * So let's find out.
-     */
-    if (!(NtHeader = RtlImageNtHeader(NtCurrentPeb()->ImageBaseAddress))) {
-	/* The image isn't valid */
-	DPRINT1("Invalid image\n");
-	return STATUS_INVALID_IMAGE_FORMAT;
-    }
-    InsideCsrProcess = (NtHeader->OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_NATIVE);
-
-    /* Now we can check if we are inside or not */
-    if (InsideCsrProcess) {
-	UNICODE_STRING CsrSrvName;
-	HANDLE hCsrSrv;
-	ANSI_STRING CsrServerRoutineName;
-
-	/* We're inside, so let's find csrsrv */
-	RtlInitUnicodeString(&CsrSrvName, L"csrsrv");
-	Status = LdrGetDllHandle(NULL, NULL, &CsrSrvName, &hCsrSrv);
-
-	/* Now get the Server to Server routine */
-	RtlInitAnsiString(&CsrServerRoutineName, "CsrCallServerFromServer");
-	Status = LdrGetProcedureAddress(hCsrSrv, &CsrServerRoutineName, 0L,
-					(PVOID *)&CsrServerApiRoutine);
-
-	/* Use the local heap as port heap */
-	CsrPortHeap = RtlGetProcessHeap();
-
-	/* Tell the caller we're inside the server */
-	if (ServerToServerCall)
-	    *ServerToServerCall = InsideCsrProcess;
-	return STATUS_SUCCESS;
-    }
-
     /* Now check if connection info is given */
-    if (ConnectionInfo) {
-	CSR_API_MESSAGE ApiMessage;
-	PCSR_CLIENT_CONNECT ClientConnect = &ApiMessage.Data.CsrClientConnect;
-	PCSR_CAPTURE_BUFFER CaptureBuffer;
+    CSR_API_MESSAGE ApiMessage;
+    PCSR_CLIENT_CONNECT ClientConnect = &ApiMessage.Data.CsrClientConnect;
+    PCSR_CAPTURE_BUFFER CaptureBuffer;
 
-	/* Well, we're definitely in a client now */
-	InsideCsrProcess = FALSE;
-
-	/* Do we have a connection to CSR yet? */
-	if (!CsrApiPort) {
-	    /* No, set it up now */
-	    Status = CsrpConnectToServer(ObjectDirectory);
-	    if (!NT_SUCCESS(Status)) {
-		/* Failed */
-		DPRINT1("Failure to connect to CSR\n");
-		return Status;
-	    }
+    /* Do we have a connection to CSR yet? */
+    NTSTATUS Status;
+    if (!CsrApiPort) {
+	/* No, set it up now */
+	Status = CsrpConnectToServer(ObjectDirectory);
+	if (!NT_SUCCESS(Status)) {
+	    /* Failed */
+	    DPRINT1("Failure to connect to CSR\n");
+	    return Status;
 	}
-
-	/* Setup the connect message header */
-	ClientConnect->ServerId = ServerId;
-	ClientConnect->ConnectionInfoSize = *ConnectionInfoSize;
-
-	/* Setup a buffer for the connection info */
-	CaptureBuffer = CsrAllocateCaptureBuffer(1, ClientConnect->ConnectionInfoSize);
-	if (CaptureBuffer == NULL) {
-	    return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	/* Capture the connection info data */
-	CsrCaptureMessageBuffer(CaptureBuffer, ConnectionInfo,
-				ClientConnect->ConnectionInfoSize,
-				&ClientConnect->ConnectionInfo);
-
-	/* Return the allocated length */
-	*ConnectionInfoSize = ClientConnect->ConnectionInfoSize;
-
-	/* Call CSR */
-	Status = CsrClientCallServer(&ApiMessage, CaptureBuffer,
-				     CSR_CREATE_API_NUMBER(CSRSRV_SERVERDLL_INDEX,
-							   CsrpClientConnect),
-				     sizeof(*ClientConnect));
-
-	/* Copy the updated connection info data back into the user buffer */
-	RtlMoveMemory(ConnectionInfo, ClientConnect->ConnectionInfo, *ConnectionInfoSize);
-
-	/* Free the capture buffer */
-	CsrFreeCaptureBuffer(CaptureBuffer);
-    } else {
-	/* No connection info, just return */
-	Status = STATUS_SUCCESS;
     }
 
-    /* Let the caller know if this was server to server */
-    DPRINT("Status was: 0x%x. Are we in server: 0x%x\n", Status, InsideCsrProcess);
-    if (ServerToServerCall)
-	*ServerToServerCall = InsideCsrProcess;
+    /* Setup the connect message header */
+    ClientConnect->ServerId = ServerId;
+    ClientConnect->ConnectionInfoSize = *ConnectionInfoSize;
 
+    /* Setup a buffer for the connection info */
+    CaptureBuffer = CsrAllocateCaptureBuffer(1, ClientConnect->ConnectionInfoSize);
+    if (CaptureBuffer == NULL) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Capture the connection info data */
+    CsrCaptureMessageBuffer(CaptureBuffer, ConnectionInfo,
+			    ClientConnect->ConnectionInfoSize,
+			    &ClientConnect->ConnectionInfo);
+
+    /* Return the allocated length */
+    *ConnectionInfoSize = ClientConnect->ConnectionInfoSize;
+
+    /* Call CSR */
+    Status = CsrClientCallServer(&ApiMessage, CaptureBuffer,
+				 CSR_CREATE_API_NUMBER(CSRSRV_SERVERDLL_INDEX,
+						       CsrpClientConnect),
+				 sizeof(*ClientConnect));
+
+    /* Copy the updated connection info data back into the user buffer */
+    RtlMoveMemory(ConnectionInfo, ClientConnect->ConnectionInfo, *ConnectionInfoSize);
+
+    /* Free the capture buffer */
+    CsrFreeCaptureBuffer(CaptureBuffer);
+
+    DPRINT("Returning status: 0x%x.\n", Status);
     return Status;
 }
 
@@ -307,93 +260,71 @@ NTAPI NTSTATUS CsrClientCallServer(_Inout_ PCSR_API_MESSAGE ApiMessage,
 
     DPRINT("API: %x, TotalLength: %x\n", ApiNumber, ApiMessage->Header.TotalLength);
 
-    /* Check if we are already inside a CSR Server */
-    if (!InsideCsrProcess) {
-	ULONG PointerCount;
-	PULONG_PTR OffsetPointer;
+    ULONG PointerCount;
+    PULONG_PTR OffsetPointer;
 
-	/* Native-created threads can enter Win32 without BaseThreadStartup.
-	 * Register their death notification before the server tracks them. */
-	Status = CsrNewThread();
-	if (!NT_SUCCESS(Status)) {
-	    ApiMessage->Status = Status;
-	    return Status;
-	}
+    /* Check if we got a Capture Buffer */
+    if (CaptureBuffer) {
+	/*
+	 * We have to convert from our local (client) view
+	 * to the remote (server) view.
+	 */
+	ApiMessage->CsrCaptureData = (PVOID)((ULONG_PTR)CaptureBuffer + CsrPortMemoryDelta);
 
-	/* Check if we got a Capture Buffer */
-	if (CaptureBuffer) {
-	    /*
-	     * We have to convert from our local (client) view
-	     * to the remote (server) view.
-	     */
-	    ApiMessage->CsrCaptureData = (PVOID)((ULONG_PTR)CaptureBuffer + CsrPortMemoryDelta);
+	/* Lock the buffer */
+	CaptureBuffer->BufferEnd = NULL;
 
-	    /* Lock the buffer */
-	    CaptureBuffer->BufferEnd = NULL;
-
-	    /*
-	     * Each client pointer inside the CSR message is converted into
-	     * a server pointer, and each pointer to these message pointers
-	     * is converted into an offset.
-	     */
-	    PointerCount = CaptureBuffer->PointerCount;
-	    OffsetPointer = CaptureBuffer->PointerOffsetsArray;
-	    while (PointerCount--) {
-		if (*OffsetPointer != 0) {
-		    *(PULONG_PTR)*OffsetPointer += CsrPortMemoryDelta;
-		    *OffsetPointer -= (ULONG_PTR)ApiMessage;
-		}
-		++OffsetPointer;
+	/*
+	 * Each client pointer inside the CSR message is converted into
+	 * a server pointer, and each pointer to these message pointers
+	 * is converted into an offset.
+	 */
+	PointerCount = CaptureBuffer->PointerCount;
+	OffsetPointer = CaptureBuffer->PointerOffsetsArray;
+	while (PointerCount--) {
+	    if (*OffsetPointer != 0) {
+		*(PULONG_PTR)*OffsetPointer += CsrPortMemoryDelta;
+		*OffsetPointer -= (ULONG_PTR)ApiMessage;
 	    }
+	    ++OffsetPointer;
 	}
+    }
 
-	/* Send the LPC Message */
-	Status = NtRequestWaitReceivePort(CsrCommPort, &ApiMessage->Header,
-					  &ApiMessage->Header, NULL);
+    /* Send the LPC Message */
+    Status = NtRequestWaitReceivePort(CsrCommPort, &ApiMessage->Header,
+				      &ApiMessage->Header,
+				      ApiMessage->Header.TotalLength, NULL);
 
-	/* Check if we got a Capture Buffer */
-	if (CaptureBuffer) {
-	    /*
-	     * We have to convert back from the remote (server) view
-	     * to our local (client) view.
-	     */
-	    ApiMessage->CsrCaptureData =
-		(PVOID)((ULONG_PTR)ApiMessage->CsrCaptureData - CsrPortMemoryDelta);
+    /* Check if we got a Capture Buffer */
+    if (CaptureBuffer) {
+	/*
+	 * We have to convert back from the remote (server) view
+	 * to our local (client) view.
+	 */
+	ApiMessage->CsrCaptureData = (PVOID)((ULONG_PTR)ApiMessage->CsrCaptureData -
+					     CsrPortMemoryDelta);
 
-	    /*
-	     * Convert back the offsets into pointers to CSR message
-	     * pointers, and convert back these message server pointers
-	     * into client pointers.
-	     */
-	    PointerCount = CaptureBuffer->PointerCount;
-	    OffsetPointer = CaptureBuffer->PointerOffsetsArray;
-	    while (PointerCount--) {
-		if (*OffsetPointer != 0) {
-		    *OffsetPointer += (ULONG_PTR)ApiMessage;
-		    *(PULONG_PTR)*OffsetPointer -= CsrPortMemoryDelta;
-		}
-		++OffsetPointer;
+	/*
+	 * Convert back the offsets into pointers to CSR message
+	 * pointers, and convert back these message server pointers
+	 * into client pointers.
+	 */
+	PointerCount = CaptureBuffer->PointerCount;
+	OffsetPointer = CaptureBuffer->PointerOffsetsArray;
+	while (PointerCount--) {
+	    if (*OffsetPointer != 0) {
+		*OffsetPointer += (ULONG_PTR)ApiMessage;
+		*(PULONG_PTR)*OffsetPointer -= CsrPortMemoryDelta;
 	    }
+	    ++OffsetPointer;
 	}
+    }
 
-	/* Check for success */
-	if (!NT_SUCCESS(Status)) {
-	    /* We failed. Overwrite the return value with the failure. */
-	    DPRINT1("LPC Failed: %x\n", Status);
-	    ApiMessage->Status = Status;
-	}
-    } else {
-	/* This is a server-to-server call */
-	DPRINT("Server-to-server call\n");
-
-	/* Do a direct call */
-	Status = CsrServerApiRoutine(ApiMessage, ApiMessage);
-
-	/* Check for success */
-	if (!NT_SUCCESS(Status)) {
-	    /* We failed. Overwrite the return value with the failure. */
-	    ApiMessage->Status = Status;
-	}
+    /* Check for success */
+    if (!NT_SUCCESS(Status)) {
+	/* We failed. Overwrite the return value with the failure. */
+	DPRINT1("LPC Failed: %x\n", Status);
+	ApiMessage->Status = Status;
     }
 
     /* Return the CSR Result */

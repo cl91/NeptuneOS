@@ -46,7 +46,7 @@ NTSTATUS CreateNativeProcess(IN PCWSTR FileName, IN PCWSTR CmdLine,
 	     &DllPath, &UnicodeCmdLine);
     Status = RtlCreateUserProcess(&ImagePath, OBJ_CASE_INSENSITIVE,
 				  ProcessParameters, NULL, NULL, NULL, FALSE,
-				  NULL, NULL, &ProcessInformation);
+				  0, 0, &ProcessInformation);
 
     if (!NT_SUCCESS(Status)) {
 	RtlCliDisplayString("RtlCreateUserProcess failed with error 0x%08x\n",

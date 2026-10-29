@@ -236,7 +236,7 @@ extern "C++" {
 #endif
 
 #define ARRAYSIZE(A)		RTL_NUMBER_OF(A)
-#define _ARRAYSIZE(A)		RTL_NUMBER_OF(A)
+#define _ARRAYSIZE(A)		(sizeof(A)/sizeof((A)[0]))
 
 #define RTL_NUMBER_OF_FIELD(type, field)		\
     (RTL_NUMBER_OF(RTL_FIELD_TYPE(type, field)))

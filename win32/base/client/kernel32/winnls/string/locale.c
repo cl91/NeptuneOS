@@ -34,9 +34,9 @@ WINAPI INT CompareStringEx(LPCWSTR Locale, DWORD Flags, LPCWSTR Str1, INT Len1,
 
 extern int wine_fold_string(int Flags, const WCHAR *Src, int Srclen, WCHAR *Dst,
 			    int Dstlen);
-extern int wine_get_sortkey(int Flags, const WCHAR *Src, int Srclen, char *Dst,
+extern int WineGetSortkey(int Flags, const WCHAR *Src, int Srclen, char *Dst,
 			    int Dstlen);
-extern int wine_compare_string(int Flags, const WCHAR *Str1, int Len1, const WCHAR *Str2,
+extern int WineCompareString(int Flags, const WCHAR *Str1, int Len1, const WCHAR *Str2,
 			       int Len2);
 extern UINT GetLocalisedText(IN UINT uID, IN LPWSTR LpszDest, IN UINT cchDest,
 			     IN LANGID Lang);
@@ -76,14 +76,14 @@ struct LOCALE_NAME {
 };
 
 /* locale ids corresponding to the various Unix locale parameters */
-static LCID lcid_LC_COLLATE;
-static LCID lcid_LC_CTYPE;
-static LCID lcid_LC_MONETARY;
-static LCID lcid_LC_NUMERIC;
-static LCID lcid_LC_TIME;
-static LCID lcid_LC_PAPER;
-static LCID lcid_LC_MEASUREMENT;
-static LCID lcid_LC_TELEPHONE;
+static LCID Lcid_LC_COLLATE;
+static LCID Lcid_LC_CTYPE;
+static LCID Lcid_LC_MONETARY;
+static LCID Lcid_LC_NUMERIC;
+static LCID Lcid_LC_TIME;
+static LCID Lcid_LC_PAPER;
+static LCID Lcid_LC_MEASUREMENT;
+static LCID Lcid_LC_TELEPHONE;
 
 static const WCHAR iCalendarTypeW[] = {'i','C','a','l','e','n','d','a','r','T','y','p','e',0};
 static const WCHAR iCountryW[] = {'i','C','o','u','n','t','r','y',0};
@@ -222,7 +222,7 @@ static LCID ConvertDefaultLcid(LCID Lcid, LCTYPE Lctype)
 
 	switch (Lctype & 0xffff) {
 	case LOCALE_SSORTNAME:
-	    DefaultId = lcid_LC_COLLATE;
+	    DefaultId = Lcid_LC_COLLATE;
 	    break;
 
 	case LOCALE_FONTSIGNATURE:
@@ -231,7 +231,7 @@ static LCID ConvertDefaultLcid(LCID Lcid, LCTYPE Lctype)
 	case LOCALE_IDEFAULTEBCDICCODEPAGE:
 	case LOCALE_IDEFAULTMACCODEPAGE:
 	case LOCALE_IDEFAULTUNIXCODEPAGE:
-	    DefaultId = lcid_LC_CTYPE;
+	    DefaultId = Lcid_LC_CTYPE;
 	    break;
 
 	case LOCALE_ICURRDIGITS:
@@ -250,7 +250,7 @@ static LCID ConvertDefaultLcid(LCID Lcid, LCTYPE Lctype)
 	case LOCALE_SMONGROUPING:
 	case LOCALE_SMONTHOUSANDSEP:
 	case LOCALE_SNATIVECURRNAME:
-	    DefaultId = lcid_LC_MONETARY;
+	    DefaultId = Lcid_LC_MONETARY;
 	    break;
 
 	case LOCALE_IDIGITS:
@@ -266,7 +266,7 @@ static LCID ConvertDefaultLcid(LCID Lcid, LCTYPE Lctype)
 	// case LOCALE_SPOSINFINITY:
 	case LOCALE_SPOSITIVESIGN:
 	case LOCALE_STHOUSAND:
-	    DefaultId = lcid_LC_NUMERIC;
+	    DefaultId = Lcid_LC_NUMERIC;
 	    break;
 
 	case LOCALE_ICALENDARTYPE:
@@ -337,19 +337,19 @@ static LCID ConvertDefaultLcid(LCID Lcid, LCTYPE Lctype)
 	case LOCALE_STIME:
 	case LOCALE_STIMEFORMAT:
 	case LOCALE_SYEARMONTH:
-	    DefaultId = lcid_LC_TIME;
+	    DefaultId = Lcid_LC_TIME;
 	    break;
 
 	case LOCALE_IPAPERSIZE:
-	    DefaultId = lcid_LC_PAPER;
+	    DefaultId = Lcid_LC_PAPER;
 	    break;
 
 	case LOCALE_IMEASURE:
-	    DefaultId = lcid_LC_MEASUREMENT;
+	    DefaultId = Lcid_LC_MEASUREMENT;
 	    break;
 
 	case LOCALE_ICOUNTRY:
-	    DefaultId = lcid_LC_TELEPHONE;
+	    DefaultId = Lcid_LC_TELEPHONE;
 	    break;
 	}
 	if (DefaultId)
@@ -666,7 +666,7 @@ WINAPI INT GetLocaleInfoA(LCID Lcid, LCTYPE Lctype, LPSTR Buffer, INT Len)
     WCHAR *BufferW;
     INT LenW, Ret;
 
-    TRACE("(lcid=0x%x,lctype=0x%x,%p,%d)\n", lcid, lctype, buffer, len);
+    TRACE("(lcid=0x%x,lctype=0x%x,%p,%d)\n", Lcid, Lctype, Buffer, Len);
 
     if (Len < 0 || (Len && !Buffer)) {
 	SetLastError(ERROR_INVALID_PARAMETER);
@@ -749,7 +749,7 @@ WINAPI INT GetLocaleInfoW(LCID Lcid, LCTYPE Lctype, LPWSTR Buffer, INT Len)
     Lcflags = Lctype & LOCALE_LOCALEINFOFLAGSMASK;
     Lctype &= 0xffff;
 
-    TRACE("(lcid=0x%x,lctype=0x%x,%p,%d)\n", lcid, lctype, buffer, len);
+    TRACE("(lcid=0x%x,lctype=0x%x,%p,%d)\n", Lcid, Lctype, Buffer, Len);
 
     /* first check for overrides in the registry */
 
@@ -847,15 +847,15 @@ WINAPI INT GetLocaleInfoW(LCID Lcid, LCTYPE Lctype, LPWSTR Buffer, INT Len)
 	}
 	HeapFree(GetProcessHeap(), 0, Tmp);
 
-	TRACE("(lcid=0x%x,lctype=0x%x,%p,%d) returning number %d\n", lcid, lctype, buffer,
-	      len, number);
+	TRACE("(lcid=0x%x,lctype=0x%x,%p,%d) returning number %d\n", Lcid, Lctype, Buffer,
+	      Len, Number);
     } else {
 	memcpy(Buffer, p + 1, Ret * sizeof(WCHAR));
 	if (Lctype != LOCALE_FONTSIGNATURE)
 	    Buffer[Ret - 1] = 0;
 
-	TRACE("(lcid=0x%x,lctype=0x%x,%p,%d) returning %d %s\n", lcid, lctype, buffer,
-	      len, ret, debugstr_w(buffer));
+	TRACE("(lcid=0x%x,lctype=0x%x,%p,%d) returning %d %ws\n", Lcid, Lctype, Buffer,
+	      Len, Ret, Buffer);
     }
     return Ret;
 }
@@ -935,7 +935,7 @@ WINAPI BOOL SetLocaleInfoW(LCID Lcid, LCTYPE Lctype, LPCWSTR Data)
 	return FALSE;
     }
 
-    TRACE("setting %x (%s) to %s\n", lctype, debugstr_w(value->name), debugstr_w(data));
+    TRACE("setting %x (%ws) to %ws\n", Lctype, Value->Name, Data);
 
     /* FIXME: should check that data to set is sane */
 
@@ -1031,7 +1031,7 @@ WINAPI LCID GetThreadLocale(void)
  */
 WINAPI BOOL SetThreadLocale(LCID Lcid)
 {
-    TRACE("(0x%04X)\n", lcid);
+    TRACE("(0x%04X)\n", Lcid);
 
     Lcid = ConvertDefaultLocale(Lcid);
 
@@ -1144,11 +1144,11 @@ static BOOL CALLBACK EnumLangProcW(HMODULE hModule, LPCWSTR Type, LPCWSTR Name,
  *  Success: TRUE.
  *  Failure: FALSE. Use GetLastError() to determine the cause.
  */
-WINAPI BOOL EnumSystemLocalesA(LOCALE_ENUMPROCA LpfnLocaleEnum, DWORD dwFlags)
+WINAPI BOOL EnumSystemLocalesA(LOCALE_ENUMPROCA lpfnLocaleEnum, DWORD dwFlags)
 {
     TRACE("(%p,%08x)\n", lpfnLocaleEnum, dwFlags);
     EnumResourceLanguagesA(Kernel32Handle, (LPSTR)RT_STRING, (LPCSTR)LOCALE_ILANGUAGE,
-			   EnumLangProcA, (LONG_PTR)LpfnLocaleEnum);
+			   EnumLangProcA, (LONG_PTR)lpfnLocaleEnum);
     return TRUE;
 }
 
@@ -1157,11 +1157,11 @@ WINAPI BOOL EnumSystemLocalesA(LOCALE_ENUMPROCA LpfnLocaleEnum, DWORD dwFlags)
  *
  * See EnumSystemLocalesA.
  */
-WINAPI BOOL EnumSystemLocalesW(LOCALE_ENUMPROCW LpfnLocaleEnum, DWORD dwFlags)
+WINAPI BOOL EnumSystemLocalesW(LOCALE_ENUMPROCW lpfnLocaleEnum, DWORD dwFlags)
 {
     TRACE("(%p,%08x)\n", lpfnLocaleEnum, dwFlags);
     EnumResourceLanguagesW(Kernel32Handle, (LPWSTR)RT_STRING, (LPCWSTR)LOCALE_ILANGUAGE,
-			   EnumLangProcW, (LONG_PTR)LpfnLocaleEnum);
+			   EnumLangProcW, (LONG_PTR)lpfnLocaleEnum);
     return TRUE;
 }
 
@@ -1239,11 +1239,11 @@ WINAPI BOOL GetStringTypeW(DWORD Type, LPCWSTR Src, INT Count, LPWORD Chartype)
     switch (Type) {
     case CT_CTYPE1:
 	while (Count--)
-	    *Chartype++ = get_char_typeW(*Src++) & 0xfff;
+	    *Chartype++ = GetCharTypeW(*Src++) & 0xfff;
 	break;
     case CT_CTYPE2:
 	while (Count--)
-	    *Chartype++ = Type2Map[get_char_typeW(*Src++) >> 12];
+	    *Chartype++ = Type2Map[GetCharTypeW(*Src++) >> 12];
 	break;
     case CT_CTYPE3: {
 	WARN("CT_CTYPE3: semi-stub.\n");
@@ -1251,7 +1251,7 @@ WINAPI BOOL GetStringTypeW(DWORD Type, LPCWSTR Src, INT Count, LPWORD Chartype)
 	    int c = *Src;
 	    WORD Type1, Type3 = 0; /* C3_NOTAPPLICABLE */
 
-	    Type1 = get_char_typeW(*Src++) & 0xfff;
+	    Type1 = GetCharTypeW(*Src++) & 0xfff;
 	    /* try to construct type3 from type1 */
 	    if (Type1 & C1_SPACE)
 		Type3 |= C3_SYMBOL;
@@ -1353,7 +1353,7 @@ WINAPI BOOL GetStringTypeA(LCID Locale, DWORD Type, LPCSTR Src, INT Count,
 	Count = strlen(Src) + 1;
 
     if (!(Cp = GetLcidCodepage(Locale))) {
-	FIXME("For locale %04x using current ANSI code page\n", locale);
+	FIXME("For locale %04x using current ANSI code page\n", Locale);
 	Cp = GetACP();
     }
 
@@ -1617,7 +1617,7 @@ static int MapToLowercase(DWORD Flags, const WCHAR *Src, int Srclen, WCHAR *Dst,
     int Pos;
     for (Pos = 0; Srclen; Src++, Srclen--) {
 	WCHAR Wch = *Src;
-	if ((Flags & NORM_IGNORESYMBOLS) && (get_char_typeW(Wch) & (C1_PUNCT | C1_SPACE)))
+	if ((Flags & NORM_IGNORESYMBOLS) && (GetCharTypeW(Wch) & (C1_PUNCT | C1_SPACE)))
 	    continue;
 	if (Pos < Dstlen)
 	    Dst[Pos] = tolowerW(Wch);
@@ -1632,7 +1632,7 @@ static int MapToUppercase(DWORD Flags, const WCHAR *Src, int Srclen, WCHAR *Dst,
     int Pos;
     for (Pos = 0; Srclen; Src++, Srclen--) {
 	WCHAR Wch = *Src;
-	if ((Flags & NORM_IGNORESYMBOLS) && (get_char_typeW(Wch) & (C1_PUNCT | C1_SPACE)))
+	if ((Flags & NORM_IGNORESYMBOLS) && (GetCharTypeW(Wch) & (C1_PUNCT | C1_SPACE)))
 	    continue;
 	if (Pos < Dstlen)
 	    Dst[Pos] = toupperW(Wch);
@@ -1854,13 +1854,13 @@ WINAPI INT LCMapStringEx(LPCWSTR Locale, DWORD Flags, LPCWSTR Src, INT Srclen, L
 			 LPARAM Handle)
 {
     if (Version)
-	FIXME("unsupported version structure %p\n", version);
+	FIXME("unsupported version structure %p\n", Version);
     if (Reserved)
-	FIXME("unsupported reserved pointer %p\n", reserved);
+	FIXME("unsupported reserved pointer %p\n", Reserved);
     if (Handle) {
 	static int Once;
 	if (!Once++)
-	    FIXME("unsupported lparam %Ix\n", handle);
+	    FIXME("unsupported lparam %Ix\n", Handle);
     }
 
     if (!Src || !Srclen || Dstlen < 0) {
@@ -1871,8 +1871,8 @@ WINAPI INT LCMapStringEx(LPCWSTR Locale, DWORD Flags, LPCWSTR Src, INT Srclen, L
     if (Srclen < 0)
 	Srclen = lstrlenW(Src) + 1;
 
-    TRACE("(%s,0x%08lx,%s,%d,%p,%d)\n", debugstr_w(locale), flags,
-	  debugstr_wn(src, srclen), srclen, dst, dstlen);
+    TRACE("(%ws,0x%08x,%ws,%d,%p,%d)\n", Locale, Flags,
+	  Src, Srclen, Dst, Dstlen);
 
     Flags &= ~LOCALE_USE_CP_ACP;
 
@@ -1890,7 +1890,7 @@ WINAPI INT LCMapStringEx(LPCWSTR Locale, DWORD Flags, LPCWSTR Src, INT Srclen, L
 	if (Srclen < 0)
 	    Srclen = strlenW(Src);
 
-	Ret = wine_get_sortkey(Flags, Src, Srclen, (char *)Dst, Dstlen);
+	Ret = WineGetSortkey(Flags, Src, Srclen, (char *)Dst, Dstlen);
 	if (Ret == 0)
 	    SetLastError(ERROR_INSUFFICIENT_BUFFER);
 	else
@@ -1915,8 +1915,8 @@ WINAPI INT LCMapStringEx(LPCWSTR Locale, DWORD Flags, LPCWSTR Src, INT Srclen, L
 WINAPI INT LCMapStringW(LCID Lcid, DWORD Flags, LPCWSTR Src, INT Srclen, LPWSTR Dst,
 			INT Dstlen)
 {
-    TRACE("(0x%04x,0x%08x,%s,%d,%p,%d)\n", lcid, flags, debugstr_wn(src, srclen), srclen,
-	  dst, dstlen);
+    TRACE("(0x%04x,0x%08x,%ws,%d,%p,%d)\n", Lcid, Flags, Src, Srclen,
+	  Dst, Dstlen);
 
     return LCMapStringEx(NULL, Flags, Src, Srclen, Dst, Dstlen, NULL, NULL, 0);
 }
@@ -1972,7 +1972,7 @@ WINAPI INT LCMapStringA(LCID Lcid, DWORD Flags, LPCSTR Src, INT Srclen, LPSTR Ds
 	    SetLastError(ERROR_INVALID_FLAGS);
 	    goto map_string_exit;
 	}
-	Ret = wine_get_sortkey(Flags, SrcW, SrclenW, Dst, Dstlen);
+	Ret = WineGetSortkey(Flags, SrcW, SrclenW, Dst, Dstlen);
 	if (Ret == 0)
 	    SetLastError(ERROR_INSUFFICIENT_BUFFER);
 	else
@@ -2082,7 +2082,7 @@ WINAPI INT CompareStringEx(LPCWSTR Locale, DWORD Flags, LPCWSTR Str1, INT Len1,
 
     if (Flags & SemistubFlags) {
 	if (!Once++)
-	    FIXME("semi-stub behavior for flag(s) 0x%x\n", flags & semistub_flags);
+	    FIXME("semi-stub behavior for flag(s) 0x%x\n", Flags & SemistubFlags);
     }
 
     if (Len1 < 0)
@@ -2090,7 +2090,7 @@ WINAPI INT CompareStringEx(LPCWSTR Locale, DWORD Flags, LPCWSTR Str1, INT Len1,
     if (Len2 < 0)
 	Len2 = strlenW(Str2);
 
-    Ret = wine_compare_string(Flags, Str1, Len1, Str2, Len2);
+    Ret = WineCompareString(Flags, Str1, Len1, Str2, Len2);
 
     if (Ret) /* need to translate result */
 	return (Ret < 0) ? CSTR_LESS_THAN : CSTR_GREATER_THAN;
@@ -2213,15 +2213,15 @@ BOOL NLS_RegEnumValue(HANDLE hKey, UINT ulIndex, LPWSTR szValueName, ULONG Value
 	return FALSE;
     }
 
-    TRACE("info->Name %s info->DataLength %d\n", debugstr_w(info->Name),
-	  info->DataLength);
+    TRACE("Info->Name %ws Info->DataLength %d\n", Info->Name,
+	  Info->DataLength);
 
     memcpy(szValueName, Info->Name, Info->NameLength);
     szValueName[Info->NameLength / sizeof(WCHAR)] = '\0';
     memcpy(szValueData, Buffer + Info->DataOffset, Info->DataLength);
     szValueData[Info->DataLength / sizeof(WCHAR)] = '\0';
 
-    TRACE("returning %s %s\n", debugstr_w(szValueName), debugstr_w(szValueData));
+    TRACE("returning %ws %ws\n", szValueName, szValueData);
     return TRUE;
 }
 
@@ -2234,7 +2234,7 @@ static BOOL NLS_RegGetDword(HANDLE hKey, LPCWSTR szValueName, DWORD *lpVal)
 
     RtlInitUnicodeString(&ValueName, szValueName);
 
-    TRACE("%p, %s\n", hKey, debugstr_w(szValueName));
+    TRACE("%p, %ws\n", hKey, szValueName);
     if (NtQueryValueKey(hKey, &ValueName, KeyValuePartialInformation, Buffer, dwSize,
 			&dwSize) == STATUS_SUCCESS &&
 	Info->DataLength == sizeof(DWORD)) {
@@ -2329,7 +2329,7 @@ static BOOL NLS_EnumSystemLanguageGroups(ENUMLANGUAGEGROUP_CALLBACKS *lpProcs)
 	    BOOL bInstalled = szValue[0] == '1';
 	    LGRPID Lgrpid = strtoulW(szNumber, NULL, 16);
 
-	    TRACE("grpid %s (%sinstalled)\n", debugstr_w(szNumber),
+	    TRACE("grpid %ws (%sinstalled)\n", szNumber,
 		  bInstalled ? "" : "not ");
 
 	    if (lpProcs->dwFlags == LGRPID_SUPPORTED || bInstalled) {
@@ -2394,7 +2394,7 @@ WINAPI BOOL EnumSystemLanguageGroupsA(LANGUAGEGROUP_ENUMPROCA pLangGrpEnumProc,
 {
     ENUMLANGUAGEGROUP_CALLBACKS Procs;
 
-    TRACE("(%p,0x%08X,0x%08lX)\n", pLangGrpEnumProc, dwFlags, lParam);
+    TRACE("(%p,0x%08X,0x%08zX)\n", pLangGrpEnumProc, dwFlags, lParam);
 
     Procs.ProcA = pLangGrpEnumProc;
     Procs.ProcW = NULL;
@@ -2414,7 +2414,7 @@ WINAPI BOOL EnumSystemLanguageGroupsW(LANGUAGEGROUP_ENUMPROCW pLangGrpEnumProc,
 {
     ENUMLANGUAGEGROUP_CALLBACKS Procs;
 
-    TRACE("(%p,0x%08X,0x%08lX)\n", pLangGrpEnumProc, dwFlags, lParam);
+    TRACE("(%p,0x%08X,0x%08zX)\n", pLangGrpEnumProc, dwFlags, lParam);
 
     Procs.ProcA = NULL;
     Procs.ProcW = pLangGrpEnumProc;
@@ -2514,8 +2514,8 @@ static BOOL NLS_EnumLanguageGroupLocales(ENUMLANGUAGEGROUPLOCALE_CALLBACKS *lpPr
 			     sizeof(szValue))) {
 	    Lgrpid = strtoulW(szValue, NULL, 16);
 
-	    TRACE("lcid %s, grpid %d (%smatched)\n", debugstr_w(szNumber), lgrpid,
-		  lgrpid == lpProcs->lgrpid ? "" : "not ");
+	    TRACE("lcid %ws, grpid %d (%smatched)\n", szNumber, Lgrpid,
+		  Lgrpid == lpProcs->Lgrpid ? "" : "not ");
 
 	    if (Lgrpid == lpProcs->Lgrpid) {
 		LCID Lcid;
@@ -2581,7 +2581,7 @@ WINAPI BOOL EnumLanguageGroupLocalesA(LANGGROUPLOCALE_ENUMPROCA pLangGrpLcEnumPr
 {
     ENUMLANGUAGEGROUPLOCALE_CALLBACKS Callbacks;
 
-    TRACE("(%p,0x%08X,0x%08X,0x%08lX)\n", pLangGrpLcEnumProc, lgrpid, dwFlags, lParam);
+    TRACE("(%p,0x%08X,0x%08X,0x%08zX)\n", pLangGrpLcEnumProc, Lgrpid, dwFlags, lParam);
 
     Callbacks.ProcA = pLangGrpLcEnumProc;
     Callbacks.ProcW = NULL;
@@ -2602,7 +2602,7 @@ WINAPI BOOL EnumLanguageGroupLocalesW(LANGGROUPLOCALE_ENUMPROCW pLangGrpLcEnumPr
 {
     ENUMLANGUAGEGROUPLOCALE_CALLBACKS Callbacks;
 
-    TRACE("(%p,0x%08X,0x%08X,0x%08lX)\n", pLangGrpLcEnumProc, lgrpid, dwFlags, lParam);
+    TRACE("(%p,0x%08X,0x%08X,0x%08zX)\n", pLangGrpLcEnumProc, Lgrpid, dwFlags, lParam);
 
     Callbacks.ProcA = NULL;
     Callbacks.ProcW = pLangGrpLcEnumProc;
@@ -2748,7 +2748,7 @@ WINAPI BOOL EnumUILanguagesA(UILANGUAGE_ENUMPROCA pUILangEnumProc, DWORD dwFlags
 {
     ENUM_UILANG_CALLBACK EnumUilang;
 
-    TRACE("%p, %x, %lx\n", pUILangEnumProc, dwFlags, lParam);
+    TRACE("%p, %x, %zx\n", pUILangEnumProc, dwFlags, lParam);
 
     if (!pUILangEnumProc) {
 	SetLastError(ERROR_INVALID_PARAMETER);
@@ -2776,7 +2776,7 @@ WINAPI BOOL EnumUILanguagesW(UILANGUAGE_ENUMPROCW pUILangEnumProc, DWORD dwFlags
 {
     ENUM_UILANG_CALLBACK EnumUilang;
 
-    TRACE("%p, %x, %lx\n", pUILangEnumProc, dwFlags, lParam);
+    TRACE("%p, %x, %zx\n", pUILangEnumProc, dwFlags, lParam);
 
     if (!pUILangEnumProc) {
 	SetLastError(ERROR_INVALID_PARAMETER);
@@ -3261,7 +3261,7 @@ WINAPI INT GetGeoInfoW(GEOID Geoid, GEOTYPE Geotype, LPWSTR Data, int DataLen,
     LONG Val = 0;
     INT Len;
 
-    TRACE("%d %d %p %d %d\n", geoid, geotype, data, data_len, lang);
+    TRACE("%d %d %p %d %d\n", Geoid, Geotype, Data, DataLen, Lang);
 
     if (!(Ptr = GetGeoinfoDataptr(Geoid))) {
 	SetLastError(ERROR_INVALID_PARAMETER);
@@ -3293,11 +3293,11 @@ WINAPI INT GetGeoInfoW(GEOID Geoid, GEOTYPE Geotype, LPWSTR Data, int DataLen,
     case GEO_OFFICIALLANGUAGES:
     case GEO_LATITUDE:
     case GEO_LONGITUDE:
-	FIXME("type %d is not supported\n", geotype);
+	FIXME("type %d is not supported\n", Geotype);
 	SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
 	return 0;
     default:
-	WARN("unrecognized type %d\n", geotype);
+	WARN("unrecognized type %d\n", Geotype);
 	SetLastError(ERROR_INVALID_FLAGS);
 	return 0;
     }
@@ -3327,7 +3327,7 @@ WINAPI INT GetGeoInfoA(GEOID Geoid, GEOTYPE Geotype, LPSTR Data, int DataLen,
     WCHAR *BuffW;
     INT Len;
 
-    TRACE("%d %d %p %d %d\n", geoid, geotype, data, data_len, lang);
+    TRACE("%d %d %p %d %d\n", Geoid, Geotype, Data, DataLen, Lang);
 
     Len = GetGeoInfoW(Geoid, Geotype, NULL, 0, Lang);
     if (!Len)
@@ -3370,7 +3370,7 @@ WINAPI BOOL EnumSystemGeoID(GEOCLASS Geoclass, GEOID Parent, GEO_ENUMPROC Enumpr
 {
     INT i;
 
-    TRACE("(%d, %d, %p)\n", geoclass, parent, enumproc);
+    TRACE("(%d, %d, %p)\n", Geoclass, Parent, Enumproc);
 
     if (!Enumproc) {
 	SetLastError(ERROR_INVALID_PARAMETER);

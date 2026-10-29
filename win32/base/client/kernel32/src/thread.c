@@ -43,23 +43,16 @@ WINAPI NTSTATUS BasepNotifyCsrOfThread(IN HANDLE ThreadHandle, IN PCLIENT_ID Cli
     return STATUS_SUCCESS;
 }
 
-DECLSPEC_NORETURN
-WINAPI VOID BaseThreadStartup(_In_ LPTHREAD_START_ROUTINE lpStartAddress,
-			      _In_ LPVOID lpParameter)
+DECLSPEC_NORETURN WINAPI VOID BaseThreadStartup(_In_ LPTHREAD_START_ROUTINE lpStartAddress,
+						_In_ LPVOID lpParameter)
 {
     /* Attempt to call the Thread Start Address */
     __try {
 	/* Get the exit code from the Thread Start */
 	ExitThread(lpStartAddress(lpParameter));
     } __except (UnhandledExceptionFilter(GetExceptionInformation())) {
-	/* Get the Exit code from the SEH Handler */
-	if (!BaseRunningInServerProcess) {
-	    /* Kill the whole process, usually */
-	    ExitProcess(GetExceptionCode());
-	} else {
-	    /* If running inside CSRSS, kill just this thread */
-	    ExitThread(GetExceptionCode());
-	}
+	/* Get the Exit code from the SEH Handler and kill the whole process */
+	ExitProcess(GetExceptionCode());
     }
 }
 
@@ -235,21 +228,7 @@ WINAPI HANDLE CreateRemoteThread(IN HANDLE hProcess,
     }
 
     /* Notify CSR */
-    if (!BaseRunningInServerProcess) {
-	Status = BasepNotifyCsrOfThread(hThread, &ClientId);
-    } else {
-	if (hProcess != NtCurrentProcess()) {
-	    PCSR_CREATE_REMOTE_THREAD CsrCreateRemoteThread;
-
-	    /* Get the direct CSRSRV export */
-	    CsrCreateRemoteThread = (PCSR_CREATE_REMOTE_THREAD)
-		GetProcAddress(GetModuleHandleA("csrsrv"), "CsrCreateRemoteThread");
-	    if (CsrCreateRemoteThread) {
-		/* Call it instead of going through LPC */
-		Status = CsrCreateRemoteThread(hThread, &ClientId);
-	    }
-	}
-    }
+    Status = BasepNotifyCsrOfThread(hThread, &ClientId);
 
 Quit:
     if (!NT_SUCCESS(Status)) {
@@ -485,8 +464,8 @@ WINAPI BOOL TerminateThread(IN HANDLE hThread, IN DWORD dwExitCode)
 					  sizeof(ThreadInfo), NULL);
 	if (NT_SUCCESS(Status)) {
 	    /* If terminating the current thread, we must not hold the loader lock */
-	    if (NtCurrentTeb()->ClientId.UniqueThread == ThreadInfo.ClientId.UniqueThread)
-		ASSERT(NtCurrentTeb()->ClientId.UniqueThread != LoaderLock->OwningThread);
+	    if (NtCurrentTeb()->NtTib.ClientId.UniqueThread == ThreadInfo.ClientId.UniqueThread)
+		ASSERT(NtCurrentTeb()->NtTib.ClientId.UniqueThread != LoaderLock->OwningThread);
 	}
     }
 #endif /* DBG */
@@ -829,7 +808,7 @@ WINAPI BOOL SetThreadStackGuarantee(IN OUT PULONG StackSizeInBytes)
     AllocationSize = *StackSizeInBytes;
 
     /* Retrieve the current stack size */
-    GuaranteedStackBytes = Teb->Win32.GuaranteedStackBytes;
+    GuaranteedStackBytes = Teb->GuaranteedStackBytes;
 
     /* Return the size of the previous stack */
     *StackSizeInBytes = GuaranteedStackBytes;

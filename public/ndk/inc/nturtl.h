@@ -377,6 +377,8 @@ typedef struct _PEB {                                                 /* win32/w
 
 C_ASSERT(sizeof(PEB) < PAGE_SIZE);
 
+typedef VOID (*PRTL_ASYNC_YIELD)(PVOID AsyncContext);
+
 /*
  * Thread Environment Block (TEB).
  *
@@ -391,9 +393,9 @@ typedef struct _TEB {                                        /* win32/win64 */
     NT_TIB                  NtTib;                             /* 000/000 */
     PVOID                   ThreadLocalStoragePointer;         /* 02c/058 */
     PPEB                    ProcessEnvironmentBlock;           /* 030/060 */
-    PVOID                   CsrClientThread;                   /* 034/068 */
-    ULONG                   CurrentLocale;                     /* 038/070 */
-    ULONG                   Padding;                           /* 03c/074 */
+    ULONG                   CurrentLocale;                     /* 034/068 */
+    ULONG                   GuaranteedStackBytes;              /* 038/06c */
+    PRTL_ASYNC_YIELD        AsyncYield;                        /* 03c/070 */
     PRTL_FLS_DATA           FlsData;                           /* 040/078 */
     PVOID                   TlsSlots[64];                      /* 044/080 */
     LIST_ENTRY              TlsLinks;                          /* 144/280 */
@@ -416,11 +418,12 @@ typedef struct _TEB {                                        /* win32/win64 */
             CLIENT_ID       RealClientId;                      /* 15c/2b0 */
 	    ULONG           LastErrorValue;                    /* 164/2c0 */
 	    ULONG           LastStatusValue;                   /* 168/2c4 */
-            ULONG           GuaranteedStackBytes;              /* 16c/2c8 */
-            ULONG           HardErrorMode;                     /* 170/2cc */
+            ULONG           HardErrorMode;                     /* 16c/2c8 */
+            ULONG           Padding;                           /* 170/2cc */
             PVOID           SubProcessTag;                     /* 174/2d0 (advapi32) */
             UNICODE_STRING  StaticUnicodeString;               /* 178/2d8 (kernel32) */
             WCHAR           StaticUnicodeBuffer[264];          /* 180/2e8 (kernel32) */
+	    ULONG_PTR       Win32ClientInfo[62];               /* 390/4f8 (user32) */
         } Win32;
     };
 } TEB, *PTEB;
@@ -428,10 +431,10 @@ typedef struct _TEB {                                        /* win32/win64 */
 
 #ifdef _WIN64
 C_ASSERT(FIELD_OFFSET(TEB, Wdm.IsMainThread) == 0x2cd);
-C_ASSERT(FIELD_OFFSET(TEB, Win32.StaticUnicodeBuffer) == 0x2e8);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.Win32ClientInfo) == 0x4f8);
 #else
 C_ASSERT(FIELD_OFFSET(TEB, Wdm.IsMainThread) == 0x16d);
-C_ASSERT(FIELD_OFFSET(TEB, Win32.StaticUnicodeBuffer) == 0x180);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.Win32ClientInfo) == 0x390);
 #endif
 
 /* The driver process's IO packet buffer pointers are placed at the end of the TEB page,
@@ -743,6 +746,13 @@ NTAPI NTSYSAPI NTSTATUS RtlAddAccessDeniedObjectAce(IN OUT PACL Acl,
 						    IN OPTIONAL GUID *InheritedObjectTypeGuid,
 						    IN PSID Sid);
 
+NTAPI NTSYSAPI NTSTATUS RtlAddMandatoryAce(IN OUT PACL Acl,
+					   IN ULONG Revision,
+					   IN ULONG Flags,
+					   IN ULONG MandatoryFlags,
+					   IN UCHAR AceType,
+					   IN PSID LabelSid);
+
 NTAPI NTSYSAPI NTSTATUS RtlAddAuditAccessAce(IN PACL Acl,
 					     IN ULONG Revision,
 					     IN ACCESS_MASK AccessMask,
@@ -815,8 +825,6 @@ NTAPI NTSYSAPI NTSTATUS
 RtlCreateSecurityDescriptorRelative(IN PISECURITY_DESCRIPTOR_RELATIVE SecurityDescriptor,
 				    IN ULONG Revision);
 
-NTAPI NTSYSAPI ULONG RtlLengthSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor);
-
 NTAPI NTSYSAPI NTSTATUS RtlGetDaclSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
 						     OUT PBOOLEAN DaclPresent,
 						     OUT PACL *Dacl,
@@ -858,16 +866,6 @@ NTAPI NTSYSAPI NTSTATUS
 RtlSetGroupSecurityDescriptor(IN OUT PSECURITY_DESCRIPTOR SecurityDescriptor,
 			      IN PSID Group,
 			      IN BOOLEAN GroupDefaulted);
-
-NTAPI NTSYSAPI NTSTATUS
-RtlGetControlSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
-				OUT PSECURITY_DESCRIPTOR_CONTROL Control,
-				OUT PULONG Revision);
-
-NTAPI NTSYSAPI NTSTATUS
-RtlSetControlSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
-				IN SECURITY_DESCRIPTOR_CONTROL ControlBitsOfInterest,
-				IN SECURITY_DESCRIPTOR_CONTROL ControlBitsToSet);
 
 NTAPI NTSYSAPI BOOLEAN
 RtlGetSecurityDescriptorRMControl(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
@@ -1894,7 +1892,12 @@ NTAPI NTSYSAPI USHORT RtlCaptureStackBackTrace(IN ULONG FramesToSkip,
 					       OUT PVOID *BackTrace,
 					       OUT OPTIONAL PULONG BackTraceHash);
 
-NTAPI NTSYSAPI VOID RtlSetUnhandledExceptionFilter(IN PRTLP_UNHANDLED_EXCEPTION_FILTER TopLevelExceptionFilter);
+NTAPI NTSYSAPI VOID RtlSetUnhandledExceptionFilter(IN PRTLP_UNHANDLED_EXCEPTION_FILTER Flt);
+
+NTAPI NTSYSAPI LONG RtlUnhandledExceptionFilter(IN PEXCEPTION_POINTERS ExceptionInfo);
+
+NTAPI NTSYSAPI LONG RtlUnhandledExceptionFilter2(IN PEXCEPTION_POINTERS ExceptionInfo,
+						 IN ULONG Flags);
 
 /*
  * Tracing Functions
@@ -2256,6 +2259,9 @@ NTAPI NTSYSAPI ULONG vDbgPrintEx(IN ULONG ComponentId,
 				 IN ULONG Level,
 				 IN PCCH Format,
 				 IN va_list VarList);
+
+NTAPI NTSYSAPI ULONG DbgPrompt(IN PCCH Prompt, OUT PCH Response,
+			       IN ULONG MaximumResponseLength);
 
 NTAPI NTSYSAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 			       IN PVOID FileName,
@@ -2682,8 +2688,8 @@ RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
 		     IN OPTIONAL PSECURITY_DESCRIPTOR ThreadSecurityDescriptor,
 		     IN OPTIONAL HANDLE ParentProcess,
 		     IN BOOLEAN CurrentDirectory,
-		     IN OPTIONAL HANDLE DebugPort,
-		     IN OPTIONAL HANDLE ExceptionPort,
+		     IN OPTIONAL LOCAL_HANDLE DebugPort,
+		     IN OPTIONAL LOCAL_HANDLE ExceptionPort,
 		     OUT PRTL_USER_PROCESS_INFORMATION ProcessInfo);
 
 NTAPI NTSYSAPI NTSTATUS
@@ -3072,7 +3078,7 @@ NTAPI NTSYSAPI NTSTATUS LdrFindEntryForAddress(IN PVOID Address,
 
 NTAPI NTSTATUS LdrLoadDll(IN OPTIONAL PWSTR SearchPath,
 			  IN OPTIONAL PULONG DllCharacteristics,
-			  IN PUNICODE_STRING DllName,
+			  IN PCUNICODE_STRING DllName,
 			  OUT PVOID *BaseAddress);
 
 NTAPI NTSYSAPI NTSTATUS LdrUnloadDll(IN PVOID BaseAddress);
@@ -3287,8 +3293,6 @@ NTAPI NTSYSAPI PSID_IDENTIFIER_AUTHORITY RtlIdentifierAuthoritySid(IN PSID Sid);
 
 NTAPI NTSYSAPI BOOLEAN RtlEqualSid(IN PSID Sid1,
 				   IN PSID Sid2);
-
-NTAPI NTSYSAPI ULONG RtlLengthSid(IN PSID Sid);
 
 NTAPI NTSYSAPI NTSTATUS RtlCopySid(IN ULONG BufferLength,
 				   IN PSID Dest,

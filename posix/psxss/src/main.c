@@ -21,7 +21,7 @@ static NTSTATUS PsxCreatePort(OUT PHANDLE PortHandle,
 			       OBJ_PERMANENT, NULL, NULL);
 
     NTSTATUS Status = NtCreatePort(PortHandle, CommPortHandle,
-				   &ObjectAttributes, 256);
+				   &ObjectAttributes, 256, NULL);
     CHECK_STATUS(Status, "NtCreatePort");
 
 out:
@@ -69,8 +69,8 @@ static NTSTATUS PsxCreateClientProcess()
 			     NtCurrentProcess(),
 			     FALSE,
 			     SectionHandle,
-			     NULL,
-			     NULL);
+			     0,
+			     0);
     CHECK_STATUS(Status, "NtCreateProcess");
 
     /* Query image base address */
@@ -138,7 +138,8 @@ NTAPI VOID NtProcessStartup(PPEB Peb)
     while (TRUE) {
 	ULONG_PTR PortContext = 0;
 	PORT_MESSAGE PortMessage;
-	Status = NtReceivePort(CommPortHandle, &PortContext, &PortMessage, NULL);
+	Status = NtReceivePort(CommPortHandle, &PortContext, &PortMessage,
+			       sizeof(PORT_MESSAGE), NULL);
 	if (!NT_SUCCESS(Status)) {
 	    goto out;
 	}

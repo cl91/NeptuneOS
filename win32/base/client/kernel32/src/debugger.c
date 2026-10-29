@@ -27,15 +27,15 @@ typedef struct _DBGSS_THREAD_DATA {
 
 static HANDLE K32CreateDBMonMutex(VOID)
 {
-    static SID_IDENTIFIER_AUTHORITY siaNTAuth = { SECURITY_NT_AUTHORITY };
-    static SID_IDENTIFIER_AUTHORITY siaWorldAuth = { SECURITY_WORLD_SID_AUTHORITY };
+    static SID_IDENTIFIER_AUTHORITY NTAuth = { SECURITY_NT_AUTHORITY };
+    static SID_IDENTIFIER_AUTHORITY WorldAuth = { SECURITY_WORLD_SID_AUTHORITY };
     HANDLE hMutex;
     NTSTATUS Status;
 
     /* SIDs to be used in the DACL */
-    PSID psidSystem = NULL;
-    PSID psidAdministrators = NULL;
-    PSID psidEveryone = NULL;
+    PSID pSidSystem = NULL;
+    PSID pSidAdministrators = NULL;
+    PSID pSidEveryone = NULL;
 
     /* Buffer for the DACL */
     PVOID pDaclBuf = NULL;
@@ -45,8 +45,8 @@ static HANDLE K32CreateDBMonMutex(VOID)
     SIZE_T nDaclBufSize = sizeof(ACL) + 3 * FIELD_OFFSET(ACCESS_ALLOWED_ACE, SidStart);
 
     /* Security descriptor and attributes of the mutex */
-    SECURITY_DESCRIPTOR sdMutexSecurity;
-    SECURITY_ATTRIBUTES saMutexAttribs = { sizeof(saMutexAttribs), &sdMutexSecurity,
+    SECURITY_DESCRIPTOR MutexSecurity;
+    SECURITY_ATTRIBUTES MutexAttribs = { sizeof(MutexAttribs), &MutexSecurity,
 					   TRUE };
 
     /* Try to open the mutex */
@@ -65,28 +65,28 @@ static HANDLE K32CreateDBMonMutex(VOID)
     /* If the mutex does not exist, set up its security, then create it */
 
     /* Allocate the NT AUTHORITY\SYSTEM SID */
-    Status = RtlAllocateAndInitializeSid(&siaNTAuth, 1, SECURITY_LOCAL_SYSTEM_RID, 0, 0,
-					 0, 0, 0, 0, 0, &psidSystem);
+    Status = RtlAllocateAndInitializeSid(&NTAuth, 1, SECURITY_LOCAL_SYSTEM_RID, 0, 0,
+					 0, 0, 0, 0, 0, &pSidSystem);
     if (!NT_SUCCESS(Status))
 	goto Cleanup;
 
     /* Allocate the BUILTIN\Administrators SID */
-    Status = RtlAllocateAndInitializeSid(&siaNTAuth, 2, SECURITY_BUILTIN_DOMAIN_RID,
+    Status = RtlAllocateAndInitializeSid(&NTAuth, 2, SECURITY_BUILTIN_DOMAIN_RID,
 					 DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0,
-					 &psidAdministrators);
+					 &pSidAdministrators);
     if (!NT_SUCCESS(Status))
 	goto Cleanup;
 
     /* Allocate the Everyone SID */
-    Status = RtlAllocateAndInitializeSid(&siaWorldAuth, 1, SECURITY_WORLD_RID, 0, 0, 0, 0,
-					 0, 0, 0, &psidEveryone);
+    Status = RtlAllocateAndInitializeSid(&WorldAuth, 1, SECURITY_WORLD_RID, 0, 0, 0, 0,
+					 0, 0, 0, &pSidEveryone);
     if (!NT_SUCCESS(Status))
 	goto Cleanup;
 
     /* Allocate space for the SIDs too */
-    nDaclBufSize += RtlLengthSid(psidSystem);
-    nDaclBufSize += RtlLengthSid(psidAdministrators);
-    nDaclBufSize += RtlLengthSid(psidEveryone);
+    nDaclBufSize += RtlLengthSid(pSidSystem);
+    nDaclBufSize += RtlLengthSid(pSidAdministrators);
+    nDaclBufSize += RtlLengthSid(pSidEveryone);
 
     /* Allocate the buffer for the DACL */
     pDaclBuf = GlobalAlloc(GMEM_FIXED, nDaclBufSize);
@@ -101,45 +101,45 @@ static HANDLE K32CreateDBMonMutex(VOID)
     /* Grant the minimum required access to Everyone */
     Status = RtlAddAccessAllowedAce(pDaclBuf, ACL_REVISION,
 				    SYNCHRONIZE | READ_CONTROL | MUTANT_QUERY_STATE,
-				    psidEveryone);
+				    pSidEveryone);
     if (!NT_SUCCESS(Status))
 	goto Cleanup;
 
     /* Grant full access to BUILTIN\Administrators */
     Status = RtlAddAccessAllowedAce(pDaclBuf, ACL_REVISION, MUTANT_ALL_ACCESS,
-				    psidAdministrators);
+				    pSidAdministrators);
     if (!NT_SUCCESS(Status))
 	goto Cleanup;
 
     /* Grant full access to NT AUTHORITY\SYSTEM */
     Status = RtlAddAccessAllowedAce(pDaclBuf, ACL_REVISION, MUTANT_ALL_ACCESS,
-				    psidSystem);
+				    pSidSystem);
     if (!NT_SUCCESS(Status))
 	goto Cleanup;
 
     /* Create the security descriptor */
-    Status = RtlCreateSecurityDescriptor(&sdMutexSecurity, SECURITY_DESCRIPTOR_REVISION);
+    Status = RtlCreateSecurityDescriptor(&MutexSecurity, SECURITY_DESCRIPTOR_REVISION);
     if (!NT_SUCCESS(Status))
 	goto Cleanup;
 
     /* Set the descriptor's DACL to the created ACL */
-    Status = RtlSetDaclSecurityDescriptor(&sdMutexSecurity, TRUE, pDaclBuf, FALSE);
+    Status = RtlSetDaclSecurityDescriptor(&MutexSecurity, TRUE, pDaclBuf, FALSE);
     if (!NT_SUCCESS(Status))
 	goto Cleanup;
 
     /* Create the mutex */
-    hMutex = CreateMutexW(&saMutexAttribs, FALSE, L"DBWinMutex");
+    hMutex = CreateMutexW(&MutexAttribs, FALSE, L"DBWinMutex");
 
 Cleanup:
     /* Free the buffers */
     if (pDaclBuf)
 	GlobalFree(pDaclBuf);
-    if (psidEveryone)
-	RtlFreeSid(psidEveryone);
-    if (psidAdministrators)
-	RtlFreeSid(psidAdministrators);
-    if (psidSystem)
-	RtlFreeSid(psidSystem);
+    if (pSidEveryone)
+	RtlFreeSid(pSidEveryone);
+    if (pSidAdministrators)
+	RtlFreeSid(pSidAdministrators);
+    if (pSidSystem)
+	RtlFreeSid(pSidSystem);
 
     return hMutex;
 }
@@ -460,12 +460,11 @@ WINAPI BOOL DebugBreakProcess(IN HANDLE Process)
  */
 WINAPI BOOL DebugSetProcessKillOnExit(IN BOOL KillOnExit)
 {
-    HANDLE Handle;
     NTSTATUS Status;
     ULONG State;
 
     /* Get the debug object */
-    Handle = DbgUiGetThreadDebugObject();
+    HANDLE Handle = DbgUiGetThreadDebugObject();
     if (!Handle) {
 	/* Fail */
 	BaseSetLastNTError(STATUS_INVALID_HANDLE);
@@ -590,16 +589,16 @@ WINAPI BOOL WaitForDebugEvent(IN LPDEBUG_EVENT lpDebugEvent, IN DWORD dwMillisec
 /*
  * @implemented
  */
-WINAPI VOID OutputDebugStringA(IN LPCSTR _OutputString)
+WINAPI VOID OutputDebugStringA(IN LPCSTR OutputString)
 {
     __try {
-	ULONG_PTR a_nArgs[2];
+	ULONG_PTR nArgs[2];
 
-	a_nArgs[0] = (ULONG_PTR)(strlen(_OutputString) + 1);
-	a_nArgs[1] = (ULONG_PTR)_OutputString;
+	nArgs[0] = (ULONG_PTR)(strlen(OutputString) + 1);
+	nArgs[1] = (ULONG_PTR)OutputString;
 
 	/* send the string to the user-mode debugger */
-	RaiseException(DBG_PRINTEXCEPTION_C, 0, 2, a_nArgs);
+	RaiseException(DBG_PRINTEXCEPTION_C, 0, 2, nArgs);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
 	/* no user-mode debugger: try the systemwide debug message monitor, or the
 	   kernel debugger as a last resort */
@@ -638,7 +637,7 @@ WINAPI VOID OutputDebugStringA(IN LPCSTR _OutputString)
 	}
 
 	__try {
-	    volatile PCHAR a_cBuffer = NULL;
+	    volatile PCHAR cBuffer = NULL;
 
 	    /* opening the mutex failed */
 	    if (hDBMonMutex == NULL) {
@@ -695,7 +694,7 @@ WINAPI VOID OutputDebugStringA(IN LPCSTR _OutputString)
 		volatile SIZE_T nOutputStringLen;
 
 		/* output the whole string */
-		nOutputStringLen = strlen(_OutputString);
+		nOutputStringLen = strlen(OutputString);
 
 		do {
 		    /* we're connected to the debug monitor:
@@ -719,7 +718,7 @@ WINAPI VOID OutputDebugStringA(IN LPCSTR _OutputString)
 			    nRoundLen = nOutputStringLen;
 
 			/* copy the current block into the buffer */
-			memcpy(pDBMonBuffer->Buffer, _OutputString, nRoundLen);
+			memcpy(pDBMonBuffer->Buffer, OutputString, nRoundLen);
 
 			/* null-terminate the current block */
 			pDBMonBuffer->Buffer[nRoundLen] = 0;
@@ -731,9 +730,9 @@ WINAPI VOID OutputDebugStringA(IN LPCSTR _OutputString)
 		    /* else, send the current block to the kernel debugger */
 		    else {
 			/* output in blocks of 512 characters */
-			a_cBuffer = (CHAR *)HeapAlloc(GetProcessHeap(), 0, 512);
+			cBuffer = (CHAR *)HeapAlloc(GetProcessHeap(), 0, 512);
 
-			if (!a_cBuffer) {
+			if (!cBuffer) {
 			    DbgPrint("OutputDebugStringA: Failed\n");
 			    break;
 			}
@@ -745,22 +744,22 @@ WINAPI VOID OutputDebugStringA(IN LPCSTR _OutputString)
 			    nRoundLen = nOutputStringLen;
 
 			/* copy the current block */
-			memcpy(a_cBuffer, _OutputString, nRoundLen);
+			memcpy(cBuffer, OutputString, nRoundLen);
 
 			/* null-terminate the current block */
-			a_cBuffer[nRoundLen] = 0;
+			cBuffer[nRoundLen] = 0;
 
 			/* send the current block to the kernel debugger */
-			DbgPrint("%s", a_cBuffer);
+			DbgPrint("%s", cBuffer);
 
-			if (a_cBuffer) {
-			    HeapFree(GetProcessHeap(), 0, a_cBuffer);
-			    a_cBuffer = NULL;
+			if (cBuffer) {
+			    HeapFree(GetProcessHeap(), 0, cBuffer);
+			    cBuffer = NULL;
 			}
 		    }
 
 		    /* move to the next block */
-		    _OutputString += nRoundLen;
+		    OutputString += nRoundLen;
 		    nOutputStringLen -= nRoundLen;
 		}
 		/* repeat until the string has been fully output */
@@ -770,8 +769,8 @@ WINAPI VOID OutputDebugStringA(IN LPCSTR _OutputString)
 	    __except ((GetExceptionCode() == STATUS_ACCESS_VIOLATION) ?
 			  EXCEPTION_EXECUTE_HANDLER :
 			  EXCEPTION_CONTINUE_SEARCH) {
-		if (a_cBuffer)
-		    HeapFree(GetProcessHeap(), 0, a_cBuffer);
+		if (cBuffer)
+		    HeapFree(GetProcessHeap(), 0, cBuffer);
 
 		/* string copied verbatim from Microsoft's kernel32.dll */
 		DbgPrint("\nOutputDebugString faulted during output\n");

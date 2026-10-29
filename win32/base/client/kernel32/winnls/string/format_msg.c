@@ -27,8 +27,8 @@ extern HMODULE Kernel32Handle;
 
 struct FORMAT_ARGS {
     ULONG_PTR *Args;
-    __ms_va_list *list;
-    int last;
+    __ms_va_list *List;
+    int Last;
 };
 
 /* Messages used by FormatMessage
@@ -54,286 +54,286 @@ struct FORMAT_ARGS {
  */
 
 /**********************************************************************
- *	load_message    (internal)
+ *	LoadMessage    (internal)
  */
-static LPWSTR load_message(HMODULE module, UINT id, WORD lang)
+static LPWSTR LoadMessage(HMODULE Module, UINT Id, WORD Lang)
 {
-    MESSAGE_RESOURCE_ENTRY *mre;
-    WCHAR *buffer;
-    NTSTATUS status;
+    MESSAGE_RESOURCE_ENTRY *Mre;
+    WCHAR *Buffer;
+    NTSTATUS Status;
 
-    TRACE("module = %p, id = %08x\n", module, id);
+    TRACE("module = %p, id = %08x\n", Module, Id);
 
-    if (!module)
-	module = GetModuleHandleW(NULL);
-    status = RtlFindMessage(module, (ULONG_PTR)RT_MESSAGETABLE, lang, id, &mre);
-    if (!NT_SUCCESS(status))
+    if (!Module)
+	Module = GetModuleHandleW(NULL);
+    Status = RtlFindMessage(Module, (ULONG_PTR)RT_MESSAGETABLE, Lang, Id, &Mre);
+    if (!NT_SUCCESS(Status))
     {
-	SetLastError(RtlNtStatusToDosError(status));
+	SetLastError(RtlNtStatusToDosError(Status));
 	return NULL;
     }
 
-    if (mre->Flags & MESSAGE_RESOURCE_UNICODE) {
-	int len = (strlenW((const WCHAR *)mre->Text) + 1) * sizeof(WCHAR);
-	if (!(buffer = HeapAlloc(GetProcessHeap(), 0, len)))
+    if (Mre->Flags & MESSAGE_RESOURCE_UNICODE) {
+	int Len = (strlenW((const WCHAR *)Mre->Text) + 1) * sizeof(WCHAR);
+	if (!(Buffer = HeapAlloc(GetProcessHeap(), 0, Len)))
 	    return NULL;
-	memcpy(buffer, mre->Text, len);
+	memcpy(Buffer, Mre->Text, Len);
     } else {
-	int len = MultiByteToWideChar(CP_ACP, 0, (const char *)mre->Text, -1, NULL, 0);
-	if (!(buffer = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR))))
+	int Len = MultiByteToWideChar(CP_ACP, 0, (const char *)Mre->Text, -1, NULL, 0);
+	if (!(Buffer = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR))))
 	    return NULL;
-	MultiByteToWideChar(CP_ACP, 0, (const char *)mre->Text, -1, buffer, len);
+	MultiByteToWideChar(CP_ACP, 0, (const char *)Mre->Text, -1, Buffer, Len);
     }
-    TRACE("returning %s\n", wine_dbgstr_w(buffer));
-    return buffer;
+    TRACE("returning %ws\n", Buffer);
+    return Buffer;
 }
 
-static LPWSTR search_message(DWORD flags, HMODULE module, UINT id, WORD lang)
+static LPWSTR SearchMessage(DWORD Flags, HMODULE Module, UINT Id, WORD Lang)
 {
-    LPWSTR from = NULL;
-    if (flags & FORMAT_MESSAGE_FROM_HMODULE)
-	from = load_message(module, id, lang);
-    if (!from && (flags & FORMAT_MESSAGE_FROM_SYSTEM)) {
+    LPWSTR From = NULL;
+    if (Flags & FORMAT_MESSAGE_FROM_HMODULE)
+	From = LoadMessage(Module, Id, Lang);
+    if (!From && (Flags & FORMAT_MESSAGE_FROM_SYSTEM)) {
 	/* Fold win32 hresult to its embedded error code. */
-	if (HRESULT_SEVERITY(id) == SEVERITY_ERROR &&
-	    HRESULT_FACILITY(id) == FACILITY_WIN32) {
-	    id = HRESULT_CODE(id);
+	if (HRESULT_SEVERITY(Id) == SEVERITY_ERROR &&
+	    HRESULT_FACILITY(Id) == FACILITY_WIN32) {
+	    Id = HRESULT_CODE(Id);
 	}
-	from = load_message(Kernel32Handle, id, lang);
+	From = LoadMessage(Kernel32Handle, Id, Lang);
     }
-    return from;
+    return From;
 }
 
 /**********************************************************************
- *	get_arg    (internal)
+ *	GetArg    (internal)
  */
-static ULONG_PTR get_arg(int nr, DWORD flags, struct FORMAT_ARGS *args)
+static ULONG_PTR GetArg(int Nr, DWORD Flags, struct FORMAT_ARGS *Args)
 {
-    if (nr == -1)
-	nr = args->last + 1;
-    if (args->list) {
-	if (!args->Args)
-	    args->Args = HeapAlloc(GetProcessHeap(), 0, 99 * sizeof(ULONG_PTR));
-	while (nr > args->last)
-	    args->Args[args->last++] = va_arg(*args->list, ULONG_PTR);
+    if (Nr == -1)
+	Nr = Args->Last + 1;
+    if (Args->List) {
+	if (!Args->Args)
+	    Args->Args = HeapAlloc(GetProcessHeap(), 0, 99 * sizeof(ULONG_PTR));
+	while (Nr > Args->Last)
+	    Args->Args[Args->Last++] = va_arg(*Args->List, ULONG_PTR);
     }
-    if (nr > args->last)
-	args->last = nr;
-    return args->Args[nr - 1];
+    if (Nr > Args->Last)
+	Args->Last = Nr;
+    return Args->Args[Nr - 1];
 }
 
 /**********************************************************************
- *	format_insert    (internal)
+ *	FormatInsert    (internal)
  */
-static LPCWSTR format_insert(BOOL unicode_caller, int insert, LPCWSTR format, DWORD flags,
-			     struct FORMAT_ARGS *args, LPWSTR *result)
+static LPCWSTR FormatInsert(BOOL UnicodeCaller, int Insert, LPCWSTR Format, DWORD Flags,
+			    struct FORMAT_ARGS *Args, LPWSTR *Result)
 {
-    static const WCHAR fmt_u[] = { '%', 'u', 0 };
-    WCHAR *wstring = NULL, *p, fmt[256];
-    ULONG_PTR arg;
-    int size;
+    static const WCHAR FmtU[] = { '%', 'u', 0 };
+    WCHAR *Wstring = NULL, *p, Fmt[256];
+    ULONG_PTR Arg;
+    int Size;
 
-    if (*format != '!') /* simple string */
+    if (*Format != '!') /* simple string */
     {
-	arg = get_arg(insert, flags, args);
-	if (unicode_caller || !arg) {
-	    static const WCHAR nullW[] = { '(', 'n', 'u', 'l', 'l', ')', 0 };
-	    const WCHAR *str = (const WCHAR *)arg;
+	Arg = GetArg(Insert, Flags, Args);
+	if (UnicodeCaller || !Arg) {
+	    static const WCHAR NullW[] = { '(', 'n', 'u', 'l', 'l', ')', 0 };
+	    const WCHAR *Str = (const WCHAR *)Arg;
 
-	    if (!str)
-		str = nullW;
-	    ULONG nChars = strlenW(str) + 1;
-	    *result = HeapAlloc(GetProcessHeap(), 0, nChars * sizeof(WCHAR));
-	    wcscpy_s(*result, nChars, str);
+	    if (!Str)
+		Str = NullW;
+	    ULONG nChars = strlenW(Str) + 1;
+	    *Result = HeapAlloc(GetProcessHeap(), 0, nChars * sizeof(WCHAR));
+	    wcscpy_s(*Result, nChars, Str);
 	} else {
-	    const char *str = (const char *)arg;
-	    DWORD length = MultiByteToWideChar(CP_ACP, 0, str, -1, NULL, 0);
-	    *result = HeapAlloc(GetProcessHeap(), 0, length * sizeof(WCHAR));
-	    MultiByteToWideChar(CP_ACP, 0, str, -1, *result, length);
+	    const char *Str = (const char *)Arg;
+	    DWORD Length = MultiByteToWideChar(CP_ACP, 0, Str, -1, NULL, 0);
+	    *Result = HeapAlloc(GetProcessHeap(), 0, Length * sizeof(WCHAR));
+	    MultiByteToWideChar(CP_ACP, 0, Str, -1, *Result, Length);
 	}
-	return format;
+	return Format;
     }
 
-    format++;
-    p = fmt;
+    Format++;
+    p = Fmt;
     *p++ = '%';
 
-    while (*format == '0' || *format == '+' || *format == '-' || *format == ' ' ||
-	   *format == '*' || *format == '#') {
-	if (*format == '*') {
-	    p += sprintfW(p, fmt_u, get_arg(insert, flags, args));
-	    insert = -1;
-	    format++;
+    while (*Format == '0' || *Format == '+' || *Format == '-' || *Format == ' ' ||
+	   *Format == '*' || *Format == '#') {
+	if (*Format == '*') {
+	    p += sprintfW(p, FmtU, GetArg(Insert, Flags, Args));
+	    Insert = -1;
+	    Format++;
 	} else
-	    *p++ = *format++;
+	    *p++ = *Format++;
     }
-    while (isdigitW(*format))
-	*p++ = *format++;
+    while (isdigitW(*Format))
+	*p++ = *Format++;
 
-    if (*format == '.') {
-	*p++ = *format++;
-	if (*format == '*') {
-	    p += sprintfW(p, fmt_u, get_arg(insert, flags, args));
-	    insert = -1;
-	    format++;
+    if (*Format == '.') {
+	*p++ = *Format++;
+	if (*Format == '*') {
+	    p += sprintfW(p, FmtU, GetArg(Insert, Flags, Args));
+	    Insert = -1;
+	    Format++;
 	} else
-	    while (isdigitW(*format))
-		*p++ = *format++;
+	    while (isdigitW(*Format))
+		*p++ = *Format++;
     }
 
     /* replicate MS bug: drop an argument when using va_list with width/precision */
-    if (insert == -1 && args->list)
-	args->last--;
-    arg = get_arg(insert, flags, args);
+    if (Insert == -1 && Args->List)
+	Args->Last--;
+    Arg = GetArg(Insert, Flags, Args);
 
     /* check for ascii string format */
-    if ((format[0] == 'h' && format[1] == 's') ||
-	(format[0] == 'h' && format[1] == 'S') || (unicode_caller && format[0] == 'S') ||
-	(!unicode_caller && format[0] == 's')) {
-	DWORD len = MultiByteToWideChar(CP_ACP, 0, (char *)arg, -1, NULL, 0);
-	wstring = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
-	MultiByteToWideChar(CP_ACP, 0, (char *)arg, -1, wstring, len);
-	arg = (ULONG_PTR)wstring;
+    if ((Format[0] == 'h' && Format[1] == 's') ||
+	(Format[0] == 'h' && Format[1] == 'S') || (UnicodeCaller && Format[0] == 'S') ||
+	(!UnicodeCaller && Format[0] == 's')) {
+	DWORD Len = MultiByteToWideChar(CP_ACP, 0, (char *)Arg, -1, NULL, 0);
+	Wstring = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR));
+	MultiByteToWideChar(CP_ACP, 0, (char *)Arg, -1, Wstring, Len);
+	Arg = (ULONG_PTR)Wstring;
 	*p++ = 's';
     }
     /* check for ascii character format */
-    else if ((format[0] == 'h' && format[1] == 'c') ||
-	     (format[0] == 'h' && format[1] == 'C') ||
-	     (unicode_caller && format[0] == 'C') ||
-	     (!unicode_caller && format[0] == 'c')) {
-	char ch = arg;
-	wstring = HeapAlloc(GetProcessHeap(), 0, 2 * sizeof(WCHAR));
-	MultiByteToWideChar(CP_ACP, 0, &ch, 1, wstring, 1);
-	wstring[1] = 0;
-	arg = (ULONG_PTR)wstring;
+    else if ((Format[0] == 'h' && Format[1] == 'c') ||
+	     (Format[0] == 'h' && Format[1] == 'C') ||
+	     (UnicodeCaller && Format[0] == 'C') ||
+	     (!UnicodeCaller && Format[0] == 'c')) {
+	char Ch = Arg;
+	Wstring = HeapAlloc(GetProcessHeap(), 0, 2 * sizeof(WCHAR));
+	MultiByteToWideChar(CP_ACP, 0, &Ch, 1, Wstring, 1);
+	Wstring[1] = 0;
+	Arg = (ULONG_PTR)Wstring;
 	*p++ = 's';
     }
     /* check for wide string format */
-    else if ((format[0] == 'l' && format[1] == 's') ||
-	     (format[0] == 'l' && format[1] == 'S') ||
-	     (format[0] == 'w' && format[1] == 's') ||
-	     (!unicode_caller && format[0] == 'S')) {
+    else if ((Format[0] == 'l' && Format[1] == 's') ||
+	     (Format[0] == 'l' && Format[1] == 'S') ||
+	     (Format[0] == 'w' && Format[1] == 's') ||
+	     (!UnicodeCaller && Format[0] == 'S')) {
 	*p++ = 's';
     }
     /* check for wide character format */
-    else if ((format[0] == 'l' && format[1] == 'c') ||
-	     (format[0] == 'l' && format[1] == 'C') ||
-	     (format[0] == 'w' && format[1] == 'c') ||
-	     (!unicode_caller && format[0] == 'C')) {
+    else if ((Format[0] == 'l' && Format[1] == 'c') ||
+	     (Format[0] == 'l' && Format[1] == 'C') ||
+	     (Format[0] == 'w' && Format[1] == 'c') ||
+	     (!UnicodeCaller && Format[0] == 'C')) {
 	*p++ = 'c';
     }
     /* FIXME: handle I64 etc. */
     else
-	while (*format && *format != '!')
-	    *p++ = *format++;
+	while (*Format && *Format != '!')
+	    *p++ = *Format++;
 
     *p = 0;
-    size = 256;
+    Size = 256;
     for (;;) {
-	WCHAR *ret = HeapAlloc(GetProcessHeap(), 0, size * sizeof(WCHAR));
-	int needed = snprintfW(ret, size, fmt, arg);
-	if (needed == -1 || needed >= size) {
-	    HeapFree(GetProcessHeap(), 0, ret);
-	    size = max(needed + 1, size * 2);
+	WCHAR *Ret = HeapAlloc(GetProcessHeap(), 0, Size * sizeof(WCHAR));
+	int Needed = snprintfW(Ret, Size, Fmt, Arg);
+	if (Needed == -1 || Needed >= Size) {
+	    HeapFree(GetProcessHeap(), 0, Ret);
+	    Size = max(Needed + 1, Size * 2);
 	} else {
-	    *result = ret;
+	    *Result = Ret;
 	    break;
 	}
     }
 
-    while (*format && *format != '!')
-	format++;
-    if (*format == '!')
-	format++;
+    while (*Format && *Format != '!')
+	Format++;
+    if (*Format == '!')
+	Format++;
 
-    HeapFree(GetProcessHeap(), 0, wstring);
-    return format;
+    HeapFree(GetProcessHeap(), 0, Wstring);
+    return Format;
 }
 
-struct _format_message_data {
-    LPWSTR formatted;
-    DWORD size;
+struct FORMAT_MESSAGE_DATA {
+    LPWSTR Formatted;
+    DWORD Size;
     LPWSTR t;
-    LPWSTR space;
-    BOOL inspace;
-    DWORD width, w;
+    LPWSTR Space;
+    BOOL Inspace;
+    DWORD Width, w;
 };
 
-static void format_add_char(struct _format_message_data *fmd, WCHAR c)
+static void FormatAddChar(struct FORMAT_MESSAGE_DATA *Fmd, WCHAR c)
 {
-    *fmd->t++ = c;
-    if (fmd->width && fmd->width != FORMAT_MESSAGE_MAX_WIDTH_MASK) {
+    *Fmd->t++ = c;
+    if (Fmd->Width && Fmd->Width != FORMAT_MESSAGE_MAX_WIDTH_MASK) {
 	switch (c) {
 	case '\r':
 	case '\n':
-	    fmd->space = NULL;
-	    fmd->inspace = FALSE;
-	    fmd->w = 0;
+	    Fmd->Space = NULL;
+	    Fmd->Inspace = FALSE;
+	    Fmd->w = 0;
 	    break;
 	case ' ':
-	    if (!fmd->inspace)
-		fmd->space = fmd->t - 1;
-	    fmd->inspace = TRUE;
-	    fmd->w++;
+	    if (!Fmd->Inspace)
+		Fmd->Space = Fmd->t - 1;
+	    Fmd->Inspace = TRUE;
+	    Fmd->w++;
 	    break;
 	default:
-	    fmd->inspace = FALSE;
-	    fmd->w++;
+	    Fmd->Inspace = FALSE;
+	    Fmd->w++;
 	}
-	if (fmd->w == fmd->width) {
-	    LPWSTR notspace;
-	    if (fmd->space) {
-		notspace = fmd->space;
-		while (notspace != fmd->t && *notspace == ' ')
-		    notspace++;
+	if (Fmd->w == Fmd->Width) {
+	    LPWSTR Notspace;
+	    if (Fmd->Space) {
+		Notspace = Fmd->Space;
+		while (Notspace != Fmd->t && *Notspace == ' ')
+		    Notspace++;
 	    } else
-		notspace = fmd->space = fmd->t;
-	    fmd->w = fmd->t - notspace;
-	    memmove(fmd->space + 2, notspace, fmd->w * sizeof(*fmd->t));
-	    *fmd->space++ = '\r';
-	    *fmd->space++ = '\n';
-	    fmd->t = fmd->space + fmd->w;
-	    fmd->space = NULL;
-	    fmd->inspace = FALSE;
+		Notspace = Fmd->Space = Fmd->t;
+	    Fmd->w = Fmd->t - Notspace;
+	    memmove(Fmd->Space + 2, Notspace, Fmd->w * sizeof(*Fmd->t));
+	    *Fmd->Space++ = '\r';
+	    *Fmd->Space++ = '\n';
+	    Fmd->t = Fmd->Space + Fmd->w;
+	    Fmd->Space = NULL;
+	    Fmd->Inspace = FALSE;
 	}
     }
-    if ((DWORD)(fmd->t - fmd->formatted) == fmd->size) {
-	DWORD_PTR ispace = fmd->space - fmd->formatted;
+    if ((DWORD)(Fmd->t - Fmd->Formatted) == Fmd->Size) {
+	DWORD_PTR Ispace = Fmd->Space - Fmd->Formatted;
 	/* Allocate two extra characters so we can insert a '\r\n' in
 	 * the middle of a word.
 	 */
-	fmd->formatted = HeapReAlloc(GetProcessHeap(), 0, fmd->formatted,
-				     (fmd->size * 2 + 2) * sizeof(WCHAR));
-	fmd->t = fmd->formatted + fmd->size;
-	if (fmd->space)
-	    fmd->space = fmd->formatted + ispace;
-	fmd->size *= 2;
+	Fmd->Formatted = HeapReAlloc(GetProcessHeap(), 0, Fmd->Formatted,
+				     (Fmd->Size * 2 + 2) * sizeof(WCHAR));
+	Fmd->t = Fmd->Formatted + Fmd->Size;
+	if (Fmd->Space)
+	    Fmd->Space = Fmd->Formatted + Ispace;
+	Fmd->Size *= 2;
     }
 }
 
 /**********************************************************************
- *	format_message    (internal)
+ *	FormatMessage    (internal)
  */
-static LPWSTR format_message(BOOL unicode_caller, DWORD dwFlags, LPCWSTR fmtstr,
-			     struct FORMAT_ARGS *format_args)
+static LPWSTR FormatMessageInternal(BOOL UnicodeCaller, DWORD dwFlags, LPCWSTR Fmtstr,
+				    struct FORMAT_ARGS *FormatArgs)
 {
-    struct _format_message_data fmd;
+    struct FORMAT_MESSAGE_DATA Fmd;
     LPCWSTR f;
-    BOOL eos = FALSE;
+    BOOL Eos = FALSE;
 
-    fmd.size = 100;
-    fmd.formatted = fmd.t = HeapAlloc(GetProcessHeap(), 0,
-				      (fmd.size + 2) * sizeof(WCHAR));
+    Fmd.Size = 100;
+    Fmd.Formatted = Fmd.t = HeapAlloc(GetProcessHeap(), 0,
+				      (Fmd.Size + 2) * sizeof(WCHAR));
 
-    fmd.width = dwFlags & FORMAT_MESSAGE_MAX_WIDTH_MASK;
-    fmd.w = 0;
-    fmd.inspace = FALSE;
-    fmd.space = NULL;
-    f = fmtstr;
-    while (*f && !eos) {
+    Fmd.Width = dwFlags & FORMAT_MESSAGE_MAX_WIDTH_MASK;
+    Fmd.w = 0;
+    Fmd.Inspace = FALSE;
+    Fmd.Space = NULL;
+    f = Fmtstr;
+    while (*f && !Eos) {
 	if (*f == '%') {
-	    int insertnr;
-	    WCHAR *str, *x;
+	    int Insertnr;
+	    WCHAR *Str, *x;
 
 	    f++;
 	    switch (*f) {
@@ -349,14 +349,14 @@ static LPWSTR format_message(BOOL unicode_caller, DWORD dwFlags, LPCWSTR fmtstr,
 		if (dwFlags & FORMAT_MESSAGE_IGNORE_INSERTS)
 		    goto ignore_inserts;
 		else if (((dwFlags & FORMAT_MESSAGE_ARGUMENT_ARRAY) &&
-			  !format_args->Args) ||
+			  !FormatArgs->Args) ||
 			 (!(dwFlags & FORMAT_MESSAGE_ARGUMENT_ARRAY) &&
-			  !format_args->list)) {
+			  !FormatArgs->List)) {
 		    SetLastError(ERROR_INVALID_PARAMETER);
-		    HeapFree(GetProcessHeap(), 0, fmd.formatted);
+		    HeapFree(GetProcessHeap(), 0, Fmd.Formatted);
 		    return NULL;
 		}
-		insertnr = *f - '0';
+		Insertnr = *f - '0';
 		switch (f[1]) {
 		case '0':
 		case '1':
@@ -369,75 +369,75 @@ static LPWSTR format_message(BOOL unicode_caller, DWORD dwFlags, LPCWSTR fmtstr,
 		case '8':
 		case '9':
 		    f++;
-		    insertnr = insertnr * 10 + *f - '0';
+		    Insertnr = Insertnr * 10 + *f - '0';
 		    f++;
 		    break;
 		default:
 		    f++;
 		    break;
 		}
-		f = format_insert(unicode_caller, insertnr, f, dwFlags, format_args,
-				  &str);
-		for (x = str; *x; x++)
-		    format_add_char(&fmd, *x);
-		HeapFree(GetProcessHeap(), 0, str);
+		f = FormatInsert(UnicodeCaller, Insertnr, f, dwFlags, FormatArgs,
+				  &Str);
+		for (x = Str; *x; x++)
+		    FormatAddChar(&Fmd, *x);
+		HeapFree(GetProcessHeap(), 0, Str);
 		break;
 	    case 'n':
-		format_add_char(&fmd, '\r');
-		format_add_char(&fmd, '\n');
+		FormatAddChar(&Fmd, '\r');
+		FormatAddChar(&Fmd, '\n');
 		f++;
 		break;
 	    case 'r':
-		format_add_char(&fmd, '\r');
+		FormatAddChar(&Fmd, '\r');
 		f++;
 		break;
 	    case 't':
-		format_add_char(&fmd, '\t');
+		FormatAddChar(&Fmd, '\t');
 		f++;
 		break;
 	    case '0':
-		eos = TRUE;
+		Eos = TRUE;
 		f++;
 		break;
 	    case '\0':
 		SetLastError(ERROR_INVALID_PARAMETER);
-		HeapFree(GetProcessHeap(), 0, fmd.formatted);
+		HeapFree(GetProcessHeap(), 0, Fmd.Formatted);
 		return NULL;
 	    ignore_inserts:
 	    default:
 		if (dwFlags & FORMAT_MESSAGE_IGNORE_INSERTS)
-		    format_add_char(&fmd, '%');
-		format_add_char(&fmd, *f++);
+		    FormatAddChar(&Fmd, '%');
+		FormatAddChar(&Fmd, *f++);
 		break;
 	    }
 	} else {
-	    WCHAR ch = *f;
+	    WCHAR Ch = *f;
 	    f++;
-	    if (ch == '\r') {
+	    if (Ch == '\r') {
 		if (*f == '\n')
 		    f++;
-		if (fmd.width)
-		    format_add_char(&fmd, ' ');
+		if (Fmd.Width)
+		    FormatAddChar(&Fmd, ' ');
 		else {
-		    format_add_char(&fmd, '\r');
-		    format_add_char(&fmd, '\n');
+		    FormatAddChar(&Fmd, '\r');
+		    FormatAddChar(&Fmd, '\n');
 		}
 	    } else {
-		if (ch == '\n') {
-		    if (fmd.width)
-			format_add_char(&fmd, ' ');
+		if (Ch == '\n') {
+		    if (Fmd.Width)
+			FormatAddChar(&Fmd, ' ');
 		    else {
-			format_add_char(&fmd, '\r');
-			format_add_char(&fmd, '\n');
+			FormatAddChar(&Fmd, '\r');
+			FormatAddChar(&Fmd, '\n');
 		    }
 		} else
-		    format_add_char(&fmd, ch);
+		    FormatAddChar(&Fmd, Ch);
 	    }
 	}
     }
-    *fmd.t = '\0';
+    *Fmd.t = '\0';
 
-    return fmd.formatted;
+    return Fmd.Formatted;
 }
 
 /***********************************************************************
@@ -445,16 +445,16 @@ static LPWSTR format_message(BOOL unicode_caller, DWORD dwFlags, LPCWSTR fmtstr,
  */
 WINAPI DWORD FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
 			    DWORD dwLanguageId, LPSTR lpBuffer, DWORD nSize,
-			    __ms_va_list *args)
+			    __ms_va_list *Args)
 {
-    struct FORMAT_ARGS format_args;
-    DWORD ret = 0;
-    LPWSTR target;
-    DWORD destlength;
-    LPWSTR from;
+    struct FORMAT_ARGS FormatArgs;
+    DWORD Ret = 0;
+    LPWSTR Target;
+    DWORD Destlength;
+    LPWSTR From;
 
     TRACE("(0x%x,%p,%d,0x%x,%p,%d,%p)\n", dwFlags, lpSource, dwMessageId, dwLanguageId,
-	  lpBuffer, nSize, args);
+	  lpBuffer, nSize, Args);
 
     if (dwFlags & FORMAT_MESSAGE_ALLOCATE_BUFFER) {
 	if (!lpBuffer) {
@@ -465,60 +465,60 @@ WINAPI DWORD FormatMessageA(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
     }
 
     if (dwFlags & FORMAT_MESSAGE_ARGUMENT_ARRAY) {
-	format_args.Args = (ULONG_PTR *)args;
-	format_args.list = NULL;
-	format_args.last = 0;
+	FormatArgs.Args = (ULONG_PTR *)Args;
+	FormatArgs.List = NULL;
+	FormatArgs.Last = 0;
     } else {
-	format_args.Args = NULL;
-	format_args.list = args;
-	format_args.last = 0;
+	FormatArgs.Args = NULL;
+	FormatArgs.List = Args;
+	FormatArgs.Last = 0;
     }
 
-    from = NULL;
+    From = NULL;
     if (dwFlags & FORMAT_MESSAGE_FROM_STRING) {
-	DWORD length = MultiByteToWideChar(CP_ACP, 0, lpSource, -1, NULL, 0);
-	from = HeapAlloc(GetProcessHeap(), 0, length * sizeof(WCHAR));
-	MultiByteToWideChar(CP_ACP, 0, lpSource, -1, from, length);
+	DWORD Length = MultiByteToWideChar(CP_ACP, 0, lpSource, -1, NULL, 0);
+	From = HeapAlloc(GetProcessHeap(), 0, Length * sizeof(WCHAR));
+	MultiByteToWideChar(CP_ACP, 0, lpSource, -1, From, Length);
     } else if (dwFlags & (FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_FROM_SYSTEM)) {
-	from = search_message(dwFlags, (HMODULE)lpSource, dwMessageId, dwLanguageId);
-	if (!from)
+	From = SearchMessage(dwFlags, (HMODULE)lpSource, dwMessageId, dwLanguageId);
+	if (!From)
 	    return 0;
     } else {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return 0;
     }
 
-    target = format_message(FALSE, dwFlags, from, &format_args);
-    if (!target)
+    Target = FormatMessageInternal(FALSE, dwFlags, From, &FormatArgs);
+    if (!Target)
 	goto failure;
 
-    TRACE("-- %s\n", debugstr_w(target));
+    TRACE("-- %ws\n", Target);
 
     /* Only try writing to an output buffer if there are processed characters
      * in the temporary output buffer. */
-    if (*target) {
-	destlength = WideCharToMultiByte(CP_ACP, 0, target, -1, NULL, 0, NULL, NULL);
+    if (*Target) {
+	Destlength = WideCharToMultiByte(CP_ACP, 0, Target, -1, NULL, 0, NULL, NULL);
 	if (dwFlags & FORMAT_MESSAGE_ALLOCATE_BUFFER) {
-	    LPSTR buf = LocalAlloc(LMEM_ZEROINIT, max(nSize, destlength));
-	    WideCharToMultiByte(CP_ACP, 0, target, -1, buf, destlength, NULL, NULL);
-	    *((LPSTR *)lpBuffer) = buf;
+	    LPSTR Buf = LocalAlloc(LMEM_ZEROINIT, max(nSize, Destlength));
+	    WideCharToMultiByte(CP_ACP, 0, Target, -1, Buf, Destlength, NULL, NULL);
+	    *((LPSTR *)lpBuffer) = Buf;
 	} else {
-	    if (nSize < destlength) {
+	    if (nSize < Destlength) {
 		SetLastError(ERROR_INSUFFICIENT_BUFFER);
 		goto failure;
 	    }
-	    WideCharToMultiByte(CP_ACP, 0, target, -1, lpBuffer, destlength, NULL, NULL);
+	    WideCharToMultiByte(CP_ACP, 0, Target, -1, lpBuffer, Destlength, NULL, NULL);
 	}
-	ret = destlength - 1; /* null terminator */
+	Ret = Destlength - 1; /* null terminator */
     }
 
 failure:
-    HeapFree(GetProcessHeap(), 0, target);
-    HeapFree(GetProcessHeap(), 0, from);
+    HeapFree(GetProcessHeap(), 0, Target);
+    HeapFree(GetProcessHeap(), 0, From);
     if (!(dwFlags & FORMAT_MESSAGE_ARGUMENT_ARRAY))
-	HeapFree(GetProcessHeap(), 0, format_args.Args);
-    TRACE("-- returning %u\n", ret);
-    return ret;
+	HeapFree(GetProcessHeap(), 0, FormatArgs.Args);
+    TRACE("-- returning %u\n", Ret);
+    return Ret;
 }
 
 /***********************************************************************
@@ -526,16 +526,16 @@ failure:
  */
 WINAPI DWORD FormatMessageW(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
 			    DWORD dwLanguageId, LPWSTR lpBuffer, DWORD nSize,
-			    __ms_va_list *args)
+			    __ms_va_list *Args)
 {
-    struct FORMAT_ARGS format_args;
-    DWORD ret = 0;
-    LPWSTR target;
-    DWORD talloced;
-    LPWSTR from;
+    struct FORMAT_ARGS FormatArgs;
+    DWORD Ret = 0;
+    LPWSTR Target;
+    DWORD Talloced;
+    LPWSTR From;
 
     TRACE("(0x%x,%p,%d,0x%x,%p,%d,%p)\n", dwFlags, lpSource, dwMessageId, dwLanguageId,
-	  lpBuffer, nSize, args);
+	  lpBuffer, nSize, Args);
 
     if (!lpBuffer) {
 	SetLastError(ERROR_INVALID_PARAMETER);
@@ -546,60 +546,60 @@ WINAPI DWORD FormatMessageW(DWORD dwFlags, LPCVOID lpSource, DWORD dwMessageId,
 	*(LPWSTR *)lpBuffer = NULL;
 
     if (dwFlags & FORMAT_MESSAGE_ARGUMENT_ARRAY) {
-	format_args.Args = (ULONG_PTR *)args;
-	format_args.list = NULL;
-	format_args.last = 0;
+	FormatArgs.Args = (ULONG_PTR *)Args;
+	FormatArgs.List = NULL;
+	FormatArgs.Last = 0;
     } else {
-	format_args.Args = NULL;
-	format_args.list = args;
-	format_args.last = 0;
+	FormatArgs.Args = NULL;
+	FormatArgs.List = Args;
+	FormatArgs.Last = 0;
     }
 
-    from = NULL;
+    From = NULL;
     if (dwFlags & FORMAT_MESSAGE_FROM_STRING) {
 	ULONG nChars = strlenW(lpSource) + 1;
-	from = HeapAlloc(GetProcessHeap(), 0, nChars * sizeof(WCHAR));
-	wcscpy_s(from, nChars, lpSource);
+	From = HeapAlloc(GetProcessHeap(), 0, nChars * sizeof(WCHAR));
+	wcscpy_s(From, nChars, lpSource);
     } else if (dwFlags & (FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_FROM_SYSTEM)) {
-	from = search_message(dwFlags, (HMODULE)lpSource, dwMessageId, dwLanguageId);
-	if (!from)
+	From = SearchMessage(dwFlags, (HMODULE)lpSource, dwMessageId, dwLanguageId);
+	if (!From)
 	    return 0;
     } else {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return 0;
     }
 
-    target = format_message(TRUE, dwFlags, from, &format_args);
-    if (!target)
+    Target = FormatMessageInternal(TRUE, dwFlags, From, &FormatArgs);
+    if (!Target)
 	goto failure;
 
-    talloced = strlenW(target) + 1;
-    TRACE("-- %s\n", debugstr_w(target));
+    Talloced = strlenW(Target) + 1;
+    TRACE("-- %ws\n", Target);
 
     /* Only allocate a buffer if there are processed characters in the
      * temporary output buffer. If a caller supplies the buffer, then
      * a null terminator will be written to it. */
     if (dwFlags & FORMAT_MESSAGE_ALLOCATE_BUFFER) {
-	if (*target) {
+	if (*Target) {
 	    /* nSize is the MINIMUM size */
 	    *((LPVOID *)lpBuffer) = LocalAlloc(LMEM_ZEROINIT,
-					       max(nSize, talloced) * sizeof(WCHAR));
-	    wcscpy_s(*(LPWSTR *)lpBuffer, max(nSize, talloced), target);
+					       max(nSize, Talloced) * sizeof(WCHAR));
+	    wcscpy_s(*(LPWSTR *)lpBuffer, max(nSize, Talloced), Target);
 	}
     } else {
-	if (nSize < talloced) {
+	if (nSize < Talloced) {
 	    SetLastError(ERROR_INSUFFICIENT_BUFFER);
 	    goto failure;
 	}
-	wcscpy_s(lpBuffer, nSize, target);
+	wcscpy_s(lpBuffer, nSize, Target);
     }
 
-    ret = talloced - 1; /* null terminator */
+    Ret = Talloced - 1; /* null terminator */
 failure:
-    HeapFree(GetProcessHeap(), 0, target);
-    HeapFree(GetProcessHeap(), 0, from);
+    HeapFree(GetProcessHeap(), 0, Target);
+    HeapFree(GetProcessHeap(), 0, From);
     if (!(dwFlags & FORMAT_MESSAGE_ARGUMENT_ARRAY))
-	HeapFree(GetProcessHeap(), 0, format_args.Args);
-    TRACE("-- returning %u\n", ret);
-    return ret;
+	HeapFree(GetProcessHeap(), 0, FormatArgs.Args);
+    TRACE("-- returning %u\n", Ret);
+    return Ret;
 }

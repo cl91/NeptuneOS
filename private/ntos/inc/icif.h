@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <nt.h>
+
 /*
  * Implement generic information class probing code in a
  * separate header within the NT kernel header internals.
@@ -22,10 +24,10 @@
 #define ICIF_SIZE_VARIABLE	 (ICIF_QUERY_SIZE_VARIABLE | ICIF_SET_SIZE_VARIABLE)
 
 typedef struct _INFORMATION_CLASS_INFO {
-    USHORT RequiredSizeQUERY;
-    UCHAR AlignmentQUERY;
-    USHORT RequiredSizeSET;
-    UCHAR AlignmentSET;
+    USHORT RequiredSizeQuery;
+    UCHAR AlignmentQuery;
+    USHORT RequiredSizeSet;
+    UCHAR AlignmentSet;
     USHORT Flags;
 } INFORMATION_CLASS_INFO, *PINFORMATION_CLASS_INFO;
 

@@ -121,7 +121,8 @@ NTSTATUS NtCreatePort(IN ASYNC_STATE AsyncState,
 		      OUT HANDLE *PortHandle,
 		      OUT LOCAL_HANDLE *CommPortHandle,
 		      IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
-		      IN ULONG MaxMessageLength)
+		      IN ULONG MaxMessageLength,
+		      IN OPTIONAL PSECURITY_QUALITY_OF_SERVICE SecurityQos)
 {
     POBJECT RootDirectory = NULL;
     if (ObjectAttributes.RootDirectory) {
@@ -302,9 +303,9 @@ NTSTATUS NtAcceptPort(IN ASYNC_STATE AsyncState,
 	goto refuse;
     }
 
-    /* Create an event object if the server has requested so. Note if an error has
-     * occurred here, the system is likely in a very low memory state, so we refuse
-     * the connection. */
+    /* Create a per-connection-event object if the server has requested so. Note if
+     * an error has occurred here, the system is likely in a very low memory state,
+     * so we refuse the connection. */
     if (EventHandle) {
 	IF_ERR_GOTO(refuse, Status,
 		    ExCreateEvent(Thread->Process, SynchronizationEvent,
@@ -382,8 +383,7 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
     }
     if (ConnectionInformation && ConnectionInformationLength) {
 	Locals.Connection->ConnectionInformation =
-	    ExAllocatePoolWithTag(ConnectionInformationLength,
-				  NTOS_EX_TAG);
+	    ExAllocatePoolWithTag(ConnectionInformationLength, NTOS_EX_TAG);
 	if (!Locals.Connection->ConnectionInformation) {
 	    ExFreePoolWithTag(Locals.Connection, NTOS_EX_TAG);
 	    Status = STATUS_INSUFFICIENT_RESOURCES;

@@ -295,7 +295,7 @@ WINAPI BOOL DefineDosDeviceW(DWORD dwFlags, LPCWSTR lpDeviceName, LPCWSTR lpTarg
 
     /* Return failure if any */
     if (!NT_SUCCESS(ApiMessage.Status)) {
-	WARN("CsrClientCallServer() failed (Status %lx)\n", ApiMessage.Status);
+	WARN("CsrClientCallServer() failed (Status %x)\n", ApiMessage.Status);
 	BaseSetLastNTError(ApiMessage.Status);
 	return FALSE;
     }
@@ -348,7 +348,7 @@ WINAPI BOOL DefineDosDeviceW(DWORD dwFlags, LPCWSTR lpDeviceName, LPCWSTR lpTarg
 /*
  * @implemented
  */
-WINAPI DWORD QueryDosDeviceA(LPCSTR lpDeviceName, LPSTR lpTargetPath, DWORD ucchMax)
+WINAPI DWORD QueryDosDeviceA(LPCSTR lpDeviceName, LPSTR lpTargetPath, DWORD dMaxChars)
 {
     NTSTATUS Status;
     USHORT CurrentPosition;
@@ -385,19 +385,19 @@ WINAPI DWORD QueryDosDeviceA(LPCSTR lpDeviceName, LPSTR lpTargetPath, DWORD ucch
     }
 
     /* Allocate the output buffer for W call */
-    TargetPathBuffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, ucchMax * sizeof(WCHAR));
+    TargetPathBuffer = RtlAllocateHeap(RtlGetProcessHeap(), 0, dMaxChars * sizeof(WCHAR));
     if (TargetPathBuffer == NULL) {
 	SetLastError(ERROR_NOT_ENOUGH_MEMORY);
 	return 0;
     }
 
     /* Call W */
-    Length = QueryDosDeviceW(DeviceNameBuffer, TargetPathBuffer, ucchMax);
+    Length = QueryDosDeviceW(DeviceNameBuffer, TargetPathBuffer, dMaxChars);
     /* We'll return that length in case of a success */
     RetLength = Length;
 
     /* Handle the case where we would fill output buffer completly */
-    if (Length != 0 && Length == ucchMax) {
+    if (Length != 0 && Length == dMaxChars) {
 	/* This will be our work length (but not the one we return) */
 	--Length;
 	/* Already 0 the last char */
@@ -452,7 +452,7 @@ Leave:
 /*
  * @implemented
  */
-WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD ucchMax)
+WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD dMaxChar)
 {
     PWSTR Ptr;
     PVOID Buffer;
@@ -472,7 +472,7 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 			       NULL, NULL);
     Status = NtOpenDirectoryObject(&DirectoryHandle, DIRECTORY_QUERY, &ObjectAttributes);
     if (!NT_SUCCESS(Status)) {
-	WARN("NtOpenDirectoryObject() failed (Status %lx)\n", Status);
+	WARN("NtOpenDirectoryObject() failed (Status %x)\n", Status);
 	BaseSetLastNTError(Status);
 	return 0;
     }
@@ -487,7 +487,7 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 	    Status = NtOpenSymbolicLinkObject(&DeviceHandle, SYMBOLIC_LINK_QUERY,
 					      &ObjectAttributes);
 	    if (!NT_SUCCESS(Status)) {
-		WARN("NtOpenSymbolicLinkObject() failed (Status %lx)\n", Status);
+		WARN("NtOpenSymbolicLinkObject() failed (Status %x)\n", Status);
 		__leave;
 	    }
 
@@ -495,7 +495,7 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 	     * Make sure we don't overrun the output buffer, so convert our DWORD
 	     * size to USHORT size properly
 	     */
-	    Length = (ucchMax <= MAXULONG / sizeof(WCHAR)) ? (ucchMax * sizeof(WCHAR)) :
+	    Length = (dMaxChar <= MAXULONG / sizeof(WCHAR)) ? (dMaxChar * sizeof(WCHAR)) :
 							     MAXULONG;
 
 	    /* Query link target */
@@ -510,18 +510,18 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 	    UnicodeString.Length = ReturnLength;
 	    NtClose(DeviceHandle);
 	    if (!NT_SUCCESS(Status)) {
-		WARN("NtQuerySymbolicLinkObject() failed (Status %lx)\n", Status);
+		WARN("NtQuerySymbolicLinkObject() failed (Status %x)\n", Status);
 		__leave;
 	    }
 
-	    TRACE("ReturnLength: %lu\n", ReturnLength);
+	    TRACE("ReturnLength: %u\n", ReturnLength);
 	    TRACE("TargetLength: %hu\n", UnicodeString.Length);
 	    TRACE("Target: '%wZ'\n", &UnicodeString);
 
 	    Length = ReturnLength / sizeof(WCHAR);
 	    /* Make sure we null terminate output buffer */
 	    if (Length == 0 || lpTargetPath[Length - 1] != UNICODE_NULL) {
-		if (Length >= ucchMax) {
+		if (Length >= dMaxChar) {
 		    TRACE("Buffer is too small\n");
 		    Status = STATUS_BUFFER_TOO_SMALL;
 		    __leave;
@@ -532,7 +532,7 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 		Length++;
 	    }
 
-	    if (Length < ucchMax) {
+	    if (Length < dMaxChar) {
 		/* Append null-character */
 		lpTargetPath[Length] = UNICODE_NULL;
 		Length++;
@@ -564,7 +564,7 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 	 * Make sure we don't overrun the output buffer, so convert our DWORD
 	 * size to USHORT size properly
 	 */
-	BufferLength = (ucchMax <= MAXULONG / sizeof(WCHAR)) ? (ucchMax * sizeof(WCHAR)) :
+	BufferLength = (dMaxChar <= MAXULONG / sizeof(WCHAR)) ? (dMaxChar * sizeof(WCHAR)) :
 							       MAXULONG;
 	Length = 0;
 	Ptr = lpTargetPath;
@@ -623,8 +623,8 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 			NameLength = DirInfo->Name.Length / sizeof(WCHAR);
 
 			/* Make sure we don't overrun output buffer */
-			if (Length > ucchMax || NameLength > ucchMax - Length ||
-			    ucchMax - NameLength - Length < sizeof(WCHAR)) {
+			if (Length > dMaxChar || NameLength > dMaxChar - Length ||
+			    dMaxChar - NameLength - Length < sizeof(WCHAR)) {
 			    Status = STATUS_BUFFER_TOO_SMALL;
 			    __leave;
 			}
@@ -693,7 +693,7 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 	    Status = NtOpenDirectoryObject(&DirectoryHandle, DIRECTORY_QUERY,
 					   &ObjectAttributes);
 	    if (!NT_SUCCESS(Status)) {
-		WARN("NtOpenDirectoryObject() failed (Status %lx)\n", Status);
+		WARN("NtOpenDirectoryObject() failed (Status %x)\n", Status);
 		__leave;
 	    }
 
@@ -761,8 +761,8 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 				NameLength = DirInfo->Name.Length / sizeof(WCHAR);
 
 				/* Make sure we don't overrun output buffer */
-				if (Length > ucchMax || NameLength > ucchMax - Length ||
-				    ucchMax - NameLength - Length < sizeof(WCHAR)) {
+				if (Length > dMaxChar || NameLength > dMaxChar - Length ||
+				    dMaxChar - NameLength - Length < sizeof(WCHAR)) {
 				    RtlFreeHeap(RtlGetProcessHeap(), 0, Buffer);
 				    NtClose(DirectoryHandle);
 				    BaseSetLastNTError(STATUS_BUFFER_TOO_SMALL);
@@ -821,7 +821,7 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 	/* If we returned no entries, time to write the empty string */
 	if (Length == 0) {
 	    /* Unless output buffer is too small! */
-	    if (ucchMax <= 0) {
+	    if (dMaxChar <= 0) {
 		Status = STATUS_BUFFER_TOO_SMALL;
 		__leave;
 	    }
@@ -838,7 +838,7 @@ WINAPI DWORD QueryDosDeviceW(LPCWSTR lpDeviceName, LPWSTR lpTargetPath, DWORD uc
 	 * One was already added during the "copy string" process.
 	 * If we don't have enough room: that's a failure case.
 	 */
-	if (Length < ucchMax) {
+	if (Length < dMaxChar) {
 	    *Ptr = UNICODE_NULL;
 	    ++Ptr;
 	} else {

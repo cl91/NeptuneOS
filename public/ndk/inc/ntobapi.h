@@ -173,4 +173,8 @@ NTAPI NTSYSAPI NTSTATUS NtSetInformationObject(IN HANDLE ObjectHandle,
 					       IN PVOID ObjectInformation,
 					       IN ULONG Length);
 
+NTAPI NTSYSAPI NTSTATUS NtSetSecurityObject(IN HANDLE ObjectHandle,
+					    IN SECURITY_INFORMATION SecurityInformation,
+					    IN PSECURITY_DESCRIPTOR SecurityDescriptor);
+
 #endif
