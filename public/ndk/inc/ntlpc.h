@@ -1,11 +1,20 @@
 #pragma once
 
-#include "ntrtl.h"
-#include "ntseapi.h"
+#include <ntrtl.h>
+#include <ntseapi.h>
+#include <ntexapi.h>
+
+/*
+ * Port Object Access Masks
+ */
+#define PORT_CONNECT                    0x1
+#define PORT_ALL_ACCESS                 (STANDARD_RIGHTS_REQUIRED | \
+                                         SYNCHRONIZE | \
+                                         PORT_CONNECT)
 
 typedef struct _PORT_MESSAGE {
-    ULONG TotalLength;
     ULONG Type;
+    ULONG TotalLength;
 } PORT_MESSAGE, *PPORT_MESSAGE;
 
 C_ASSERT(sizeof(PORT_MESSAGE) == 8);
@@ -32,6 +41,36 @@ typedef struct _REMOTE_PORT_VIEW {
 #define LPC_MAX_MESSAGE_LENGTH PORT_MAXIMUM_MESSAGE_LENGTH
 #define LPC_MAX_DATA_LENGTH (LPC_MAX_MESSAGE_LENGTH - sizeof(PORT_MESSAGE))
 
+/*
+ * LPC Message Types
+ */
+typedef enum _LPC_TYPE {
+    LPC_REQUEST,
+    LPC_REPLY,
+    LPC_EXCEPTION,
+    LPC_DEBUG_EVENT,
+    LPC_ERROR_EVENT, /* Hard error event */
+    LPC_MAXIMUM	     /* Start of the user-definable LPC type number */
+} LPC_TYPE;
+
+#define LPC_CONTINUATION_REQUIRED           0x2000
+#define LPC_NO_IMPERSONATE                  0x4000
+#define LPC_LONG_MESSAGE                    (CSHORT)((USHORT)0x8000)
+
+/*
+ * Hard Error LPC Message
+ */
+typedef struct _HARDERROR_MSG {
+    PORT_MESSAGE Header;
+    NTSTATUS Status;
+    LARGE_INTEGER ErrorTime;
+    ULONG ValidResponseOptions;
+    ULONG Response;
+    ULONG NumberOfParameters;
+    ULONG UnicodeStringParameterMask;
+    ULONG_PTR Parameters[MAXIMUM_HARDERROR_PARAMETERS];
+} HARDERROR_MSG, *PHARDERROR_MSG;
+
 #ifndef _NTOSKRNL_
 
 /*
@@ -40,7 +79,8 @@ typedef struct _REMOTE_PORT_VIEW {
 NTAPI NTSYSAPI NTSTATUS NtCreatePort(OUT PHANDLE PortHandle,
 				     OUT PLOCAL_HANDLE CommPortHandle,
 				     IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,
-				     IN ULONG MaxMessageLength);
+				     IN ULONG MaxMessageLength,
+				     IN OPTIONAL PSECURITY_QUALITY_OF_SERVICE SecurityQos);
 
 /*
  * Port listening (server)
@@ -105,6 +145,7 @@ NTAPI NTSYSAPI NTSTATUS NtReplyPort(IN PPORT_MESSAGE ReplyMessage,
 NTAPI NTSYSAPI NTSTATUS NtReceivePort(IN LOCAL_HANDLE CommPortHandle,
 				      OUT OPTIONAL ULONG_PTR *PortContext,
 				      OUT PPORT_MESSAGE ReceivedMessage,
+				      IN ULONG MsgBufferLength,
 				      IN OPTIONAL PPORT_VIEW LocalView);
 
 /*
@@ -114,6 +155,7 @@ NTAPI NTSYSAPI NTSTATUS NtReplyWaitReceivePort(IN LOCAL_HANDLE CommPortHandle,
 					       IN OUT PPORT_MESSAGE ReplyMessage,
 					       OUT OPTIONAL ULONG_PTR *PortContext,
 					       OUT PPORT_MESSAGE ReceivedMessage,
+					       IN ULONG MsgBufferLength,
 					       IN OPTIONAL PPORT_VIEW ServerView);
 
 /*
@@ -129,6 +171,7 @@ NTAPI NTSYSAPI NTSTATUS NtRequestPort(IN LOCAL_HANDLE CommPortHandle,
 NTAPI NTSYSAPI NTSTATUS NtRequestWaitReceivePort(IN LOCAL_HANDLE CommPortHandle,
 						 IN PPORT_MESSAGE RequestMessage,
 						 OUT PPORT_MESSAGE ReceivedMessage,
+						 IN ULONG MsgBufferLength,
 						 IN OPTIONAL PPORT_VIEW ClientView);
 
 #endif	/* !defined(_NTOSKRNL_) */

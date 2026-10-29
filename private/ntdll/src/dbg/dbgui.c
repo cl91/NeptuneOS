@@ -86,6 +86,16 @@ NTAPI NTSTATUS DbgUiIssueRemoteBreakin(IN HANDLE Process)
 }
 
 /*
+ * @unimplemented
+ */
+NTAPI LOCAL_HANDLE DbgUiGetThreadDebugPort(VOID)
+{
+    /* TODO */
+    assert(FALSE);
+    return 0;
+}
+
+/*
  * @implemented
  */
 NTAPI HANDLE DbgUiGetThreadDebugObject(VOID)

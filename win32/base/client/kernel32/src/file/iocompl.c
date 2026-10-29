@@ -10,6 +10,7 @@
  */
 
 #include <k32.h>
+DEBUG_CHANNEL(kernel32file);
 
 /*
  * SetFileCompletionNotificationModes is not entirely Vista-exclusive,

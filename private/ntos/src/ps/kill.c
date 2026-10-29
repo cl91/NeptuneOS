@@ -202,7 +202,7 @@ NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread)
  */
 NTSTATUS NtRegisterThreadTerminatePort(IN ASYNC_STATE AsyncState,
 				       IN PTHREAD Thread,
-				       IN HANDLE PortHandle)
+				       IN LOCAL_HANDLE PortHandle)
 {
     UNIMPLEMENTED;
 }

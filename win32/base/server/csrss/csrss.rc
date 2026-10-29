@@ -1,0 +1,4 @@
+#define NEPTUNEOS_STR_FILE_DESCRIPTION  "Client/Server Runtime SubSystem Process"
+#define NEPTUNEOS_STR_INTERNAL_NAME     "csrss"
+#define NEPTUNEOS_STR_ORIGINAL_FILENAME "csrss.exe"
+#include <version.rc>

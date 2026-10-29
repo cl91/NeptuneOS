@@ -137,12 +137,11 @@ static void PROFILE_WriteLine(HANDLE hFile, WCHAR *szLine, int Len, ENCODING Enc
     int WriteBufferLen;
     DWORD dwBytesWritten;
 
-    TRACE("writing: %s\n", debugstr_wn(szLine, len));
+    TRACE("writing: %ws\n", szLine);
 
     switch (Encoding) {
     case ENCODING_ANSI:
-	WriteBufferLen = WideCharToMultiByte(CP_ACP, 0, szLine, Len, NULL, 0, NULL,
-					       NULL);
+	WriteBufferLen = WideCharToMultiByte(CP_ACP, 0, szLine, Len, NULL, 0, NULL, NULL);
 	WriteBuffer = HeapAlloc(GetProcessHeap(), 0, WriteBufferLen);
 	if (!WriteBuffer)
 	    return;
@@ -170,7 +169,7 @@ static void PROFILE_WriteLine(HANDLE hFile, WCHAR *szLine, int Len, ENCODING Enc
 	WriteFile(hFile, szLine, Len * sizeof(WCHAR), &dwBytesWritten, NULL);
 	break;
     default:
-	FIXME("encoding type %d not implemented\n", encoding);
+	FIXME("encoding type %d not implemented\n", Encoding);
     }
 }
 
@@ -413,8 +412,7 @@ static PROFILESECTION *PROFILE_Load(HANDLE hFile, ENCODING *pEncoding)
 	{
 	    const WCHAR *szSectionEnd;
 	    if (!(szSectionEnd = memrchrW(szLineStart, ']', szLineEnd - szLineStart))) {
-		WARN("Invalid section header at line %d: %s\n", line,
-		     debugstr_wn(szLineStart, (int)(szLineEnd - szLineStart)));
+		WARN("Invalid section header: %ws\n", szLineStart);
 	    } else {
 		szLineStart++;
 		Len = (int)(szSectionEnd - szLineStart);
@@ -432,7 +430,7 @@ static PROFILESECTION *PROFILE_Load(HANDLE hFile, ENCODING *pEncoding)
 		NextKey = &Section->Key;
 		PrevKey = NULL;
 
-		TRACE("New section: %s\n", debugstr_w(section->name));
+		TRACE("New section: %ws\n", Section->Name);
 
 		continue;
 	    }
@@ -472,8 +470,8 @@ static PROFILESECTION *PROFILE_Load(HANDLE hFile, ENCODING *pEncoding)
 	    NextKey = &Key->Next;
 	    PrevKey = Key;
 
-	    TRACE("New key: name=%s, value=%s\n", debugstr_w(key->name),
-		  key->value ? debugstr_w(key->value) : L"(none)");
+	    TRACE("New key: name=%ws, value=%ws\n", Key->Name,
+		  Key->Value ? Key->Value : L"(none)");
 	}
     }
     if (szFile != pBuffer)
@@ -658,12 +656,12 @@ static BOOL PROFILE_FlushFile(void)
 			FILE_ATTRIBUTE_NORMAL, NULL);
 
     if (hFile == INVALID_HANDLE_VALUE) {
-	WARN("could not save profile file %s (error was %d)\n",
-	     debugstr_w(CURRENT_PROFILE->filename), GetLastError());
+	WARN("could not save profile file %ws (error was %d)\n",
+	     CURRENT_PROFILE->Filename, GetLastError());
 	return FALSE;
     }
 
-    TRACE("Saving %s\n", debugstr_w(CURRENT_PROFILE->filename));
+    TRACE("Saving %ws\n", CURRENT_PROFILE->Filename);
     PROFILE_Save(hFile, CURRENT_PROFILE->Section, CURRENT_PROFILE->Encoding);
     if (GetFileTime(hFile, NULL, NULL, &LastWriteTime))
 	CURRENT_PROFILE->LastWriteTime = LastWriteTime;
@@ -705,7 +703,7 @@ static BOOL IsNotCurrent(FILETIME *Ft)
     GetSystemTimeAsFileTime(&Now);
     Ftll = ((LONGLONG)Ft->dwHighDateTime << 32) + Ft->dwLowDateTime;
     Nowll = ((LONGLONG)Now.dwHighDateTime << 32) + Now.dwLowDateTime;
-    TRACE("%08x;%08x\n", (unsigned)ftll + 21000000, (unsigned)nowll);
+    TRACE("%08x;%08x\n", (unsigned)Ftll + 21000000, (unsigned)Nowll);
     return Ftll + 21000000 < Nowll;
 }
 
@@ -754,21 +752,21 @@ static BOOL PROFILE_Open(LPCWSTR Filename, BOOL WriteAccess)
 	GetFullPathNameW(Filename, sizeof(Buffer) / sizeof(Buffer[0]), Buffer, &Dummy);
     }
 
-    TRACE("path: %s\n", debugstr_w(buffer));
+    TRACE("path: %ws\n", Buffer);
 
     hFile = CreateFileW(Buffer, GENERIC_READ | (WriteAccess ? GENERIC_WRITE : 0),
 			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL,
 			OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
     if ((hFile == INVALID_HANDLE_VALUE) && (GetLastError() != ERROR_FILE_NOT_FOUND)) {
-	WARN("Error %d opening file %s\n", GetLastError(), debugstr_w(buffer));
+	WARN("Error %d opening file %ws\n", GetLastError(), Buffer);
 	return FALSE;
     }
 
     for (i = 0; i < N_CACHED_PROFILES; i++) {
 	if ((MRUProfile[i]->Filename && !strcmpiW(Buffer, MRUProfile[i]->Filename))) {
-	    TRACE("MRU Filename: %s, new filename: %s\n",
-		  debugstr_w(MRUProfile[i]->filename), debugstr_w(buffer));
+	    TRACE("MRU Filename: %ws, new filename: %ws\n",
+		  MRUProfile[i]->Filename, Buffer);
 	    if (i) {
 		PROFILE_FlushFile();
 		TempProfile = MRUProfile[i];
@@ -782,10 +780,10 @@ static BOOL PROFILE_Open(LPCWSTR Filename, BOOL WriteAccess)
 		if (!memcmp(&CURRENT_PROFILE->LastWriteTime, &LastWriteTime,
 			    sizeof(FILETIME)) &&
 		    IsNotCurrent(&LastWriteTime))
-		    TRACE("(%s): already opened (mru=%d)\n", debugstr_w(buffer), i);
+		    TRACE("(%ws): already opened (mru=%d)\n", Buffer, i);
 		else {
-		    TRACE("(%s): already opened, needs refreshing (mru=%d)\n",
-			  debugstr_w(buffer), i);
+		    TRACE("(%ws): already opened, needs refreshing (mru=%d)\n",
+			  Buffer, i);
 		    PROFILE_Free(CURRENT_PROFILE->Section);
 		    CURRENT_PROFILE->Section = PROFILE_Load(hFile, &CURRENT_PROFILE->Encoding);
 		    CURRENT_PROFILE->LastWriteTime = LastWriteTime;
@@ -793,8 +791,8 @@ static BOOL PROFILE_Open(LPCWSTR Filename, BOOL WriteAccess)
 		CloseHandle(hFile);
 		return TRUE;
 	    } else
-		TRACE("(%s): already opened, not yet created (mru=%d)\n",
-		      debugstr_w(buffer), i);
+		TRACE("(%ws): already opened, not yet created (mru=%d)\n",
+		      Buffer, i);
 	}
     }
 
@@ -823,7 +821,7 @@ static BOOL PROFILE_Open(LPCWSTR Filename, BOOL WriteAccess)
 	CloseHandle(hFile);
     } else {
 	/* Does not exist yet, we will create it in PROFILE_FlushFile */
-	WARN("profile file %s not found\n", debugstr_w(buffer));
+	WARN("profile file %ws not found\n", Buffer);
     }
     return TRUE;
 }
@@ -842,7 +840,7 @@ static INT PROFILE_GetSection(PROFILESECTION *Section, LPCWSTR SectionName,
     if (!Buffer)
 	return 0;
 
-    TRACE("%s,%p,%u\n", debugstr_w(section_name), buffer, len);
+    TRACE("%ws,%p,%u\n", SectionName, Buffer, Len);
 
     while (Section) {
 	if (!strcmpiW(Section->Name, SectionName)) {
@@ -894,7 +892,7 @@ static INT PROFILE_GetSectionNames(LPWSTR Buffer, DWORD Len)
     UINT Buflen, Tmplen;
     PROFILESECTION *Section;
 
-    TRACE("(%p, %d)\n", buffer, len);
+    TRACE("(%p, %d)\n", Buffer, Len);
 
     if (!Buffer || !Len)
 	return 0;
@@ -964,8 +962,7 @@ static INT PROFILE_GetString(LPCWSTR Section, LPCWSTR KeyName,
     if (KeyName) {
 	Key = PROFILE_Find(&CURRENT_PROFILE->Section, Section, KeyName, FALSE, FALSE);
 	PROFILE_CopyEntry(Buffer, (Key && Key->Value) ? Key->Value : DefVal, Len, TRUE);
-	TRACE("(%s,%s,%s): returning %s\n", debugstr_w(section), debugstr_w(key_name),
-	      debugstr_w(def_val), debugstr_w(buffer));
+	TRACE("(%ws,%ws,%ws): returning %ws\n", Section, KeyName, DefVal, Buffer);
 	return strlenW(Buffer);
     }
     /* no "else" here ! */
@@ -992,22 +989,21 @@ static BOOL PROFILE_SetString(LPCWSTR SectionName, LPCWSTR KeyName, LPCWSTR Valu
 {
     if (!KeyName) /* Delete a whole section */
     {
-	TRACE("(%s)\n", debugstr_w(section_name));
+	TRACE("(%ws)\n", SectionName);
 	CURRENT_PROFILE->Changed |= PROFILE_DeleteSection(&CURRENT_PROFILE->Section, SectionName);
 	return TRUE; /* Even if PROFILE_DeleteSection() has failed,
 			this is not an error on application's level.*/
     } else if (!Value) /* Delete a key */
     {
-	TRACE("(%s,%s)\n", debugstr_w(section_name), debugstr_w(key_name));
+	TRACE("(%ws,%ws)\n", SectionName, KeyName);
 	CURRENT_PROFILE->Changed |= PROFILE_DeleteKey(&CURRENT_PROFILE->Section, SectionName,
-						 KeyName);
+						      KeyName);
 	return TRUE; /* same error handling as above */
     } else /* Set the key value */
     {
 	PROFILEKEY *Key = PROFILE_Find(&CURRENT_PROFILE->Section, SectionName, KeyName, TRUE,
 				       CreateAlways);
-	TRACE("(%s,%s,%s):\n", debugstr_w(section_name), debugstr_w(key_name),
-	      debugstr_w(value));
+	TRACE("(%ws,%ws,%ws):\n", SectionName, KeyName, Value);
 	if (!Key)
 	    return FALSE;
 
@@ -1021,7 +1017,7 @@ static BOOL PROFILE_SetString(LPCWSTR SectionName, LPCWSTR KeyName, LPCWSTR Valu
 		TRACE("  no change needed\n");
 		return TRUE; /* No change needed */
 	    }
-	    TRACE("  replacing %s\n", debugstr_w(key->value));
+	    TRACE("  replacing %ws\n", Key->Value);
 	    HeapFree(GetProcessHeap(), 0, Key->Value);
 	} else
 	    TRACE("  creating key\n");
@@ -1060,8 +1056,7 @@ WINAPI DWORD GetPrivateProfileStringW(LPCWSTR Section, LPCWSTR Entry, LPCWSTR De
     int Ret;
     LPWSTR DefvalTmp = NULL;
 
-    TRACE("%s,%s,%s,%p,%u,%s\n", debugstr_w(section), debugstr_w(entry),
-	  debugstr_w(def_val), buffer, len, debugstr_w(filename));
+    TRACE("%ws,%ws,%ws,%p,%u,%ws\n", Section, Entry, DefVal, Buffer, Len, Filename);
 
     /* strip any trailing ' ' of def_val. */
     if (DefVal) {
@@ -1098,7 +1093,7 @@ WINAPI DWORD GetPrivateProfileStringW(LPCWSTR Section, LPCWSTR Entry, LPCWSTR De
 
     HeapFree(GetProcessHeap(), 0, DefvalTmp);
 
-    TRACE("returning %s, %d\n", debugstr_w(buffer), ret);
+    TRACE("returning %ws, %d\n", Buffer, Ret);
 
     return Ret;
 }
@@ -1255,7 +1250,7 @@ WINAPI DWORD GetPrivateProfileSectionW(LPCWSTR Section, LPWSTR Buffer,
 	return 0;
     }
 
-    TRACE("(%s, %p, %d, %s)\n", debugstr_w(section), buffer, len, debugstr_w(filename));
+    TRACE("(%ws, %p, %d, %ws)\n", Section, Buffer, Len, Filename);
 
     RtlEnterCriticalSection(&ProfileCritSect);
 
@@ -1589,7 +1584,7 @@ WINAPI BOOL GetPrivateProfileStructW(LPCWSTR Section, LPCWSTR Key, LPVOID Buf, U
     if (PROFILE_Open(Filename, FALSE)) {
 	PROFILEKEY *k = PROFILE_Find(&CURRENT_PROFILE->Section, Section, Key, FALSE, FALSE);
 	if (k) {
-	    TRACE("value (at %p): %s\n", k->value, debugstr_w(k->value));
+	    TRACE("value (at %p): %ws\n", k->Value, k->Value);
 	    if (((strlenW(k->Value) - 2) / 2) == Len) {
 		LPWSTR End, p;
 		BOOL Valid = TRUE;
@@ -1600,8 +1595,8 @@ WINAPI BOOL GetPrivateProfileStructW(LPCWSTR Section, LPCWSTR Key, LPVOID Buf, U
 		/* check for invalid chars in ASCII coded hex string */
 		for (p = k->Value; p < End; p++) {
 		    if (!isxdigitW(*p)) {
-			WARN("invalid char '%x' in file %s->[%s]->%s !\n", *p,
-			     debugstr_w(filename), debugstr_w(section), debugstr_w(key));
+			WARN("invalid char '%x' in file %ws->[%ws]->%ws !\n", *p,
+			     Filename, Section, Key);
 			Valid = FALSE;
 			break;
 		    }

@@ -24,8 +24,6 @@
 
 typedef enum _CSRSRV_API_NUMBER {
     CsrpClientConnect = CSRSRV_FIRST_API_NUMBER,
-    CsrpThreadConnect,
-    CsrpProfileControl,
 
     CsrpMaxApiNumber
 } CSRSRV_API_NUMBER, *PCSRSRV_API_NUMBER;
@@ -49,11 +47,9 @@ typedef struct _CSR_API_CONNECTINFO {
     ULONG SizeOfTebData;
     ULONG NumberOfServerDllNames;
     HANDLE ServerProcessId;
+    PVOID PortViewBase;
+    PVOID PortViewRemoteBase;
 } CSR_API_CONNECTINFO, *PCSR_API_CONNECTINFO;
-
-#if defined(_M_IX86)
-C_ASSERT(sizeof(CSR_API_CONNECTINFO) == 0x24);
-#endif
 
 // We must have a size at most equal to the maximum acceptable LPC data size.
 C_ASSERT(sizeof(CSR_API_CONNECTINFO) <= LPC_MAX_DATA_LENGTH);
@@ -74,37 +70,32 @@ typedef struct _CSR_CAPTURE_BUFFER {
 
 typedef struct _CSR_API_MESSAGE {
     PORT_MESSAGE Header;
-    union {
-	CSR_API_CONNECTINFO ConnectionInfo; // Uniquely used in CSRSRV for internal
-					    // signaling (opening a new connection).
-	struct {
-	    PCSR_CAPTURE_BUFFER CsrCaptureData;
-	    CSR_API_NUMBER ApiNumber;
-	    NTSTATUS Status; // ReturnValue;
-	    ULONG Reserved;
-	    union {
-		CSR_CLIENT_CONNECT CsrClientConnect;
-		//
-		// This padding is used to make the CSR_API_MESSAGE structure
-		// large enough to hold full other API_MESSAGE-type structures
-		// used by other servers. These latter structures's sizes must
-		// be checked against the size of CSR_API_MESSAGE by using the
-		// CHECK_API_MSG_SIZE macro defined below.
-		//
-		// This is required because LPC will use this generic structure
-		// for communicating all the different servers' messages, and
-		// thus we avoid possible buffer overflows with this method.
-		// The problems there are, that we have to manually adjust the
-		// size of the padding to hope that all the servers' messaging
-		// structures will hold in it, or, that we have to be careful
-		// to not define too big messaging structures for the servers.
-		//
-		// Finally, the overall message structure size must be at most
-		// equal to the maximum acceptable LPC message size.
-		//
-		ULONG_PTR ApiMessageData[39];
-	    } Data;
-	};
+    struct {
+	PCSR_CAPTURE_BUFFER CsrCaptureData;
+	CSR_API_NUMBER ApiNumber;
+	NTSTATUS Status; // ReturnValue;
+	union {
+	    CSR_CLIENT_CONNECT CsrClientConnect;
+	    //
+	    // This padding is used to make the CSR_API_MESSAGE structure
+	    // large enough to hold full other API_MESSAGE-type structures
+	    // used by other servers. These latter structures's sizes must
+	    // be checked against the size of CSR_API_MESSAGE by using the
+	    // CHECK_API_MSG_SIZE macro defined below.
+	    //
+	    // This is required because LPC will use this generic structure
+	    // for communicating all the different servers' messages, and
+	    // thus we avoid possible buffer overflows with this method.
+	    // The problems there are, that we have to manually adjust the
+	    // size of the padding to hope that all the servers' messaging
+	    // structures will hold in it, or, that we have to be careful
+	    // to not define too big messaging structures for the servers.
+	    //
+	    // Finally, the overall message structure size must be at most
+	    // equal to the maximum acceptable LPC message size.
+	    //
+	    ULONG_PTR ApiMessageData[39];
+	} Data;
     };
 } CSR_API_MESSAGE, *PCSR_API_MESSAGE;
 

@@ -37,5 +37,5 @@ OFFSET(TeFiberData, TEB, NtTib.FiberData),
 OFFSET(TeSelf, TEB, NtTib.Self),
 OFFSET(TeFlsData, TEB, FlsData),
 OFFSET(TeActivationContextStackPointer, TEB, ActivationContextStackPointer),
-OFFSET(TeGuaranteedStackBytes, TEB, Win32.GuaranteedStackBytes),
+OFFSET(TeGuaranteedStackBytes, TEB, GuaranteedStackBytes),
 

@@ -1017,7 +1017,7 @@ Cleanup:
 
     /* If there was an error, set the error code */
     if (!Ret) {
-	TRACE("ReplaceFileW failed (error=%lu)\n", Error);
+	TRACE("ReplaceFileW failed (error=%u)\n", Error);
 	SetLastError(Error);
     }
     return Ret;

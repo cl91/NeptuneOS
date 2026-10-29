@@ -6,6 +6,16 @@
 #include <ntrtl.h>
 
 /*
+ * DebugService Control Types
+ */
+#define BREAKPOINT_BREAK                    0
+#define BREAKPOINT_PRINT                    1
+#define BREAKPOINT_PROMPT                   2
+#define BREAKPOINT_LOAD_SYMBOLS             3
+#define BREAKPOINT_UNLOAD_SYMBOLS           4
+#define BREAKPOINT_COMMAND_STRING           5
+
+/*
  * Debug Object Access Masks
  */
 #define DEBUG_OBJECT_WAIT_STATE_CHANGE      0x0001
@@ -209,7 +219,11 @@ NTAPI NTSYSAPI VOID DbgUiRemoteBreakin(VOID);
 
 NTAPI NTSYSAPI NTSTATUS DbgUiIssueRemoteBreakin(IN HANDLE Process);
 
+NTAPI NTSYSAPI LOCAL_HANDLE DbgUiGetThreadDebugPort(VOID);
+
 NTAPI NTSYSAPI HANDLE DbgUiGetThreadDebugObject(VOID);
+
+NTAPI NTSYSAPI VOID DbgUiSetThreadDebugObject(HANDLE DebugObject);
 
 #endif	/* !_NTOSKRNL_ */
 

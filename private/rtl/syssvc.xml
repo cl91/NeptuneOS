@@ -43,7 +43,7 @@
   </svc>
 
   <svc name="NtRegisterThreadTerminatePort">
-    <parameter annotation="in" type="HANDLE" name="PortHandle" />
+    <parameter annotation="in" type="LOCAL_HANDLE" name="PortHandle" />
   </svc>
 
   <svc name="NtTerminateThread">
@@ -58,6 +58,12 @@
     <parameter annotation="in opt" type="ptr::CLIENT_ID" name="ClientId" />
   </svc>
 
+  <svc name="NtImpersonateThread">
+    <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
+    <parameter annotation="in" type="HANDLE" name="ThreadToImpersonate" />
+    <parameter annotation="in" type="ptr::SECURITY_QUALITY_OF_SERVICE" name="SecurityQos" />
+  </svc>
+
   <svc name="NtCreateProcess">
     <parameter annotation="out" type="ptr::HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />
@@ -65,8 +71,8 @@
     <parameter annotation="in" type="HANDLE" name="ParentProcess" />
     <parameter annotation="in" type="BOOLEAN" name="InheritObjectTable" />
     <parameter annotation="in" type="HANDLE" name="SectionHandle" />
-    <parameter annotation="in" type="HANDLE" name="DebugPort" />
-    <parameter annotation="in" type="HANDLE" name="ExceptionPort" />
+    <parameter annotation="in" type="LOCAL_HANDLE" name="DebugPort" />
+    <parameter annotation="in" type="LOCAL_HANDLE" name="ExceptionPort" />
   </svc>
 
   <svc name="NtCreateProcessEx">
@@ -76,8 +82,8 @@
     <parameter annotation="in" type="HANDLE" name="ParentProcess" />
     <parameter annotation="in" type="ULONG" name="Flags" />
     <parameter annotation="in" type="HANDLE" name="SectionHandle" />
-    <parameter annotation="in" type="HANDLE" name="DebugPort" />
-    <parameter annotation="in" type="HANDLE" name="ExceptionPort" />
+    <parameter annotation="in" type="LOCAL_HANDLE" name="DebugPort" />
+    <parameter annotation="in" type="LOCAL_HANDLE" name="ExceptionPort" />
     <parameter annotation="in" type="BOOLEAN" name="InJob" />
   </svc>
 
@@ -176,15 +182,6 @@
     <parameter annotation="in" type="JOB_OBJECT_INFORMATION_CLASS" name="InfoClass" />
     <parameter annotation="in" type="buf::Void" name="JobInformation" />
     <parameter annotation="in" type="bufsize::ULONG" name="JobInformationLength" />
-  </svc>
-
-  <svc name="NtRaiseHardError">
-    <parameter annotation="in" type="NTSTATUS" name="ErrorStatus" />
-    <parameter annotation="in" type="ULONG" name="NumberOfParameters" />
-    <parameter annotation="in" type="ULONG" name="UnicodeStringParameterMask" />
-    <parameter annotation="in" type="ptr::ULONG_PTR" name="Parameters" />
-    <parameter annotation="in" type="HARDERROR_RESPONSE_OPTION" name="ResponseOption" />
-    <parameter annotation="out" type="ptr::HARDERROR_RESPONSE" name="Response" />
   </svc>
 
   <svc name="NtCreateEvent">
@@ -314,6 +311,7 @@
     <parameter annotation="out" type="ptr::LOCAL_HANDLE" name="CommPortHandle" />
     <parameter annotation="in opt" type="ObjectAttributes" name="ObjectAttributes" />
     <parameter annotation="in" type="ULONG" name="MaxMessageLength" />
+    <parameter annotation="in opt" type="ptr::SECURITY_QUALITY_OF_SERVICE" name="SecurityQos" />
   </svc>
 
   <svc name="NtOpenPort">
@@ -614,6 +612,20 @@
     <parameter annotation="in" type="bufsize::ULONG" name="Length" />
   </svc>
 
+  <svc name="NtQuerySecurityObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
+    <parameter annotation="out" type="buf::Void" name="DescriptorBuffer" />
+    <parameter annotation="in" type="bufsize::ULONG" name="DescriptorBufferLength" />
+    <parameter annotation="out" type="bufsize::ULONG" name="RequiredLength" />
+  </svc>
+
+  <svc name="NtSetSecurityObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
+    <parameter annotation="in" type="SecurityDescriptor" name="SecurityDescriptor" />
+  </svc>
+
   <svc name="NtQueryInformationProcess">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PROCESS_INFORMATION_CLASS" name="ProcessInformationClass" />
@@ -684,20 +696,6 @@
     <parameter annotation="in" type="ULONG" name="InboundQuota" />
     <parameter annotation="in" type="ULONG" name="OutboundQuota" />
     <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="DefaultTimeout" />
-  </svc>
-
-  <svc name="NtQuerySecurityObject">
-    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
-    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
-    <parameter annotation="out" type="buf::Void" name="DescriptorBuffer" />
-    <parameter annotation="in" type="bufsize::ULONG" name="DescriptorBufferLength" />
-    <parameter annotation="out" type="bufsize::ULONG" name="RequiredLength" />
-  </svc>
-
-  <svc name="NtSetSecurityObject">
-    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
-    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
-    <parameter annotation="in" type="PVOID" name="DescriptorBuffer" />
   </svc>
 
   <svc name="NtOpenFile">

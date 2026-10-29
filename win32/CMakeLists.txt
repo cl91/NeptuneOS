@@ -24,7 +24,7 @@ include_directories(
     ${CMAKE_CURRENT_LIST_DIR}/../public/sdk/inc
 )
 
-set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG")
+set(CMAKE_C_FLAGS_DEBUG "-g -Xclang -gcodeview -O0 -D_DEBUG -DDBG=1")
 set(CMAKE_C_FLAGS_MINSIZEREL "-Os -DNDEBUG")
 set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g -DNDEBUG -Xclang -gcodeview")

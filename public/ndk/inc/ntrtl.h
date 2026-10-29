@@ -602,6 +602,50 @@ NTAPI NTSYSAPI NTSTATUS RtlGetNextRange(IN OUT PRTL_RANGE_LIST_ITERATOR Iterator
 					OUT PRTL_RANGE *Range,
 					IN BOOLEAN MoveForwards);
 
-#if defined(_MSC_VER) && !defined(_NTOSKRNL_)
+#ifndef _NTOSKRNL_
+
+NTAPI NTSYSAPI ULONG RtlLengthSid(IN PSID Sid);
+
+NTAPI NTSYSAPI ULONG RtlLengthSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor);
+
+NTAPI NTSYSAPI NTSTATUS
+RtlGetControlSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+				OUT PSECURITY_DESCRIPTOR_CONTROL Control,
+				OUT PULONG Revision);
+
+
+NTAPI NTSYSAPI NTSTATUS
+RtlSetControlSecurityDescriptor(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+				IN SECURITY_DESCRIPTOR_CONTROL ControlBitsOfInterest,
+				IN SECURITY_DESCRIPTOR_CONTROL ControlBitsToSet);
+
+
+NTAPI NTSYSAPI NTSTATUS
+RtlAbsoluteToSelfRelativeSD(IN PSECURITY_DESCRIPTOR AbsoluteSecurityDescriptor,
+			    IN OUT PSECURITY_DESCRIPTOR SelfRelativeSecurityDescriptor,
+			    IN PULONG BufferLength);
+
+NTAPI NTSYSAPI NTSTATUS RtlMakeSelfRelativeSD(IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+					      OUT PSECURITY_DESCRIPTOR SelfRelativeSD,
+					      IN OUT PULONG BufferLength);
+
+NTAPI NTSYSAPI NTSTATUS RtlSelfRelativeToAbsoluteSD(IN PSECURITY_DESCRIPTOR SelfRelativeSD,
+						    OUT PSECURITY_DESCRIPTOR AbsoluteSD,
+						    IN PULONG AbsoluteSDSize,
+						    IN PACL Dacl,
+						    IN PULONG DaclSize,
+						    IN PACL Sacl,
+						    IN PULONG SaclSize,
+						    IN PSID Owner,
+						    IN PULONG OwnerSize,
+						    IN PSID PrimaryGroup,
+						    IN PULONG PrimaryGroupSize);
+
+NTAPI NTSYSAPI NTSTATUS RtlSelfRelativeToAbsoluteSD2(IN OUT PSECURITY_DESCRIPTOR SelfRelativeSD,
+						     OUT PULONG BufferSize);
+
+#ifdef _MSC_VER
 #include <nturtl.h>
-#endif
+#endif	/* _MSC_VER */
+
+#endif	/* !_NTOSKRNL_ */

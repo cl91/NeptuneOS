@@ -15,7 +15,7 @@ NTSTATUS NtSetSecurityObject(IN ASYNC_STATE AsyncState,
                              IN PTHREAD Thread,
                              IN HANDLE ObjectHandle,
                              IN SECURITY_INFORMATION SecurityInformationClass,
-                             IN PVOID DescriptorBuffer)
+                             IN PSECURITY_DESCRIPTOR SecurityDescriptor)
 {
     UNIMPLEMENTED;
 }

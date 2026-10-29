@@ -149,12 +149,12 @@ static NTSTATUS RtlpInitEnvironment(HANDLE ProcessHandle,
 NTAPI NTSTATUS RtlCreateUserProcess(IN PUNICODE_STRING ImageFileName,
 				    IN ULONG Attributes,
 				    IN OUT PRTL_USER_PROCESS_PARAMETERS ProcessParameters,
-				    IN PSECURITY_DESCRIPTOR ProcessSecurityDescriptor OPTIONAL,
-				    IN PSECURITY_DESCRIPTOR ThreadSecurityDescriptor OPTIONAL,
-				    IN HANDLE ParentProcess OPTIONAL,
+				    IN OPTIONAL PSECURITY_DESCRIPTOR ProcessSecurityDescriptor,
+				    IN OPTIONAL PSECURITY_DESCRIPTOR ThreadSecurityDescriptor,
+				    IN OPTIONAL HANDLE ParentProcess,
 				    IN BOOLEAN InheritHandles,
-				    IN HANDLE DebugPort OPTIONAL,
-				    IN HANDLE ExceptionPort OPTIONAL,
+				    IN OPTIONAL LOCAL_HANDLE DebugPort,
+				    IN OPTIONAL LOCAL_HANDLE ExceptionPort,
 				    OUT PRTL_USER_PROCESS_INFORMATION ProcessInfo)
 {
     NTSTATUS Status;
@@ -358,46 +358,6 @@ NTAPI PVOID RtlEncodeSystemPointer(IN PVOID Pointer)
 NTAPI PVOID RtlDecodeSystemPointer(IN PVOID Pointer)
 {
     return RtlEncodeSystemPointer(Pointer);
-}
-
-/*
- * @implemented
- *
- * NOTES:
- *   Implementation based on the documentation from:
- *   http://www.geoffchappell.com/studies/windows/win32/ntdll/api/rtl/peb/setprocessiscritical.htm
- */
-__cdecl NTSTATUS RtlSetProcessIsCritical(IN BOOLEAN NewValue,
-					 OUT PBOOLEAN OldValue OPTIONAL,
-					 IN BOOLEAN NeedBreaks)
-{
-    ULONG BreakOnTermination;
-
-    /* Initialize to FALSE */
-    if (OldValue)
-	*OldValue = FALSE;
-
-    /* Fail, if the critical breaks flag is required but is not set */
-    if ((NeedBreaks) &&
-	!(NtCurrentPeb()->NtGlobalFlag & FLG_ENABLE_SYSTEM_CRIT_BREAKS)) {
-	return STATUS_UNSUCCESSFUL;
-    }
-
-    /* Check if the caller wants the old value */
-    if (OldValue) {
-	/* Query and return the old break on termination flag for the process */
-	NtQueryInformationProcess(NtCurrentProcess(),
-				  ProcessBreakOnTermination,
-				  &BreakOnTermination,
-				  sizeof(ULONG), NULL);
-	*OldValue = (BOOLEAN) BreakOnTermination;
-    }
-
-    /* Set the break on termination flag for the process */
-    BreakOnTermination = NewValue;
-    return NtSetInformationProcess(NtCurrentProcess(),
-				   ProcessBreakOnTermination,
-				   &BreakOnTermination, sizeof(ULONG));
 }
 
 NTAPI ULONG RtlGetCurrentProcessorNumber(VOID)

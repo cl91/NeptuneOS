@@ -355,23 +355,24 @@ WINAPI VOID BaseProcessStartup(_In_ PPROCESS_START_ROUTINE lpStartAddress)
 	/* Call the Start Routine */
 	ExitThread(lpStartAddress());
     } __except (UnhandledExceptionFilter(GetExceptionInformation())) {
-	/* Get the Exit code from the SEH Handler */
-	if (!BaseRunningInServerProcess) {
-	    /* Kill the whole process, usually */
-	    ExitProcess(GetExceptionCode());
-	} else {
-	    /* If running inside CSRSS, kill just this thread */
-	    ExitThread(GetExceptionCode());
-	}
+	/* Get the Exit code from the SEH Handler and kill the whole process */
+	ExitProcess(GetExceptionCode());
     }
 }
 
-WINAPI BOOLEAN BasePushProcessParameters(
-    IN ULONG ParameterFlags, IN HANDLE ProcessHandle, IN PPEB RemotePeb,
-    IN LPCWSTR ApplicationPathName, IN LPWSTR lpCurrentDirectory, IN LPWSTR lpCommandLine,
-    IN LPVOID lpEnvironment, IN LPSTARTUPINFOW StartupInfo, IN DWORD CreationFlags,
-    IN BOOL InheritHandles, IN ULONG ImageSubsystem, IN PVOID AppCompatData,
-    IN ULONG AppCompatDataSize)
+WINAPI BOOLEAN BasePushProcessParameters(IN ULONG ParameterFlags,
+					 IN HANDLE ProcessHandle,
+					 IN PPEB RemotePeb,
+					 IN LPCWSTR ApplicationPathName,
+					 IN LPWSTR lpCurrentDirectory,
+					 IN LPWSTR lpCommandLine,
+					 IN LPVOID lpEnvironment,
+					 IN LPSTARTUPINFOW StartupInfo,
+					 IN DWORD CreationFlags,
+					 IN BOOL InheritHandles,
+					 IN ULONG ImageSubsystem,
+					 IN PVOID AppCompatData,
+					 IN ULONG AppCompatDataSize)
 {
     WCHAR FullPath[MAX_PATH + 5];
     PWCHAR Remaining, DllPathString, ScanChar;
@@ -1110,8 +1111,6 @@ WINAPI VOID ExitProcess(IN UINT uExitCode)
     BASE_API_MESSAGE ApiMessage;
     PBASE_EXIT_PROCESS ExitProcessRequest = &ApiMessage.Data.ExitProcessRequest;
 
-    ASSERT(!BaseRunningInServerProcess);
-
     __try {
 	/* Acquire the PEB lock */
 	RtlAcquirePebLock();
@@ -1231,11 +1230,6 @@ WINAPI VOID FatalExit(IN int ExitCode)
     /* On Checked builds, Windows gives the user a nice little debugger UI */
     CHAR Action[2];
     DbgPrint("FatalExit...\n\n");
-
-    /* Check for reactos specific flag (set by rosautotest) */
-    if (RtlGetNtGlobalFlags() & FLG_DISABLE_DEBUG_PROMPTS) {
-	RtlRaiseStatus(STATUS_FATAL_APP_EXIT);
-    }
 
     while (TRUE) {
 	DbgPrompt("A (Abort), B (Break), I (Ignore)? ", Action, sizeof(Action));
@@ -1762,7 +1756,8 @@ WINAPI BOOL CreateProcessInternalW(IN HANDLE hUserToken, IN LPCWSTR lpApplicatio
     PBASE_CREATE_PROCESS CreateProcessMsg;
     PCSR_CAPTURE_BUFFER CaptureBuffer;
     PVOID BaseAddress, PrivilegeState, RealTimePrivilegeState;
-    HANDLE DebugHandle, TokenHandle, JobHandle, KeyHandle, ThreadHandle;
+    LOCAL_HANDLE DebugPort;
+    HANDLE TokenHandle, JobHandle, KeyHandle, ThreadHandle;
     HANDLE FileHandle, SectionHandle, ProcessHandle;
     ULONG ResumeCount;
     PROCESS_PRIORITY_CLASS PriorityClass;
@@ -1843,7 +1838,7 @@ WINAPI BOOL CreateProcessInternalW(IN HANDLE hUserToken, IN LPCWSTR lpApplicatio
     SkipSaferAndAppCompat = FALSE;
     ParameterFlags = 0;
     Flags = 0;
-    DebugHandle = NULL;
+    DebugPort = 0;
     JobHandle = NULL;
     TokenHandle = NULL;
     FileHandle = NULL;
@@ -3058,8 +3053,8 @@ AppNameRetry:
 	    goto Quickie;
 	}
 
-	/* Get the debug object */
-	DebugHandle = DbgUiGetThreadDebugObject();
+	/* Get the debug port handle */
+	DebugPort = DbgUiGetThreadDebugPort();
 
 	/* Check if only this process will be debugged */
 	if (dwCreationFlags & DEBUG_ONLY_THIS_PROCESS) {
@@ -3090,8 +3085,8 @@ AppNameRetry:
 
     /* Tell the kernel to create the process */
     Status = NtCreateProcessEx(&ProcessHandle, PROCESS_ALL_ACCESS, ObjectAttributes,
-			       NtCurrentProcess(), Flags, SectionHandle, DebugHandle,
-			       NULL, InJob);
+			       NtCurrentProcess(), Flags, SectionHandle, DebugPort,
+			       0, InJob);
 
     /* Load the PEB address from the hacky location where the kernel stores it */
     RemotePeb = Teb->NtTib.ArbitraryUserPointer;

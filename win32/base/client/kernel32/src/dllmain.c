@@ -14,7 +14,6 @@
 /* GLOBALS *******************************************************************/
 
 PBASE_STATIC_SERVER_DATA BaseStaticServerData;
-BOOLEAN BaseRunningInServerProcess = FALSE;
 
 WCHAR BaseDefaultPathBuffer[6140];
 
@@ -111,8 +110,7 @@ WINAPI BOOL DllMain(HANDLE hDll, DWORD dwReason, LPVOID lpReserved)
 
 	/* Connect to the Base Server */
 	Status = CsrClientConnectToServer(SessionDir, BASESRV_SERVERDLL_INDEX,
-					  &ConnectInfo, &ConnectInfoSize,
-					  &BaseRunningInServerProcess);
+					  &ConnectInfo, &ConnectInfoSize);
 	if (!NT_SUCCESS(Status)) {
 	    DPRINT1("Failed to connect to CSR (Status %x)\n", Status);
 	    NtTerminateProcess(NtCurrentProcess(), Status);
@@ -123,13 +121,6 @@ WINAPI BOOL DllMain(HANDLE hDll, DWORD dwReason, LPVOID lpReserved)
 	ASSERT(Peb->ReadOnlyStaticServerData);
 	BaseStaticServerData = Peb->ReadOnlyStaticServerData[BASESRV_SERVERDLL_INDEX];
 	ASSERT(BaseStaticServerData);
-
-	/* Check if we are running a CSR Server */
-	if (!BaseRunningInServerProcess) {
-	    /* Set the termination port for the thread */
-	    DPRINT("Creating new thread for CSR\n");
-	    CsrNewThread();
-	}
 
 	/* Initialize heap handle table */
 	BaseDllInitializeMemoryManager();
