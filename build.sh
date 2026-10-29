@@ -4,6 +4,8 @@ DEFAULT_PLATFORM=pc99
 BUILD_TYPE=Debug
 TOOLCHAIN=llvm
 STRIP=llvm-strip
+NOSTOP=0
+BUILD_FAILED=0
 
 if [[ $TOOLCHAIN != "llvm" ]]; then
     echo "There is a GCC build profile but it is totally untested."
@@ -25,6 +27,10 @@ fi
 
 if [[ ${args[@]} =~ "arm64" ]]; then
     ARCH=arm64
+fi
+
+if [[ ${args[@]} =~ "nostop" ]]; then
+    NOSTOP=1
 fi
 
 if [[ ${ARCH} == "i386" ]]; then
@@ -64,10 +70,13 @@ IMAGEDIR="images-$ARCH-${BUILD_TYPE,,}"
 
 function build_failed
 {
-    echo "#################################"
-    echo "         Build failed."
-    echo "#################################"
-    exit 1
+    BUILD_FAILED=1
+    if (( ! $NOSTOP )); then
+	echo "#################################"
+	echo "         Build failed."
+	echo "#################################"
+	exit 1
+    fi
 }
 
 echo
@@ -487,7 +496,14 @@ else
     echo "You'll need to install jq (https://jqlang.github.io/jq)."
 fi
 
-echo
-echo "####################################"
-echo "         Build successful!"
-echo "####################################"
+if (( $BUILD_FAILED )); then
+    echo
+    echo "####################################"
+    echo "           Build failed!"
+    echo "####################################"
+else
+    echo
+    echo "####################################"
+    echo "         Build successful!"
+    echo "####################################"
+fi
