@@ -117,17 +117,6 @@ NTAPI BOOLEAN RtlEqualSid(IN PSID Sid1_,
 /*
  * @implemented
  */
-NTAPI ULONG RtlLengthSid(IN PSID Sid_)
-{
-    PISID Sid = Sid_;
-
-    /* The offset to the last index + 1 (since it's a count) is the length */
-    return (ULONG) FIELD_OFFSET(SID, SubAuthority[Sid->SubAuthorityCount]);
-}
-
-/*
- * @implemented
- */
 NTAPI NTSTATUS RtlCopySid(IN ULONG BufferLength,
 			  IN PSID Dest,
 			  IN PSID Src)

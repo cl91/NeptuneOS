@@ -97,6 +97,12 @@ typedef struct _PROCESS {
     ULONG_PTR AffinityMask;
     ULONG_PTR InheritedFromUniqueProcessId;
     ULONG_PTR BasePriority;
+    LOCAL_HANDLE ExceptionPort;	  /* Local handle of the LPC communication port. The NT
+				   * Executive does not interpret this field and passes
+				   * it verbatim to the client when requested. */
+    LOCAL_HANDLE DebugPort;	  /* Local handle of the LPC communication port. The NT
+				   * Executive does not interpret this field and passes
+				   * it verbatim to the client when requested. */
 #ifndef _WIN64
     AVL_NODE CidMapNode;      /* Node in the PspCidMap. Key is mapped PID. */
 #endif

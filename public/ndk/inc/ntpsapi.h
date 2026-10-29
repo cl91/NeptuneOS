@@ -168,7 +168,7 @@ typedef struct _HARDWARE_COUNTER {
 #define PROCESS_EXCEPTION_PORT_ALL_STATE_FLAGS    ((ULONG_PTR)((1UL << PROCESS_EXCEPTION_PORT_ALL_STATE_BITS) - 1))
 
 typedef struct _PROCESS_EXCEPTION_PORT {
-    HANDLE ExceptionPortHandle;
+    LOCAL_HANDLE ExceptionPortHandle;
     ULONG StateFlags;
 } PROCESS_EXCEPTION_PORT, *PPROCESS_EXCEPTION_PORT;
 
@@ -304,7 +304,7 @@ typedef struct _CLIENT_ID {
 } CLIENT_ID, *PCLIENT_ID;
 
 /*
- * Thread information block common to all NT subsystems, including Win32 and Posix
+ * Thread information block common to all NT subsystems, including Win32 and Posix.
  */
 typedef struct POINTER_ALIGNMENT _NT_TIB {
     struct _EXCEPTION_REGISTRATION_RECORD *ExceptionList;
@@ -446,8 +446,8 @@ NTAPI NTSYSAPI NTSTATUS NtCreateProcess(OUT PHANDLE ProcessHandle,
 					IN HANDLE ParentProcess,
 					IN BOOLEAN InheritObjectTable,
 					IN OPTIONAL HANDLE SectionHandle,
-					IN OPTIONAL HANDLE DebugPort,
-					IN OPTIONAL HANDLE ExceptionPort);
+					IN OPTIONAL LOCAL_HANDLE DebugPort,
+					IN OPTIONAL LOCAL_HANDLE ExceptionPort);
 
 NTAPI NTSYSAPI NTSTATUS NtCreateProcessEx(OUT PHANDLE ProcessHandle,
 					  IN ACCESS_MASK DesiredAccess,
@@ -455,8 +455,8 @@ NTAPI NTSYSAPI NTSTATUS NtCreateProcessEx(OUT PHANDLE ProcessHandle,
 					  IN HANDLE ParentProcess,
 					  IN ULONG Flags,
 					  IN OPTIONAL HANDLE SectionHandle,
-					  IN OPTIONAL HANDLE DebugPort,
-					  IN OPTIONAL HANDLE ExceptionPort,
+					  IN OPTIONAL LOCAL_HANDLE DebugPort,
+					  IN OPTIONAL LOCAL_HANDLE ExceptionPort,
 					  IN BOOLEAN InJob);
 
 NTAPI NTSYSAPI NTSTATUS NtOpenProcess(OUT PHANDLE ProcessHandle,
@@ -468,6 +468,10 @@ NTAPI NTSYSAPI NTSTATUS NtOpenThread(OUT PHANDLE ThreadHandle,
 				     IN ACCESS_MASK DesiredAccess,
 				     IN POBJECT_ATTRIBUTES ObjectAttributes,
 				     IN OPTIONAL PCLIENT_ID ClientId);
+
+NTAPI NTSYSAPI NTSTATUS NtImpersonateThread(IN HANDLE ThreadHandle,
+					    IN HANDLE ThreadToImpersonate,
+					    IN PSECURITY_QUALITY_OF_SERVICE SecurityQos);
 
 NTAPI NTSYSAPI NTSTATUS NtCreateThread(OUT PHANDLE ThreadHandle,
 				       IN ACCESS_MASK DesiredAccess,
@@ -512,7 +516,7 @@ NTAPI NTSYSAPI NTSTATUS NtResumeThread(IN HANDLE ThreadHandle,
 NTAPI NTSYSAPI NTSTATUS NtSuspendThread(IN HANDLE ThreadHandle,
 					OUT OPTIONAL PULONG PreviousSuspendCount);
 
-NTAPI NTSYSAPI NTSTATUS NtRegisterThreadTerminatePort(IN HANDLE PortHandle);
+NTAPI NTSYSAPI NTSTATUS NtRegisterThreadTerminatePort(IN LOCAL_HANDLE PortHandle);
 
 NTAPI NTSYSAPI NTSTATUS NtTerminateThread(IN HANDLE ThreadHandle,
 					  IN NTSTATUS ExitStatus);

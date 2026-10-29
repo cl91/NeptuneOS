@@ -6,7 +6,7 @@
  *
  * IMPORTANT: This must match the enum PROCESS_INFORMATION_CLASS in ntpsapi.h
  */
-static const INFORMATION_CLASS_INFO PsProcessInfoClass[] = {
+static const INFORMATION_CLASS_INFO PspProcessInfoClass[] = {
     /* ProcessBasicInformation */
     IQS_SAME(PROCESS_BASIC_INFORMATION,
 	     ULONG,
@@ -241,119 +241,69 @@ static const INFORMATION_CLASS_INFO PsProcessInfoClass[] = {
  *
  * IMPORTANT: This must match the enum THREAD_INFORMATION_CLASS in ntpsapi.h
  */
-static const INFORMATION_CLASS_INFO PsThreadInfoClass[] = {
+static const INFORMATION_CLASS_INFO PspThreadInfoClass[] = {
     /* ThreadBasicInformation */
-    IQS_SAME(THREAD_BASIC_INFORMATION,
-	     ULONG,
-	     ICIF_QUERY),
+    IQS_SAME(THREAD_BASIC_INFORMATION, ULONG, ICIF_QUERY),
 
     /* ThreadTimes */
-    IQS_SAME(KERNEL_USER_TIMES,
-	     ULONG,
-	     ICIF_QUERY),
+    IQS_SAME(KERNEL_USER_TIMES, ULONG, ICIF_QUERY),
 
     /* ThreadPriority */
-    IQS_SAME(KPRIORITY,
-	     ULONG,
-	     ICIF_SET),
+    IQS_SAME(KPRIORITY, ULONG, ICIF_SET),
 
     /* ThreadBasePriority */
-    IQS_SAME(LONG,
-	     ULONG,
-	     ICIF_SET),
+    IQS_SAME(LONG, ULONG, ICIF_SET),
 
     /* ThreadAffinityMask */
-    IQS_SAME(KAFFINITY,
-	     ULONG,
-	     ICIF_SET),
+    IQS_SAME(KAFFINITY, ULONG, ICIF_SET),
 
     /* ThreadImpersonationToken */
-    IQS_SAME(HANDLE,
-	     ULONG,
-	     ICIF_SET),
+    IQS_SAME(HANDLE, ULONG, ICIF_SET),
 
-    /* ThreadDescriptorTableEntry is only implemented in x86 as well as the descriptor entry */
-#if defined(_X86_)
-    IQS_SAME(DESCRIPTOR_TABLE_ENTRY,
-	     ULONG,
-	     ICIF_QUERY),
-#else
+    /* ThreadDescriptorTableEntry is not supported on Neptune OS */
     IQS_NONE,
-#endif
 
     /* ThreadEnableAlignmentFaultFixup */
-    IQS(CHAR,
-	CHAR,
-	BOOLEAN,
-	UCHAR,
-	ICIF_SET),
+    IQS(CHAR, CHAR, BOOLEAN, UCHAR, ICIF_SET),
 
     /* ThreadEventPair_Reusable */
     IQS_NONE,
 
     /* ThreadQuerySetWin32StartAddress */
-    IQS(PVOID,
-	ULONG,
-	ULONG_PTR,
-	ULONG,
-	ICIF_QUERY | ICIF_SET),
+    IQS(PVOID, ULONG, ULONG_PTR, ULONG, ICIF_QUERY | ICIF_SET),
 
     /* ThreadZeroTlsCell */
-    IQS_SAME(ULONG,
-	     ULONG,
-	     ICIF_SET),
+    IQS_SAME(ULONG, ULONG, ICIF_SET),
 
     /* ThreadPerformanceCount */
-    IQS_SAME(LARGE_INTEGER,
-	     ULONG,
-	     ICIF_QUERY),
+    IQS_SAME(LARGE_INTEGER, ULONG, ICIF_QUERY),
 
     /* ThreadAmILastThread */
-    IQS_SAME(ULONG,
-	     ULONG,
-	     ICIF_QUERY),
+    IQS_SAME(ULONG, ULONG, ICIF_QUERY),
 
     /* ThreadIdealProcessor */
-    IQS_SAME(ULONG_PTR,
-	     ULONG,
-	     ICIF_SET),
+    IQS_SAME(ULONG_PTR, ULONG, ICIF_SET),
 
     /* ThreadPriorityBoost */
-    IQS(ULONG,
-	ULONG,
-	ULONG_PTR,
-	ULONG,
-	ICIF_QUERY | ICIF_SET),
+    IQS(ULONG, ULONG, ULONG_PTR, ULONG, ICIF_QUERY | ICIF_SET),
 
     /* ThreadSetTlsArrayAddress */
-    IQS_SAME(PVOID,
-	     ULONG,
-	     ICIF_SET | ICIF_SIZE_VARIABLE),
+    IQS_SAME(PVOID, ULONG, ICIF_SET | ICIF_SIZE_VARIABLE),
 
     /* ThreadIsIoPending */
-    IQS_SAME(ULONG,
-	     ULONG,
-	     ICIF_QUERY),
+    IQS_SAME(ULONG, ULONG, ICIF_QUERY),
 
     /* ThreadHideFromDebugger */
-    IQS_SAME(CHAR,
-	     ULONG,
-	     ICIF_SET | ICIF_SET_SIZE_VARIABLE),
+    IQS_SAME(CHAR, ULONG, ICIF_SET | ICIF_SET_SIZE_VARIABLE),
 
     /* ThreadBreakOnTermination */
-    IQS_SAME(ULONG,
-	     ULONG,
-	     ICIF_QUERY | ICIF_SET),
+    IQS_SAME(ULONG, ULONG, ICIF_QUERY | ICIF_SET),
 
     /* ThreadSwitchLegacyState */
-    IQS_SAME(ULONG,
-	     ULONG,
-	     ICIF_SET),
+    IQS_SAME(ULONG, ULONG, ICIF_SET),
 
     /* ThreadIsTerminated */
-    IQS_SAME(ULONG,
-	     ULONG,
-	     ICIF_QUERY),
+    IQS_SAME(ULONG, ULONG, ICIF_QUERY),
 
     /* ThreadLastSystemCall */
     IQS_NONE,
@@ -375,14 +325,100 @@ static const INFORMATION_CLASS_INFO PsThreadInfoClass[] = {
 
     /* ThreadCSwitchMon */
     IQS_NONE,
+
+    /* ThreadCSwitchPmu */
+    IQS_NONE,
+
+    /* ThreadWow64Context */
+    IQS_NONE,
+
+    /* ThreadGroupInformation */
+    IQS_NONE,
+
+    /* ThreadUmsInformation */
+    IQS_NONE,
+
+    /* ThreadCounterProfiling */
+    IQS_NONE,
+
+    /* ThreadIdealProcessorEx */
+    IQS_NONE,
+
+    /* ThreadCpuAccountingInformation */
+    IQS_NONE,
+    // 6.2
+    /* ThreadSuspendCount */
+    IQS_NONE,
+    // 6.3
+    /* ThreadHeterogeneousCpuPolicy */
+    IQS_NONE,
+    // 10.0+
+    /* ThreadContainerId */
+    IQS_NONE,
+
+    /* ThreadNameInformation */
+    IQS_NONE,
+
+    /* ThreadSelectedCpuSets */
+    IQS_NONE,
+
+    /* ThreadSystemThreadInformation */
+    IQS_NONE,
+
+    /* ThreadActualGroupAffinity */
+    IQS_NONE,
+
+    /* ThreadDynamicCodePolicyInfo */
+    IQS_NONE,
+
+    /* ThreadExplicitCaseSensitivity */
+    IQS_NONE,
+
+    /* ThreadWorkOnBehalfTicket */
+    IQS_NONE,
+
+    /* ThreadSubsystemInformation */
+    IQS_NONE,
+
+    /* ThreadDbgkWerReportActive */
+    IQS_NONE,
+
+    /* ThreadAttachContainer */
+    IQS_NONE,
+
+    /* ThreadManageWritesToExecutableMemory */
+    IQS_NONE,
+
+    /* ThreadPowerThrottlingState */
+    IQS_NONE,
+
+    /* ThreadWorkloadClass */
+    IQS_NONE,
+
+    /* ThreadCreateStateChange */
+    IQS_NONE,
+
+    /* ThreadApplyStateChange */
+    IQS_NONE,
+
+    /* ThreadStrongerBadHandleChecks */
+    IQS_NONE,
+
+    /* ThreadEffectiveIoPriority */
+    IQS_NONE,
+
+    /* ThreadEffectivePagePriority */
+    IQS_NONE,
 };
 
-static inline NTSTATUS DefaultQueryInfoBufferCheck(ULONG Class,
-						   const INFORMATION_CLASS_INFO *ClassList,
-						   ULONG ClassListEntries,
-						   PVOID Buffer,
-						   ULONG BufferLength,
-						   ULONG OPTIONAL *Length)
+C_ASSERT(_ARRAYSIZE(PspThreadInfoClass) == MaxThreadInfoClass);
+
+static inline NTSTATUS PspDefaultQueryInfoBufferCheck(ULONG Class,
+						      const INFORMATION_CLASS_INFO *ClassList,
+						      ULONG ClassListEntries,
+						      PVOID Buffer,
+						      ULONG BufferLength,
+						      ULONG OPTIONAL *Length)
 {
     if (Class >= ClassListEntries) {
 	return STATUS_INVALID_INFO_CLASS;
@@ -392,14 +428,14 @@ static inline NTSTATUS DefaultQueryInfoBufferCheck(ULONG Class,
 	return STATUS_INVALID_INFO_CLASS;
     }
 
-    if ((ClassList[Class].RequiredSizeQUERY > 0 &&
-	 BufferLength != ClassList[Class].RequiredSizeQUERY)
+    if ((ClassList[Class].RequiredSizeQuery > 0 &&
+	 BufferLength != ClassList[Class].RequiredSizeQuery)
 	&& (!(ClassList[Class].Flags & ICIF_QUERY_SIZE_VARIABLE))) {
 	return STATUS_INFO_LENGTH_MISMATCH;
     }
 
     if (Length) {
-	*Length = ClassList[Class].RequiredSizeQUERY;
+	*Length = ClassList[Class].RequiredSizeQuery;
     }
 
     return STATUS_SUCCESS;
@@ -409,18 +445,18 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 				   IN PTHREAD Thread,
                                    IN HANDLE ProcessHandle,
                                    IN PROCESS_INFORMATION_CLASS ProcessInformationClass,
-                                   IN PVOID ProcessInformation,
+                                   IN PVOID Info,
                                    IN ULONG ProcessInformationLength,
                                    OUT OPTIONAL ULONG *ReturnLength)
 {
     /* Verify Information Class validity */
     ULONG Length;
-    RET_ERR(DefaultQueryInfoBufferCheck(ProcessInformationClass,
-					PsProcessInfoClass,
-					RTL_NUMBER_OF(PsProcessInfoClass),
-					ProcessInformation,
-					ProcessInformationLength,
-					&Length));
+    RET_ERR(PspDefaultQueryInfoBufferCheck(ProcessInformationClass,
+					   PspProcessInfoClass,
+					   RTL_NUMBER_OF(PspProcessInfoClass),
+					   Info,
+					   ProcessInformationLength,
+					   &Length));
 
     if (((ProcessInformationClass == ProcessCookie) ||
 	 (ProcessInformationClass == ProcessImageInformation)) &&
@@ -444,7 +480,7 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
     case ProcessBasicInformation:
     {
 	/* Basic process information */
-	PPROCESS_BASIC_INFORMATION ProcessBasicInfo = (PPROCESS_BASIC_INFORMATION)ProcessInformation;
+	PPROCESS_BASIC_INFORMATION ProcessBasicInfo = (PPROCESS_BASIC_INFORMATION)Info;
 	ProcessBasicInfo->ExitStatus = Process->ExitStatus;
 	ProcessBasicInfo->PebBaseAddress = (PVOID)Process->InitInfo.PebAddress;
 	ProcessBasicInfo->AffinityMask = Process->AffinityMask;
@@ -495,12 +531,20 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 	ProcessTime->KernelTime.QuadPart = ((LONGLONG)KernelTime) * KeMaximumIncrement;
 	ProcessTime->ExitTime = Process->ExitTime;
 	break;
+#endif
+
+    case ProcessExceptionPort:
+	/* Return whether or not we have a process exception port */
+	((PPROCESS_EXCEPTION_PORT)Info)->ExceptionPortHandle = Process->ExceptionPort;
+	((PPROCESS_EXCEPTION_PORT)Info)->StateFlags = 0;
+	break;
 
     case ProcessDebugPort:
 	/* Return whether or not we have a process debug port */
-	*(PHANDLE) ProcessInformation = Process->DebugPort ? (HANDLE)-1 : NULL;
+	*(PLOCAL_HANDLE)Info = Process->DebugPort;
 	break;
 
+#if 0
     case ProcessHandleCount:
 	/* Count the number of handles this process has */
 	ULONG HandleCount = ObGetProcessHandleCount(Process);
@@ -612,7 +656,7 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 
     case ProcessCookie:
 	/* Per-process security cookie */
-	*(PULONG) ProcessInformation = Process->Cookie;
+	*(PULONG) Info = Process->Cookie;
 	break;
 
 #if 0
@@ -700,29 +744,106 @@ NTSTATUS NtQueryInformationThread(IN ASYNC_STATE State,
 				  IN PTHREAD Thread,
                                   IN HANDLE ThreadHandle,
                                   IN THREAD_INFORMATION_CLASS ThreadInformationClass,
-                                  IN PVOID ThreadInformationBuffer,
+                                  IN PVOID Info,
                                   IN ULONG ThreadInformationLength,
                                   OUT OPTIONAL ULONG *ReturnLength)
 {
-    UNIMPLEMENTED;
+    /* Verify Information Class validity */
+    ULONG Length;
+    RET_ERR(PspDefaultQueryInfoBufferCheck(ThreadInformationClass,
+					   PspThreadInfoClass,
+					   RTL_NUMBER_OF(PspThreadInfoClass),
+					   Info,
+					   ThreadInformationLength,
+					   &Length));
+
+
+    PTHREAD QueryThread = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, ThreadHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&QueryThread));
+    assert(QueryThread != NULL);
+    ObDereferenceObject(QueryThread);
+    /* Check the information class */
+    NTSTATUS Status = STATUS_SUCCESS;
+    switch (ThreadInformationClass) {
+    default:
+	UNIMPLEMENTED_ROUTINE;
+	Status = STATUS_NOT_IMPLEMENTED;
+    }
+
+    if (ReturnLength && Length) {
+	*ReturnLength = Length;
+    }
+    return Status;
 }
 
 NTSTATUS NtSetInformationProcess(IN ASYNC_STATE State,
 				 IN PTHREAD Thread,
                                  IN HANDLE ProcessHandle,
                                  IN PROCESS_INFORMATION_CLASS ProcessInformationClass,
-                                 IN PVOID ProcessInformationBuffer,
+                                 IN PVOID Buffer,
                                  IN ULONG ProcessInformationLength)
 {
-    UNIMPLEMENTED;
+    /* Verify Information Class validity */
+    RET_ERR(PspDefaultQueryInfoBufferCheck(ProcessInformationClass,
+					   PspProcessInfoClass,
+					   RTL_NUMBER_OF(PspProcessInfoClass),
+					   Buffer,
+					   ProcessInformationLength,
+					   NULL));
+
+    PPROCESS Process = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
+    assert(Process != NULL);
+    ObDereferenceObject(Process);
+    /* Check the information class */
+    NTSTATUS Status = STATUS_SUCCESS;
+    switch (ProcessInformationClass) {
+    case ProcessExceptionPort:
+	/* Set the process exception port */
+	Process->ExceptionPort = ((PPROCESS_EXCEPTION_PORT)Buffer)->ExceptionPortHandle;
+	break;
+
+    case ProcessDebugPort:
+	/* Set the process debug port */
+	Process->DebugPort = *(PLOCAL_HANDLE)Buffer;
+	break;
+
+    default:
+	UNIMPLEMENTED_ROUTINE;
+	Status = STATUS_NOT_IMPLEMENTED;
+    }
+    return Status;
+
 }
 
 NTSTATUS NtSetInformationThread(IN ASYNC_STATE State,
 				IN PTHREAD Thread,
                                 IN HANDLE ThreadHandle,
                                 IN THREAD_INFORMATION_CLASS ThreadInformationClass,
-                                IN PVOID ThreadInformationBuffer,
+                                IN PVOID Info,
                                 IN ULONG ThreadInformationLength)
 {
-    UNIMPLEMENTED;
+    /* Verify Information Class validity */
+    RET_ERR(PspDefaultQueryInfoBufferCheck(ThreadInformationClass,
+					   PspThreadInfoClass,
+					   RTL_NUMBER_OF(PspThreadInfoClass),
+					   Info,
+					   ThreadInformationLength,
+					   NULL));
+
+    PTHREAD QueryThread = NULL;
+    RET_ERR(ObReferenceObjectByHandle(Thread, ThreadHandle,
+				      OBJECT_TYPE_PROCESS, (POBJECT *)&QueryThread));
+    assert(QueryThread != NULL);
+    ObDereferenceObject(QueryThread);
+    /* Check the information class */
+    NTSTATUS Status = STATUS_SUCCESS;
+    switch (ThreadInformationClass) {
+    default:
+	UNIMPLEMENTED_ROUTINE;
+	Status = STATUS_NOT_IMPLEMENTED;
+    }
+    return Status;
 }

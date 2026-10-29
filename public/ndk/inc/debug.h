@@ -28,6 +28,9 @@ __cdecl NTSYSAPI ULONG DbgPrintEx(IN ULONG ComponentId,
 				  IN PCSTR Format,
 				  ...) __attribute__ ((format(printf, 3, 4)));
 
+NTAPI NTSYSAPI ULONG DbgPrompt(IN PCCH Prompt, OUT PCH Response,
+			       IN ULONG MaximumResponseLength);
+
 NTAPI NTSYSAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 			       IN PVOID FileName,
 			       IN ULONG LineNumber,
@@ -43,6 +46,12 @@ FORCEINLINE ULONG DbgPrint(IN PCSTR Format, ...)
 FORCEINLINE ULONG DbgPrintEx(IN ULONG ComponentId,
 			     IN ULONG Level,
 			     IN PCSTR Format, ...)
+{
+    return 0;
+}
+
+FORCEINLINE NTAPI ULONG DbgPrompt(IN PCCH Prompt, OUT PCH Response,
+				  IN ULONG MaximumResponseLength)
 {
     return 0;
 }

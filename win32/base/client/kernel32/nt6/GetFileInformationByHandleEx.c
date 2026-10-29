@@ -1,4 +1,5 @@
 #include "k32.h"
+DEBUG_CHANNEL(kernel32file);
 
 /* Taken from Wine kernel32/file.c */
 

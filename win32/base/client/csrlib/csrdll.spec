@@ -8,6 +8,5 @@
 @ stdcall CsrClientConnectToServer(str long ptr ptr ptr)
 @ stdcall CsrFreeCaptureBuffer(ptr)
 @ stdcall CsrGetProcessId()
-@ stdcall CsrNewThread()
 @ stdcall CsrProbeForRead(ptr long long)
 @ stdcall CsrProbeForWrite(ptr long long)

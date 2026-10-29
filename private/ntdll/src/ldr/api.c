@@ -512,7 +512,7 @@ Quickie:
  */
 NTAPI NTSTATUS LdrLoadDll(IN OPTIONAL PWSTR SearchPath,
 			  IN OPTIONAL PULONG DllCharacteristics,
-			  IN PUNICODE_STRING DllName,
+			  IN PCUNICODE_STRING DllName,
 			  OUT PVOID *BaseAddress)
 {
     ANSI_STRING DllNameA = {};

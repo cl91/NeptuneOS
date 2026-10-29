@@ -17,47 +17,47 @@ extern BOOL NLS_IsUnicodeOnlyLcid(LCID);
  */
 extern DWORD NLS_GetAnsiCodePage(LCID lcid, DWORD dwFlags);
 
-enum enum_callback_type { CALLBACK_ENUMPROC, CALLBACK_ENUMPROCEX, CALLBACK_ENUMPROCEXEX };
+enum ENUM_CALLBACK_TYPE { CALLBACK_ENUMPROC, CALLBACK_ENUMPROCEX, CALLBACK_ENUMPROCEXEX };
 
-struct enumdateformats_context {
-    enum enum_callback_type type; /* callback kind */
+struct ENUM_DATE_FORMATS_CONTEXT {
+    enum ENUM_CALLBACK_TYPE Type; /* callback kind */
     union {
-	DATEFMT_ENUMPROCW callback; /* user callback pointer */
-	DATEFMT_ENUMPROCEXW callbackex;
-	DATEFMT_ENUMPROCEXEX callbackexex;
+	DATEFMT_ENUMPROCW Callback; /* user callback pointer */
+	DATEFMT_ENUMPROCEXW CallbackEx;
+	DATEFMT_ENUMPROCEXEX CallbackExEx;
     } u;
-    LCID lcid; /* locale of interest */
-    DWORD flags;
+    LCID Lcid; /* locale of interest */
+    DWORD Flags;
     LPARAM lParam;
-    BOOL unicode; /* A vs W callback type, only for regular and Ex callbacks */
+    BOOL Unicode; /* A vs W callback type, only for regular and Ex callbacks */
 };
 
-struct enumtimeformats_context {
-    enum enum_callback_type type; /* callback kind */
+struct ENUM_TIME_FORMATS_CONTEXT {
+    enum ENUM_CALLBACK_TYPE Type; /* callback kind */
     union {
-	TIMEFMT_ENUMPROCW callback; /* user callback pointer */
-	TIMEFMT_ENUMPROCEX callbackex;
+	TIMEFMT_ENUMPROCW Callback; /* user callback pointer */
+	TIMEFMT_ENUMPROCEX CallbackEx;
     } u;
-    LCID lcid; /* locale of interest */
-    DWORD flags;
+    LCID Lcid; /* locale of interest */
+    DWORD Flags;
     LPARAM lParam;
-    BOOL unicode; /* A vs W callback type, only for regular and Ex callbacks */
+    BOOL Unicode; /* A vs W callback type, only for regular and Ex callbacks */
 };
 
-struct enumcalendar_context {
-    enum enum_callback_type type; /* callback kind */
+struct ENUM_CALENDAR_CONTEXT {
+    enum ENUM_CALLBACK_TYPE type; /* callback kind */
     union {
-	CALINFO_ENUMPROCW callback; /* user callback pointer */
-	CALINFO_ENUMPROCEXW callbackex;
-	CALINFO_ENUMPROCEXEX callbackexex;
+	CALINFO_ENUMPROCW Callback; /* user callback pointer */
+	CALINFO_ENUMPROCEXW CallbackEx;
+	CALINFO_ENUMPROCEXEX CallbackExEx;
     } u;
-    LCID lcid; /* locale of interest */
-    CALID calendar; /* specific calendar or ENUM_ALL_CALENDARS */
-    CALTYPE caltype; /* calendar information type */
+    LCID Lcid; /* locale of interest */
+    CALID Calendar; /* specific calendar or ENUM_ALL_CALENDARS */
+    CALTYPE CalType; /* calendar information type */
     LPARAM lParam; /* user input parameter passed to callback, for ExEx case only */
-    BOOL unicode; /* A vs W callback type, only for regular and Ex callbacks */
+    BOOL Unicode; /* A vs W callback type, only for regular and Ex callbacks */
 };
 
-extern BOOL NLS_EnumDateFormats(const struct enumdateformats_context *ctxt);
-extern BOOL NLS_EnumTimeFormats(struct enumtimeformats_context *ctxt);
-extern BOOL NLS_EnumCalendarInfo(const struct enumcalendar_context *ctxt);
+extern BOOL NLS_EnumDateFormats(const struct ENUM_DATE_FORMATS_CONTEXT *ctxt);
+extern BOOL NLS_EnumTimeFormats(struct ENUM_TIME_FORMATS_CONTEXT *ctxt);
+extern BOOL NLS_EnumCalendarInfo(const struct ENUM_CALENDAR_CONTEXT *ctxt);

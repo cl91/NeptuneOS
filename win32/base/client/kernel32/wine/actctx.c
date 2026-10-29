@@ -22,10 +22,10 @@ DEBUG_CHANNEL(actctx);
  */
 WINAPI HANDLE CreateActCtxA(PCACTCTXA pActCtx)
 {
-    ACTCTXW actw;
-    SIZE_T len;
-    HANDLE ret = INVALID_HANDLE_VALUE;
-    LPWSTR src = NULL, assdir = NULL, resname = NULL, appname = NULL;
+    ACTCTXW ActCtx;
+    SIZE_T Len;
+    HANDLE Ret = INVALID_HANDLE_VALUE;
+    LPWSTR Src = NULL, AssDir = NULL, ResName = NULL, AppName = NULL;
 
     TRACE("%p %08x\n", pActCtx, pActCtx ? pActCtx->dwFlags : 0);
 
@@ -34,59 +34,59 @@ WINAPI HANDLE CreateActCtxA(PCACTCTXA pActCtx)
 	return INVALID_HANDLE_VALUE;
     }
 
-    actw.cbSize = sizeof(actw);
-    actw.dwFlags = pActCtx->dwFlags;
+    ActCtx.cbSize = sizeof(ActCtx);
+    ActCtx.dwFlags = pActCtx->dwFlags;
     if (pActCtx->lpSource) {
-	len = MultiByteToWideChar(CP_ACP, 0, pActCtx->lpSource, -1, NULL, 0);
-	src = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
-	if (!src)
+	Len = MultiByteToWideChar(CP_ACP, 0, pActCtx->lpSource, -1, NULL, 0);
+	Src = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR));
+	if (!Src)
 	    return INVALID_HANDLE_VALUE;
-	MultiByteToWideChar(CP_ACP, 0, pActCtx->lpSource, -1, src, len);
+	MultiByteToWideChar(CP_ACP, 0, pActCtx->lpSource, -1, Src, Len);
     }
-    actw.lpSource = src;
+    ActCtx.lpSource = Src;
 
-    if (actw.dwFlags & ACTCTX_FLAG_PROCESSOR_ARCHITECTURE_VALID)
-	actw.wProcessorArchitecture = pActCtx->wProcessorArchitecture;
-    if (actw.dwFlags & ACTCTX_FLAG_LANGID_VALID)
-	actw.wLangId = pActCtx->wLangId;
-    if (actw.dwFlags & ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID) {
-	len = MultiByteToWideChar(CP_ACP, 0, pActCtx->lpAssemblyDirectory, -1, NULL, 0);
-	assdir = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
-	if (!assdir)
+    if (ActCtx.dwFlags & ACTCTX_FLAG_PROCESSOR_ARCHITECTURE_VALID)
+	ActCtx.wProcessorArchitecture = pActCtx->wProcessorArchitecture;
+    if (ActCtx.dwFlags & ACTCTX_FLAG_LANGID_VALID)
+	ActCtx.wLangId = pActCtx->wLangId;
+    if (ActCtx.dwFlags & ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID) {
+	Len = MultiByteToWideChar(CP_ACP, 0, pActCtx->lpAssemblyDirectory, -1, NULL, 0);
+	AssDir = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR));
+	if (!AssDir)
 	    goto done;
-	MultiByteToWideChar(CP_ACP, 0, pActCtx->lpAssemblyDirectory, -1, assdir, len);
-	actw.lpAssemblyDirectory = assdir;
+	MultiByteToWideChar(CP_ACP, 0, pActCtx->lpAssemblyDirectory, -1, AssDir, Len);
+	ActCtx.lpAssemblyDirectory = AssDir;
     }
-    if (actw.dwFlags & ACTCTX_FLAG_RESOURCE_NAME_VALID) {
+    if (ActCtx.dwFlags & ACTCTX_FLAG_RESOURCE_NAME_VALID) {
 	if ((ULONG_PTR)pActCtx->lpResourceName >> 16) {
-	    len = MultiByteToWideChar(CP_ACP, 0, pActCtx->lpResourceName, -1, NULL, 0);
-	    resname = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
-	    if (!resname)
+	    Len = MultiByteToWideChar(CP_ACP, 0, pActCtx->lpResourceName, -1, NULL, 0);
+	    ResName = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR));
+	    if (!ResName)
 		goto done;
-	    MultiByteToWideChar(CP_ACP, 0, pActCtx->lpResourceName, -1, resname, len);
-	    actw.lpResourceName = resname;
+	    MultiByteToWideChar(CP_ACP, 0, pActCtx->lpResourceName, -1, ResName, Len);
+	    ActCtx.lpResourceName = ResName;
 	} else
-	    actw.lpResourceName = (LPCWSTR)pActCtx->lpResourceName;
+	    ActCtx.lpResourceName = (LPCWSTR)pActCtx->lpResourceName;
     }
-    if (actw.dwFlags & ACTCTX_FLAG_APPLICATION_NAME_VALID) {
-	len = MultiByteToWideChar(CP_ACP, 0, pActCtx->lpApplicationName, -1, NULL, 0);
-	appname = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
-	if (!appname)
+    if (ActCtx.dwFlags & ACTCTX_FLAG_APPLICATION_NAME_VALID) {
+	Len = MultiByteToWideChar(CP_ACP, 0, pActCtx->lpApplicationName, -1, NULL, 0);
+	AppName = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR));
+	if (!AppName)
 	    goto done;
-	MultiByteToWideChar(CP_ACP, 0, pActCtx->lpApplicationName, -1, appname, len);
-	actw.lpApplicationName = appname;
+	MultiByteToWideChar(CP_ACP, 0, pActCtx->lpApplicationName, -1, AppName, Len);
+	ActCtx.lpApplicationName = AppName;
     }
-    if (actw.dwFlags & ACTCTX_FLAG_HMODULE_VALID)
-	actw.hModule = pActCtx->hModule;
+    if (ActCtx.dwFlags & ACTCTX_FLAG_HMODULE_VALID)
+	ActCtx.hModule = pActCtx->hModule;
 
-    ret = CreateActCtxW(&actw);
+    Ret = CreateActCtxW(&ActCtx);
 
 done:
-    HeapFree(GetProcessHeap(), 0, src);
-    HeapFree(GetProcessHeap(), 0, assdir);
-    HeapFree(GetProcessHeap(), 0, resname);
-    HeapFree(GetProcessHeap(), 0, appname);
-    return ret;
+    HeapFree(GetProcessHeap(), 0, Src);
+    HeapFree(GetProcessHeap(), 0, AssDir);
+    HeapFree(GetProcessHeap(), 0, ResName);
+    HeapFree(GetProcessHeap(), 0, AppName);
+    return Ret;
 }
 
 /***********************************************************************
@@ -96,14 +96,14 @@ done:
  */
 WINAPI HANDLE CreateActCtxW(PCACTCTXW pActCtx)
 {
-    NTSTATUS status;
+    NTSTATUS Status;
     HANDLE hActCtx;
 
     TRACE("%p %08x\n", pActCtx, pActCtx ? pActCtx->dwFlags : 0);
 
-    if ((status = RtlCreateActivationContext(0, (PVOID)pActCtx, 0, NULL, NULL,
+    if ((Status = RtlCreateActivationContext(0, (PVOID)pActCtx, 0, NULL, NULL,
 					     &hActCtx))) {
-	SetLastError(RtlNtStatusToDosError(status));
+	SetLastError(RtlNtStatusToDosError(Status));
 	return INVALID_HANDLE_VALUE;
     }
     return hActCtx;
@@ -117,11 +117,11 @@ WINAPI HANDLE CreateActCtxW(PCACTCTXW pActCtx)
 WINAPI BOOL FindActCtxSectionStringA(DWORD dwFlags, const GUID *lpExtGuid, ULONG ulId,
 				     LPCSTR lpSearchStr, PACTCTX_SECTION_KEYED_DATA pInfo)
 {
-    LPWSTR search_str;
-    DWORD len;
-    BOOL ret;
+    LPWSTR SearchStr;
+    DWORD Len;
+    BOOL Ret;
 
-    TRACE("%08x %s %u %s %p\n", dwFlags, debugstr_guid(lpExtGuid), ulId,
+    TRACE("%08x %p %u %s %p\n", dwFlags, debugstr_guid(lpExtGuid), ulId,
 	  debugstr_a(lpSearchStr), pInfo);
 
     if (!lpSearchStr || !pInfo) {
@@ -129,14 +129,14 @@ WINAPI BOOL FindActCtxSectionStringA(DWORD dwFlags, const GUID *lpExtGuid, ULONG
 	return FALSE;
     }
 
-    len = MultiByteToWideChar(CP_ACP, 0, lpSearchStr, -1, NULL, 0);
-    search_str = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
-    MultiByteToWideChar(CP_ACP, 0, lpSearchStr, -1, search_str, len);
+    Len = MultiByteToWideChar(CP_ACP, 0, lpSearchStr, -1, NULL, 0);
+    SearchStr = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR));
+    MultiByteToWideChar(CP_ACP, 0, lpSearchStr, -1, SearchStr, Len);
 
-    ret = FindActCtxSectionStringW(dwFlags, lpExtGuid, ulId, search_str, pInfo);
+    Ret = FindActCtxSectionStringW(dwFlags, lpExtGuid, ulId, SearchStr, pInfo);
 
-    HeapFree(GetProcessHeap(), 0, search_str);
-    return ret;
+    HeapFree(GetProcessHeap(), 0, SearchStr);
+    return Ret;
 }
 
 /***********************************************************************
@@ -148,18 +148,18 @@ WINAPI BOOL FindActCtxSectionStringW(DWORD dwFlags, const GUID *lpExtGuid, ULONG
 				     LPCWSTR lpSearchStr,
 				     PACTCTX_SECTION_KEYED_DATA pInfo)
 {
-    UNICODE_STRING us;
-    NTSTATUS status;
+    UNICODE_STRING Str;
+    NTSTATUS Status;
 
     if (!pInfo) {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
 
-    RtlInitUnicodeString(&us, lpSearchStr);
-    if ((status = RtlFindActivationContextSectionString(dwFlags, lpExtGuid, ulId, &us,
+    RtlInitUnicodeString(&Str, lpSearchStr);
+    if ((Status = RtlFindActivationContextSectionString(dwFlags, lpExtGuid, ulId, &Str,
 							pInfo))) {
-	SetLastError(RtlNtStatusToDosError(status));
+	SetLastError(RtlNtStatusToDosError(Status));
 	return FALSE;
     }
     return TRUE;
@@ -174,11 +174,11 @@ WINAPI BOOL FindActCtxSectionGuid(DWORD dwFlags, const GUID *lpExtGuid, ULONG ul
 				  const GUID *lpSearchGuid,
 				  PACTCTX_SECTION_KEYED_DATA pInfo)
 {
-    NTSTATUS status;
+    NTSTATUS Status;
 
-    if ((status = RtlFindActivationContextSectionGuid(dwFlags, lpExtGuid, ulId,
+    if ((Status = RtlFindActivationContextSectionGuid(dwFlags, lpExtGuid, ulId,
 						      lpSearchGuid, pInfo))) {
-	SetLastError(RtlNtStatusToDosError(status));
+	SetLastError(RtlNtStatusToDosError(Status));
 	return FALSE;
     }
 

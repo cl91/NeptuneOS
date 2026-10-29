@@ -7,6 +7,9 @@
 #include <ctype.h>
 #include <pool.h>
 
+#define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
+#define ROUND_UP(x, align)	ALIGN_UP_BY(x, align)
+
 #define EX_POOL_SMALLEST_BLOCK	(RTL_POOL_SMALLEST_BLOCK)
 #define EX_POOL_BLOCK_SHIFT	(RTL_POOL_BLOCK_SHIFT)
 

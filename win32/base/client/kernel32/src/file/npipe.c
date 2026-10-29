@@ -159,7 +159,7 @@ WINAPI BOOL CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe,
 				   &DefaultTimeout);
     if (!NT_SUCCESS(Status)) {
 	/* Convert error and fail */
-	WARN("Status: %lx\n", Status);
+	WARN("Status: %x\n", Status);
 	BaseSetLastNTError(Status);
 	return FALSE;
     }
@@ -170,7 +170,7 @@ WINAPI BOOL CreatePipe(PHANDLE hReadPipe, PHANDLE hWritePipe,
 			FILE_SYNCHRONOUS_IO_NONALERT | FILE_NON_DIRECTORY_FILE);
     if (!NT_SUCCESS(Status)) {
 	/* Convert error and fail */
-	WARN("Status: %lx\n", Status);
+	WARN("Status: %x\n", Status);
 	NtClose(ReadPipeHandle);
 	BaseSetLastNTError(Status);
 	return FALSE;
@@ -513,7 +513,7 @@ WINAPI BOOL WaitNamedPipeW(LPCWSTR lpNamedPipeName, DWORD nTimeOut)
 
     if (!NT_SUCCESS(Status)) {
 	/* Fail; couldn't open */
-	WARN("Status: %lx\n", Status);
+	WARN("Status: %x\n", Status);
 	RtlFreeHeap(RtlGetProcessHeap(), 0, WaitPipeInfo);
 	RtlFreeUnicodeString(&NamedPipeName);
 	BaseSetLastNTError(Status);
@@ -557,7 +557,7 @@ WINAPI BOOL WaitNamedPipeW(LPCWSTR lpNamedPipeName, DWORD nTimeOut)
     /* Check the status */
     if (!NT_SUCCESS(Status)) {
 	/* Failure to wait on the pipe */
-	WARN("Status: %lx\n", Status);
+	WARN("Status: %x\n", Status);
 	BaseSetLastNTError(Status);
 	return FALSE;
     }

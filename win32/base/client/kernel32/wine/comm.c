@@ -49,135 +49,135 @@ DEBUG_CHANNEL(comm);
  *  The following COMM_Parse* functions are used by the BuildCommDCB
  *  functions to help parse the various parts of the device control string.
  */
-static LPCWSTR COMM_ParseStart(LPCWSTR ptr)
+static LPCWSTR COMM_ParseStart(LPCWSTR Ptr)
 {
-    static const WCHAR comW[] = { 'C', 'O', 'M', 0 };
+    static const WCHAR ComW[] = { 'C', 'O', 'M', 0 };
 
     /* The device control string may optionally start with "COMx" followed
        by an optional ':' and spaces. */
-    if (!strncmpiW(ptr, comW, 3)) {
-	ptr += 3;
+    if (!strncmpiW(Ptr, ComW, 3)) {
+	Ptr += 3;
 
 	/* Allow any com port above 0 as Win 9x does (NT only allows
 	   values for com ports which are actually present) */
-	if (*ptr < '1' || *ptr > '9')
+	if (*Ptr < '1' || *Ptr > '9')
 	    return NULL;
 
 	/* Advance pointer past port number */
-	while (*ptr >= '0' && *ptr <= '9')
-	    ptr++;
+	while (*Ptr >= '0' && *Ptr <= '9')
+	    Ptr++;
 
 	/* The com port number must be followed by a ':' or ' ' */
-	if (*ptr != ':' && *ptr != ' ')
+	if (*Ptr != ':' && *Ptr != ' ')
 	    return NULL;
 
 	/* Advance pointer to beginning of next parameter */
-	while (*ptr == ' ')
-	    ptr++;
-	if (*ptr == ':') {
-	    ptr++;
-	    while (*ptr == ' ')
-		ptr++;
+	while (*Ptr == ' ')
+	    Ptr++;
+	if (*Ptr == ':') {
+	    Ptr++;
+	    while (*Ptr == ' ')
+		Ptr++;
 	}
     }
     /* The device control string must not start with a space. */
-    else if (*ptr == ' ')
+    else if (*Ptr == ' ')
 	return NULL;
 
-    return ptr;
+    return Ptr;
 }
 
-static LPCWSTR COMM_ParseNumber(LPCWSTR ptr, LPDWORD lpnumber)
+static LPCWSTR COMM_ParseNumber(LPCWSTR Ptr, LPDWORD lpNumber)
 {
-    if (*ptr < '0' || *ptr > '9')
+    if (*Ptr < '0' || *Ptr > '9')
 	return NULL;
-    *lpnumber = strtoulW(ptr, NULL, 10);
-    while (*ptr >= '0' && *ptr <= '9')
-	ptr++;
-    return ptr;
+    *lpNumber = strtoulW(Ptr, NULL, 10);
+    while (*Ptr >= '0' && *Ptr <= '9')
+	Ptr++;
+    return Ptr;
 }
 
-static LPCWSTR COMM_ParseParity(LPCWSTR ptr, LPBYTE lpparity)
+static LPCWSTR COMM_ParseParity(LPCWSTR Ptr, LPBYTE lpParity)
 {
     /* Contrary to what you might expect, Windows only sets the Parity
        member of DCB and not fParity even when parity is specified in the
        device control string */
 
-    switch (toupperW(*ptr++)) {
+    switch (toupperW(*Ptr++)) {
     case 'E':
-	*lpparity = EVENPARITY;
+	*lpParity = EVENPARITY;
 	break;
     case 'M':
-	*lpparity = MARKPARITY;
+	*lpParity = MARKPARITY;
 	break;
     case 'N':
-	*lpparity = NOPARITY;
+	*lpParity = NOPARITY;
 	break;
     case 'O':
-	*lpparity = ODDPARITY;
+	*lpParity = ODDPARITY;
 	break;
     case 'S':
-	*lpparity = SPACEPARITY;
+	*lpParity = SPACEPARITY;
 	break;
     default:
 	return NULL;
     }
 
-    return ptr;
+    return Ptr;
 }
 
-static LPCWSTR COMM_ParseByteSize(LPCWSTR ptr, LPBYTE lpbytesize)
+static LPCWSTR COMM_ParseByteSize(LPCWSTR Ptr, LPBYTE lpByteSize)
 {
-    DWORD temp;
+    DWORD Temp;
 
-    if (!(ptr = COMM_ParseNumber(ptr, &temp)))
+    if (!(Ptr = COMM_ParseNumber(Ptr, &Temp)))
 	return NULL;
 
-    if (temp >= 5 && temp <= 8) {
-	*lpbytesize = temp;
-	return ptr;
+    if (Temp >= 5 && Temp <= 8) {
+	*lpByteSize = Temp;
+	return Ptr;
     } else
 	return NULL;
 }
 
-static LPCWSTR COMM_ParseStopBits(LPCWSTR ptr, LPBYTE lpstopbits)
+static LPCWSTR COMM_ParseStopBits(LPCWSTR Ptr, LPBYTE lpStopBits)
 {
-    DWORD temp;
-    static const WCHAR stopbits15W[] = { '1', '.', '5', 0 };
+    DWORD Temp;
+    static const WCHAR Stopbits15W[] = { '1', '.', '5', 0 };
 
-    if (!strncmpW(stopbits15W, ptr, 3)) {
-	ptr += 3;
-	*lpstopbits = ONE5STOPBITS;
+    if (!strncmpW(Stopbits15W, Ptr, 3)) {
+	Ptr += 3;
+	*lpStopBits = ONE5STOPBITS;
     } else {
-	if (!(ptr = COMM_ParseNumber(ptr, &temp)))
+	if (!(Ptr = COMM_ParseNumber(Ptr, &Temp)))
 	    return NULL;
 
-	if (temp == 1)
-	    *lpstopbits = ONESTOPBIT;
-	else if (temp == 2)
-	    *lpstopbits = TWOSTOPBITS;
+	if (Temp == 1)
+	    *lpStopBits = ONESTOPBIT;
+	else if (Temp == 2)
+	    *lpStopBits = TWOSTOPBITS;
 	else
 	    return NULL;
     }
 
-    return ptr;
+    return Ptr;
 }
 
-static LPCWSTR COMM_ParseOnOff(LPCWSTR ptr, LPDWORD lponoff)
+static LPCWSTR COMM_ParseOnOff(LPCWSTR Ptr, LPDWORD lpOnoff)
 {
-    static const WCHAR onW[] = { 'o', 'n', 0 };
-    static const WCHAR offW[] = { 'o', 'f', 'f', 0 };
+    static const WCHAR OnW[] = { 'o', 'n', 0 };
+    static const WCHAR OffW[] = { 'o', 'f', 'f', 0 };
 
-    if (!strncmpiW(onW, ptr, 2)) {
-	ptr += 2;
-	*lponoff = 1;
-    } else if (!strncmpiW(offW, ptr, 3)) {
-	ptr += 3;
-	*lponoff = 0;
+    if (!strncmpiW(OnW, Ptr, 2)) {
+	Ptr += 2;
+	*lpOnoff = 1;
+    } else if (!strncmpiW(OffW, Ptr, 3)) {
+	Ptr += 3;
+	*lpOnoff = 0;
     } else
 	return NULL;
 
-    return ptr;
+    return Ptr;
 }
 
 /***********************************************************************
@@ -185,106 +185,106 @@ static LPCWSTR COMM_ParseOnOff(LPCWSTR ptr, LPDWORD lponoff)
  *
  *  Build a DCB using the old style settings string eg: "96,n,8,1"
  */
-static BOOL COMM_BuildOldCommDCB(LPCWSTR device, LPDCB lpdcb)
+static BOOL COMM_BuildOldCommDCB(LPCWSTR Device, LPDCB lpDcb)
 {
-    WCHAR last = 0;
+    WCHAR Last = 0;
 
-    if (!(device = COMM_ParseNumber(device, &lpdcb->BaudRate)))
+    if (!(Device = COMM_ParseNumber(Device, &lpDcb->BaudRate)))
 	return FALSE;
 
-    switch (lpdcb->BaudRate) {
+    switch (lpDcb->BaudRate) {
     case 11:
     case 30:
     case 60:
-	lpdcb->BaudRate *= 10;
+	lpDcb->BaudRate *= 10;
 	break;
     case 12:
     case 24:
     case 48:
     case 96:
-	lpdcb->BaudRate *= 100;
+	lpDcb->BaudRate *= 100;
 	break;
     case 19:
-	lpdcb->BaudRate = 19200;
+	lpDcb->BaudRate = 19200;
 	break;
     }
 
-    while (*device == ' ')
-	device++;
-    if (*device++ != ',')
+    while (*Device == ' ')
+	Device++;
+    if (*Device++ != ',')
 	return FALSE;
-    while (*device == ' ')
-	device++;
+    while (*Device == ' ')
+	Device++;
 
-    if (!(device = COMM_ParseParity(device, &lpdcb->Parity)))
-	return FALSE;
-
-    while (*device == ' ')
-	device++;
-    if (*device++ != ',')
-	return FALSE;
-    while (*device == ' ')
-	device++;
-
-    if (!(device = COMM_ParseByteSize(device, &lpdcb->ByteSize)))
+    if (!(Device = COMM_ParseParity(Device, &lpDcb->Parity)))
 	return FALSE;
 
-    while (*device == ' ')
-	device++;
-    if (*device++ != ',')
+    while (*Device == ' ')
+	Device++;
+    if (*Device++ != ',')
 	return FALSE;
-    while (*device == ' ')
-	device++;
+    while (*Device == ' ')
+	Device++;
 
-    if (!(device = COMM_ParseStopBits(device, &lpdcb->StopBits)))
+    if (!(Device = COMM_ParseByteSize(Device, &lpDcb->ByteSize)))
+	return FALSE;
+
+    while (*Device == ' ')
+	Device++;
+    if (*Device++ != ',')
+	return FALSE;
+    while (*Device == ' ')
+	Device++;
+
+    if (!(Device = COMM_ParseStopBits(Device, &lpDcb->StopBits)))
 	return FALSE;
 
     /* The last parameter for flow control is optional. */
-    while (*device == ' ')
-	device++;
-    if (*device == ',') {
-	device++;
-	while (*device == ' ')
-	    device++;
-	if (*device)
-	    last = toupperW(*device++);
-	while (*device == ' ')
-	    device++;
+    while (*Device == ' ')
+	Device++;
+    if (*Device == ',') {
+	Device++;
+	while (*Device == ' ')
+	    Device++;
+	if (*Device)
+	    Last = toupperW(*Device++);
+	while (*Device == ' ')
+	    Device++;
     }
 
     /* Win NT sets the flow control members based on (or lack of) the last
        parameter.  Win 9x does not set these members. */
-    switch (last) {
+    switch (Last) {
     case 0:
-	lpdcb->fInX = FALSE;
-	lpdcb->fOutX = FALSE;
-	lpdcb->fOutxCtsFlow = FALSE;
-	lpdcb->fOutxDsrFlow = FALSE;
-	lpdcb->fDtrControl = DTR_CONTROL_ENABLE;
-	lpdcb->fRtsControl = RTS_CONTROL_ENABLE;
+	lpDcb->fInX = FALSE;
+	lpDcb->fOutX = FALSE;
+	lpDcb->fOutxCtsFlow = FALSE;
+	lpDcb->fOutxDsrFlow = FALSE;
+	lpDcb->fDtrControl = DTR_CONTROL_ENABLE;
+	lpDcb->fRtsControl = RTS_CONTROL_ENABLE;
 	break;
     case 'X':
-	lpdcb->fInX = TRUE;
-	lpdcb->fOutX = TRUE;
-	lpdcb->fOutxCtsFlow = FALSE;
-	lpdcb->fOutxDsrFlow = FALSE;
-	lpdcb->fDtrControl = DTR_CONTROL_ENABLE;
-	lpdcb->fRtsControl = RTS_CONTROL_ENABLE;
+	lpDcb->fInX = TRUE;
+	lpDcb->fOutX = TRUE;
+	lpDcb->fOutxCtsFlow = FALSE;
+	lpDcb->fOutxDsrFlow = FALSE;
+	lpDcb->fDtrControl = DTR_CONTROL_ENABLE;
+	lpDcb->fRtsControl = RTS_CONTROL_ENABLE;
 	break;
     case 'P':
-	lpdcb->fInX = FALSE;
-	lpdcb->fOutX = FALSE;
-	lpdcb->fOutxCtsFlow = TRUE;
-	lpdcb->fOutxDsrFlow = TRUE;
-	lpdcb->fDtrControl = DTR_CONTROL_HANDSHAKE;
-	lpdcb->fRtsControl = RTS_CONTROL_HANDSHAKE;
+	lpDcb->fInX = FALSE;
+	lpDcb->fOutX = FALSE;
+	lpDcb->fOutxCtsFlow = TRUE;
+	lpDcb->fOutxDsrFlow = TRUE;
+	lpDcb->fDtrControl = DTR_CONTROL_HANDSHAKE;
+	lpDcb->fRtsControl = RTS_CONTROL_HANDSHAKE;
 	break;
     default:
 	return FALSE;
     }
 
     /* This should be the end of the string. */
-    if (*device)
+    if (*Device)
 	return FALSE;
 
     return TRUE;
@@ -296,99 +296,99 @@ static BOOL COMM_BuildOldCommDCB(LPCWSTR device, LPDCB lpdcb)
  *  Build a DCB using the new style settings string.
  *   eg: "baud=9600 parity=n data=8 stop=1 xon=on to=on"
  */
-static BOOL COMM_BuildNewCommDCB(LPCWSTR device, LPDCB lpdcb, LPCOMMTIMEOUTS lptimeouts)
+static BOOL COMM_BuildNewCommDCB(LPCWSTR Device, LPDCB lpDcb, LPCOMMTIMEOUTS lpTimeouts)
 {
-    DWORD temp;
-    BOOL baud = FALSE, stop = FALSE;
-    static const WCHAR baudW[] = { 'b', 'a', 'u', 'd', '=', 0 };
-    static const WCHAR parityW[] = { 'p', 'a', 'r', 'i', 't', 'y', '=', 0 };
-    static const WCHAR dataW[] = { 'd', 'a', 't', 'a', '=', 0 };
-    static const WCHAR stopW[] = { 's', 't', 'o', 'p', '=', 0 };
-    static const WCHAR toW[] = { 't', 'o', '=', 0 };
-    static const WCHAR xonW[] = { 'x', 'o', 'n', '=', 0 };
-    static const WCHAR odsrW[] = { 'o', 'd', 's', 'r', '=', 0 };
-    static const WCHAR octsW[] = { 'o', 'c', 't', 's', '=', 0 };
-    static const WCHAR dtrW[] = { 'd', 't', 'r', '=', 0 };
-    static const WCHAR rtsW[] = { 'r', 't', 's', '=', 0 };
-    static const WCHAR idsrW[] = { 'i', 'd', 's', 'r', '=', 0 };
+    DWORD Temp;
+    BOOL Baud = FALSE, Stop = FALSE;
+    static const WCHAR BaudW[] = { 'b', 'a', 'u', 'd', '=', 0 };
+    static const WCHAR ParityW[] = { 'p', 'a', 'r', 'i', 't', 'y', '=', 0 };
+    static const WCHAR DataW[] = { 'd', 'a', 't', 'a', '=', 0 };
+    static const WCHAR StopW[] = { 's', 't', 'o', 'p', '=', 0 };
+    static const WCHAR ToW[] = { 't', 'o', '=', 0 };
+    static const WCHAR XonW[] = { 'x', 'o', 'n', '=', 0 };
+    static const WCHAR OdsrW[] = { 'o', 'd', 's', 'r', '=', 0 };
+    static const WCHAR OctsW[] = { 'o', 'c', 't', 's', '=', 0 };
+    static const WCHAR DtrW[] = { 'd', 't', 'r', '=', 0 };
+    static const WCHAR RtsW[] = { 'r', 't', 's', '=', 0 };
+    static const WCHAR IdsrW[] = { 'i', 'd', 's', 'r', '=', 0 };
 
-    while (*device) {
-	while (*device == ' ')
-	    device++;
+    while (*Device) {
+	while (*Device == ' ')
+	    Device++;
 
-	if (!strncmpiW(baudW, device, 5)) {
-	    baud = TRUE;
+	if (!strncmpiW(BaudW, Device, 5)) {
+	    Baud = TRUE;
 
-	    if (!(device = COMM_ParseNumber(device + 5, &lpdcb->BaudRate)))
+	    if (!(Device = COMM_ParseNumber(Device + 5, &lpDcb->BaudRate)))
 		return FALSE;
-	} else if (!strncmpiW(parityW, device, 7)) {
-	    if (!(device = COMM_ParseParity(device + 7, &lpdcb->Parity)))
+	} else if (!strncmpiW(ParityW, Device, 7)) {
+	    if (!(Device = COMM_ParseParity(Device + 7, &lpDcb->Parity)))
 		return FALSE;
-	} else if (!strncmpiW(dataW, device, 5)) {
-	    if (!(device = COMM_ParseByteSize(device + 5, &lpdcb->ByteSize)))
+	} else if (!strncmpiW(DataW, Device, 5)) {
+	    if (!(Device = COMM_ParseByteSize(Device + 5, &lpDcb->ByteSize)))
 		return FALSE;
-	} else if (!strncmpiW(stopW, device, 5)) {
-	    stop = TRUE;
+	} else if (!strncmpiW(StopW, Device, 5)) {
+	    Stop = TRUE;
 
-	    if (!(device = COMM_ParseStopBits(device + 5, &lpdcb->StopBits)))
+	    if (!(Device = COMM_ParseStopBits(Device + 5, &lpDcb->StopBits)))
 		return FALSE;
-	} else if (!strncmpiW(toW, device, 3)) {
-	    if (!(device = COMM_ParseOnOff(device + 3, &temp)))
-		return FALSE;
-
-	    lptimeouts->ReadIntervalTimeout = 0;
-	    lptimeouts->ReadTotalTimeoutMultiplier = 0;
-	    lptimeouts->ReadTotalTimeoutConstant = 0;
-	    lptimeouts->WriteTotalTimeoutMultiplier = 0;
-	    lptimeouts->WriteTotalTimeoutConstant = temp ? 60000 : 0;
-	} else if (!strncmpiW(xonW, device, 4)) {
-	    if (!(device = COMM_ParseOnOff(device + 4, &temp)))
+	} else if (!strncmpiW(ToW, Device, 3)) {
+	    if (!(Device = COMM_ParseOnOff(Device + 3, &Temp)))
 		return FALSE;
 
-	    lpdcb->fOutX = temp;
-	    lpdcb->fInX = temp;
-	} else if (!strncmpiW(odsrW, device, 5)) {
-	    if (!(device = COMM_ParseOnOff(device + 5, &temp)))
+	    lpTimeouts->ReadIntervalTimeout = 0;
+	    lpTimeouts->ReadTotalTimeoutMultiplier = 0;
+	    lpTimeouts->ReadTotalTimeoutConstant = 0;
+	    lpTimeouts->WriteTotalTimeoutMultiplier = 0;
+	    lpTimeouts->WriteTotalTimeoutConstant = Temp ? 60000 : 0;
+	} else if (!strncmpiW(XonW, Device, 4)) {
+	    if (!(Device = COMM_ParseOnOff(Device + 4, &Temp)))
 		return FALSE;
 
-	    lpdcb->fOutxDsrFlow = temp;
-	} else if (!strncmpiW(octsW, device, 5)) {
-	    if (!(device = COMM_ParseOnOff(device + 5, &temp)))
+	    lpDcb->fOutX = Temp;
+	    lpDcb->fInX = Temp;
+	} else if (!strncmpiW(OdsrW, Device, 5)) {
+	    if (!(Device = COMM_ParseOnOff(Device + 5, &Temp)))
 		return FALSE;
 
-	    lpdcb->fOutxCtsFlow = temp;
-	} else if (!strncmpiW(dtrW, device, 4)) {
-	    if (!(device = COMM_ParseOnOff(device + 4, &temp)))
+	    lpDcb->fOutxDsrFlow = Temp;
+	} else if (!strncmpiW(OctsW, Device, 5)) {
+	    if (!(Device = COMM_ParseOnOff(Device + 5, &Temp)))
 		return FALSE;
 
-	    lpdcb->fDtrControl = temp;
-	} else if (!strncmpiW(rtsW, device, 4)) {
-	    if (!(device = COMM_ParseOnOff(device + 4, &temp)))
+	    lpDcb->fOutxCtsFlow = Temp;
+	} else if (!strncmpiW(DtrW, Device, 4)) {
+	    if (!(Device = COMM_ParseOnOff(Device + 4, &Temp)))
 		return FALSE;
 
-	    lpdcb->fRtsControl = temp;
-	} else if (!strncmpiW(idsrW, device, 5)) {
-	    if (!(device = COMM_ParseOnOff(device + 5, &temp)))
+	    lpDcb->fDtrControl = Temp;
+	} else if (!strncmpiW(RtsW, Device, 4)) {
+	    if (!(Device = COMM_ParseOnOff(Device + 4, &Temp)))
+		return FALSE;
+
+	    lpDcb->fRtsControl = Temp;
+	} else if (!strncmpiW(IdsrW, Device, 5)) {
+	    if (!(Device = COMM_ParseOnOff(Device + 5, &Temp)))
 		return FALSE;
 
 	    /* Win NT sets the fDsrSensitivity member based on the
 	       idsr parameter.  Win 9x sets fOutxDsrFlow instead. */
-	    lpdcb->fDsrSensitivity = temp;
+	    lpDcb->fDsrSensitivity = Temp;
 	} else
 	    return FALSE;
 
 	/* After the above parsing, the next character (if not the end of
 	   the string) should be a space */
-	if (*device && *device != ' ')
+	if (*Device && *Device != ' ')
 	    return FALSE;
     }
 
     /* If stop bits were not specified, a default is always supplied. */
-    if (!stop) {
-	if (baud && lpdcb->BaudRate == 110)
-	    lpdcb->StopBits = TWOSTOPBITS;
+    if (!Stop) {
+	if (Baud && lpDcb->BaudRate == 110)
+	    lpDcb->StopBits = TWOSTOPBITS;
 	else
-	    lpdcb->StopBits = ONESTOPBIT;
+	    lpDcb->StopBits = ONESTOPBIT;
     }
 
     return TRUE;
@@ -405,11 +405,11 @@ static BOOL COMM_BuildNewCommDCB(LPCWSTR device, LPDCB lpdcb, LPCOMMTIMEOUTS lpt
  *
  *  True on success, false on a malformed control string.
  */
-WINAPI BOOL BuildCommDCBA(LPCSTR device, /* [in] The ascii device control string used to
+WINAPI BOOL BuildCommDCBA(LPCSTR Device, /* [in] The ascii device control string used to
 					    update the DCB. */
-			  LPDCB lpdcb) /* [out] The device control block to be updated. */
+			  LPDCB lpDcb) /* [out] The device control block to be updated. */
 {
-    return BuildCommDCBAndTimeoutsA(device, lpdcb, NULL);
+    return BuildCommDCBAndTimeoutsA(Device, lpDcb, NULL);
 }
 
 /**************************************************************************
@@ -423,28 +423,28 @@ WINAPI BOOL BuildCommDCBA(LPCSTR device, /* [in] The ascii device control string
  *
  *  True on success, false bad handles etc.
  */
-WINAPI BOOL BuildCommDCBAndTimeoutsA(LPCSTR device, /* [in] The ascii device control
+WINAPI BOOL BuildCommDCBAndTimeoutsA(LPCSTR Device, /* [in] The ascii device control
 						       string. */
-				     LPDCB lpdcb, /* [out] The device control block to be
+				     LPDCB lpDcb, /* [out] The device control block to be
 						     updated. */
-				     LPCOMMTIMEOUTS lptimeouts) /* [in] The COMMTIMEOUTS
+				     LPCOMMTIMEOUTS lpTimeouts) /* [in] The COMMTIMEOUTS
 								   structure to be
 								   updated. */
 {
-    BOOL ret = FALSE;
-    UNICODE_STRING deviceW;
+    BOOL Ret = FALSE;
+    UNICODE_STRING DeviceW;
 
-    TRACE("(%s,%p,%p)\n", device, lpdcb, lptimeouts);
-    if (device)
-	RtlCreateUnicodeStringFromAsciiz(&deviceW, device);
+    TRACE("(%s,%p,%p)\n", Device, lpDcb, lpTimeouts);
+    if (Device)
+	RtlCreateUnicodeStringFromAsciiz(&DeviceW, Device);
     else
-	deviceW.Buffer = NULL;
+	DeviceW.Buffer = NULL;
 
-    if (deviceW.Buffer)
-	ret = BuildCommDCBAndTimeoutsW(deviceW.Buffer, lpdcb, lptimeouts);
+    if (DeviceW.Buffer)
+	Ret = BuildCommDCBAndTimeoutsW(DeviceW.Buffer, lpDcb, lpTimeouts);
 
-    RtlFreeUnicodeString(&deviceW);
-    return ret;
+    RtlFreeUnicodeString(&DeviceW);
+    return Ret;
 }
 
 /**************************************************************************
@@ -458,49 +458,49 @@ WINAPI BOOL BuildCommDCBAndTimeoutsA(LPCSTR device, /* [in] The ascii device con
  *
  *  True on success, false bad handles etc
  */
-WINAPI BOOL BuildCommDCBAndTimeoutsW(LPCWSTR devid, /* [in] The unicode device control
+WINAPI BOOL BuildCommDCBAndTimeoutsW(LPCWSTR Devid, /* [in] The unicode device control
 						       string. */
-				     LPDCB lpdcb, /* [out] The device control block to be
+				     LPDCB lpDcb, /* [out] The device control block to be
 						     updated. */
-				     LPCOMMTIMEOUTS lptimeouts) /* [in] The COMMTIMEOUTS
+				     LPCOMMTIMEOUTS lpTimeouts) /* [in] The COMMTIMEOUTS
 								   structure to be
 								   updated. */
 {
-    DCB dcb;
-    COMMTIMEOUTS timeouts;
-    BOOL result;
-    LPCWSTR ptr = devid;
+    DCB Dcb;
+    COMMTIMEOUTS Timeouts;
+    BOOL Result;
+    LPCWSTR Ptr = Devid;
 
-    TRACE("(%s,%p,%p)\n", debugstr_w(devid), lpdcb, lptimeouts);
+    TRACE("(%ws,%p,%p)\n", Devid, lpDcb, lpTimeouts);
 
-    memset(&timeouts, 0, sizeof timeouts);
+    memset(&Timeouts, 0, sizeof Timeouts);
 
     /* Set DCBlength. (Windows NT does not do this, but 9x does) */
-    lpdcb->DCBlength = sizeof(DCB);
+    lpDcb->DCBlength = sizeof(DCB);
 
     /* Make a copy of the original data structures to work with since if
        if there is an error in the device control string the originals
        should not be modified (except possibly DCBlength) */
-    dcb = *lpdcb;
-    if (lptimeouts)
-	timeouts = *lptimeouts;
+    Dcb = *lpDcb;
+    if (lpTimeouts)
+	Timeouts = *lpTimeouts;
 
-    ptr = COMM_ParseStart(ptr);
+    Ptr = COMM_ParseStart(Ptr);
 
-    if (ptr == NULL)
-	result = FALSE;
-    else if (strchrW(ptr, ','))
-	result = COMM_BuildOldCommDCB(ptr, &dcb);
+    if (Ptr == NULL)
+	Result = FALSE;
+    else if (strchrW(Ptr, ','))
+	Result = COMM_BuildOldCommDCB(Ptr, &Dcb);
     else
-	result = COMM_BuildNewCommDCB(ptr, &dcb, &timeouts);
+	Result = COMM_BuildNewCommDCB(Ptr, &Dcb, &Timeouts);
 
-    if (result) {
-	*lpdcb = dcb;
-	if (lptimeouts)
-	    *lptimeouts = timeouts;
+    if (Result) {
+	*lpDcb = Dcb;
+	if (lpTimeouts)
+	    *lpTimeouts = Timeouts;
 	return TRUE;
     } else {
-	WARN("Invalid device control string: %s\n", debugstr_w(devid));
+	WARN("Invalid device control string: %ws\n", Devid);
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
@@ -517,10 +517,10 @@ WINAPI BOOL BuildCommDCBAndTimeoutsW(LPCWSTR devid, /* [in] The unicode device c
  *
  *  True on success, false on a malformed control string.
  */
-WINAPI BOOL BuildCommDCBW(LPCWSTR devid, /* [in] The unicode device control string. */
-			  LPDCB lpdcb) /* [out] The device control block to be updated. */
+WINAPI BOOL BuildCommDCBW(LPCWSTR Devid, /* [in] The unicode device control string. */
+			  LPDCB lpDcb) /* [out] The device control block to be updated. */
 {
-    return BuildCommDCBAndTimeoutsW(devid, lpdcb, NULL);
+    return BuildCommDCBAndTimeoutsW(Devid, lpDcb, NULL);
 }
 
 /*****************************************************************************
@@ -540,10 +540,10 @@ WINAPI BOOL BuildCommDCBW(LPCWSTR devid, /* [in] The unicode device control stri
  *
  *  Only TIOCSBRK and TIOCCBRK are supported.
  */
-WINAPI BOOL SetCommBreak(HANDLE handle)
+WINAPI BOOL SetCommBreak(HANDLE Handle)
 {
     DWORD dwBytesReturned;
-    return DeviceIoControl(handle, IOCTL_SERIAL_SET_BREAK_ON, NULL, 0, NULL, 0,
+    return DeviceIoControl(Handle, IOCTL_SERIAL_SET_BREAK_ON, NULL, 0, NULL, 0,
 			   &dwBytesReturned, NULL);
 }
 
@@ -565,10 +565,10 @@ WINAPI BOOL SetCommBreak(HANDLE handle)
  *
  *  Only TIOCSBRK and TIOCCBRK are supported.
  */
-WINAPI BOOL ClearCommBreak(HANDLE handle)
+WINAPI BOOL ClearCommBreak(HANDLE Handle)
 {
     DWORD dwBytesReturned;
-    return DeviceIoControl(handle, IOCTL_SERIAL_SET_BREAK_OFF, NULL, 0, NULL, 0,
+    return DeviceIoControl(Handle, IOCTL_SERIAL_SET_BREAK_OFF, NULL, 0, NULL, 0,
 			   &dwBytesReturned, NULL);
 }
 
@@ -588,45 +588,45 @@ WINAPI BOOL ClearCommBreak(HANDLE handle)
  *  false if the device is not present cannot execute the command
  *  or the command failed.
  */
-WINAPI BOOL EscapeCommFunction(HANDLE handle, DWORD func)
+WINAPI BOOL EscapeCommFunction(HANDLE Handle, DWORD Func)
 {
-    DWORD ioc;
+    DWORD Ioc;
     DWORD dwBytesReturned;
 
-    switch (func) {
+    switch (Func) {
     case CLRDTR:
-	ioc = IOCTL_SERIAL_CLR_DTR;
+	Ioc = IOCTL_SERIAL_CLR_DTR;
 	break;
     case CLRRTS:
-	ioc = IOCTL_SERIAL_CLR_RTS;
+	Ioc = IOCTL_SERIAL_CLR_RTS;
 	break;
     case SETDTR:
-	ioc = IOCTL_SERIAL_SET_DTR;
+	Ioc = IOCTL_SERIAL_SET_DTR;
 	break;
     case SETRTS:
-	ioc = IOCTL_SERIAL_SET_RTS;
+	Ioc = IOCTL_SERIAL_SET_RTS;
 	break;
     case SETXOFF:
-	ioc = IOCTL_SERIAL_SET_XOFF;
+	Ioc = IOCTL_SERIAL_SET_XOFF;
 	break;
     case SETXON:
-	ioc = IOCTL_SERIAL_SET_XON;
+	Ioc = IOCTL_SERIAL_SET_XON;
 	break;
     case SETBREAK:
-	ioc = IOCTL_SERIAL_SET_BREAK_ON;
+	Ioc = IOCTL_SERIAL_SET_BREAK_ON;
 	break;
     case CLRBREAK:
-	ioc = IOCTL_SERIAL_SET_BREAK_OFF;
+	Ioc = IOCTL_SERIAL_SET_BREAK_OFF;
 	break;
     case RESETDEV:
-	ioc = IOCTL_SERIAL_RESET_DEVICE;
+	Ioc = IOCTL_SERIAL_RESET_DEVICE;
 	break;
     default:
-	ERR("Unknown function code (%u)\n", func);
+	ERR("Unknown function code (%u)\n", Func);
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    return DeviceIoControl(handle, ioc, NULL, 0, NULL, 0, &dwBytesReturned, NULL);
+    return DeviceIoControl(Handle, Ioc, NULL, 0, NULL, 0, &dwBytesReturned, NULL);
 }
 
 /********************************************************************
@@ -644,10 +644,10 @@ WINAPI BOOL EscapeCommFunction(HANDLE handle, DWORD func)
  *
  *  True on success and false if the communications handle is bad.
  */
-WINAPI BOOL PurgeComm(HANDLE handle, DWORD flags)
+WINAPI BOOL PurgeComm(HANDLE Handle, DWORD Flags)
 {
     DWORD dwBytesReturned;
-    return DeviceIoControl(handle, IOCTL_SERIAL_PURGE, &flags, sizeof(flags), NULL, 0,
+    return DeviceIoControl(Handle, IOCTL_SERIAL_PURGE, &Flags, sizeof(Flags), NULL, 0,
 			   &dwBytesReturned, NULL);
 }
 
@@ -666,48 +666,48 @@ WINAPI BOOL PurgeComm(HANDLE handle, DWORD flags)
  *
  *  True on success, false if the communication resource handle is bad.
  */
-WINAPI BOOL ClearCommError(HANDLE handle, LPDWORD errors, LPCOMSTAT lpStat)
+WINAPI BOOL ClearCommError(HANDLE Handle, LPDWORD Errors, LPCOMSTAT lpStat)
 {
-    SERIAL_STATUS ss;
+    SERIAL_STATUS Status;
     DWORD dwBytesReturned;
 
-    if (!DeviceIoControl(handle, IOCTL_SERIAL_GET_COMMSTATUS, NULL, 0, &ss, sizeof(ss),
-			 &dwBytesReturned, NULL))
+    if (!DeviceIoControl(Handle, IOCTL_SERIAL_GET_COMMSTATUS, NULL, 0, &Status,
+			 sizeof(Status), &dwBytesReturned, NULL))
 	return FALSE;
 
-    if (errors) {
-	*errors = 0;
-	if (ss.Errors & SERIAL_ERROR_BREAK)
-	    *errors |= CE_BREAK;
-	if (ss.Errors & SERIAL_ERROR_FRAMING)
-	    *errors |= CE_FRAME;
-	if (ss.Errors & SERIAL_ERROR_OVERRUN)
-	    *errors |= CE_OVERRUN;
-	if (ss.Errors & SERIAL_ERROR_QUEUEOVERRUN)
-	    *errors |= CE_RXOVER;
-	if (ss.Errors & SERIAL_ERROR_PARITY)
-	    *errors |= CE_RXPARITY;
+    if (Errors) {
+	*Errors = 0;
+	if (Status.Errors & SERIAL_ERROR_BREAK)
+	    *Errors |= CE_BREAK;
+	if (Status.Errors & SERIAL_ERROR_FRAMING)
+	    *Errors |= CE_FRAME;
+	if (Status.Errors & SERIAL_ERROR_OVERRUN)
+	    *Errors |= CE_OVERRUN;
+	if (Status.Errors & SERIAL_ERROR_QUEUEOVERRUN)
+	    *Errors |= CE_RXOVER;
+	if (Status.Errors & SERIAL_ERROR_PARITY)
+	    *Errors |= CE_RXPARITY;
     }
 
     if (lpStat) {
 	memset(lpStat, 0, sizeof(*lpStat));
 
-	if (ss.HoldReasons & SERIAL_TX_WAITING_FOR_CTS)
+	if (Status.HoldReasons & SERIAL_TX_WAITING_FOR_CTS)
 	    lpStat->fCtsHold = TRUE;
-	if (ss.HoldReasons & SERIAL_TX_WAITING_FOR_DSR)
+	if (Status.HoldReasons & SERIAL_TX_WAITING_FOR_DSR)
 	    lpStat->fDsrHold = TRUE;
-	if (ss.HoldReasons & SERIAL_TX_WAITING_FOR_DCD)
+	if (Status.HoldReasons & SERIAL_TX_WAITING_FOR_DCD)
 	    lpStat->fRlsdHold = TRUE;
-	if (ss.HoldReasons & SERIAL_TX_WAITING_FOR_XON)
+	if (Status.HoldReasons & SERIAL_TX_WAITING_FOR_XON)
 	    lpStat->fXoffHold = TRUE;
-	if (ss.HoldReasons & SERIAL_TX_WAITING_XOFF_SENT)
+	if (Status.HoldReasons & SERIAL_TX_WAITING_XOFF_SENT)
 	    lpStat->fXoffSent = TRUE;
-	if (ss.EofReceived)
+	if (Status.EofReceived)
 	    lpStat->fEof = TRUE;
-	if (ss.WaitForImmediate)
+	if (Status.WaitForImmediate)
 	    lpStat->fTxim = TRUE;
-	lpStat->cbInQue = ss.AmountInInQueue;
-	lpStat->cbOutQue = ss.AmountInOutQueue;
+	lpStat->cbInQue = Status.AmountInInQueue;
+	lpStat->cbOutQue = Status.AmountInOutQueue;
     }
     return TRUE;
 }
@@ -732,14 +732,14 @@ WINAPI BOOL ClearCommError(HANDLE handle, LPDWORD errors, LPCOMSTAT lpStat)
  *
  *  Stub.
  */
-WINAPI BOOL SetupComm(HANDLE handle, DWORD insize, DWORD outsize)
+WINAPI BOOL SetupComm(HANDLE Handle, DWORD Insize, DWORD Outsize)
 {
-    SERIAL_QUEUE_SIZE sqs;
+    SERIAL_QUEUE_SIZE Sqs;
     DWORD dwBytesReturned;
 
-    sqs.InSize = insize;
-    sqs.OutSize = outsize;
-    return DeviceIoControl(handle, IOCTL_SERIAL_SET_QUEUE_SIZE, &sqs, sizeof(sqs), NULL,
+    Sqs.InSize = Insize;
+    Sqs.OutSize = Outsize;
+    return DeviceIoControl(Handle, IOCTL_SERIAL_SET_QUEUE_SIZE, &Sqs, sizeof(Sqs), NULL,
 			   0, &dwBytesReturned, NULL);
 }
 
@@ -758,12 +758,12 @@ WINAPI BOOL SetupComm(HANDLE handle, DWORD insize, DWORD outsize)
  *
  *   True on success, fail on bad device handle etc.
  */
-WINAPI BOOL GetCommMask(HANDLE handle, LPDWORD evtmask)
+WINAPI BOOL GetCommMask(HANDLE Handle, LPDWORD Evtmask)
 {
     DWORD dwBytesReturned;
-    TRACE("handle %p, mask %p\n", handle, evtmask);
-    return DeviceIoControl(handle, IOCTL_SERIAL_GET_WAIT_MASK, NULL, 0, evtmask,
-			   sizeof(*evtmask), &dwBytesReturned, NULL);
+    TRACE("handle %p, mask %p\n", Handle, Evtmask);
+    return DeviceIoControl(Handle, IOCTL_SERIAL_GET_WAIT_MASK, NULL, 0, Evtmask,
+			   sizeof(*Evtmask), &dwBytesReturned, NULL);
 }
 
 /*****************************************************************************
@@ -782,25 +782,25 @@ WINAPI BOOL GetCommMask(HANDLE handle, LPDWORD evtmask)
  *
  *  True on success, false on bad handle etc.
  */
-WINAPI BOOL SetCommMask(HANDLE handle, DWORD evtmask)
+WINAPI BOOL SetCommMask(HANDLE Handle, DWORD Evtmask)
 {
     DWORD dwBytesReturned;
-    TRACE("handle %p, mask %x\n", handle, evtmask);
-    return DeviceIoControl(handle, IOCTL_SERIAL_SET_WAIT_MASK, &evtmask, sizeof(evtmask),
+    TRACE("handle %p, mask %x\n", Handle, Evtmask);
+    return DeviceIoControl(Handle, IOCTL_SERIAL_SET_WAIT_MASK, &Evtmask, sizeof(Evtmask),
 			   NULL, 0, &dwBytesReturned, NULL);
 }
 
-static void dump_dcb(const DCB *lpdcb)
+static void DumpDcb(const DCB *lpDcb)
 {
-    TRACE("bytesize=%d baudrate=%d fParity=%d Parity=%d stopbits=%d\n", lpdcb->ByteSize,
-	  lpdcb->BaudRate, lpdcb->fParity, lpdcb->Parity,
-	  (lpdcb->StopBits == ONESTOPBIT)  ? 1 :
-	  (lpdcb->StopBits == TWOSTOPBITS) ? 2 :
+    TRACE("bytesize=%d baudrate=%d fParity=%d Parity=%d stopbits=%d\n", lpDcb->ByteSize,
+	  lpDcb->BaudRate, lpDcb->fParity, lpDcb->Parity,
+	  (lpDcb->StopBits == ONESTOPBIT)  ? 1 :
+	  (lpDcb->StopBits == TWOSTOPBITS) ? 2 :
 					     0);
-    TRACE("%sIXON %sIXOFF\n", (lpdcb->fOutX) ? "" : "~", (lpdcb->fInX) ? "" : "~");
-    TRACE("fOutxCtsFlow=%d fRtsControl=%d\n", lpdcb->fOutxCtsFlow, lpdcb->fRtsControl);
-    TRACE("fOutxDsrFlow=%d fDtrControl=%d\n", lpdcb->fOutxDsrFlow, lpdcb->fDtrControl);
-    if (lpdcb->fOutxCtsFlow || lpdcb->fRtsControl == RTS_CONTROL_HANDSHAKE)
+    TRACE("%sIXON %sIXOFF\n", (lpDcb->fOutX) ? "" : "~", (lpDcb->fInX) ? "" : "~");
+    TRACE("fOutxCtsFlow=%d fRtsControl=%d\n", lpDcb->fOutxCtsFlow, lpDcb->fRtsControl);
+    TRACE("fOutxDsrFlow=%d fDtrControl=%d\n", lpDcb->fOutxDsrFlow, lpDcb->fDtrControl);
+    if (lpDcb->fOutxCtsFlow || lpDcb->fRtsControl == RTS_CONTROL_HANDSHAKE)
 	TRACE("CRTSCTS\n");
     else
 	TRACE("~CRTSCTS\n");
@@ -822,99 +822,99 @@ static void dump_dcb(const DCB *lpdcb)
  *
  *  True on success, false on failure, e.g., if the XonChar is equal to the XoffChar.
  */
-WINAPI BOOL SetCommState(HANDLE handle, LPDCB lpdcb)
+WINAPI BOOL SetCommState(HANDLE Handle, LPDCB lpDcb)
 {
-    SERIAL_BAUD_RATE sbr;
-    SERIAL_LINE_CONTROL slc;
-    SERIAL_HANDFLOW shf;
-    SERIAL_CHARS sc;
+    SERIAL_BAUD_RATE Sbr;
+    SERIAL_LINE_CONTROL Slc;
+    SERIAL_HANDFLOW Shf;
+    SERIAL_CHARS Sc;
     DWORD dwBytesReturned;
 
-    TRACE("handle %p, ptr %p\n", handle, lpdcb);
+    TRACE("handle %p, ptr %p\n", Handle, lpDcb);
 
-    if (lpdcb == NULL) {
+    if (lpDcb == NULL) {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    dump_dcb(lpdcb);
+    DumpDcb(lpDcb);
 
-    sbr.BaudRate = lpdcb->BaudRate;
+    Sbr.BaudRate = lpDcb->BaudRate;
 
-    slc.StopBits = lpdcb->StopBits;
-    slc.Parity = lpdcb->Parity;
-    slc.WordLength = lpdcb->ByteSize;
+    Slc.StopBits = lpDcb->StopBits;
+    Slc.Parity = lpDcb->Parity;
+    Slc.WordLength = lpDcb->ByteSize;
 
-    shf.ControlHandShake = 0;
-    shf.FlowReplace = 0;
-    if (lpdcb->fOutxCtsFlow)
-	shf.ControlHandShake |= SERIAL_CTS_HANDSHAKE;
-    if (lpdcb->fOutxDsrFlow)
-	shf.ControlHandShake |= SERIAL_DSR_HANDSHAKE;
-    switch (lpdcb->fDtrControl) {
+    Shf.ControlHandShake = 0;
+    Shf.FlowReplace = 0;
+    if (lpDcb->fOutxCtsFlow)
+	Shf.ControlHandShake |= SERIAL_CTS_HANDSHAKE;
+    if (lpDcb->fOutxDsrFlow)
+	Shf.ControlHandShake |= SERIAL_DSR_HANDSHAKE;
+    switch (lpDcb->fDtrControl) {
     case DTR_CONTROL_DISABLE:
 	break;
     case DTR_CONTROL_ENABLE:
-	shf.ControlHandShake |= SERIAL_DTR_CONTROL;
+	Shf.ControlHandShake |= SERIAL_DTR_CONTROL;
 	break;
     case DTR_CONTROL_HANDSHAKE:
-	shf.ControlHandShake |= SERIAL_DTR_HANDSHAKE;
+	Shf.ControlHandShake |= SERIAL_DTR_HANDSHAKE;
 	break;
     default:
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    switch (lpdcb->fRtsControl) {
+    switch (lpDcb->fRtsControl) {
     case RTS_CONTROL_DISABLE:
 	break;
     case RTS_CONTROL_ENABLE:
-	shf.FlowReplace |= SERIAL_RTS_CONTROL;
+	Shf.FlowReplace |= SERIAL_RTS_CONTROL;
 	break;
     case RTS_CONTROL_HANDSHAKE:
-	shf.FlowReplace |= SERIAL_RTS_HANDSHAKE;
+	Shf.FlowReplace |= SERIAL_RTS_HANDSHAKE;
 	break;
     case RTS_CONTROL_TOGGLE:
-	shf.FlowReplace |= SERIAL_RTS_CONTROL | SERIAL_RTS_HANDSHAKE;
+	Shf.FlowReplace |= SERIAL_RTS_CONTROL | SERIAL_RTS_HANDSHAKE;
 	break;
     default:
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    if (lpdcb->fDsrSensitivity)
-	shf.ControlHandShake |= SERIAL_DSR_SENSITIVITY;
-    if (lpdcb->fAbortOnError)
-	shf.ControlHandShake |= SERIAL_ERROR_ABORT;
+    if (lpDcb->fDsrSensitivity)
+	Shf.ControlHandShake |= SERIAL_DSR_SENSITIVITY;
+    if (lpDcb->fAbortOnError)
+	Shf.ControlHandShake |= SERIAL_ERROR_ABORT;
 
-    if (lpdcb->fErrorChar)
-	shf.FlowReplace |= SERIAL_ERROR_CHAR;
-    if (lpdcb->fNull)
-	shf.FlowReplace |= SERIAL_NULL_STRIPPING;
-    if (lpdcb->fTXContinueOnXoff)
-	shf.FlowReplace |= SERIAL_XOFF_CONTINUE;
-    if (lpdcb->fOutX)
-	shf.FlowReplace |= SERIAL_AUTO_TRANSMIT;
-    if (lpdcb->fInX)
-	shf.FlowReplace |= SERIAL_AUTO_RECEIVE;
+    if (lpDcb->fErrorChar)
+	Shf.FlowReplace |= SERIAL_ERROR_CHAR;
+    if (lpDcb->fNull)
+	Shf.FlowReplace |= SERIAL_NULL_STRIPPING;
+    if (lpDcb->fTXContinueOnXoff)
+	Shf.FlowReplace |= SERIAL_XOFF_CONTINUE;
+    if (lpDcb->fOutX)
+	Shf.FlowReplace |= SERIAL_AUTO_TRANSMIT;
+    if (lpDcb->fInX)
+	Shf.FlowReplace |= SERIAL_AUTO_RECEIVE;
 
-    shf.XonLimit = lpdcb->XonLim;
-    shf.XoffLimit = lpdcb->XoffLim;
+    Shf.XonLimit = lpDcb->XonLim;
+    Shf.XoffLimit = lpDcb->XoffLim;
 
-    sc.EofChar = lpdcb->EofChar;
-    sc.ErrorChar = lpdcb->ErrorChar;
-    sc.BreakChar = 0;
-    sc.EventChar = lpdcb->EvtChar;
-    sc.XonChar = lpdcb->XonChar;
-    sc.XoffChar = lpdcb->XoffChar;
+    Sc.EofChar = lpDcb->EofChar;
+    Sc.ErrorChar = lpDcb->ErrorChar;
+    Sc.BreakChar = 0;
+    Sc.EventChar = lpDcb->EvtChar;
+    Sc.XonChar = lpDcb->XonChar;
+    Sc.XoffChar = lpDcb->XoffChar;
 
     /* note: change DTR/RTS lines after setting the comm attributes,
      * so flow control does not interfere.
      */
-    return (DeviceIoControl(handle, IOCTL_SERIAL_SET_BAUD_RATE, &sbr, sizeof(sbr), NULL,
+    return (DeviceIoControl(Handle, IOCTL_SERIAL_SET_BAUD_RATE, &Sbr, sizeof(Sbr), NULL,
 			    0, &dwBytesReturned, NULL) &&
-	    DeviceIoControl(handle, IOCTL_SERIAL_SET_LINE_CONTROL, &slc, sizeof(slc),
+	    DeviceIoControl(Handle, IOCTL_SERIAL_SET_LINE_CONTROL, &Slc, sizeof(Slc),
 			    NULL, 0, &dwBytesReturned, NULL) &&
-	    DeviceIoControl(handle, IOCTL_SERIAL_SET_HANDFLOW, &shf, sizeof(shf), NULL, 0,
+	    DeviceIoControl(Handle, IOCTL_SERIAL_SET_HANDFLOW, &Shf, sizeof(Shf), NULL, 0,
 			    &dwBytesReturned, NULL) &&
-	    DeviceIoControl(handle, IOCTL_SERIAL_SET_CHARS, &sc, sizeof(sc), NULL, 0,
+	    DeviceIoControl(Handle, IOCTL_SERIAL_SET_CHARS, &Sc, sizeof(Sc), NULL, 0,
 			    &dwBytesReturned, NULL));
 }
 
@@ -935,99 +935,99 @@ WINAPI BOOL SetCommState(HANDLE handle, LPDCB lpdcb)
  *
  *  XonChar and XoffChar are not set.
  */
-WINAPI BOOL GetCommState(HANDLE handle, LPDCB lpdcb)
+WINAPI BOOL GetCommState(HANDLE Handle, LPDCB lpDcb)
 {
-    SERIAL_BAUD_RATE sbr;
-    SERIAL_LINE_CONTROL slc;
-    SERIAL_HANDFLOW shf;
-    SERIAL_CHARS sc;
+    SERIAL_BAUD_RATE Sbr;
+    SERIAL_LINE_CONTROL Slc;
+    SERIAL_HANDFLOW Shf;
+    SERIAL_CHARS Sc;
     DWORD dwBytesReturned;
 
-    TRACE("handle %p, ptr %p\n", handle, lpdcb);
+    TRACE("handle %p, ptr %p\n", Handle, lpDcb);
 
-    if (!lpdcb) {
+    if (!lpDcb) {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
 
-    if (!DeviceIoControl(handle, IOCTL_SERIAL_GET_BAUD_RATE, NULL, 0, &sbr, sizeof(sbr),
+    if (!DeviceIoControl(Handle, IOCTL_SERIAL_GET_BAUD_RATE, NULL, 0, &Sbr, sizeof(Sbr),
 			 &dwBytesReturned, NULL) ||
-	!DeviceIoControl(handle, IOCTL_SERIAL_GET_LINE_CONTROL, NULL, 0, &slc,
-			 sizeof(slc), &dwBytesReturned, NULL) ||
-	!DeviceIoControl(handle, IOCTL_SERIAL_GET_HANDFLOW, NULL, 0, &shf, sizeof(shf),
+	!DeviceIoControl(Handle, IOCTL_SERIAL_GET_LINE_CONTROL, NULL, 0, &Slc,
+			 sizeof(Slc), &dwBytesReturned, NULL) ||
+	!DeviceIoControl(Handle, IOCTL_SERIAL_GET_HANDFLOW, NULL, 0, &Shf, sizeof(Shf),
 			 &dwBytesReturned, NULL) ||
-	!DeviceIoControl(handle, IOCTL_SERIAL_GET_CHARS, NULL, 0, &sc, sizeof(sc),
+	!DeviceIoControl(Handle, IOCTL_SERIAL_GET_CHARS, NULL, 0, &Sc, sizeof(Sc),
 			 &dwBytesReturned, NULL))
 	return FALSE;
 
-    memset(lpdcb, 0, sizeof(*lpdcb));
-    lpdcb->DCBlength = sizeof(*lpdcb);
+    memset(lpDcb, 0, sizeof(*lpDcb));
+    lpDcb->DCBlength = sizeof(*lpDcb);
 
     /* yes, they seem no never be (re)set on NT */
-    lpdcb->fBinary = 1;
-    lpdcb->fParity = 0;
+    lpDcb->fBinary = 1;
+    lpDcb->fParity = 0;
 
-    lpdcb->BaudRate = sbr.BaudRate;
+    lpDcb->BaudRate = Sbr.BaudRate;
 
-    lpdcb->StopBits = slc.StopBits;
-    lpdcb->Parity = slc.Parity;
-    lpdcb->ByteSize = slc.WordLength;
+    lpDcb->StopBits = Slc.StopBits;
+    lpDcb->Parity = Slc.Parity;
+    lpDcb->ByteSize = Slc.WordLength;
 
-    if (shf.ControlHandShake & SERIAL_CTS_HANDSHAKE)
-	lpdcb->fOutxCtsFlow = 1;
-    if (shf.ControlHandShake & SERIAL_DSR_HANDSHAKE)
-	lpdcb->fOutxDsrFlow = 1;
-    switch (shf.ControlHandShake & (SERIAL_DTR_CONTROL | SERIAL_DTR_HANDSHAKE)) {
+    if (Shf.ControlHandShake & SERIAL_CTS_HANDSHAKE)
+	lpDcb->fOutxCtsFlow = 1;
+    if (Shf.ControlHandShake & SERIAL_DSR_HANDSHAKE)
+	lpDcb->fOutxDsrFlow = 1;
+    switch (Shf.ControlHandShake & (SERIAL_DTR_CONTROL | SERIAL_DTR_HANDSHAKE)) {
     case 0:
-	lpdcb->fDtrControl = DTR_CONTROL_DISABLE;
+	lpDcb->fDtrControl = DTR_CONTROL_DISABLE;
 	break;
     case SERIAL_DTR_CONTROL:
-	lpdcb->fDtrControl = DTR_CONTROL_ENABLE;
+	lpDcb->fDtrControl = DTR_CONTROL_ENABLE;
 	break;
     case SERIAL_DTR_HANDSHAKE:
-	lpdcb->fDtrControl = DTR_CONTROL_HANDSHAKE;
+	lpDcb->fDtrControl = DTR_CONTROL_HANDSHAKE;
 	break;
     }
-    switch (shf.FlowReplace & (SERIAL_RTS_CONTROL | SERIAL_RTS_HANDSHAKE)) {
+    switch (Shf.FlowReplace & (SERIAL_RTS_CONTROL | SERIAL_RTS_HANDSHAKE)) {
     case 0:
-	lpdcb->fRtsControl = RTS_CONTROL_DISABLE;
+	lpDcb->fRtsControl = RTS_CONTROL_DISABLE;
 	break;
     case SERIAL_RTS_CONTROL:
-	lpdcb->fRtsControl = RTS_CONTROL_ENABLE;
+	lpDcb->fRtsControl = RTS_CONTROL_ENABLE;
 	break;
     case SERIAL_RTS_HANDSHAKE:
-	lpdcb->fRtsControl = RTS_CONTROL_HANDSHAKE;
+	lpDcb->fRtsControl = RTS_CONTROL_HANDSHAKE;
 	break;
     case SERIAL_RTS_CONTROL | SERIAL_RTS_HANDSHAKE:
-	lpdcb->fRtsControl = RTS_CONTROL_TOGGLE;
+	lpDcb->fRtsControl = RTS_CONTROL_TOGGLE;
 	break;
     }
-    if (shf.ControlHandShake & SERIAL_DSR_SENSITIVITY)
-	lpdcb->fDsrSensitivity = 1;
-    if (shf.ControlHandShake & SERIAL_ERROR_ABORT)
-	lpdcb->fAbortOnError = 1;
-    if (shf.FlowReplace & SERIAL_ERROR_CHAR)
-	lpdcb->fErrorChar = 1;
-    if (shf.FlowReplace & SERIAL_NULL_STRIPPING)
-	lpdcb->fNull = 1;
-    if (shf.FlowReplace & SERIAL_XOFF_CONTINUE)
-	lpdcb->fTXContinueOnXoff = 1;
-    lpdcb->XonLim = shf.XonLimit;
-    lpdcb->XoffLim = shf.XoffLimit;
+    if (Shf.ControlHandShake & SERIAL_DSR_SENSITIVITY)
+	lpDcb->fDsrSensitivity = 1;
+    if (Shf.ControlHandShake & SERIAL_ERROR_ABORT)
+	lpDcb->fAbortOnError = 1;
+    if (Shf.FlowReplace & SERIAL_ERROR_CHAR)
+	lpDcb->fErrorChar = 1;
+    if (Shf.FlowReplace & SERIAL_NULL_STRIPPING)
+	lpDcb->fNull = 1;
+    if (Shf.FlowReplace & SERIAL_XOFF_CONTINUE)
+	lpDcb->fTXContinueOnXoff = 1;
+    lpDcb->XonLim = Shf.XonLimit;
+    lpDcb->XoffLim = Shf.XoffLimit;
 
-    if (shf.FlowReplace & SERIAL_AUTO_TRANSMIT)
-	lpdcb->fOutX = 1;
-    if (shf.FlowReplace & SERIAL_AUTO_RECEIVE)
-	lpdcb->fInX = 1;
+    if (Shf.FlowReplace & SERIAL_AUTO_TRANSMIT)
+	lpDcb->fOutX = 1;
+    if (Shf.FlowReplace & SERIAL_AUTO_RECEIVE)
+	lpDcb->fInX = 1;
 
-    lpdcb->EofChar = sc.EofChar;
-    lpdcb->ErrorChar = sc.ErrorChar;
-    lpdcb->EvtChar = sc.EventChar;
-    lpdcb->XonChar = sc.XonChar;
-    lpdcb->XoffChar = sc.XoffChar;
+    lpDcb->EofChar = Sc.EofChar;
+    lpDcb->ErrorChar = Sc.ErrorChar;
+    lpDcb->EvtChar = Sc.EventChar;
+    lpDcb->XonChar = Sc.XonChar;
+    lpDcb->XoffChar = Sc.XoffChar;
 
     TRACE("OK\n");
-    dump_dcb(lpdcb);
+    DumpDcb(lpDcb);
 
     return TRUE;
 }
@@ -1069,24 +1069,24 @@ WINAPI BOOL TransmitCommChar(HANDLE hComm, CHAR chTransmit)
  *  True on success, false if communications device handle is bad
  *  or the target structure is null.
  */
-WINAPI BOOL GetCommTimeouts(HANDLE hComm, LPCOMMTIMEOUTS lptimeouts)
+WINAPI BOOL GetCommTimeouts(HANDLE hComm, LPCOMMTIMEOUTS lpTimeouts)
 {
-    SERIAL_TIMEOUTS st;
+    SERIAL_TIMEOUTS St;
     DWORD dwBytesReturned;
 
-    TRACE("(%p, %p)\n", hComm, lptimeouts);
-    if (!lptimeouts) {
+    TRACE("(%p, %p)\n", hComm, lpTimeouts);
+    if (!lpTimeouts) {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    if (!DeviceIoControl(hComm, IOCTL_SERIAL_GET_TIMEOUTS, NULL, 0, &st, sizeof(st),
+    if (!DeviceIoControl(hComm, IOCTL_SERIAL_GET_TIMEOUTS, NULL, 0, &St, sizeof(St),
 			 &dwBytesReturned, NULL))
 	return FALSE;
-    lptimeouts->ReadIntervalTimeout = st.ReadIntervalTimeout;
-    lptimeouts->ReadTotalTimeoutMultiplier = st.ReadTotalTimeoutMultiplier;
-    lptimeouts->ReadTotalTimeoutConstant = st.ReadTotalTimeoutConstant;
-    lptimeouts->WriteTotalTimeoutMultiplier = st.WriteTotalTimeoutMultiplier;
-    lptimeouts->WriteTotalTimeoutConstant = st.WriteTotalTimeoutConstant;
+    lpTimeouts->ReadIntervalTimeout = St.ReadIntervalTimeout;
+    lpTimeouts->ReadTotalTimeoutMultiplier = St.ReadTotalTimeoutMultiplier;
+    lpTimeouts->ReadTotalTimeoutConstant = St.ReadTotalTimeoutConstant;
+    lpTimeouts->WriteTotalTimeoutMultiplier = St.WriteTotalTimeoutMultiplier;
+    lpTimeouts->WriteTotalTimeoutConstant = St.WriteTotalTimeoutConstant;
     return TRUE;
 }
 
@@ -1110,24 +1110,24 @@ WINAPI BOOL GetCommTimeouts(HANDLE hComm, LPCOMMTIMEOUTS lptimeouts)
  *
  *  True if the timeouts were set, false otherwise.
  */
-WINAPI BOOL SetCommTimeouts(HANDLE hComm, LPCOMMTIMEOUTS lptimeouts)
+WINAPI BOOL SetCommTimeouts(HANDLE hComm, LPCOMMTIMEOUTS lpTimeouts)
 {
-    SERIAL_TIMEOUTS st;
+    SERIAL_TIMEOUTS St;
     DWORD dwBytesReturned;
 
-    TRACE("(%p, %p)\n", hComm, lptimeouts);
+    TRACE("(%p, %p)\n", hComm, lpTimeouts);
 
-    if (lptimeouts == NULL) {
+    if (lpTimeouts == NULL) {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
     }
-    st.ReadIntervalTimeout = lptimeouts->ReadIntervalTimeout;
-    st.ReadTotalTimeoutMultiplier = lptimeouts->ReadTotalTimeoutMultiplier;
-    st.ReadTotalTimeoutConstant = lptimeouts->ReadTotalTimeoutConstant;
-    st.WriteTotalTimeoutMultiplier = lptimeouts->WriteTotalTimeoutMultiplier;
-    st.WriteTotalTimeoutConstant = lptimeouts->WriteTotalTimeoutConstant;
+    St.ReadIntervalTimeout = lpTimeouts->ReadIntervalTimeout;
+    St.ReadTotalTimeoutMultiplier = lpTimeouts->ReadTotalTimeoutMultiplier;
+    St.ReadTotalTimeoutConstant = lpTimeouts->ReadTotalTimeoutConstant;
+    St.WriteTotalTimeoutMultiplier = lpTimeouts->WriteTotalTimeoutMultiplier;
+    St.WriteTotalTimeoutConstant = lpTimeouts->WriteTotalTimeoutConstant;
 
-    return DeviceIoControl(hComm, IOCTL_SERIAL_SET_TIMEOUTS, &st, sizeof(st), NULL, 0,
+    return DeviceIoControl(hComm, IOCTL_SERIAL_SET_TIMEOUTS, &St, sizeof(St), NULL, 0,
 			   &dwBytesReturned, NULL);
 }
 
@@ -1269,15 +1269,15 @@ WINAPI BOOL CommConfigDialogA(LPCSTR lpszDevice, /* [in] name of communications 
 							    fill */
 {
     LPWSTR lpDeviceW = NULL;
-    DWORD len;
+    DWORD Len;
     BOOL r;
 
     TRACE("(%s, %p, %p)\n", debugstr_a(lpszDevice), hWnd, lpCommConfig);
 
     if (lpszDevice) {
-	len = MultiByteToWideChar(CP_ACP, 0, lpszDevice, -1, NULL, 0);
-	lpDeviceW = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
-	MultiByteToWideChar(CP_ACP, 0, lpszDevice, -1, lpDeviceW, len);
+	Len = MultiByteToWideChar(CP_ACP, 0, lpszDevice, -1, NULL, 0);
+	lpDeviceW = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR));
+	MultiByteToWideChar(CP_ACP, 0, lpszDevice, -1, lpDeviceW, Len);
     }
     r = CommConfigDialogW(lpDeviceW, hWnd, lpCommConfig);
     HeapFree(GetProcessHeap(), 0, lpDeviceW);
@@ -1296,22 +1296,22 @@ WINAPI BOOL CommConfigDialogW(LPCWSTR lpszDevice, /* [in] name of communications
 {
     DWORD(WINAPI * pCommConfigDialog)(LPCWSTR, HWND, LPCOMMCONFIG);
     HMODULE hConfigModule;
-    DWORD res = ERROR_INVALID_PARAMETER;
+    DWORD Res = ERROR_INVALID_PARAMETER;
 
-    TRACE("(%s, %p, %p)\n", debugstr_w(lpszDevice), hWnd, lpCommConfig);
+    TRACE("(%ws, %p, %p)\n", lpszDevice, hWnd, lpCommConfig);
     hConfigModule = LoadLibraryW(lpszSerialUI);
 
     if (hConfigModule) {
 	pCommConfigDialog = (void *)GetProcAddress(hConfigModule, "drvCommConfigDialogW");
 	if (pCommConfigDialog) {
-	    res = pCommConfigDialog(lpszDevice, hWnd, lpCommConfig);
+	    Res = pCommConfigDialog(lpszDevice, hWnd, lpCommConfig);
 	}
 	FreeLibrary(hConfigModule);
     }
 
-    if (res)
-	SetLastError(res);
-    return (res == ERROR_SUCCESS);
+    if (Res)
+	SetLastError(Res);
+    return (Res == ERROR_SUCCESS);
 }
 
 /***********************************************************************
@@ -1398,7 +1398,7 @@ WINAPI BOOL SetDefaultCommConfigW(LPCWSTR lpszDevice, LPCOMMCONFIG lpCommConfig,
     HMODULE hConfigModule;
     BOOL r = FALSE;
 
-    TRACE("(%s, %p, %u)\n", debugstr_w(lpszDevice), lpCommConfig, dwSize);
+    TRACE("(%ws, %p, %u)\n", lpszDevice, lpCommConfig, dwSize);
 
     hConfigModule = LoadLibraryW(lpszSerialUI);
     if (!hConfigModule)
@@ -1427,14 +1427,14 @@ WINAPI BOOL SetDefaultCommConfigA(LPCSTR lpszDevice, LPCOMMCONFIG lpCommConfig,
 {
     BOOL r;
     LPWSTR lpDeviceW = NULL;
-    DWORD len;
+    DWORD Len;
 
     TRACE("(%s, %p, %u)\n", debugstr_a(lpszDevice), lpCommConfig, dwSize);
 
     if (lpszDevice) {
-	len = MultiByteToWideChar(CP_ACP, 0, lpszDevice, -1, NULL, 0);
-	lpDeviceW = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
-	MultiByteToWideChar(CP_ACP, 0, lpszDevice, -1, lpDeviceW, len);
+	Len = MultiByteToWideChar(CP_ACP, 0, lpszDevice, -1, NULL, 0);
+	lpDeviceW = HeapAlloc(GetProcessHeap(), 0, Len * sizeof(WCHAR));
+	MultiByteToWideChar(CP_ACP, 0, lpszDevice, -1, lpDeviceW, Len);
     }
     r = SetDefaultCommConfigW(lpDeviceW, lpCommConfig, dwSize);
     HeapFree(GetProcessHeap(), 0, lpDeviceW);
@@ -1463,9 +1463,9 @@ WINAPI BOOL GetDefaultCommConfigW(LPCWSTR lpszName, /* [in] The unicode name of 
 {
     DWORD(WINAPI * pGetDefaultCommConfig)(LPCWSTR, LPCOMMCONFIG, LPDWORD);
     HMODULE hConfigModule;
-    DWORD res = ERROR_INVALID_PARAMETER;
+    DWORD Res = ERROR_INVALID_PARAMETER;
 
-    TRACE("(%s, %p, %p)  *lpdwSize: %u\n", debugstr_w(lpszName), lpCC, lpdwSize,
+    TRACE("(%ws, %p, %p)  *lpdwSize: %u\n", lpszName, lpCC, lpdwSize,
 	  lpdwSize ? *lpdwSize : 0);
     hConfigModule = LoadLibraryW(lpszSerialUI);
 
@@ -1473,14 +1473,14 @@ WINAPI BOOL GetDefaultCommConfigW(LPCWSTR lpszName, /* [in] The unicode name of 
 	pGetDefaultCommConfig = (void *)GetProcAddress(hConfigModule, "drvGetDefaultCommC"
 								      "onfigW");
 	if (pGetDefaultCommConfig) {
-	    res = pGetDefaultCommConfig(lpszName, lpCC, lpdwSize);
+	    Res = pGetDefaultCommConfig(lpszName, lpCC, lpdwSize);
 	}
 	FreeLibrary(hConfigModule);
     }
 
-    if (res)
-	SetLastError(res);
-    return (res == ERROR_SUCCESS);
+    if (Res)
+	SetLastError(Res);
+    return (Res == ERROR_SUCCESS);
 }
 
 /**************************************************************************
@@ -1503,7 +1503,7 @@ WINAPI BOOL GetDefaultCommConfigA(LPCSTR lpszName, /* [in] The ascii name of the
 						       copied to the buffer or the needed
 						       size of the buffer. */
 {
-    BOOL ret = FALSE;
+    BOOL Ret = FALSE;
     UNICODE_STRING lpszNameW;
 
     TRACE("(%s, %p, %p)  *lpdwSize: %u\n", debugstr_a(lpszName), lpCC, lpdwSize,
@@ -1513,8 +1513,8 @@ WINAPI BOOL GetDefaultCommConfigA(LPCSTR lpszName, /* [in] The ascii name of the
     else
 	lpszNameW.Buffer = NULL;
 
-    ret = GetDefaultCommConfigW(lpszNameW.Buffer, lpCC, lpdwSize);
+    Ret = GetDefaultCommConfigW(lpszNameW.Buffer, lpCC, lpdwSize);
 
     RtlFreeUnicodeString(&lpszNameW);
-    return ret;
+    return Ret;
 }

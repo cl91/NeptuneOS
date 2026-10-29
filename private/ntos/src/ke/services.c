@@ -389,6 +389,34 @@ static inline BOOLEAN KiValidateSid(IN MWORD IpcBufferServerAddr,
     return TRUE;
 }
 
+static inline BOOLEAN KiValidateSecurityDescriptor(IN MWORD IpcBufferServerAddr,
+						   IN MWORD MsgWord,
+						   IN BOOLEAN Optional)
+{
+    /* Allow NULL pointer if parameter is marked optional */
+    if (MsgWord == 0) {
+	return Optional;
+    }
+    /* Validate the buffer offset */
+    SERVICE_ARGUMENT Arg = { .Word = MsgWord };
+    if (!KiServiceValidateArgument(MsgWord, 0, FALSE)) {
+	return FALSE;
+    }
+    /* The client marshaler always passes a self-relative descriptor. */
+    if (Arg.BufferSize < sizeof(SECURITY_DESCRIPTOR_RELATIVE)) {
+	DbgTrace("Invalid security descriptor size: expected at least 0x%x, got 0x%x\n",
+		 (ULONG)sizeof(SECURITY_DESCRIPTOR_RELATIVE), Arg.BufferSize);
+	return FALSE;
+    }
+    PISECURITY_DESCRIPTOR_RELATIVE Sd = KiServiceGetArgument(IpcBufferServerAddr,
+							     MsgWord);
+    if (!(Sd->Control & SE_SELF_RELATIVE)) {
+	DbgTrace("Security descriptor is not self-relative\n");
+	return FALSE;
+    }
+    return TRUE;
+}
+
 static inline BOOLEAN KiValidateObjectAttributes(IN MWORD IpcBufferServerAddr,
 						 IN MWORD MsgWord,
 						 IN BOOLEAN Optional)

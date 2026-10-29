@@ -15,8 +15,7 @@
 NTAPI NTSYSAPI NTSTATUS CsrClientConnectToServer(_In_ PCWSTR ObjectDirectory,
 						 _In_ ULONG ServerId,
 						 _In_ PVOID ConnectionInfo,
-						 _Inout_ PULONG ConnectionInfoSize,
-						 _Out_ PBOOLEAN ServerToServerCall);
+						 _Inout_ PULONG ConnectionInfoSize);
 
 NTAPI NTSYSAPI NTSTATUS CsrClientCallServer(_Inout_ PCSR_API_MESSAGE ApiMessage,
 					    _Inout_opt_ PCSR_CAPTURE_BUFFER CaptureBuffer,
@@ -61,13 +60,6 @@ NTAPI NTSYSAPI VOID CsrProbeForWrite(_In_ PVOID Address, _In_ ULONG Length,
 				     _In_ ULONG Alignment);
 
 NTAPI NTSYSAPI HANDLE CsrGetProcessId(VOID);
-
-NTAPI NTSYSAPI NTSTATUS CsrNewThread(VOID);
-
-NTAPI NTSYSAPI NTSTATUS CsrIdentifyAlertableThread(VOID);
-
-NTAPI NTSYSAPI NTSTATUS CsrSetPriorityClass(_In_ HANDLE Process,
-					    _Inout_ PULONG PriorityClass);
 
 #endif // _CSR_H
 

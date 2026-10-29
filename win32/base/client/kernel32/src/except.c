@@ -441,13 +441,6 @@ WINAPI LONG UnhandledExceptionFilter(IN PEXCEPTION_POINTERS ExceptionInfo)
     if (!NT_SUCCESS(Status) || (ErrorResponse != ResponseCancel) || IsSecondChance)
 	goto Quit;
 
-    /* If the exception comes from a CSR Server, kill it (this will lead to ReactOS
-     * shutdown) */
-    if (BaseRunningInServerProcess) {
-	IsSecondChance = TRUE;
-	goto Quit;
-    }
-
     /*
      * Attach a debugger to this process. The debugger process is given
      * the process ID of the current process to be debugged, as well as

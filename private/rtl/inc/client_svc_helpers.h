@@ -115,6 +115,44 @@ static inline NTSTATUS KiMarshalSid(OUT SERVICE_ARGUMENT *SvcArg,
     return STATUS_SUCCESS;
 }
 
+static inline NTSTATUS KiMarshalSecurityDescriptor(OUT SERVICE_ARGUMENT *SvcArg,
+						   IN PSECURITY_DESCRIPTOR SecurityDescriptor,
+						   IN OUT ULONG *MsgBufOffset)
+{
+    SECURITY_DESCRIPTOR_CONTROL Control;
+    ULONG Revision;
+    ULONG Size;
+    if (*MsgBufOffset > SVC_MSGBUF_SIZE) {
+	return STATUS_INSUFFICIENT_RESOURCES;
+    }
+    if (!SecurityDescriptor) {
+	return STATUS_INVALID_PARAMETER;
+    }
+    RET_ERR(RtlGetControlSecurityDescriptor(SecurityDescriptor, &Control, &Revision));
+    if (Control & SE_SELF_RELATIVE) {
+	Size = RtlLengthSecurityDescriptor(SecurityDescriptor);
+	if (SVC_MSGBUF_SIZE - *MsgBufOffset < Size) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	memcpy(&OFFSET_TO_ARG(*MsgBufOffset, CHAR), SecurityDescriptor, Size);
+    } else {
+	Size = 0;
+	NTSTATUS Status = RtlMakeSelfRelativeSD(SecurityDescriptor, NULL, &Size);
+	if (Status != STATUS_BUFFER_TOO_SMALL) {
+	    return Status;
+	}
+	if (SVC_MSGBUF_SIZE - *MsgBufOffset < Size) {
+	    return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	RET_ERR(RtlMakeSelfRelativeSD(SecurityDescriptor,
+				      &OFFSET_TO_ARG(*MsgBufOffset, CHAR), &Size));
+    }
+    SvcArg->BufferStart = *MsgBufOffset;
+    SvcArg->BufferSize = Size;
+    *MsgBufOffset += Size;
+    return STATUS_SUCCESS;
+}
+
 /*
  * Serialize OBJECT_ATTRIBUTES into the executive service message buffer.
  *

@@ -897,8 +897,25 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
                          IN HANDLE ParentProcess,
                          IN BOOLEAN InheritObjectTable,
                          IN HANDLE SectionHandle,
-                         IN HANDLE DebugPort,
-                         IN HANDLE ExceptionPort)
+                         IN LOCAL_HANDLE DebugPort,
+                         IN LOCAL_HANDLE ExceptionPort)
+{
+    return NtCreateProcessEx(State, Thread, ProcessHandle, DesiredAccess, ObjectAttributes,
+			     ParentProcess, InheritObjectTable, SectionHandle,
+			     DebugPort, ExceptionPort, FALSE);
+}
+
+NTSTATUS NtCreateProcessEx(IN ASYNC_STATE State,
+			   IN PTHREAD Thread,
+			   OUT HANDLE *ProcessHandle,
+			   IN ACCESS_MASK DesiredAccess,
+			   IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
+			   IN HANDLE ParentProcess,
+			   IN ULONG Flags,
+			   IN HANDLE SectionHandle,
+			   IN LOCAL_HANDLE DebugPort,
+			   IN LOCAL_HANDLE ExceptionPort,
+			   IN BOOLEAN InJob)
 {
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
@@ -932,18 +949,10 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
      * inside the calling thread) knows where the PEB of the new process is. */
     ((PNT_TIB)Thread->IpcBufferServerAddr + NT_TIB_OFFSET)->ArbitraryUserPointer =
 	(PVOID)Process->InitInfo.PebAddress;
+    Process->DebugPort = DebugPort;
+    Process->ExceptionPort = ExceptionPort;
 
     return STATUS_SUCCESS;
-}
-
-NTSTATUS NtCreateProcessEx(IN ASYNC_STATE State, IN PTHREAD Thread,
-			   OUT HANDLE *ProcessHandle, IN ACCESS_MASK DesiredAccess,
-			   IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
-			   IN HANDLE ParentProcess, IN ULONG Flags,
-			   IN HANDLE SectionHandle, IN HANDLE DebugPort,
-			   IN HANDLE ExceptionPort, IN BOOLEAN InJob)
-{
-    UNIMPLEMENTED;
 }
 
 NTSTATUS NtOpenProcess(IN ASYNC_STATE AsyncState,

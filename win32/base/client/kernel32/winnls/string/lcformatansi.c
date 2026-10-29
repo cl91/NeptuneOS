@@ -63,59 +63,59 @@ DEBUG_CHANNEL(nls);
 /**************************************************************************
  *              GetNumberFormatA	(KERNEL32.@)
  */
-WINAPI INT GetNumberFormatA(LCID lcid, DWORD dwFlags, LPCSTR lpszValue,
+WINAPI INT GetNumberFormatA(LCID Lcid, DWORD dwFlags, LPCSTR lpszValue,
 			    const NUMBERFMTA *lpFormat, LPSTR lpNumberStr, int cchOut)
 {
-    DWORD cp = CP_ACP;
+    DWORD Cp = CP_ACP;
     WCHAR szDec[8], szGrp[8], szIn[128], szOut[128];
-    NUMBERFMTW fmt;
-    const NUMBERFMTW *pfmt = NULL;
+    NUMBERFMTW Fmt;
+    const NUMBERFMTW *Pfmt = NULL;
     INT iRet;
 
-    TRACE("(0x%04x,0x%08x,%s,%p,%p,%d)\n", lcid, dwFlags, debugstr_a(lpszValue), lpFormat,
+    TRACE("(0x%04x,0x%08x,%s,%p,%p,%d)\n", Lcid, dwFlags, debugstr_a(lpszValue), lpFormat,
 	  lpNumberStr, cchOut);
 
-    if (NLS_IsUnicodeOnlyLcid(lcid)) {
+    if (NLS_IsUnicodeOnlyLcid(Lcid)) {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return 0;
     }
 
     if (!(dwFlags & LOCALE_USE_CP_ACP)) {
-	cp = NLS_GetAnsiCodePage(lcid, dwFlags);
-	if (!cp) {
+	Cp = NLS_GetAnsiCodePage(Lcid, dwFlags);
+	if (!Cp) {
 	    SetLastError(ERROR_INVALID_PARAMETER);
 	    return 0;
 	}
     }
 
     if (lpFormat) {
-	memcpy(&fmt, lpFormat, sizeof(fmt));
-	pfmt = &fmt;
+	memcpy(&Fmt, lpFormat, sizeof(Fmt));
+	Pfmt = &Fmt;
 	if (lpFormat->lpDecimalSep) {
-	    MultiByteToWideChar(cp, 0, lpFormat->lpDecimalSep, -1, szDec,
+	    MultiByteToWideChar(Cp, 0, lpFormat->lpDecimalSep, -1, szDec,
 				ARRAY_SIZE(szDec));
-	    fmt.lpDecimalSep = szDec;
+	    Fmt.lpDecimalSep = szDec;
 	}
 	if (lpFormat->lpThousandSep) {
-	    MultiByteToWideChar(cp, 0, lpFormat->lpThousandSep, -1, szGrp,
+	    MultiByteToWideChar(Cp, 0, lpFormat->lpThousandSep, -1, szGrp,
 				ARRAY_SIZE(szGrp));
-	    fmt.lpThousandSep = szGrp;
+	    Fmt.lpThousandSep = szGrp;
 	}
     }
 
     if (lpszValue)
-	MultiByteToWideChar(cp, 0, lpszValue, -1, szIn, ARRAY_SIZE(szIn));
+	MultiByteToWideChar(Cp, 0, lpszValue, -1, szIn, ARRAY_SIZE(szIn));
 
     if (cchOut > (int)ARRAY_SIZE(szOut))
 	cchOut = ARRAY_SIZE(szOut);
 
     szOut[0] = '\0';
 
-    iRet = GetNumberFormatW(lcid, dwFlags, lpszValue ? szIn : NULL, pfmt,
+    iRet = GetNumberFormatW(Lcid, dwFlags, lpszValue ? szIn : NULL, Pfmt,
 			    lpNumberStr ? szOut : NULL, cchOut);
 
     if (szOut[0] && lpNumberStr)
-	WideCharToMultiByte(cp, 0, szOut, -1, lpNumberStr, cchOut, 0, 0);
+	WideCharToMultiByte(Cp, 0, szOut, -1, lpNumberStr, cchOut, 0, 0);
     return iRet;
 }
 
@@ -150,65 +150,65 @@ WINAPI INT GetNumberFormatA(LCID lcid, DWORD dwFlags, LPCSTR lpszValue,
 /**************************************************************************
  *              GetCurrencyFormatA	(KERNEL32.@)
  */
-WINAPI INT GetCurrencyFormatA(LCID lcid, DWORD dwFlags, LPCSTR lpszValue,
+WINAPI INT GetCurrencyFormatA(LCID Lcid, DWORD dwFlags, LPCSTR lpszValue,
 			      const CURRENCYFMTA *lpFormat, LPSTR lpCurrencyStr,
 			      int cchOut)
 {
-    DWORD cp = CP_ACP;
+    DWORD Cp = CP_ACP;
     WCHAR szDec[8], szGrp[8], szCy[8], szIn[128], szOut[128];
-    CURRENCYFMTW fmt;
-    const CURRENCYFMTW *pfmt = NULL;
+    CURRENCYFMTW Fmt;
+    const CURRENCYFMTW *Pfmt = NULL;
     INT iRet;
 
-    TRACE("(0x%04x,0x%08x,%s,%p,%p,%d)\n", lcid, dwFlags, debugstr_a(lpszValue), lpFormat,
+    TRACE("(0x%04x,0x%08x,%s,%p,%p,%d)\n", Lcid, dwFlags, debugstr_a(lpszValue), lpFormat,
 	  lpCurrencyStr, cchOut);
 
-    if (NLS_IsUnicodeOnlyLcid(lcid)) {
+    if (NLS_IsUnicodeOnlyLcid(Lcid)) {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return 0;
     }
 
     if (!(dwFlags & LOCALE_USE_CP_ACP)) {
-	cp = NLS_GetAnsiCodePage(lcid, dwFlags);
-	if (!cp) {
+	Cp = NLS_GetAnsiCodePage(Lcid, dwFlags);
+	if (!Cp) {
 	    SetLastError(ERROR_INVALID_PARAMETER);
 	    return 0;
 	}
     }
 
     if (lpFormat) {
-	memcpy(&fmt, lpFormat, sizeof(fmt));
-	pfmt = &fmt;
+	memcpy(&Fmt, lpFormat, sizeof(Fmt));
+	Pfmt = &Fmt;
 	if (lpFormat->lpDecimalSep) {
-	    MultiByteToWideChar(cp, 0, lpFormat->lpDecimalSep, -1, szDec,
+	    MultiByteToWideChar(Cp, 0, lpFormat->lpDecimalSep, -1, szDec,
 				ARRAY_SIZE(szDec));
-	    fmt.lpDecimalSep = szDec;
+	    Fmt.lpDecimalSep = szDec;
 	}
 	if (lpFormat->lpThousandSep) {
-	    MultiByteToWideChar(cp, 0, lpFormat->lpThousandSep, -1, szGrp,
+	    MultiByteToWideChar(Cp, 0, lpFormat->lpThousandSep, -1, szGrp,
 				ARRAY_SIZE(szGrp));
-	    fmt.lpThousandSep = szGrp;
+	    Fmt.lpThousandSep = szGrp;
 	}
 	if (lpFormat->lpCurrencySymbol) {
-	    MultiByteToWideChar(cp, 0, lpFormat->lpCurrencySymbol, -1, szCy,
+	    MultiByteToWideChar(Cp, 0, lpFormat->lpCurrencySymbol, -1, szCy,
 				ARRAY_SIZE(szCy));
-	    fmt.lpCurrencySymbol = szCy;
+	    Fmt.lpCurrencySymbol = szCy;
 	}
     }
 
     if (lpszValue)
-	MultiByteToWideChar(cp, 0, lpszValue, -1, szIn, ARRAY_SIZE(szIn));
+	MultiByteToWideChar(Cp, 0, lpszValue, -1, szIn, ARRAY_SIZE(szIn));
 
     if (cchOut > (int)ARRAY_SIZE(szOut))
 	cchOut = ARRAY_SIZE(szOut);
 
     szOut[0] = '\0';
 
-    iRet = GetCurrencyFormatW(lcid, dwFlags, lpszValue ? szIn : NULL, pfmt,
+    iRet = GetCurrencyFormatW(Lcid, dwFlags, lpszValue ? szIn : NULL, Pfmt,
 			      lpCurrencyStr ? szOut : NULL, cchOut);
 
     if (szOut[0] && lpCurrencyStr)
-	WideCharToMultiByte(cp, 0, szOut, -1, lpCurrencyStr, cchOut, 0, 0);
+	WideCharToMultiByte(Cp, 0, szOut, -1, lpCurrencyStr, cchOut, 0, 0);
     return iRet;
 }
 
@@ -218,17 +218,17 @@ WINAPI INT GetCurrencyFormatA(LCID lcid, DWORD dwFlags, LPCSTR lpszValue,
  * FIXME: MSDN mentions only LOCALE_USE_CP_ACP, should we handle
  * LOCALE_NOUSEROVERRIDE here as well?
  */
-WINAPI BOOL EnumDateFormatsA(DATEFMT_ENUMPROCA proc, LCID lcid, DWORD flags)
+WINAPI BOOL EnumDateFormatsA(DATEFMT_ENUMPROCA Proc, LCID Lcid, DWORD Flags)
 {
-    struct enumdateformats_context ctxt;
+    struct ENUM_DATE_FORMATS_CONTEXT Ctxt;
 
-    ctxt.type = CALLBACK_ENUMPROC;
-    ctxt.u.callback = (DATEFMT_ENUMPROCW)proc;
-    ctxt.lcid = lcid;
-    ctxt.flags = flags;
-    ctxt.unicode = FALSE;
+    Ctxt.Type = CALLBACK_ENUMPROC;
+    Ctxt.u.Callback = (DATEFMT_ENUMPROCW)Proc;
+    Ctxt.Lcid = Lcid;
+    Ctxt.Flags = Flags;
+    Ctxt.Unicode = FALSE;
 
-    return NLS_EnumDateFormats(&ctxt);
+    return NLS_EnumDateFormats(&Ctxt);
 }
 
 /**************************************************************************
@@ -237,80 +237,79 @@ WINAPI BOOL EnumDateFormatsA(DATEFMT_ENUMPROCA proc, LCID lcid, DWORD flags)
  * FIXME: MSDN mentions only LOCALE_USE_CP_ACP, should we handle
  * LOCALE_NOUSEROVERRIDE here as well?
  */
-WINAPI BOOL EnumTimeFormatsA(TIMEFMT_ENUMPROCA proc, LCID lcid, DWORD flags)
+WINAPI BOOL EnumTimeFormatsA(TIMEFMT_ENUMPROCA Proc, LCID Lcid, DWORD Flags)
 {
-    struct enumtimeformats_context ctxt;
+    struct ENUM_TIME_FORMATS_CONTEXT Ctxt;
 
     /* EnumTimeFormatsA doesn't support flags, EnumTimeFormatsW does. */
-    if (flags & ~LOCALE_USE_CP_ACP) {
+    if (Flags & ~LOCALE_USE_CP_ACP) {
 	SetLastError(ERROR_INVALID_FLAGS);
 	return FALSE;
     }
 
-    ctxt.type = CALLBACK_ENUMPROC;
-    ctxt.u.callback = (TIMEFMT_ENUMPROCW)proc;
-    ctxt.lcid = lcid;
-    ctxt.flags = flags;
-    ctxt.unicode = FALSE;
+    Ctxt.Type = CALLBACK_ENUMPROC;
+    Ctxt.u.Callback = (TIMEFMT_ENUMPROCW)Proc;
+    Ctxt.Lcid = Lcid;
+    Ctxt.Flags = Flags;
+    Ctxt.Unicode = FALSE;
 
-    return NLS_EnumTimeFormats(&ctxt);
+    return NLS_EnumTimeFormats(&Ctxt);
 }
 
 /******************************************************************************
  *		EnumCalendarInfoA	[KERNEL32.@]
  */
 
-WINAPI BOOL EnumCalendarInfoA(CALINFO_ENUMPROCA calinfoproc, LCID locale, CALID calendar,
-			      CALTYPE caltype)
+WINAPI BOOL EnumCalendarInfoA(CALINFO_ENUMPROCA Calinfoproc, LCID Locale, CALID Calendar,
+			      CALTYPE Caltype)
 {
-    struct enumcalendar_context ctxt;
+    struct ENUM_CALENDAR_CONTEXT Ctx;
 
-    TRACE("(%p,0x%08x,0x%08x,0x%08x)\n", calinfoproc, locale, calendar, caltype);
+    TRACE("(%p,0x%08x,0x%08x,0x%08x)\n", Calinfoproc, Locale, Calendar, Caltype);
 
-    ctxt.type = CALLBACK_ENUMPROC;
-    ctxt.u.callback = (CALINFO_ENUMPROCW)calinfoproc;
-    ctxt.lcid = locale;
-    ctxt.calendar = calendar;
-    ctxt.caltype = caltype;
-    ctxt.lParam = 0;
-    ctxt.unicode = FALSE;
-    return NLS_EnumCalendarInfo(&ctxt);
+    Ctx.type = CALLBACK_ENUMPROC;
+    Ctx.u.Callback = (CALINFO_ENUMPROCW)Calinfoproc;
+    Ctx.Lcid = Locale;
+    Ctx.Calendar = Calendar;
+    Ctx.CalType = Caltype;
+    Ctx.lParam = 0;
+    Ctx.Unicode = FALSE;
+    return NLS_EnumCalendarInfo(&Ctx);
 }
 
 /**************************************************************************
  *		EnumCalendarInfoExA	[KERNEL32.@]
  */
-WINAPI BOOL EnumCalendarInfoExA(CALINFO_ENUMPROCEXA calinfoproc, LCID locale,
-				CALID calendar, CALTYPE caltype)
+WINAPI BOOL EnumCalendarInfoExA(CALINFO_ENUMPROCEXA CalInfoProc, LCID Locale,
+				CALID Calendar, CALTYPE CalType)
 {
-    struct enumcalendar_context ctxt;
+    struct ENUM_CALENDAR_CONTEXT Ctx;
 
-    TRACE("(%p,0x%08x,0x%08x,0x%08x)\n", calinfoproc, locale, calendar, caltype);
+    TRACE("(%p,0x%08x,0x%08x,0x%08x)\n", CalInfoProc, Locale, Calendar, CalType);
 
-    ctxt.type = CALLBACK_ENUMPROCEX;
-    ctxt.u.callbackex = (CALINFO_ENUMPROCEXW)calinfoproc;
-    ctxt.lcid = locale;
-    ctxt.calendar = calendar;
-    ctxt.caltype = caltype;
-    ctxt.lParam = 0;
-    ctxt.unicode = FALSE;
-    return NLS_EnumCalendarInfo(&ctxt);
+    Ctx.type = CALLBACK_ENUMPROCEX;
+    Ctx.u.CallbackEx = (CALINFO_ENUMPROCEXW)CalInfoProc;
+    Ctx.Lcid = Locale;
+    Ctx.Calendar = Calendar;
+    Ctx.CalType = CalType;
+    Ctx.lParam = 0;
+    Ctx.Unicode = FALSE;
+    return NLS_EnumCalendarInfo(&Ctx);
 }
 
 /*********************************************************************
  *	GetCalendarInfoA			(KERNEL32.@)
  */
-WINAPI int GetCalendarInfoA(LCID lcid, CALID Calendar, CALTYPE CalType, LPSTR lpCalData,
+WINAPI int GetCalendarInfoA(LCID Lcid, CALID Calendar, CALTYPE CalType, LPSTR lpCalData,
 			    int cchData, LPDWORD lpValue)
 {
-    int ret, cchDataW = cchData;
+    int Ret, cchDataW = cchData;
     LPWSTR lpCalDataW = NULL;
-#ifdef __REACTOS__
-    DWORD cp = CP_ACP;
+    DWORD Cp = CP_ACP;
     if (!(CalType & CAL_USE_CP_ACP)) {
 	DWORD dwFlags = ((CalType & CAL_NOUSEROVERRIDE) ? LOCALE_NOUSEROVERRIDE : 0);
-	cp = NLS_GetAnsiCodePage(lcid, dwFlags);
-	if (!cp) {
+	Cp = NLS_GetAnsiCodePage(Lcid, dwFlags);
+	if (!Cp) {
 	    SetLastError(ERROR_INVALID_PARAMETER);
 	    return 0;
 	}
@@ -320,31 +319,25 @@ WINAPI int GetCalendarInfoA(LCID lcid, CALID Calendar, CALTYPE CalType, LPSTR lp
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return 0;
     }
-#endif
 
-    if (NLS_IsUnicodeOnlyLcid(lcid)) {
+    if (NLS_IsUnicodeOnlyLcid(Lcid)) {
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return 0;
     }
 
     if (!cchData && !(CalType & CAL_RETURN_NUMBER))
-	cchDataW = GetCalendarInfoW(lcid, Calendar, CalType, NULL, 0, NULL);
+	cchDataW = GetCalendarInfoW(Lcid, Calendar, CalType, NULL, 0, NULL);
     if (!(lpCalDataW = HeapAlloc(GetProcessHeap(), 0, cchDataW * sizeof(WCHAR))))
 	return 0;
 
-    ret = GetCalendarInfoW(lcid, Calendar, CalType, lpCalDataW, cchDataW, lpValue);
-    if (ret && lpCalDataW && lpCalData)
-#ifdef __REACTOS__
-	ret = WideCharToMultiByte(cp, 0, lpCalDataW, -1, lpCalData, cchData, NULL, NULL);
-#else
-	ret = WideCharToMultiByte(CP_ACP, 0, lpCalDataW, -1, lpCalData, cchData, NULL,
-				  NULL);
-#endif
+    Ret = GetCalendarInfoW(Lcid, Calendar, CalType, lpCalDataW, cchDataW, lpValue);
+    if (Ret && lpCalDataW && lpCalData)
+	Ret = WideCharToMultiByte(Cp, 0, lpCalDataW, -1, lpCalData, cchData, NULL, NULL);
     else if (CalType & CAL_RETURN_NUMBER)
-	ret *= sizeof(WCHAR);
+	Ret *= sizeof(WCHAR);
     HeapFree(GetProcessHeap(), 0, lpCalDataW);
 
-    return ret;
+    return Ret;
 }
 
 /*********************************************************************

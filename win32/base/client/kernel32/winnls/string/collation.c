@@ -2,7 +2,7 @@
 /* generated from http://www.unicode.org/reports/tr10/allkeys.txt */
 /* DO NOT EDIT!! */
 
-const unsigned int collation_table[12800] = {
+const unsigned int CollationTable[12800] = {
     /* index */
     0x00000200, 0x00000300, 0x00000400, 0x00000500, 0x00000600, 0x00000700, 0x00000800, 0x00000900,
     0x00000100, 0x00000a00, 0x00000b00, 0x00000c00, 0x00000d00, 0x00000e00, 0x00000f00, 0x00001000,

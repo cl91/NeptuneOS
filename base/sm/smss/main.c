@@ -202,7 +202,7 @@ NTSTATUS SmStartCommandPrompt()
 
     Status = RtlCreateUserProcess(&ImagePath, OBJ_CASE_INSENSITIVE,
 				  ProcessParams, NULL, NULL, NULL, FALSE,
-				  NULL, NULL, &ProcessInfo);
+				  0, 0, &ProcessInfo);
     if (!NT_SUCCESS(Status)) {
 	SmPrint("RtlCreateUserProcess failed with status 0x%x\n", Status);
 	return STATUS_UNSUCCESSFUL;

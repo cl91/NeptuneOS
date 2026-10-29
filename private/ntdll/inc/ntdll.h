@@ -31,9 +31,6 @@
 #define DbgPrint(...)
 #endif	/* DBG */
 
-#define ROUND_DOWN(x, align)	ALIGN_DOWN_BY(x, align)
-#define ROUND_UP(x, align)	ALIGN_UP_BY(x, align)
-
 /* ke/time.c */
 VOID KiInitTime(VOID);
 
@@ -46,3 +43,15 @@ VOID RtlpPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
 #endif
 VOID RtlpVgaPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
 			    IN BOOLEAN Unhandled);
+
+#if DBG
+
+/*
+ * Debug Service calls
+ */
+NTAPI ULONG DebugService(IN ULONG Service, IN PVOID Argument1, IN PVOID Argument2,
+			 IN PVOID Argument3, IN PVOID Argument4);
+
+NTAPI VOID DebugService2(IN PVOID Argument1, IN PVOID Argument2, IN ULONG Service);
+
+#endif	/* DBG */

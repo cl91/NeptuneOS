@@ -13,26 +13,6 @@
 
 /* FUNCTIONS ******************************************************************/
 
-/*
- * @implemented
- */
-NTAPI NTSTATUS CsrNewThread(VOID)
-{
-    NTSTATUS Status;
-    PTEB Teb = NtCurrentTeb();
-
-    /* In clients this field records termination-port registration. Servers
-     * retain their CSR_THREAD pointer and never use the client marker. */
-    if (InsideCsrProcess || Teb->CsrClientThread == CSR_CLIENT_THREAD_REGISTERED)
-	return STATUS_SUCCESS;
-
-    /* Register the termination port to CSR's */
-    Status = NtRegisterThreadTerminatePort(CsrApiPort);
-    if (NT_SUCCESS(Status))
-	Teb->CsrClientThread = CSR_CLIENT_THREAD_REGISTERED;
-    return Status;
-}
-
 NTAPI BOOL DllMain(IN HINSTANCE hInstanceDll,
 		   IN DWORD dwReason,
 		   IN LPVOID lpReserved)

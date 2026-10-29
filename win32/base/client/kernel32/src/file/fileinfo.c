@@ -47,11 +47,11 @@ WINAPI DECLSPEC_HOTPATCH DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove
 {
     FILE_POSITION_INFORMATION FilePosition;
     FILE_STANDARD_INFORMATION FileStandard;
-    NTSTATUS errCode;
+    NTSTATUS ErrCode;
     IO_STATUS_BLOCK IoStatusBlock;
     LARGE_INTEGER Distance;
 
-    TRACE("SetFilePointer(hFile %p, lDistanceToMove %d, dwMoveMethod %lu)\n", hFile,
+    TRACE("SetFilePointer(hFile %p, lDistanceToMove %d, dwMoveMethod %u)\n", hFile,
 	  lDistanceToMove, dwMoveMethod);
 
     if (IsConsoleHandle(hFile)) {
@@ -68,27 +68,27 @@ WINAPI DECLSPEC_HOTPATCH DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove
 
     switch (dwMoveMethod) {
     case FILE_CURRENT:
-	errCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FilePosition,
+	ErrCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FilePosition,
 					 sizeof(FILE_POSITION_INFORMATION),
 					 FilePositionInformation);
 	FilePosition.CurrentByteOffset.QuadPart += Distance.QuadPart;
-	if (!NT_SUCCESS(errCode)) {
+	if (!NT_SUCCESS(ErrCode)) {
 	    if (lpDistanceToMoveHigh != NULL)
 		*lpDistanceToMoveHigh = -1;
-	    BaseSetLastNTError(errCode);
+	    BaseSetLastNTError(ErrCode);
 	    return INVALID_SET_FILE_POINTER;
 	}
 	break;
     case FILE_END:
-	errCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileStandard,
+	ErrCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileStandard,
 					 sizeof(FILE_STANDARD_INFORMATION),
 					 FileStandardInformation);
 	FilePosition.CurrentByteOffset.QuadPart = FileStandard.EndOfFile.QuadPart +
 						  Distance.QuadPart;
-	if (!NT_SUCCESS(errCode)) {
+	if (!NT_SUCCESS(ErrCode)) {
 	    if (lpDistanceToMoveHigh != NULL)
 		*lpDistanceToMoveHigh = -1;
-	    BaseSetLastNTError(errCode);
+	    BaseSetLastNTError(ErrCode);
 	    return INVALID_SET_FILE_POINTER;
 	}
 	break;
@@ -112,14 +112,14 @@ WINAPI DECLSPEC_HOTPATCH DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove
 	return INVALID_SET_FILE_POINTER;
     }
 
-    errCode = NtSetInformationFile(hFile, &IoStatusBlock, &FilePosition,
+    ErrCode = NtSetInformationFile(hFile, &IoStatusBlock, &FilePosition,
 				   sizeof(FILE_POSITION_INFORMATION),
 				   FilePositionInformation);
-    if (!NT_SUCCESS(errCode)) {
+    if (!NT_SUCCESS(ErrCode)) {
 	if (lpDistanceToMoveHigh != NULL)
 	    *lpDistanceToMoveHigh = -1;
 
-	BaseSetLastNTError(errCode);
+	BaseSetLastNTError(ErrCode);
 	return INVALID_SET_FILE_POINTER;
     }
 
@@ -274,15 +274,15 @@ WINAPI DWORD GetFileType(HANDLE hFile)
  */
 WINAPI DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh)
 {
-    NTSTATUS errCode;
+    NTSTATUS ErrCode;
     FILE_STANDARD_INFORMATION FileStandard;
     IO_STATUS_BLOCK IoStatusBlock;
 
-    errCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileStandard,
+    ErrCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileStandard,
 				     sizeof(FILE_STANDARD_INFORMATION),
 				     FileStandardInformation);
-    if (!NT_SUCCESS(errCode)) {
-	BaseSetLastNTError(errCode);
+    if (!NT_SUCCESS(ErrCode)) {
+	BaseSetLastNTError(ErrCode);
 	if (lpFileSizeHigh == NULL) {
 	    return -1;
 	} else {
@@ -300,15 +300,15 @@ WINAPI DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh)
  */
 WINAPI BOOL GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize)
 {
-    NTSTATUS errCode;
+    NTSTATUS ErrCode;
     FILE_STANDARD_INFORMATION FileStandard;
     IO_STATUS_BLOCK IoStatusBlock;
 
-    errCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileStandard,
+    ErrCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileStandard,
 				     sizeof(FILE_STANDARD_INFORMATION),
 				     FileStandardInformation);
-    if (!NT_SUCCESS(errCode)) {
-	BaseSetLastNTError(errCode);
+    if (!NT_SUCCESS(ErrCode)) {
+	BaseSetLastNTError(ErrCode);
 	return FALSE;
     }
     if (lpFileSize)
@@ -323,7 +323,7 @@ WINAPI BOOL GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize)
 WINAPI DWORD GetCompressedFileSizeW(LPCWSTR lpFileName, LPDWORD lpFileSizeHigh)
 {
     FILE_COMPRESSION_INFORMATION FileCompression;
-    NTSTATUS errCode;
+    NTSTATUS ErrCode;
     IO_STATUS_BLOCK IoStatusBlock;
     HANDLE hFile;
 
@@ -333,14 +333,14 @@ WINAPI DWORD GetCompressedFileSizeW(LPCWSTR lpFileName, LPDWORD lpFileSizeHigh)
     if (hFile == INVALID_HANDLE_VALUE)
 	return INVALID_FILE_SIZE;
 
-    errCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileCompression,
+    ErrCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileCompression,
 				     sizeof(FILE_COMPRESSION_INFORMATION),
 				     FileCompressionInformation);
 
     CloseHandle(hFile);
 
-    if (!NT_SUCCESS(errCode)) {
-	BaseSetLastNTError(errCode);
+    if (!NT_SUCCESS(ErrCode)) {
+	BaseSetLastNTError(ErrCode);
 	return INVALID_FILE_SIZE;
     }
 
@@ -365,7 +365,7 @@ WINAPI BOOL GetFileInformationByHandle(HANDLE hFile,
     FILE_BASIC_INFORMATION FileBasic;
     FILE_INTERNAL_INFORMATION FileInternal;
     FILE_STANDARD_INFORMATION FileStandard;
-    NTSTATUS errCode;
+    NTSTATUS ErrCode;
     IO_STATUS_BLOCK IoStatusBlock;
 
     if (IsConsoleHandle(hFile)) {
@@ -373,11 +373,11 @@ WINAPI BOOL GetFileInformationByHandle(HANDLE hFile,
 	return FALSE;
     }
 
-    errCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileBasic,
+    ErrCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileBasic,
 				     sizeof(FILE_BASIC_INFORMATION),
 				     FileBasicInformation);
-    if (!NT_SUCCESS(errCode)) {
-	BaseSetLastNTError(errCode);
+    if (!NT_SUCCESS(ErrCode)) {
+	BaseSetLastNTError(ErrCode);
 	return FALSE;
     }
 
@@ -392,31 +392,31 @@ WINAPI BOOL GetFileInformationByHandle(HANDLE hFile,
     lpFileInformation->ftLastWriteTime.dwHighDateTime = FileBasic.LastWriteTime.HighPart;
     lpFileInformation->ftLastWriteTime.dwLowDateTime = FileBasic.LastWriteTime.LowPart;
 
-    errCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileInternal,
+    ErrCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileInternal,
 				     sizeof(FILE_INTERNAL_INFORMATION),
 				     FileInternalInformation);
-    if (!NT_SUCCESS(errCode)) {
-	BaseSetLastNTError(errCode);
+    if (!NT_SUCCESS(ErrCode)) {
+	BaseSetLastNTError(ErrCode);
 	return FALSE;
     }
 
     lpFileInformation->nFileIndexHigh = FileInternal.IndexNumber.HighPart;
     lpFileInformation->nFileIndexLow = FileInternal.IndexNumber.LowPart;
 
-    errCode = NtQueryVolumeInformationFile(hFile, &IoStatusBlock, &FileFsVolume,
+    ErrCode = NtQueryVolumeInformationFile(hFile, &IoStatusBlock, &FileFsVolume,
 					   sizeof(FileFsVolume), FileFsVolumeInformation);
-    if (!NT_SUCCESS(errCode)) {
-	BaseSetLastNTError(errCode);
+    if (!NT_SUCCESS(ErrCode)) {
+	BaseSetLastNTError(ErrCode);
 	return FALSE;
     }
 
     lpFileInformation->dwVolumeSerialNumber = FileFsVolume.FileFsVolume.VolumeSerialNumber;
 
-    errCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileStandard,
+    ErrCode = NtQueryInformationFile(hFile, &IoStatusBlock, &FileStandard,
 				     sizeof(FILE_STANDARD_INFORMATION),
 				     FileStandardInformation);
-    if (!NT_SUCCESS(errCode)) {
-	BaseSetLastNTError(errCode);
+    if (!NT_SUCCESS(ErrCode)) {
+	BaseSetLastNTError(ErrCode);
 	return FALSE;
     }
 
@@ -462,7 +462,7 @@ WINAPI BOOL GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInf
 
     RtlFreeUnicodeString(&FileName);
     if (!NT_SUCCESS(Status)) {
-	WARN("NtQueryFullAttributesFile() failed (Status %lx)\n", Status);
+	WARN("NtQueryFullAttributesFile() failed (Status %x)\n", Status);
 	BaseSetLastNTError(Status);
 	return FALSE;
     }

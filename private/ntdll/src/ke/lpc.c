@@ -15,6 +15,7 @@ FORCEINLINE NTSTATUS KiMarshalPortMessage(IN PPORT_MESSAGE PortMessage,
 	    return STATUS_PORT_MESSAGE_TOO_LONG;
 	}
 	ShortMsg = *PortMessage;
+	ShortMsg.Type |= LPC_LONG_MESSAGE;
 	RtlCopyMemory(LocalView->ViewBase, PortMessage + 1, DataLength);
 	PortMessage = &ShortMsg;
 	MessageLength = sizeof(PORT_MESSAGE);
@@ -37,12 +38,20 @@ FORCEINLINE NTSTATUS KiUnmarshalPortMessage(IN seL4_MessageInfo_t Msg,
 					    IN ULONG_PTR Badge,
 					    OUT OPTIONAL ULONG_PTR *PortContext,
 					    OUT PPORT_MESSAGE PortMessage,
+					    IN ULONG MsgBufferLength,
 					    IN OPTIONAL PPORT_VIEW LocalView)
 {
+    if (MsgBufferLength < sizeof(PORT_MESSAGE)) {
+	return STATUS_BUFFER_TOO_SMALL;
+    }
     ULONG MessageLength = seL4_MessageInfo_get_length(Msg);
     if (MessageLength < sizeof(PORT_MESSAGE) / sizeof(ULONG_PTR)) {
 	assert(FALSE);
 	return STATUS_INVALID_MESSAGE;
+    }
+    if (MsgBufferLength < MessageLength * sizeof(ULONG_PTR)) {
+	PortMessage->TotalLength = MessageLength;
+	return STATUS_BUFFER_TOO_SMALL;
     }
     if (PortContext) {
 	*PortContext = Badge;
@@ -50,6 +59,10 @@ FORCEINLINE NTSTATUS KiUnmarshalPortMessage(IN seL4_MessageInfo_t Msg,
     PULONG_PTR Ptr = (PVOID)PortMessage;
     for (ULONG i = 0; i < MessageLength; i++) {
 	Ptr[i] = seL4_GetMR(i);
+    }
+    BOOLEAN LongMsg = !!(PortMessage->Type & LPC_LONG_MESSAGE);
+    if (LongMsg && !LocalView) {
+	return STATUS_PORT_MESSAGE_TOO_LONG;
     }
     return STATUS_SUCCESS;
 }
@@ -74,11 +87,13 @@ NTAPI NTSTATUS NtReplyPort(IN PPORT_MESSAGE ReplyMessage,
 NTAPI NTSTATUS NtReceivePort(IN LOCAL_HANDLE CommPort,
 			     OUT OPTIONAL ULONG_PTR *PortContext,
 			     OUT PPORT_MESSAGE ReceivedMessage,
+			     IN ULONG MsgBufferLength,
 			     IN OPTIONAL PPORT_VIEW LocalView)
 {
     MWORD Badge = 0;
     seL4_MessageInfo_t Msg = seL4_Recv(LOCAL_HANDLE_TO_CAP(CommPort), &Badge);
-    return KiUnmarshalPortMessage(Msg, Badge, PortContext, ReceivedMessage, LocalView);
+    return KiUnmarshalPortMessage(Msg, Badge, PortContext, ReceivedMessage,
+				  MsgBufferLength, LocalView);
 }
 
 /*
@@ -88,13 +103,15 @@ NTAPI NTSTATUS NtReplyWaitReceivePort(IN LOCAL_HANDLE CommPort,
 				      IN OUT PPORT_MESSAGE ReplyMessage,
 				      OUT OPTIONAL ULONG_PTR *PortContext,
 				      OUT PPORT_MESSAGE ReceivedMessage,
+				      IN ULONG MsgBufferLength,
 				      IN OPTIONAL PPORT_VIEW ServerView)
 {
     seL4_MessageInfo_t MsgInfo;
     RET_ERR(KiMarshalPortMessage(ReplyMessage, ServerView, &MsgInfo));
     MWORD Badge = 0;
     seL4_MessageInfo_t Msg = seL4_ReplyRecv(LOCAL_HANDLE_TO_CAP(CommPort), MsgInfo, &Badge);
-    return KiUnmarshalPortMessage(Msg, Badge, PortContext, ReceivedMessage, ServerView);
+    return KiUnmarshalPortMessage(Msg, Badge, PortContext, ReceivedMessage,
+				  MsgBufferLength, ServerView);
 }
 
 /*
@@ -116,10 +133,12 @@ NTAPI NTSTATUS NtRequestPort(IN LOCAL_HANDLE CommPort,
 NTAPI NTSTATUS NtRequestWaitReceivePort(IN LOCAL_HANDLE CommPort,
 					IN PPORT_MESSAGE RequestMessage,
 					OUT PPORT_MESSAGE ReceivedMessage,
+					IN ULONG MsgBufferLength,
 					IN OPTIONAL PPORT_VIEW ClientView)
 {
     seL4_MessageInfo_t MsgInfo;
     RET_ERR(KiMarshalPortMessage(RequestMessage, ClientView, &MsgInfo));
     MsgInfo = seL4_Call(LOCAL_HANDLE_TO_CAP(CommPort), MsgInfo);
-    return KiUnmarshalPortMessage(MsgInfo, 0, NULL, ReceivedMessage, ClientView);
+    return KiUnmarshalPortMessage(MsgInfo, 0, NULL, ReceivedMessage,
+				  MsgBufferLength, ClientView);
 }
