@@ -34,13 +34,7 @@ add_custom_target(
     DEPENDS kernel.elf
 )
 
-# lld does not like the linker script of the seL4 kernel on x86 platforms,
-# so force clang to use ld to link the seL4 kernel elf
-if ("${Arch}" MATCHES "^(i386|amd64)$")
-   set_property(TARGET kernel.elf APPEND_STRING PROPERTY LINK_FLAGS " -fuse-ld=ld ")
-else()
-   set_property(TARGET kernel.elf APPEND_STRING PROPERTY LINK_FLAGS " -fuse-ld=lld ")
-endif()
+set_property(TARGET kernel.elf APPEND_STRING PROPERTY LINK_FLAGS " -fuse-ld=lld ")
 
 add_subdirectory(../../drivers/lib/dmilib ${CMAKE_BINARY_DIR}/dmilib)
 
