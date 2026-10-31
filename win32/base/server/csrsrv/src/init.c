@@ -504,11 +504,8 @@ NTAPI NTSTATUS CsrCreateSessionObjectDirectory(IN ULONG Session)
  * The CsrParseServerCommandLine routine parses the CSRSS command-line in the
  * registry and performs operations for each entry found.
  *
- * @param ArgumentCount
- *        Number of arguments on the command line.
- *
  * @param Arguments
- *        Array of arguments.
+ *        Unicode command-line arguments.
  *
  * @return STATUS_SUCCESS in case of success, STATUS_UNSUCCESSFUL otherwise.
  *
@@ -517,13 +514,31 @@ NTAPI NTSTATUS CsrCreateSessionObjectDirectory(IN ULONG Session)
  *--*/
 static NTSTATUS CsrParseServerCommandLine(IN PCUNICODE_STRING Arguments)
 {
-    NTSTATUS Status;
-    PCHAR ParameterName = NULL, ParameterValue = NULL, EntryPoint, ServerString;
-    ULONG i, DllIndex;
-    ANSI_STRING AnsiString;
+    NTSTATUS Status = STATUS_SUCCESS;
+    PWSTR CommandLine = NULL, Cursor, Argument, ParameterName, ParameterValue, EntryPoint,
+	  ServerString;
+    ULONG DllIndex;
+    UNICODE_STRING ParameterNameString, ParameterValueString, DllIndexString;
+    UNICODE_STRING DllNameString, DllEntryPointString;
+    UNICODE_STRING CsrssName = RTL_CONSTANT_STRING(L"CSRSS");
+    UNICODE_STRING ObjectDirectoryName = RTL_CONSTANT_STRING(L"ObjectDirectory");
+    UNICODE_STRING SubSystemTypeName = RTL_CONSTANT_STRING(L"SubSystemType");
+    UNICODE_STRING MaxRequestThreadsName = RTL_CONSTANT_STRING(L"MaxRequestThreads");
+    UNICODE_STRING RequestThreadsName = RTL_CONSTANT_STRING(L"RequestThreads");
+    UNICODE_STRING ProfileControlName = RTL_CONSTANT_STRING(L"ProfileControl");
+    UNICODE_STRING SharedSectionName = RTL_CONSTANT_STRING(L"SharedSection");
+    UNICODE_STRING ServerDllName = RTL_CONSTANT_STRING(L"ServerDll");
+    UNICODE_STRING WindowsName = RTL_CONSTANT_STRING(L"Windows");
+    UNICODE_STRING WindowsValue = RTL_CONSTANT_STRING(L"windows");
+    UNICODE_STRING PosixValue = RTL_CONSTANT_STRING(L"posix");
+    UNICODE_STRING Os2Value = RTL_CONSTANT_STRING(L"os2");
+    UNICODE_STRING NativeValue = RTL_CONSTANT_STRING(L"native");
+    UNICODE_STRING OnValue = RTL_CONSTANT_STRING(L"On");
     OBJECT_ATTRIBUTES ObjectAttributes;
-    CHAR SessionDirectory[MAX_PATH];
+    WCHAR SessionDirectory[MAX_PATH];
     INT Length;
+    BOOLEAN InQuotes;
+    WCHAR Character;
 
     /* Set the Defaults */
     CsrTotalPerProcessDataLength = 0;
@@ -544,33 +559,90 @@ static NTSTATUS CsrParseServerCommandLine(IN PCUNICODE_STRING Arguments)
 	ASSERT(NT_SUCCESS(Status));
     }
 
-    /* Loop through every argument */
-    for (i = 1; i < ArgumentCount; i++) {
+    if (!Arguments || (Arguments->Length && !Arguments->Buffer) ||
+	(Arguments->Length & (sizeof(WCHAR) - 1))) {
+	Status = STATUS_INVALID_PARAMETER;
+	goto Cleanup;
+    }
+
+    /* Make a writable copy so that quotes can be removed and tokens split in place */
+    CommandLine = RtlAllocateHeap(CsrHeap, HEAP_ZERO_MEMORY,
+				  Arguments->Length + sizeof(UNICODE_NULL));
+    if (!CommandLine) {
+	Status = STATUS_NO_MEMORY;
+	goto Cleanup;
+    }
+    RtlCopyMemory(CommandLine, Arguments->Buffer, Arguments->Length);
+
+    /* Loop through every argument in the Unicode command line */
+    for (Cursor = CommandLine; *Cursor;) {
+	PWSTR Write;
+
+	/* Skip whitespace between arguments */
+	while (*Cursor && *Cursor <= L' ')
+	    Cursor++;
+	if (!*Cursor)
+	    break;
+
+	/* Find the end of the argument, honoring double-quoted strings */
+	Argument = Cursor;
+	InQuotes = FALSE;
+	Write = Argument;
+	while (*Cursor) {
+	    Character = *Cursor;
+	    if (Character == L'"') {
+		InQuotes = !InQuotes;
+		Cursor++;
+		continue;
+	    }
+	    if (!InQuotes && Character <= L' ') {
+		break;
+	    }
+	    *Write++ = Character;
+	    Cursor++;
+	}
+	if (*Cursor)
+	    Cursor++;
+	*Write = UNICODE_NULL;
+
 	/* Split Name and Value */
-	ParameterName = Arguments[i];
-	ParameterValue = NULL;
-	ParameterValue = strchr(ParameterName, '=');
-	if (ParameterValue)
-	    *ParameterValue++ = ANSI_NULL;
-	DPRINT("Name=%s, Value=%s\n", ParameterName, ParameterValue);
+	ParameterName = Argument;
+	ParameterValue = ParameterName;
+	while (*ParameterValue && *ParameterValue != L'=')
+	    ParameterValue++;
+	if (*ParameterValue == L'=') {
+	    *ParameterValue++ = UNICODE_NULL;
+	} else {
+	    ParameterValue = NULL;
+	}
+	DPRINT("Name=%ls, Value=%ls\n", ParameterName,
+	       ParameterValue ? ParameterValue : L"(null)");
+
+	if (!ParameterValue) {
+	    Status = STATUS_INVALID_PARAMETER;
+	    goto Cleanup;
+	}
+	RtlInitUnicodeString(&ParameterNameString, ParameterName);
+	RtlInitUnicodeString(&ParameterValueString, ParameterValue);
 
 	/* Check for Object Directory */
-	if (_stricmp(ParameterName, "ObjectDirectory") == 0) {
+	if (RtlEqualUnicodeString(&ParameterNameString, &ObjectDirectoryName, TRUE)) {
 	    /* Check if a session ID is specified */
 	    if (SessionId != 0) {
-		Length = _snprintf(SessionDirectory, sizeof(SessionDirectory),
-				   "\\Sessions\\%lu%s", SessionId, ParameterValue);
-		if (Length < 0 || Length >= (INT)sizeof(SessionDirectory))
-		    return STATUS_NAME_TOO_LONG;
-		ParameterValue = SessionDirectory;
+		Length = _snwprintf(SessionDirectory, ARRAYSIZE(SessionDirectory),
+				    L"\\Sessions\\%lu%ls", SessionId, ParameterValue);
+		if (Length < 0 || Length >= (INT)ARRAYSIZE(SessionDirectory)) {
+		    Status = STATUS_NAME_TOO_LONG;
+		    goto Cleanup;
+		}
+		if (!RtlCreateUnicodeString(&CsrDirectoryName, SessionDirectory)) {
+		    Status = STATUS_NO_MEMORY;
+		    goto Cleanup;
+		}
+	    } else if (!RtlCreateUnicodeString(&CsrDirectoryName, ParameterValue)) {
+		Status = STATUS_NO_MEMORY;
+		goto Cleanup;
 	    }
-
-	    /* Initialize the directory name */
-	    RtlInitAnsiString(&AnsiString, ParameterValue);
-	    Status = RtlAnsiStringToUnicodeString(&CsrDirectoryName, &AnsiString, TRUE);
-	    ASSERT(NT_SUCCESS(Status) || SessionId != 0);
-	    if (!NT_SUCCESS(Status))
-		return Status;
 
 	    /* Create it */
 	    InitializeObjectAttributes(&ObjectAttributes, &CsrDirectoryName,
@@ -579,99 +651,126 @@ static NTSTATUS CsrParseServerCommandLine(IN PCUNICODE_STRING Arguments)
 	    Status = NtCreateDirectoryObject(&CsrObjectDirectory, DIRECTORY_ALL_ACCESS,
 					     &ObjectAttributes);
 	    if (!NT_SUCCESS(Status))
-		return Status;
+		goto Cleanup;
 
 	    /* Secure it */
 	    Status = CsrSetDirectorySecurity(CsrObjectDirectory);
 	    if (!NT_SUCCESS(Status))
-		return Status;
-	} else if (_stricmp(ParameterName, "SubSystemType") == 0) {
+		goto Cleanup;
+	} else if (RtlEqualUnicodeString(&ParameterNameString, &SubSystemTypeName,
+					 TRUE)) {
 	    /* Well-known subsystems, specified by names */
-	    if (_stricmp(ParameterValue, "windows") == 0) {
+	    if (RtlEqualUnicodeString(&ParameterValueString, &WindowsValue, TRUE)) {
 		/* Behaviour compatible with Windows 7+ */
 		if (CsrWindowsControl)
 		    CsrSubSystemType = IMAGE_SUBSYSTEM_WINDOWS_GUI;
 		else
 		    CsrSubSystemType = IMAGE_SUBSYSTEM_WINDOWS_CUI;
-	    } else if (_stricmp(ParameterValue, "posix") == 0) {
+	    } else if (RtlEqualUnicodeString(&ParameterValueString, &PosixValue, TRUE)) {
 		CsrSubSystemType = IMAGE_SUBSYSTEM_POSIX_CUI;
-	    } else if (_stricmp(ParameterValue, "os2") == 0) {
+	    } else if (RtlEqualUnicodeString(&ParameterValueString, &Os2Value, TRUE)) {
 		CsrSubSystemType = IMAGE_SUBSYSTEM_OS2_CUI;
-	    } else if (_stricmp(ParameterValue, "native") == 0) {
+	    } else if (RtlEqualUnicodeString(&ParameterValueString, &NativeValue, TRUE)) {
 		CsrSubSystemType = IMAGE_SUBSYSTEM_NATIVE;
 	    } else {
 		/* Another subsystem type, specified by a numerical value */
-		Status = RtlCharToInteger(ParameterValue, 0, &CsrSubSystemType);
+		Status = RtlUnicodeStringToInteger(&ParameterValueString, 0,
+						   &CsrSubSystemType);
+		if (!NT_SUCCESS(Status))
+		    goto Cleanup;
 	    }
-	} else if (_stricmp(ParameterName, "MaxRequestThreads") == 0) {
-	    Status = RtlCharToInteger(ParameterValue, 0, &CsrMaxApiRequestThreads);
-	} else if (_stricmp(ParameterName, "RequestThreads") == 0) {
+	} else if (RtlEqualUnicodeString(&ParameterNameString, &MaxRequestThreadsName,
+					 TRUE)) {
+	    Status = RtlUnicodeStringToInteger(&ParameterValueString, 0,
+					       &CsrMaxApiRequestThreads);
+	    if (!NT_SUCCESS(Status))
+		goto Cleanup;
+	} else if (RtlEqualUnicodeString(&ParameterNameString, &RequestThreadsName,
+					 TRUE)) {
 	    /* Ignored */
 	    Status = STATUS_SUCCESS;
-	} else if (_stricmp(ParameterName, "ProfileControl") == 0) {
+	} else if (RtlEqualUnicodeString(&ParameterNameString, &ProfileControlName,
+					 TRUE)) {
 	    /* Related functionality ignored since NT 3.5 */
-	} else if (_stricmp(ParameterName, "SharedSection") == 0) {
+	} else if (RtlEqualUnicodeString(&ParameterNameString, &SharedSectionName,
+					 TRUE)) {
 	    /* Create the Section */
-	    Status = CsrSrvCreateSharedSection(ParameterValue);
+	    Status = CsrSrvCreateSharedSection(&ParameterValueString);
 	    if (!NT_SUCCESS(Status)) {
-		DPRINT1("CSRSS: *** Invalid syntax for %s=%s (Status == %X)\n",
+		DPRINT1("CSRSS: *** Invalid syntax for %ls=%ls (Status == %X)\n",
 			ParameterName, ParameterValue, Status);
-		return Status;
+		goto Cleanup;
 	    }
 
 	    /* Load us */
-	    Status = CsrLoadServerDll("CSRSS" /* "CSRSRV" */, NULL,
-				      CSRSRV_SERVERDLL_INDEX);
-	} else if (_stricmp(ParameterName, "ServerDll") == 0) {
+	    Status = CsrLoadServerDll(&CsrssName, NULL, CSRSRV_SERVERDLL_INDEX);
+	    if (!NT_SUCCESS(Status))
+		goto Cleanup;
+	} else if (RtlEqualUnicodeString(&ParameterNameString, &ServerDllName, TRUE)) {
 	    /* Loop the command line */
 	    EntryPoint = NULL;
 	    Status = STATUS_INVALID_PARAMETER;
 	    ServerString = ParameterValue;
 	    while (*ServerString) {
 		/* Check for the Entry Point */
-		if ((*ServerString == ':') && (!EntryPoint)) {
+		if ((*ServerString == L':') && (!EntryPoint)) {
 		    /* Found it. NULL-terminate and save it. */
-		    *ServerString++ = ANSI_NULL;
+		    *ServerString++ = UNICODE_NULL;
 		    EntryPoint = ServerString;
 		}
 
 		/* Check for the Dll Index */
-		if (*ServerString++ == ',')
+		if (*ServerString++ == L',')
 		    break;
 	    }
 
 	    /* Did we find something to load? */
 	    if (!*ServerString) {
-		DPRINT1("CSRSS: *** Invalid syntax for ServerDll=%s (Status == %X)\n",
+		DPRINT1("CSRSS: *** Invalid syntax for ServerDll=%ls (Status == %X)\n",
 			ParameterValue, Status);
-		return Status;
+		goto Cleanup;
 	    }
 
 	    /* Convert it to a ULONG */
-	    Status = RtlCharToInteger(ServerString, 10, &DllIndex);
+	    RtlInitUnicodeString(&DllIndexString, ServerString);
+	    Status = RtlUnicodeStringToInteger(&DllIndexString, 10, &DllIndex);
 
 	    /* Add a null char if it was valid */
 	    if (NT_SUCCESS(Status))
-		ServerString[-1] = ANSI_NULL;
+		ServerString[-1] = UNICODE_NULL;
+
+	    if (!NT_SUCCESS(Status))
+		goto Cleanup;
+
+	    RtlInitUnicodeString(&DllNameString, ParameterValue);
+	    if (EntryPoint) {
+		RtlInitUnicodeString(&DllEntryPointString, EntryPoint);
+	    }
 
 	    /* Load it */
 	    if (CsrDebug & 1)
-		DPRINT1("CSRSS: Loading ServerDll=%s:%s\n", ParameterValue, EntryPoint);
-	    Status = CsrLoadServerDll(ParameterValue, EntryPoint, DllIndex);
+		DPRINT1("CSRSS: Loading ServerDll=%ls:%ls\n", ParameterValue,
+			EntryPoint ? EntryPoint : L"");
+	    Status = CsrLoadServerDll(&DllNameString,
+				      EntryPoint ? &DllEntryPointString : NULL, DllIndex);
 	    if (!NT_SUCCESS(Status)) {
-		DPRINT1("CSRSS: *** Failed loading ServerDll=%s (Status == 0x%x)\n",
+		DPRINT1("CSRSS: *** Failed loading ServerDll=%ls (Status == 0x%x)\n",
 			ParameterValue, Status);
-		return Status;
+		goto Cleanup;
 	    }
-	} else if (_stricmp(ParameterName, "Windows") == 0) {
-	    CsrWindowsControl = (_stricmp(ParameterValue, "On") == 0);
+	} else if (RtlEqualUnicodeString(&ParameterNameString, &WindowsName, TRUE)) {
+	    CsrWindowsControl = RtlEqualUnicodeString(&ParameterValueString, &OnValue,
+						      TRUE);
 	} else {
 	    /* Invalid parameter on the command line */
 	    Status = STATUS_INVALID_PARAMETER;
+	    goto Cleanup;
 	}
     }
 
-    /* Return status */
+Cleanup:
+    if (CommandLine)
+	RtlFreeHeap(CsrHeap, 0, CommandLine);
     return Status;
 }
 
@@ -891,11 +990,8 @@ NTAPI NTSTATUS CsrSbApiPortInitialize(VOID)
  * The CsrServerInitialization routine is the native (not Server) entrypoint
  * of this Server DLL. It serves as the entrypoint for CSRSS.
  *
- * @param ArgumentCount
- *        Number of arguments on the command line.
- *
  * @param Arguments
- *        Array of arguments from the command line.
+ *        Unicode command-line arguments.
  *
  * @return STATUS_SUCCESS in case of success, STATUS_UNSUCCESSFUL otherwise.
  *

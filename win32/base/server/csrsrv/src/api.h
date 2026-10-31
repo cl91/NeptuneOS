@@ -68,7 +68,8 @@ NTAPI BOOLEAN CsrCaptureArguments(IN PCSR_THREAD CsrThread,
 
 NTAPI VOID CsrReleaseCapturedArguments(IN PCSR_API_MESSAGE ApiMessage);
 
-NTAPI NTSTATUS CsrLoadServerDll(IN PCHAR DllString, IN PCHAR EntryPoint OPTIONAL,
+NTAPI NTSTATUS CsrLoadServerDll(IN PCUNICODE_STRING DllString,
+				IN PCUNICODE_STRING EntryPoint OPTIONAL,
 				IN ULONG ServerId);
 
 NTAPI PCSR_THREAD CsrAllocateThread(IN PCSR_PROCESS CsrProcess);
@@ -112,7 +113,7 @@ NTAPI NTSTATUS CsrInitializeNtSessionList(VOID);
 NTAPI NTSTATUS CsrSrvAttachSharedSection(IN PCSR_PROCESS CsrProcess OPTIONAL,
 					 OUT PCSR_API_CONNECTINFO ConnectInfo);
 
-NTAPI NTSTATUS CsrSrvCreateSharedSection(IN PCHAR ParameterValue);
+NTAPI NTSTATUS CsrSrvCreateSharedSection(IN PCUNICODE_STRING ParameterValue);
 
 NTAPI VOID CsrLockedDereferenceProcess(PCSR_PROCESS CsrProcess);
 

@@ -109,7 +109,7 @@ NTAPI VOID CsrProcessRefcountZero(IN PCSR_PROCESS CsrProcess)
 
     /* Close the Client Port if there is one */
     if (CsrProcess->ClientPort)
-	NtClose(CsrProcess->ClientPort);
+	NtDisconnectPort(CsrProcess->ClientPort);
     if (CsrProcess->ClientViewBase)
 	NtUnmapViewOfSection(NtCurrentProcess(), (PVOID)CsrProcess->ClientViewBase);
 

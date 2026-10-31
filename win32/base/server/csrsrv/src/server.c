@@ -87,10 +87,10 @@ CSR_SERVER_DLL_INIT(CsrServerDllInitialization)
  * The CsrLoadServerDll routine loads a CSR Server DLL and calls its entrypoint.
  *
  * @param DllString
- *        Pointer to the CSR Server DLL to load and call.
+ *        Unicode name of the CSR Server DLL to load and call.
  *
  * @param EntryPoint
- *        Pointer to the name of the server's initialization function.
+ *        Unicode name of the server's initialization function.
  *        If this parameter is NULL, the default ServerDllInitialize
  *        will be assumed.
  *
@@ -99,18 +99,20 @@ CSR_SERVER_DLL_INIT(CsrServerDllInitialization)
  * @remarks None.
  *
  *--*/
-NTAPI NTSTATUS CsrLoadServerDll(IN PCHAR DllString, IN PCHAR EntryPoint OPTIONAL, IN ULONG ServerId)
+NTAPI NTSTATUS CsrLoadServerDll(IN PCUNICODE_STRING DllString,
+				IN PCUNICODE_STRING EntryPoint OPTIONAL,
+				IN ULONG ServerId)
 {
     NTSTATUS Status;
-    ANSI_STRING DllName;
-    UNICODE_STRING TempString, ErrorString;
+    ANSI_STRING DllName = { 0 }, EntryPointString = { 0 };
+    UNICODE_STRING DllNameString, ErrorString;
     ULONG_PTR Parameters[2];
     HANDLE hServerDll = NULL;
     ULONG Size;
-    PCSR_SERVER_DLL ServerDll;
-    STRING EntryPointString;
+    PCSR_SERVER_DLL ServerDll = NULL;
     PCSR_SERVER_DLL_INIT_CALLBACK ServerDllInitProcedure;
     ULONG Response;
+    BOOLEAN EntryPointStringAllocated = FALSE;
 
     /* Check if it's beyond the maximum we support */
     if (ServerId >= CSR_SERVER_DLL_MAX)
@@ -120,40 +122,46 @@ NTAPI NTSTATUS CsrLoadServerDll(IN PCHAR DllString, IN PCHAR EntryPoint OPTIONAL
     if (CsrLoadedServerDll[ServerId])
 	return STATUS_INVALID_PARAMETER;
 
-    /* Convert the name to Unicode */
-    ASSERT(DllString != NULL);
-    RtlInitAnsiString(&DllName, DllString);
-    Status = RtlAnsiStringToUnicodeString(&TempString, &DllName, TRUE);
+    /* Validate the Unicode names */
+    if (!DllString || !DllString->Length || !DllString->Buffer ||
+	(DllString->Length & (sizeof(WCHAR) - 1)))
+	return STATUS_INVALID_PARAMETER;
+    if (EntryPoint && ((!EntryPoint->Length || !EntryPoint->Buffer) ||
+		       (EntryPoint->Length & (sizeof(WCHAR) - 1))))
+	return STATUS_INVALID_PARAMETER;
+
+    /*
+     * The loader and the CSR_SERVER_DLL interface still use ANSI strings,
+     * so retain their copies at this boundary.
+     */
+    Status = RtlUnicodeStringToAnsiString(&DllName, DllString, TRUE);
     if (!NT_SUCCESS(Status))
 	return Status;
 
     /* If we are loading ourselves, don't actually load us */
+    DllNameString = *DllString;
     if (ServerId != CSRSRV_SERVERDLL_INDEX) {
 	/* Load the DLL */
-	Status = LdrLoadDll(NULL, 0, &TempString, &hServerDll);
+	Status = LdrLoadDll(NULL, 0, &DllNameString, &hServerDll);
 	if (!NT_SUCCESS(Status)) {
 	    /* Setup error parameters */
-	    Parameters[0] = (ULONG_PTR)&TempString;
+	    Parameters[0] = (ULONG_PTR)&DllNameString;
 	    Parameters[1] = (ULONG_PTR)&ErrorString;
 	    RtlInitUnicodeString(&ErrorString, L"Default Load Path");
 
 	    /* Send a hard error */
 	    NtRaiseHardError(Status, 2, 3, Parameters, OptionOk, (PVOID)&Response);
 	}
-
-	/* Get rid of the string */
-	RtlFreeUnicodeString(&TempString);
 	if (!NT_SUCCESS(Status))
-	    return Status;
+	    goto Cleanup;
     }
 
     /* Allocate a CSR DLL Object */
     Size = sizeof(CSR_SERVER_DLL) + DllName.MaximumLength;
     ServerDll = RtlAllocateHeap(CsrHeap, HEAP_ZERO_MEMORY, Size);
     if (!ServerDll) {
-	if (hServerDll)
-	    LdrUnloadDll(hServerDll);
-	return STATUS_NO_MEMORY;
+	Status = STATUS_NO_MEMORY;
+	goto Cleanup;
     }
 
     /* Set up the Object */
@@ -173,9 +181,15 @@ NTAPI NTSTATUS CsrLoadServerDll(IN PCHAR DllString, IN PCHAR EntryPoint OPTIONAL
 
     /* Now get the entrypoint */
     if (hServerDll) {
-	/* Initialize a string for the entrypoint, or use the default */
-	RtlInitAnsiString(&EntryPointString,
-			  EntryPoint ? EntryPoint : "ServerDllInitialization");
+	/* Convert the entrypoint, or use the default */
+	if (EntryPoint) {
+	    Status = RtlUnicodeStringToAnsiString(&EntryPointString, EntryPoint, TRUE);
+	    if (!NT_SUCCESS(Status))
+		goto Cleanup;
+	    EntryPointStringAllocated = TRUE;
+	} else {
+	    RtlInitAnsiString(&EntryPointString, "ServerDllInitialization");
+	}
 
 	/* Get a pointer to it */
 	Status = LdrGetProcedureAddress(hServerDll, &EntryPointString, 0,
@@ -225,14 +239,15 @@ NTAPI NTSTATUS CsrLoadServerDll(IN PCHAR DllString, IN PCHAR EntryPoint OPTIONAL
 	}
     }
 
-    if (!NT_SUCCESS(Status)) {
-	/* Server Init failed, unload it */
-	if (hServerDll)
-	    LdrUnloadDll(hServerDll);
-
-	/* Delete the Object */
+Cleanup:
+    if (!NT_SUCCESS(Status) && ServerDll) {
 	RtlFreeHeap(CsrHeap, 0, ServerDll);
     }
+    if (!NT_SUCCESS(Status) && hServerDll)
+	LdrUnloadDll(hServerDll);
+    if (EntryPointStringAllocated)
+	RtlFreeAnsiString(&EntryPointString);
+    RtlFreeAnsiString(&DllName);
 
     /* Return to caller */
     return Status;
@@ -303,7 +318,7 @@ CSR_API(CsrSrvClientConnect)
  * CSR Server DLLs and Clients can use to share data.
  *
  * @param ParameterValue
- *        Specially formatted string from our registry command-line which
+ *        Specially formatted Unicode string from our registry command-line which
  *        specifies various arguments for the shared section.
  *
  * @return STATUS_SUCCESS in case of success, STATUS_UNSUCCESSFUL otherwise.
@@ -311,14 +326,16 @@ CSR_API(CsrSrvClientConnect)
  * @remarks None.
  *
  *--*/
-NTAPI NTSTATUS CsrSrvCreateSharedSection(IN PCHAR ParameterValue)
+NTAPI NTSTATUS CsrSrvCreateSharedSection(IN PCUNICODE_STRING ParameterValue)
 {
-    PCHAR SizeValue = ParameterValue;
+    PWSTR SizeValue;
     ULONG Size;
     NTSTATUS Status;
     LARGE_INTEGER SectionSize;
     SIZE_T ViewSize = 0;
     PPEB Peb = NtCurrentPeb();
+    UNICODE_STRING SizeString;
+    ULONG CharsRemaining;
 #ifdef _WIN64
     ULONG AllocationAttributes = SEC_RESERVE;
     ULONG_PTR ZeroBits = 0x7fffffff;
@@ -328,25 +345,31 @@ NTAPI NTSTATUS CsrSrvCreateSharedSection(IN PCHAR ParameterValue)
 #endif
 
     /* If there's no parameter, fail */
-    if (!ParameterValue)
+    if (!ParameterValue || !ParameterValue->Buffer ||
+	(ParameterValue->Length & (sizeof(WCHAR) - 1)))
 	return STATUS_INVALID_PARAMETER;
 
-    /* Find the first comma, and null terminate */
-    while (*SizeValue) {
-	if (*SizeValue == ',') {
-	    *SizeValue++ = ANSI_NULL;
-	    break;
-	} else {
-	    SizeValue++;
-	}
+    /* Find the first comma, starting at the size value after it */
+    SizeValue = ParameterValue->Buffer;
+    CharsRemaining = ParameterValue->Length / sizeof(WCHAR);
+    while (CharsRemaining && *SizeValue != L',') {
+	SizeValue++;
+	CharsRemaining--;
     }
 
     /* Make sure it's valid */
-    if (!*SizeValue)
+    if (!CharsRemaining)
+	return STATUS_INVALID_PARAMETER;
+    SizeValue++;
+    CharsRemaining--;
+    if (!CharsRemaining)
 	return STATUS_INVALID_PARAMETER;
 
-    /* Convert it to an integer */
-    Status = RtlCharToInteger(SizeValue, 0, &Size);
+    /* Convert the size portion to an integer */
+    SizeString.Buffer = SizeValue;
+    SizeString.Length = (USHORT)(CharsRemaining * sizeof(WCHAR));
+    SizeString.MaximumLength = SizeString.Length;
+    Status = RtlUnicodeStringToInteger(&SizeString, 0, &Size);
     if (!NT_SUCCESS(Status))
 	return Status;
 
