@@ -68,6 +68,12 @@
     <parameter annotation="in opt" type="ptr::CLIENT_ID" name="ClientId" />
   </svc>
 
+  <svc name="NtImpersonateThread">
+    <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
+    <parameter annotation="in" type="HANDLE" name="ThreadToImpersonate" />
+    <parameter annotation="in" type="ptr::SECURITY_QUALITY_OF_SERVICE" name="SecurityQos" />
+  </svc>
+
   <svc name="NtCreateProcess">
     <parameter annotation="out" type="ptr::HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="ACCESS_MASK" name="DesiredAccess" />

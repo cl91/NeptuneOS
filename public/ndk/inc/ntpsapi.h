@@ -469,6 +469,10 @@ NTAPI NTSYSAPI NTSTATUS NtOpenThread(OUT PHANDLE ThreadHandle,
 				     IN POBJECT_ATTRIBUTES ObjectAttributes,
 				     IN OPTIONAL PCLIENT_ID ClientId);
 
+NTAPI NTSYSAPI NTSTATUS NtImpersonateThread(IN HANDLE ThreadHandle,
+					    IN HANDLE ThreadToImpersonate,
+					    IN PSECURITY_QUALITY_OF_SERVICE SecurityQos);
+
 NTAPI NTSYSAPI NTSTATUS NtCreateThread(OUT PHANDLE ThreadHandle,
 				       IN ACCESS_MASK DesiredAccess,
 				       IN OPTIONAL POBJECT_ATTRIBUTES ObjectAttributes,

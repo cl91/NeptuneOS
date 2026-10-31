@@ -74,3 +74,12 @@ NTSTATUS NtDuplicateToken(IN ASYNC_STATE AsyncState,
 {
     UNIMPLEMENTED;
 }
+
+NTSTATUS NtImpersonateThread(IN ASYNC_STATE AsyncState,
+			     IN PTHREAD Thread,
+			     IN HANDLE ThreadHandle,
+			     IN HANDLE ThreadToImpersonate,
+			     IN PSECURITY_QUALITY_OF_SERVICE SecurityQualityOfService)
+{
+    UNIMPLEMENTED;
+}
