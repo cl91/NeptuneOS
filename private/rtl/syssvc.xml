@@ -621,6 +621,20 @@
     <parameter annotation="in" type="bufsize::ULONG" name="Length" />
   </svc>
 
+  <svc name="NtQuerySecurityObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
+    <parameter annotation="out" type="buf::Void" name="DescriptorBuffer" />
+    <parameter annotation="in" type="bufsize::ULONG" name="DescriptorBufferLength" />
+    <parameter annotation="out" type="bufsize::ULONG" name="RequiredLength" />
+  </svc>
+
+  <svc name="NtSetSecurityObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
+    <parameter annotation="in" type="SecurityDescriptor" name="SecurityDescriptor" />
+  </svc>
+
   <svc name="NtQueryInformationProcess">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in" type="PROCESS_INFORMATION_CLASS" name="ProcessInformationClass" />
@@ -691,20 +705,6 @@
     <parameter annotation="in" type="ULONG" name="InboundQuota" />
     <parameter annotation="in" type="ULONG" name="OutboundQuota" />
     <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="DefaultTimeout" />
-  </svc>
-
-  <svc name="NtQuerySecurityObject">
-    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
-    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
-    <parameter annotation="out" type="buf::Void" name="DescriptorBuffer" />
-    <parameter annotation="in" type="bufsize::ULONG" name="DescriptorBufferLength" />
-    <parameter annotation="out" type="bufsize::ULONG" name="RequiredLength" />
-  </svc>
-
-  <svc name="NtSetSecurityObject">
-    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
-    <parameter annotation="in" type="SECURITY_INFORMATION" name="SecurityInformationClass" />
-    <parameter annotation="in" type="PVOID" name="DescriptorBuffer" />
   </svc>
 
   <svc name="NtOpenFile">

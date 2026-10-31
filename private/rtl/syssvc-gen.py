@@ -610,6 +610,7 @@ class SingleObjectMarshaller(SingleParameterMarshaller):
         }
 
 
+
 # Marshaller class for buffers specified by multiple parameters: buffer
 # pointer, buffer size, and optionally a third parameter specifying the
 # type of the buffer. For output buffers, we can also have an optional
@@ -932,6 +933,12 @@ class Service:
                                    marshal_func = "KiMarshalSid",
                                    validate_func = "KiValidateSid",
                                    unmarshal_func = "KiServiceGetArgument"),
+            SingleObjectMarshaller(server_name, object_type = "SecurityDescriptor",
+                                   server_type = "PSECURITY_DESCRIPTOR",
+                                   client_type = "PSECURITY_DESCRIPTOR",
+                                   marshal_func = "KiMarshalSecurityDescriptor",
+                                   validate_func = "KiValidateSecurityDescriptor",
+                                   unmarshal_func = "KiServiceGetArgument")
             BufferMarshaller(server_name, buffer_type = "Void",
                              server_type = "PVOID", client_type = "PVOID",
                              client_marshal_func = "KiServiceMarshalBuffer",
