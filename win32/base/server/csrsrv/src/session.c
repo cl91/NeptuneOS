@@ -453,7 +453,7 @@ NTAPI VOID CsrSbApiRequestThread(IN PVOID Parameter)
 	    PortContext = ReceiveAttributes.Context.PortContext;
 
 	/* Save the message type */
-	MessageType = ReceiveMsg.h.u2.s2.Type &
+	MessageType = ReceiveMsg.h.Type &
 		      ~(LPC_CONTINUATION_REQUIRED | LPC_NO_IMPERSONATE |
 			LPC_KERNELMODE_MESSAGE);
 

@@ -467,7 +467,8 @@ NTAPI VOID CsrLockedDereferenceThread(IN PCSR_THREAD CsrThread)
  * @remarks None.
  *
  *--*/
-NTAPI PCSR_THREAD CsrAddStaticServerThread(IN HANDLE hThread, IN PCLIENT_ID ClientId, IN ULONG ThreadFlags)
+NTAPI PCSR_THREAD CsrAddStaticServerThread(IN HANDLE hThread, IN PCLIENT_ID ClientId,
+					   IN ULONG ThreadFlags)
 {
     PCSR_THREAD CsrThread;
 
