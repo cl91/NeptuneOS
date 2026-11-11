@@ -3336,7 +3336,6 @@ ULONG HalGetConsoleMaxRows()
 }
 
 NTSTATUS WdmHalRegisterFrameBuffer(IN ASYNC_STATE State,
-				   IN PTHREAD Thread,
 				   IN PVOID VirtBase,
 				   IN SIZE_T Size,
 				   IN ULONG Offset,
@@ -3349,6 +3348,8 @@ NTSTATUS WdmHalRegisterFrameBuffer(IN ASYNC_STATE State,
 				   IN UCHAR RedIndex,
 				   IN BOOLEAN NeedFlush)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(Thread);
     assert(Thread->Process);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -3397,9 +3398,10 @@ NTSTATUS WdmHalRegisterFrameBuffer(IN ASYNC_STATE State,
 }
 
 NTSTATUS WdmHalUnregisterFrameBuffer(IN ASYNC_STATE State,
-				     IN PTHREAD Thread,
 				     IN PVOID VirtBase)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(Thread);
     assert(Thread->Process);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);

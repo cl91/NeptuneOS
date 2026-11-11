@@ -442,13 +442,14 @@ static inline NTSTATUS PspDefaultQueryInfoBufferCheck(ULONG Class,
 }
 
 NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
-				   IN PTHREAD Thread,
                                    IN HANDLE ProcessHandle,
                                    IN PROCESS_INFORMATION_CLASS ProcessInformationClass,
                                    IN PVOID Info,
                                    IN ULONG ProcessInformationLength,
                                    OUT OPTIONAL ULONG *ReturnLength)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     /* Verify Information Class validity */
     ULONG Length;
     RET_ERR(PspDefaultQueryInfoBufferCheck(ProcessInformationClass,
@@ -741,13 +742,14 @@ NTSTATUS NtQueryInformationProcess(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtQueryInformationThread(IN ASYNC_STATE State,
-				  IN PTHREAD Thread,
                                   IN HANDLE ThreadHandle,
                                   IN THREAD_INFORMATION_CLASS ThreadInformationClass,
                                   IN PVOID Info,
                                   IN ULONG ThreadInformationLength,
                                   OUT OPTIONAL ULONG *ReturnLength)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     /* Verify Information Class validity */
     ULONG Length;
     RET_ERR(PspDefaultQueryInfoBufferCheck(ThreadInformationClass,
@@ -778,12 +780,13 @@ NTSTATUS NtQueryInformationThread(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtSetInformationProcess(IN ASYNC_STATE State,
-				 IN PTHREAD Thread,
                                  IN HANDLE ProcessHandle,
                                  IN PROCESS_INFORMATION_CLASS ProcessInformationClass,
                                  IN PVOID Buffer,
                                  IN ULONG ProcessInformationLength)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     /* Verify Information Class validity */
     RET_ERR(PspDefaultQueryInfoBufferCheck(ProcessInformationClass,
 					   PspProcessInfoClass,
@@ -819,12 +822,13 @@ NTSTATUS NtSetInformationProcess(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtSetInformationThread(IN ASYNC_STATE State,
-				IN PTHREAD Thread,
                                 IN HANDLE ThreadHandle,
                                 IN THREAD_INFORMATION_CLASS ThreadInformationClass,
                                 IN PVOID Info,
                                 IN ULONG ThreadInformationLength)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     /* Verify Information Class validity */
     RET_ERR(PspDefaultQueryInfoBufferCheck(ThreadInformationClass,
 					   PspThreadInfoClass,

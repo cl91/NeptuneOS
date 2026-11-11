@@ -418,7 +418,6 @@ C_ASSERT(SystemBasicInformation == 0);
  * @implemented
  */
 NTSTATUS NtSetSystemInformation(IN ASYNC_STATE State,
-				IN PTHREAD Thread,
 				IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
 				IN PVOID SystemInformationBuffer,
 				IN ULONG SystemInformationLength)
@@ -446,7 +445,6 @@ NTSTATUS NtSetSystemInformation(IN ASYNC_STATE State,
  * @implemented
  */
 NTSTATUS NtQuerySystemInformation(IN ASYNC_STATE State,
-				  IN PTHREAD Thread,
                                   IN SYSTEM_INFORMATION_CLASS SystemInformationClass,
                                   IN PVOID SystemInformationBuffer,
                                   IN ULONG SystemInformationLength,
@@ -478,7 +476,6 @@ NTSTATUS NtQuerySystemInformation(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtQuerySystemEnvironmentValueEx(IN ASYNC_STATE State,
-					 IN PTHREAD Thread,
 					 IN PCSTR VariableName,
 					 IN GUID *VendorGuid,
 					 OUT PVOID Value,
@@ -489,7 +486,6 @@ NTSTATUS NtQuerySystemEnvironmentValueEx(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtSetSystemEnvironmentValueEx(IN ASYNC_STATE State,
-				       IN PTHREAD Thread,
 				       IN PCSTR VariableName,
 				       IN GUID *VendorGuid,
 				       IN PVOID Value,

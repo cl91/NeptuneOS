@@ -1,6 +1,6 @@
 #include "ei.h"
 
-NTSTATUS NtPowerInformation(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtPowerInformation(IN ASYNC_STATE AsyncState,
 			    IN POWER_INFORMATION_LEVEL PowerInformationLevel,
 			    IN OPTIONAL PVOID InputBuffer, IN ULONG InputBufferLength,
 			    OUT OPTIONAL PVOID OutputBuffer, IN ULONG OutputBufferLength)
@@ -8,7 +8,7 @@ NTSTATUS NtPowerInformation(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtInitiatePowerAction(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtInitiatePowerAction(IN ASYNC_STATE AsyncState,
 			       IN POWER_ACTION SystemAction,
 			       IN SYSTEM_POWER_STATE MinSystemState, IN ULONG Flags,
 			       IN BOOLEAN Asynchronous)
@@ -16,31 +16,31 @@ NTSTATUS NtInitiatePowerAction(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtGetDevicePowerState(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtGetDevicePowerState(IN ASYNC_STATE AsyncState,
 			       IN HANDLE Device, IN PDEVICE_POWER_STATE PowerState)
 {
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtRequestDeviceWakeup(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtRequestDeviceWakeup(IN ASYNC_STATE AsyncState,
 			       IN HANDLE Device)
 {
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtRequestWakeupLatency(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtRequestWakeupLatency(IN ASYNC_STATE AsyncState,
 				IN LATENCY_TIME Latency)
 {
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtCancelDeviceWakeupRequest(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtCancelDeviceWakeupRequest(IN ASYNC_STATE AsyncState,
 				     IN HANDLE Device)
 {
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtSetThreadExecutionState(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtSetThreadExecutionState(IN ASYNC_STATE AsyncState,
 				   IN EXECUTION_STATE ExecutionState,
 				   OUT PEXECUTION_STATE PreviousState)
 {

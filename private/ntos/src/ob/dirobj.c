@@ -135,7 +135,6 @@ static NTSTATUS ObpDirectoryObjectParseProc(IN POBJECT Self,
 }
 
 static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
-					   IN PTHREAD Thread,
 					   IN POBJECT Object,
 					   IN PCSTR SubPath,
 					   IN ACCESS_MASK DesiredAccess,
@@ -144,6 +143,7 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
 					   OUT POBJECT *pOpenedInstance,
 					   OUT PCSTR *pRemainingPath)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Object != NULL);
     assert(SubPath != NULL);
@@ -181,7 +181,6 @@ static NTSTATUS IopDirectoryObjectOpenProc(IN ASYNC_STATE State,
 }
 
 static NTSTATUS ObpDirectoryObjectCloseProc(IN ASYNC_STATE State,
-					    IN PTHREAD Thread,
 					    IN POBJECT Object)
 {
     /* Do nothing */
@@ -423,11 +422,12 @@ VOID ObDirectoryObjectVisitObject(IN POBJECT_DIRECTORY DirObj,
 }
 
 NTSTATUS NtCreateDirectoryObject(IN ASYNC_STATE AsyncState,
-                                 IN PTHREAD Thread,
                                  OUT HANDLE *DirectoryHandle,
                                  IN ACCESS_MASK DesiredAccess,
                                  IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     POBJECT RootDirectory = NULL;
     NTSTATUS Status = STATUS_NTOS_BUG;
     if (!(ObjectAttributes.ObjectNameBuffer && ObjectAttributes.ObjectNameBuffer[0])) {
@@ -462,24 +462,20 @@ out:
 }
 
 NTSTATUS NtOpenDirectoryObject(IN ASYNC_STATE State,
-                               IN PTHREAD Thread,
                                OUT HANDLE *DirectoryHandle,
                                IN ACCESS_MASK DesiredAccess,
                                IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State);
-    AWAIT_EX(Status, ObOpenObjectByName, State, _, Thread,
-	     ObjectAttributes, OBJECT_TYPE_DIRECTORY, DesiredAccess,
-	     NULL, DirectoryHandle);
+    ASYNC_BEGIN(State, Thread);
+    AWAIT(Status, ObOpenObjectByName, State, _,
+	  ObjectAttributes, OBJECT_TYPE_DIRECTORY, DesiredAccess,
+	  NULL, DirectoryHandle);
     ASYNC_END(State, Status);
 }
 
 NTSTATUS NtQueryDirectoryObject(IN ASYNC_STATE AsyncState,
-                                IN PTHREAD Thread,
                                 IN HANDLE DirectoryHandle,
                                 OUT PCHAR DirectoryInfo,
                                 IN ULONG BufferLength,
@@ -488,6 +484,8 @@ NTSTATUS NtQueryDirectoryObject(IN ASYNC_STATE AsyncState,
                                 IN OUT PULONG ObjectIndex,
                                 OUT OPTIONAL ULONG *ReturnLength)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     POBJECT_DIRECTORY Directory = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, DirectoryHandle,
 				      OBJECT_TYPE_DIRECTORY,

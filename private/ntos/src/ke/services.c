@@ -292,9 +292,10 @@ NTSTATUS KeSetThreadContext(IN MWORD ThreadCap,
  * Set the integer context of the thread object.
  */
 NTSTATUS KeContinue(IN ASYNC_STATE AsyncState,
-                    IN PTHREAD Thread,
                     IN PTHREAD_CONTEXT Context)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     NTSTATUS Status = KiSetThreadContext(Thread->TreeNode.Cap, Context, TRUE);
     return NT_SUCCESS(Status) ? STATUS_NTOS_NO_REPLY : Status;
 }
@@ -815,10 +816,96 @@ static NTSTATUS KiServiceSaveReplyCap(IN PTHREAD Thread)
     return STATUS_SUCCESS;
 }
 
-static inline VOID KiCheckAsyncStackEmpty(IN PTHREAD Thread)
+static inline VOID KiCheckAsyncStackEmpty(IN PASYNC_CONTEXT Ctx)
 {
-    for (ULONG i = 0; i < ARRAYSIZE(Thread->AsyncStack.Stack); i++) {
-	assert(Thread->AsyncStack.Stack[i] == 0);
+    for (ULONG i = 0; i < ARRAYSIZE(Ctx->AsyncStack.Stack); i++) {
+	assert(Ctx->AsyncStack.Stack[i] == 0);
+    }
+}
+
+static inline NTSTATUS KiGetAsyncContext(IN PTHREAD Thread,
+					 IN ULONG MsgBufferEnd,
+					 OUT PASYNC_CONTEXT *pAsyncCtx)
+{
+    if (Thread->AsyncObjMaxId) {
+	assert(Thread->AsyncObjUsedMap);
+	/* Check if we have an unused async object id. */
+	LONG AsyncObjId = GetFirstZeroBit(Thread->AsyncObjUsedMap, Thread->AsyncObjMaxId);
+	if (AsyncObjId < 0 || AsyncObjId > Thread->AsyncObjMaxId) {
+	    return STATUS_ASYNC_NO_MORE_ID;
+	}
+	PASYNC_CONTEXT AsyncCtx = Thread->AsyncContexts[AsyncObjId];
+	/* If the async obj is already allocated, check whether it has enough space to
+	 * save the message buffer. If not, allocate more space. */
+	if (AsyncCtx) {
+	    /* We set the Thread member to NULL and the async obj id to ULONG_MAX when
+	     * deactivating an async context. */
+	    assert(!AsyncCtx->Thread);
+	    assert(AsyncCtx->AsyncObjId == ULONG_MAX);
+	    if (AsyncCtx->SavedMsgBufSize < MsgBufferEnd) {
+		PVOID SavedMsgBuf = ExAllocatePoolWithTag(MsgBufferEnd, NTOS_KE_TAG);
+		if (!SavedMsgBuf) {
+		    return STATUS_ASYNC_NO_MEMORY;
+		}
+		ExFreePoolWithTag(AsyncCtx->SavedMsgBuf, NTOS_KE_TAG);
+		AsyncCtx->SavedMsgBufSize = MsgBufferEnd;
+		AsyncCtx->SavedMsgBuf = SavedMsgBuf;
+	    }
+	    AsyncCtx->AsyncObjId = AsyncObjId;
+	    AsyncCtx->Thread = Thread;
+	    ObReferenceObjectByPointer(Thread);
+	} else {
+	    AsyncCtx = ExAllocatePoolWithTag(sizeof(ASYNC_CONTEXT), NTOS_KE_TAG);
+	    if (!AsyncCtx) {
+		return STATUS_ASYNC_NO_MEMORY;
+	    }
+	    PVOID SavedMsgBuf = NULL;
+	    if (MsgBufferEnd) {
+		SavedMsgBuf = ExAllocatePoolWithTag(MsgBufferEnd, NTOS_KE_TAG);
+		if (!SavedMsgBuf) {
+		    ExFreePoolWithTag(AsyncCtx, NTOS_KE_TAG);
+		    return STATUS_ASYNC_NO_MEMORY;
+		}
+	    }
+	    KiInitializeAsyncContext(Thread, AsyncObjId, MsgBufferEnd, SavedMsgBuf, AsyncCtx);
+	}
+	AsyncCtx->MsgBufferEnd = MsgBufferEnd;
+	SetBit(Thread->AsyncObjUsedMap, AsyncObjId);
+	*pAsyncCtx = AsyncCtx;
+    } else {
+	assert(Thread->AsyncContexts[0]);
+	assert(Thread->AsyncContexts[0]->AsyncObjId == 0);
+	*pAsyncCtx = Thread->AsyncContexts[0];
+    }
+    return STATUS_SUCCESS;
+}
+
+static inline VOID KiPutAsyncContext(IN PTHREAD Thread,
+				     IN PASYNC_CONTEXT AsyncCtx)
+{
+    ULONG AsyncObjId = AsyncCtx->AsyncObjId;
+    assert(AsyncCtx == Thread->AsyncContexts[AsyncObjId]);
+    assert(AsyncCtx->Thread == Thread);
+    if (Thread->AsyncObjMaxId) {
+	/* Detach the async context from the thread, but do not deallocate the async
+	 * context because the client will most likely need another async context
+	 * immediately. */
+	AsyncCtx->AsyncObjId = ULONG_MAX;
+	AsyncCtx->Thread = NULL;
+	ObDereferenceObject(Thread);
+	AsyncCtx->MsgBufferEnd = 0;
+	AsyncCtx->SvcNum = 0;
+	AsyncCtx->WdmSvc = FALSE;
+	RtlZeroMemory(&AsyncCtx->AsyncStack, sizeof(AsyncCtx->AsyncStack));
+	RtlZeroMemory(&AsyncCtx->SavedParams, sizeof(AsyncCtx->SavedParams));
+    } else {
+	/* If the thread is running in synchronous mode, we do not need to do anything. */
+	assert(!AsyncCtx->MsgBufferEnd);
+	assert(!AsyncCtx->SavedMsgBufSize);
+	assert(!AsyncCtx->SavedMsgBuf);
+	assert(!Thread->AsyncObjUsedMap);
+	assert(!Thread->AsyncResumeRoutine);
+	assert(!Thread->AsyncRoutineContext);
     }
 }
 
@@ -826,12 +913,12 @@ static inline VOID KiCheckAsyncStackEmpty(IN PTHREAD Thread)
 #include <ntos_syssvc_gen.c>
 #include <ntos_wdmsvc_gen.c>
 
-static inline NTSTATUS KiResumeService(IN PTHREAD ReadyThread)
+NTSTATUS KiAsyncContinue(IN PASYNC_CONTEXT AsyncContext)
 {
-    if (ReadyThread->WdmSvc) {
-	return KiResumeWdmService(ReadyThread);
+    if (AsyncContext->WdmSvc) {
+	return KiResumeWdmService(AsyncContext);
     } else {
-	return KiResumeSystemService(ReadyThread);
+	return KiResumeSystemService(AsyncContext);
     }
 }
 
@@ -1206,34 +1293,42 @@ VOID KiDispatchExecutiveServices()
 		/* Thread is always a valid pointer since the client cannot modify the badge */
 		assert(Badge != 0);
 		PTHREAD Thread = GLOBAL_HANDLE_TO_OBJECT(Badge);
+#ifdef CONFIG_DEBUG_BUILD
 		/* On debug build we check that the async function has correctly poped the
 		 * async stack (by using ASYNC_RETURN rather than return). This should have
 		 * been caught by the KiCheckAsyncStackEmpty when we reply to the client but
 		 * we want to make sure (async calls are hard to debug!). */
-		KiCheckAsyncStackEmpty(Thread);
+		for (ULONG i = 0; i <= Thread->AsyncObjMaxId; i++) {
+		    KiCheckAsyncStackEmpty(Thread->AsyncContexts[i]);
+		}
+#endif
 		NTSTATUS Status;
+		ULONG AsyncObjId = 0;
 		BOOLEAN ReplyCapSaved = FALSE;
 		if (GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_WDM_SERVICE) {
 		    DbgTrace("Got driver call from thread %p (%s)\n",
 			     Thread, KEDBG_THREAD_TO_FILENAME(Thread));
 		    Status = KiHandleWdmService(SvcNum, Thread, ReqMsgLength,
-						&MsgBufferEnd, &ReplyCapSaved);
+						&MsgBufferEnd, &AsyncObjId, &ReplyCapSaved);
 		} else {
 		    assert(GLOBAL_HANDLE_GET_FLAG(Badge) == SERVICE_TYPE_SYSTEM_SERVICE);
 		    DbgTrace("Got call from thread %p (%s)\n",
 			     Thread, KEDBG_THREAD_TO_FILENAME(Thread));
 		    Status = KiHandleSystemService(SvcNum, Thread, ReqMsgLength,
-						   &MsgBufferEnd, &ReplyCapSaved);
+						   &MsgBufferEnd, &AsyncObjId, &ReplyCapSaved);
 		}
 		/* If the service handler returned USER APC status, we should deliver APCs */
 		if (Status == STATUS_USER_APC) {
 		    NumApc = KiDeliverApc(Thread, MsgBufferEnd, &MoreToCome);
 		}
-		if ((Status != STATUS_ASYNC_PENDING) && (Status != STATUS_NTOS_NO_REPLY)) {
-		    /* Before we reply to the client, on debug build we check that the async
-		     * function has correctly poped the async stack (by using ASYNC_RETURN
-		     * rather than return). */
-		    KiCheckAsyncStackEmpty(Thread);
+		if (Status == STATUS_ASYNC_PENDING) {
+		    /* Note in the case that Status is STATUS_ASYNC_PENDING and thread is
+		     * in synchronous execution mode, we should not reply to the client. */
+		    if (Thread->AsyncObjMaxId) {
+			assert(AsyncObjId <= Thread->AsyncObjMaxId);
+			KiReplyThread(ReplyCapSaved ? Thread : NULL, Status, AsyncObjId, FALSE);
+		    }
+		} else if (Status != STATUS_NTOS_NO_REPLY) {
 		    KiReplyThread(ReplyCapSaved ? Thread : NULL, Status, NumApc, MoreToCome);
 		}
 	    }
@@ -1243,7 +1338,19 @@ VOID KiDispatchExecutiveServices()
 	while (!IsListEmpty(&KiReadyThreadList)) {
 	    PTHREAD ReadyThread = CONTAINING_RECORD(KiReadyThreadList.Flink,
 						    THREAD, ReadyListLink);
-	    NTSTATUS Status = KiResumeService(ReadyThread);
+	    /* We never put a thread running in asynchronous execution mode in the ready list. */
+	    assert(!ReadyThread->AsyncObjMaxId);
+	    assert(ReadyThread->AsyncContexts);
+	    PASYNC_CONTEXT AsyncCtx = ReadyThread->AsyncContexts[0];
+	    assert(AsyncCtx);
+	    assert(!AsyncCtx->AsyncObjId);
+	    assert(AsyncCtx->Thread == ReadyThread);
+	    /* We never allocate a saved message buffer for a thread running in synchronous
+	     * execution mode. */
+	    assert(!AsyncCtx->SavedMsgBuf);
+	    assert(AsyncCtx->Pending);
+	    AsyncCtx->Pending = FALSE;
+	    NTSTATUS Status = KiAsyncContinue(AsyncCtx);
 	    /* Regardless of whether the handler function has completed, we should
 	     * remove the thread from the ready list. In the case that the async status
 	     * is still pending (because the handler function has blocked on a different
@@ -1257,12 +1364,12 @@ VOID KiDispatchExecutiveServices()
 		BOOLEAN MoreToCome = FALSE;
 		/* If the service handler returned USER APC status, we should deliver APCs */
 		if (Status == STATUS_USER_APC) {
-		    NumApc = KiDeliverApc(ReadyThread, ReadyThread->MsgBufferEnd, &MoreToCome);
+		    NumApc = KiDeliverApc(ReadyThread, AsyncCtx->MsgBufferEnd, &MoreToCome);
 		}
 		/* Before we reply to the client, on debug build we check that the async
 		 * function has correctly poped the async stack (by using ASYNC_RETURN
 		 * rather than return). */
-		KiCheckAsyncStackEmpty(ReadyThread);
+		KiCheckAsyncStackEmpty(AsyncCtx);
 		/* We return the service status via the zeroth message register and
 		 * the number of APCs via the label of the message */
 		KiReplyThread(ReadyThread, Status, NumApc, MoreToCome);

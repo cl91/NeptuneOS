@@ -71,13 +71,14 @@ NTSTATUS ObQueryNameString(IN POBJECT Object,
 }
 
 NTSTATUS NtQueryObject(IN ASYNC_STATE AsyncState,
-                       IN PTHREAD Thread,
                        IN HANDLE ObjectHandle,
                        IN OBJECT_INFORMATION_CLASS ObjectInformationClass,
                        OUT PVOID ObjectInformationBuffer,
                        IN ULONG ObjectInformationLength,
                        OUT OPTIONAL ULONG *ReturnLength)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     POBJECT Object = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, ObjectHandle,
 				      OBJECT_TYPE_ANY, &Object));
@@ -102,7 +103,7 @@ NTSTATUS NtQueryObject(IN ASYNC_STATE AsyncState,
     return Status;
 }
 
-NTSTATUS NtSetInformationObject(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtSetInformationObject(IN ASYNC_STATE AsyncState,
 				IN HANDLE ObjectHandle,
 				IN OBJECT_INFORMATION_CLASS ObjectInformationClass,
 				IN PVOID ObjectInformation, IN ULONG Length)

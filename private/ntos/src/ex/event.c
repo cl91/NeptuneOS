@@ -19,7 +19,6 @@ static NTSTATUS EiEventObjectCreateProc(IN POBJECT Object,
 }
 
 static NTSTATUS EiEventObjectOpenProc(IN ASYNC_STATE State,
-				      IN PTHREAD Thread,
 				      IN POBJECT Self,
 				      IN PCSTR SubPath,
 				      IN ACCESS_MASK DesiredAccess,
@@ -39,7 +38,6 @@ static NTSTATUS EiEventObjectOpenProc(IN ASYNC_STATE State,
 }
 
 static NTSTATUS EiEventObjectCloseProc(IN ASYNC_STATE State,
-				       IN PTHREAD Thread,
 				       IN POBJECT Self)
 {
     /* Do nothing */
@@ -100,13 +98,14 @@ NTSTATUS ExCreateEvent(IN PPROCESS Process,
 }
 
 NTSTATUS NtCreateEvent(IN ASYNC_STATE State,
-		       IN PTHREAD Thread,
                        OUT HANDLE *EventHandle,
                        IN ACCESS_MASK DesiredAccess,
                        IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
                        IN EVENT_TYPE EventType,
                        IN BOOLEAN InitialState)
 {
+    assert(State.AsyncContext);
+    PTHREAD Thread = State.AsyncContext->Thread;
     POBJECT RootDirectory = NULL;
     if (ObjectAttributes.RootDirectory) {
 	RET_ERR(ObReferenceObjectByHandle(Thread, ObjectAttributes.RootDirectory,
@@ -149,10 +148,11 @@ out:
 }
 
 NTSTATUS NtSetEvent(IN ASYNC_STATE State,
-		    IN PTHREAD Thread,
                     IN HANDLE EventHandle,
                     OUT OPTIONAL LONG *PreviousState)
 {
+    assert(State.AsyncContext);
+    PTHREAD Thread = State.AsyncContext->Thread;
     PEVENT_OBJECT EventObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
 				      (POBJECT *)&EventObject));
@@ -166,10 +166,11 @@ NTSTATUS NtSetEvent(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtResetEvent(IN ASYNC_STATE State,
-		      IN PTHREAD Thread,
 		      IN HANDLE EventHandle,
 		      OUT OPTIONAL LONG *PreviousState)
 {
+    assert(State.AsyncContext);
+    PTHREAD Thread = State.AsyncContext->Thread;
     PEVENT_OBJECT EventObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
 				      (POBJECT *)&EventObject));
@@ -183,10 +184,11 @@ NTSTATUS NtResetEvent(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtPulseEvent(IN ASYNC_STATE State,
-		      IN PTHREAD Thread,
 		      IN HANDLE EventHandle,
 		      OUT OPTIONAL LONG *PreviousState)
 {
+    assert(State.AsyncContext);
+    PTHREAD Thread = State.AsyncContext->Thread;
     PEVENT_OBJECT EventObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
 				      (POBJECT *)&EventObject));
@@ -200,9 +202,10 @@ NTSTATUS NtPulseEvent(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtClearEvent(IN ASYNC_STATE State,
-		      IN PTHREAD Thread,
 		      IN HANDLE EventHandle)
 {
+    assert(State.AsyncContext);
+    PTHREAD Thread = State.AsyncContext->Thread;
     PEVENT_OBJECT EventObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle, OBJECT_TYPE_EVENT,
 				      (POBJECT *)&EventObject));
@@ -213,24 +216,21 @@ NTSTATUS NtClearEvent(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtOpenEvent(IN ASYNC_STATE State,
-                     IN PTHREAD Thread,
                      OUT HANDLE *EventHandle,
                      IN ACCESS_MASK DesiredAccess,
                      IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State);
-    AWAIT_EX(Status, ObOpenObjectByName, State, _, Thread,
-	     ObjectAttributes, OBJECT_TYPE_EVENT, DesiredAccess,
-	     NULL, EventHandle);
+    ASYNC_BEGIN(State, Thread);
+    assert(Thread->Process != NULL);
+    AWAIT(Status, ObOpenObjectByName, State, _,
+	  ObjectAttributes, OBJECT_TYPE_EVENT, DesiredAccess,
+	  NULL, EventHandle);
     ASYNC_END(State, Status);
 }
 
 NTSTATUS NtQueryEvent(IN ASYNC_STATE State,
-                     IN PTHREAD Thread,
 		     IN HANDLE EventHandle,
 		     IN EVENT_INFORMATION_CLASS EventInformationClass,
 		     OUT PVOID EventInformation,
@@ -253,6 +253,8 @@ NTSTATUS NtQueryEvent(IN ASYNC_STATE State,
 	return STATUS_INVALID_INFO_CLASS;
     }
 
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     PEVENT_OBJECT Event = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, EventHandle,
 				      OBJECT_TYPE_EVENT, (POBJECT *)&Event));
@@ -308,13 +310,12 @@ static PDISPATCHER_HEADER EiObjectGetDispatcherHeader(POBJECT Object)
 }
 
 NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
                                IN HANDLE ObjectHandle,
                                IN BOOLEAN Alertable,
                                IN OPTIONAL PLARGE_INTEGER TimeOut)
 {
     NTSTATUS Status;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    POBJECT Object;
 	    PDISPATCHER_HEADER DispatcherObject;
 	});
@@ -328,14 +329,13 @@ NTSTATUS NtWaitForSingleObject(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, STATUS_OBJECT_TYPE_MISMATCH);
     }
 
-    AWAIT_EX(Status, KeWaitForSingleObject, State, Locals,
-	     Thread, Locals.DispatcherObject, Alertable, TimeOut);
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
+	  Locals.DispatcherObject, Alertable, TimeOut);
     ObDereferenceObject(Locals.Object);
     ASYNC_END(State, Status);
 }
 
 NTSTATUS NtWaitForMultipleObjects(IN ASYNC_STATE State,
-				  IN PTHREAD Thread,
 				  IN ULONG Count,
 				  IN PHANDLE Handles,
 				  IN WAIT_TYPE WaitType,
@@ -343,7 +343,7 @@ NTSTATUS NtWaitForMultipleObjects(IN ASYNC_STATE State,
 				  IN OPTIONAL PLARGE_INTEGER TimeOut)
 {
     NTSTATUS Status = STATUS_INVALID_PARAMETER;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    POBJECT *Objects;
 	    PDISPATCHER_HEADER *DispatcherObjects;
 	    ULONG ReferencedCount;
@@ -379,8 +379,8 @@ NTSTATUS NtWaitForMultipleObjects(IN ASYNC_STATE State,
 	}
     }
 
-    AWAIT_EX(Status, KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
-	     WaitType, Locals.DispatcherObjects, Count, TimeOut);
+    AWAIT(Status, KeWaitForMultipleObjects, State, Locals, Alertable,
+	  WaitType, Locals.DispatcherObjects, Count, TimeOut);
 
 out:
     while (Locals.ReferencedCount != 0) {
@@ -392,7 +392,6 @@ out:
 }
 
 NTSTATUS NtSignalAndWaitForSingleObject(IN ASYNC_STATE State,
-					IN PTHREAD Thread,
 					IN HANDLE SignalObject,
 					IN HANDLE WaitObject,
 					IN BOOLEAN Alertable,

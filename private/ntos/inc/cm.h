@@ -27,7 +27,6 @@ NTSTATUS CmInitSystemPhase1();
 
 /* value.c */
 NTSTATUS CmReadKeyValueByPath(IN ASYNC_STATE State,
-			      IN struct _THREAD *Thread,
 			      IN PCSTR KeyPath,
 			      IN PCSTR Value,
 			      OUT POBJECT *KeyObject,

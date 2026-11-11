@@ -297,14 +297,13 @@ VOID ObDereferenceObject(IN POBJECT Object)
 }
 
 static NTSTATUS ObpCloseHandle(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
 			       IN PPROCESS Process,
 			       IN HANDLE Handle)
 {
 
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    POBJECT Object;
 	    PHANDLE_TABLE_ENTRY Entry;
 	});
@@ -325,24 +324,26 @@ static NTSTATUS ObpCloseHandle(IN ASYNC_STATE State,
     /* Invoke the close procedure if we are closing a handle that was
      * created as a result of an open). */
     AWAIT_IF(Locals.Entry->InvokeClose &&
+	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.CloseProc, Status,
 	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.CloseProc,
-	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.CloseProc,
-	     State, Locals, Thread, Locals.Object);
+	     State, Locals, Locals.Object);
     ObRemoveHandle(Locals.Entry);
-    Status = STATUS_SUCCESS;
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = STATUS_SUCCESS;
+    }
 out:
     ASYNC_END(State, Status);
 }
 
 NTSTATUS NtClose(IN ASYNC_STATE State,
-		 IN PTHREAD Thread,
 		 IN HANDLE Handle)
 {
-    return ObpCloseHandle(State, Thread, Thread->Process, Handle);
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
+    return ObpCloseHandle(State, Thread->Process, Handle);
 }
 
 NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
                            IN HANDLE SourceProcessHandle,
                            IN HANDLE SourceHandle,
                            IN HANDLE TargetProcessHandle,
@@ -356,9 +357,10 @@ NTSTATUS NtDuplicateObject(IN ASYNC_STATE State,
 
 
 NTSTATUS NtMakeTemporaryObject(IN ASYNC_STATE AsyncState,
-                               IN PTHREAD Thread,
                                IN HANDLE ObjectHandle)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     POBJECT Object = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, ObjectHandle,
 				      OBJECT_TYPE_ANY, &Object));
@@ -369,9 +371,10 @@ NTSTATUS NtMakeTemporaryObject(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtMakePermanentObject(IN ASYNC_STATE AsyncState,
-                               IN PTHREAD Thread,
                                IN HANDLE ObjectHandle)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     POBJECT Object = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, ObjectHandle,
 				      OBJECT_TYPE_ANY, &Object));

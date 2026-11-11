@@ -18,7 +18,7 @@ PCSTR RtlpDbgTraceModuleName = "NTOS";
 #endif
 
 /* Static TLS for the initial thread of the root task. */
-static char STATIC_TLS_AREA[NTOS_TLS_AREA_SIZE] MIN_ALIGNED;
+static char KiStaticTlsArea[NTOS_TLS_AREA_SIZE] MIN_ALIGNED;
 
 /* Address for the IPC buffer of the initial thread of the root task. */
 __thread seL4_IPCBuffer *__sel4_ipc_buffer;
@@ -36,19 +36,19 @@ __thread char __sel4_print_error;
  * task) and all PE processes have their TLS base set in ps/create.c
  */
 #if defined(_M_AMD64) && defined(CONFIG_FSGSBASE_INST)
-static inline void KiSetTlsBase(uintptr_t tls_base)
+static inline VOID KiSetTlsBase(ULONG_PTR TlsBase)
 {
-    __asm__ __volatile__("wrfsbase %0" :: "r"(tls_base));
+    __asm__ __volatile__("wrfsbase %0" :: "r"(TlsBase));
 }
 #elif defined(_M_ARM64)
-static inline void KiSetTlsBase(uintptr_t tls_base)
+static inline VOID KiSetTlsBase(ULONG_PTR TlsBase)
 {
-    __asm__ __volatile__("msr tpidr_el0,%0" :: "r"(tls_base));
+    __asm__ __volatile__("msr tpidr_el0,%0" :: "r"(TlsBase));
 }
 #elif defined(CONFIG_SET_TLS_BASE_SELF)
-static inline void KiSetTlsBase(uintptr_t tls_base)
+static inline VOID KiSetTlsBase(ULONG_PTR TlsBase)
 {
-    seL4_SetTLSBase(tls_base);
+    seL4_SetTLSBase(TlsBase);
 }
 #else
 #error "You must enable SetTLSBase for i386 build"
@@ -90,12 +90,12 @@ ULONG KeFeatureBits;
  * to set TlsBase[0] to TlsBase. However clang does not seem to implement
  * this optimization. We therefore must always set TlsBase[0] to TlsBase.
  */
-static void KiInitRootThread(seL4_BootInfo *bootinfo)
+static VOID KiInitRootThread(seL4_BootInfo *BootInfo)
 {
-    MWORD TlsBase = (MWORD)&STATIC_TLS_AREA[0] + sizeof(STATIC_TLS_AREA) - MIN_ALIGN_BYTES;
+    MWORD TlsBase = (MWORD)&KiStaticTlsArea[0] + sizeof(KiStaticTlsArea) - MIN_ALIGN_BYTES;
     *(MWORD *)(TlsBase) = TlsBase;
     KiSetTlsBase(TlsBase);
-    __sel4_ipc_buffer = bootinfo->ipcBuffer;
+    __sel4_ipc_buffer = BootInfo->ipcBuffer;
 
     DbgPrint("Initial root thread address space:\n");
     DbgPrint("    _text_start = %p\n", _text_start);
@@ -114,20 +114,20 @@ static void KiInitRootThread(seL4_BootInfo *bootinfo)
     DbgPrint("    _tdata_end = %p\n", _tdata_end);
     DbgPrint("    __stack_base = %p\n", __stack_base);
     DbgPrint("    __stack_top = %p\n", __stack_top);
-    DbgPrint("    static tls area start = %p\n", STATIC_TLS_AREA);
+    DbgPrint("    static tls area start = %p\n", KiStaticTlsArea);
     DbgPrint("    desired tls base = %p\n", (PVOID) TlsBase);
     DbgPrint("    &__sel4_ipc_buffer = %p\n", &__sel4_ipc_buffer);
     DbgPrint("    __sel4_ipc_buffer = %p\n", __sel4_ipc_buffer);
 }
 
-static VOID KiRecordMachineInformation(seL4_BootInfo *bootinfo)
+static VOID KiRecordMachineInformation(seL4_BootInfo *BootInfo)
 {
-    if (!bootinfo->extraLen) {
+    if (!BootInfo->extraLen) {
 	return;
     }
 
-    seL4_BootInfoHeader *BootInfoHeader = (PVOID)((MWORD)bootinfo + PAGE_SIZE);
-    while ((MWORD)BootInfoHeader < ((MWORD) bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
+    seL4_BootInfoHeader *BootInfoHeader = (PVOID)((MWORD)BootInfo + PAGE_SIZE);
+    while ((MWORD)BootInfoHeader < ((MWORD) BootInfo + PAGE_SIZE + BootInfo->extraLen)) {
 	switch (BootInfoHeader->id) {
 #if defined(_M_IX86) || defined(_M_AMD64)
 	case SEL4_BOOTINFO_HEADER_X86_VBE:
@@ -167,24 +167,24 @@ static VOID KiRecordMachineInformation(seL4_BootInfo *bootinfo)
     }
 }
 
-static void KiRecordPhysicalMemoryInfo(seL4_BootInfo *bootinfo)
+static VOID KiRecordPhysicalMemoryInfo(seL4_BootInfo *BootInfo)
 {
-    seL4_SlotRegion untyped = bootinfo->untyped;
+    seL4_SlotRegion Untyped = BootInfo->untyped;
     MWORD LowestPage = MAXULONG_PTR;
     MWORD HighestPage = 0;
     MWORD NumPages = 0;
 
-    for (seL4_CPtr cap = untyped.start; cap < untyped.end; cap++) {
-        seL4_UntypedDesc *desc = &bootinfo->untypedList[cap - untyped.start];
-	if (!desc->isDevice) {
-	    if (desc->sizeBits >= PAGE_LOG2SIZE) {
-		NumPages += 1 << (desc->sizeBits - PAGE_LOG2SIZE);
+    for (seL4_CPtr Cap = Untyped.start; Cap < Untyped.end; Cap++) {
+        seL4_UntypedDesc *Desc = &BootInfo->untypedList[Cap - Untyped.start];
+	if (!Desc->isDevice) {
+	    if (Desc->sizeBits >= PAGE_LOG2SIZE) {
+		NumPages += 1 << (Desc->sizeBits - PAGE_LOG2SIZE);
 	    }
-	    if (desc->paddr > HighestPage) {
-		HighestPage = desc->paddr;
+	    if (Desc->paddr > HighestPage) {
+		HighestPage = Desc->paddr;
 	    }
-	    if (desc->paddr < LowestPage) {
-		LowestPage = desc->paddr;
+	    if (Desc->paddr < LowestPage) {
+		LowestPage = Desc->paddr;
 	    }
 	}
     }
@@ -195,17 +195,17 @@ static void KiRecordPhysicalMemoryInfo(seL4_BootInfo *bootinfo)
 
 #ifdef CONFIG_DEBUG_BUILD
 
-static char *KiDumpBootInfoSlotRegion(char *buf,
-				      size_t size,
-				      seL4_SlotRegion *sl)
+static char *KiDumpBootInfoSlotRegion(char *Buffer,
+				      size_t Size,
+				      seL4_SlotRegion *SlotRegion)
 {
-    snprintf(buf, size, "slots [0x%zx, 0x%zx) == [%zd, %zd)",
-	     sl->start, sl->end, sl->start, sl->end);
-    return buf;
+    snprintf(Buffer, Size, "slots [0x%zx, 0x%zx) == [%zd, %zd)",
+	     SlotRegion->start, SlotRegion->end, SlotRegion->start, SlotRegion->end);
+    return Buffer;
 }
 
 #if defined(_M_IX86) || defined(_M_AMD64)
-static void KiDumpBootInfoVbe(seL4_X86_BootInfo_VBE *VbeInfo)
+static VOID KiDumpBootInfoVbe(seL4_X86_BootInfo_VBE *VbeInfo)
 {
     DbgPrint("        vbe signature %c%c%c%c version 0x%x total memory %d*64KB\n",
 	     VbeInfo->vbeInfoBlock.signature[0],
@@ -229,11 +229,12 @@ static void KiDumpBootInfoVbe(seL4_X86_BootInfo_VBE *VbeInfo)
 	     VbeInfo->vbeModeInfoBlock.vbe20.physBasePtr);
 }
 
-static void KiDumpBootInfoMemMap(seL4_X86_BootInfo_mmap_t *MemMapInfo)
+static VOID KiDumpBootInfoMemMap(seL4_X86_BootInfo_mmap_t *MemMapInfo)
 {
+    /* TODO */
 }
 
-static void KiDumpBootInfoFrameBuffer(seL4_X86_BootInfo_fb_t *FbInfo)
+static VOID KiDumpBootInfoFrameBuffer(seL4_X86_BootInfo_fb_t *FbInfo)
 {
     DbgPrint("    Framebuffer info:\n");
     DbgPrint("        physical address = 0x%llx\n", FbInfo->PhysicalAddress);
@@ -245,41 +246,41 @@ static void KiDumpBootInfoFrameBuffer(seL4_X86_BootInfo_fb_t *FbInfo)
 }
 #endif
 
-static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
+static VOID KiDumpBootInfoStruct(seL4_BootInfo *BootInfo)
 {
-    char buf[64];
+    CHAR Buf[64];
 
     DbgPrint("Bootinfo record:\n");
-    DbgPrint("    bootinfo vaddr = %p\n", bootinfo);
-    DbgPrint("    extraLen = %zd\n", bootinfo->extraLen);
-    DbgPrint("    nodeID = %zd\n", bootinfo->nodeID);
-    DbgPrint("    numNodes = %zd\n", bootinfo->numNodes);
-    DbgPrint("    numIOPTLevels = %zd\n", bootinfo->numIOPTLevels);
-    DbgPrint("    ipcBuffer = %p\n", bootinfo->ipcBuffer);
+    DbgPrint("    bootinfo vaddr = %p\n", BootInfo);
+    DbgPrint("    extraLen = %zd\n", BootInfo->extraLen);
+    DbgPrint("    nodeID = %zd\n", BootInfo->nodeID);
+    DbgPrint("    numNodes = %zd\n", BootInfo->numNodes);
+    DbgPrint("    numIOPTLevels = %zd\n", BootInfo->numIOPTLevels);
+    DbgPrint("    ipcBuffer = %p\n", BootInfo->ipcBuffer);
     DbgPrint("    empty = %s\n",
-	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->empty));
+	     KiDumpBootInfoSlotRegion(Buf, sizeof(Buf), &BootInfo->empty));
     DbgPrint("    sharedFrames = %s\n",
-	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->sharedFrames));
+	     KiDumpBootInfoSlotRegion(Buf, sizeof(Buf), &BootInfo->sharedFrames));
     DbgPrint("    userImageFrames = %s\n",
-	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->userImageFrames));
+	     KiDumpBootInfoSlotRegion(Buf, sizeof(Buf), &BootInfo->userImageFrames));
     DbgPrint("    userImagePaging = %s\n",
-	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->userImagePaging));
+	     KiDumpBootInfoSlotRegion(Buf, sizeof(Buf), &BootInfo->userImagePaging));
     DbgPrint("    ioSpaceCaps = %s\n",
-	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->ioSpaceCaps));
+	     KiDumpBootInfoSlotRegion(Buf, sizeof(Buf), &BootInfo->ioSpaceCaps));
     DbgPrint("    extraBIPages = %s\n",
-	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->extraBIPages));
-    DbgPrint("    initThreadCNodeSizeBits = %zd\n", bootinfo->initThreadCNodeSizeBits);
-    DbgPrint("    initThreadDomain = %zd\n", bootinfo->initThreadDomain);
+	     KiDumpBootInfoSlotRegion(Buf, sizeof(Buf), &BootInfo->extraBIPages));
+    DbgPrint("    initThreadCNodeSizeBits = %zd\n", BootInfo->initThreadCNodeSizeBits);
+    DbgPrint("    initThreadDomain = %zd\n", BootInfo->initThreadDomain);
     DbgPrint("    untyped = %s\n",
-	     KiDumpBootInfoSlotRegion(buf, sizeof(buf), &bootinfo->untyped));
+	     KiDumpBootInfoSlotRegion(Buf, sizeof(Buf), &BootInfo->untyped));
 
-    if (!bootinfo->extraLen) {
+    if (!BootInfo->extraLen) {
 	return;
     }
 
     DbgPrint("Extra bootinfo structures:\n");
-    seL4_BootInfoHeader *BootInfoHeader = (PVOID)((MWORD)bootinfo + PAGE_SIZE);
-    while ((MWORD)BootInfoHeader < ((MWORD)bootinfo + PAGE_SIZE + bootinfo->extraLen)) {
+    seL4_BootInfoHeader *BootInfoHeader = (PVOID)((MWORD)BootInfo + PAGE_SIZE);
+    while ((MWORD)BootInfoHeader < ((MWORD)BootInfo + PAGE_SIZE + BootInfo->extraLen)) {
 	switch (BootInfoHeader->id) {
 	case SEL4_BOOTINFO_HEADER_PADDING:
 	    DbgPrint("    empty bootinfo padding of size 0x%zx\n", BootInfoHeader->len);
@@ -330,41 +331,41 @@ static void KiDumpBootInfoStruct(seL4_BootInfo *bootinfo)
     }
 }
 
-static void KiDumpUserImageFramesInfo(seL4_BootInfo *bootinfo)
+static VOID KiDumpUserImageFramesInfo(seL4_BootInfo *BootInfo)
 {
-    seL4_SlotRegion slots = bootinfo->userImageFrames;
+    seL4_SlotRegion Slots = BootInfo->userImageFrames;
 
     DbgPrint("Initial root task user image frames:\n"
 	     "    frame cap = [%zd, %zd] ([0x%zx, 0x%zx]) paddr = [%p, %p]\n",
-	     slots.start, slots.end-1, slots.start, slots.end-1,
-	     (PVOID) seL4_Page_GetAddress(slots.start).paddr,
-	     (PVOID) (seL4_Page_GetAddress(slots.end-1).paddr + PAGE_SIZE - 1));
+	     Slots.start, Slots.end-1, Slots.start, Slots.end-1,
+	     (PVOID) seL4_Page_GetAddress(Slots.start).paddr,
+	     (PVOID) (seL4_Page_GetAddress(Slots.end-1).paddr + PAGE_SIZE - 1));
 }
 
-static void KiDumpUntypedMemoryInfo(seL4_BootInfo *bootinfo)
+static VOID KiDumpUntypedMemoryInfo(seL4_BootInfo *BootInfo)
 {
-    seL4_SlotRegion untyped = bootinfo->untyped;
+    seL4_SlotRegion Untyped = BootInfo->untyped;
 
     DbgPrint("Initial root untyped capabilities:\n");
-    for (seL4_CPtr cap = untyped.start; cap < untyped.end; cap++) {
-        seL4_UntypedDesc *desc = &bootinfo->untypedList[cap - untyped.start];
+    for (seL4_CPtr Cap = Untyped.start; Cap < Untyped.end; Cap++) {
+        seL4_UntypedDesc *Desc = &BootInfo->untypedList[Cap - Untyped.start];
         DbgPrint("    %s cap = %zd (0x%zx) paddr = %p log2(size) = %d\n",
-		 desc->isDevice ? "device untyped" : "untyped",
-		 cap, cap, (PVOID) desc->paddr, desc->sizeBits);
+		 Desc->isDevice ? "device untyped" : "untyped",
+		 Cap, Cap, (PVOID) Desc->paddr, Desc->sizeBits);
     }
 }
 
-static void KiDumpBootInfoAll(seL4_BootInfo *bootinfo)
+static VOID KiDumpBootInfoAll(seL4_BootInfo *BootInfo)
 {
-    KiDumpBootInfoStruct(bootinfo);
-    KiDumpUserImageFramesInfo(bootinfo);
-    KiDumpUntypedMemoryInfo(bootinfo);
+    KiDumpBootInfoStruct(BootInfo);
+    KiDumpUserImageFramesInfo(BootInfo);
+    KiDumpUntypedMemoryInfo(BootInfo);
     DbgPrint("\n");
 }
 
 #endif	/* CONFIG_DEBUG_BUILD */
 
-static void KiRecordProcessorInformation()
+static VOID KiRecordProcessorInformation()
 {
 #ifdef _M_IX86
     KeProcessorArchitecture = PROCESSOR_ARCHITECTURE_INTEL;
@@ -394,22 +395,22 @@ static void KiRecordProcessorInformation()
 
 #define OS_BANNER	"Neptune OS [Version " VER_PRODUCTVERSION_STRING "]"
 
-void KiInitializeSystem(seL4_BootInfo *bootinfo) {
-    KiInitRootThread(bootinfo);
-    KeProcessorCount = bootinfo->numNodes;
+VOID KiInitializeSystem(seL4_BootInfo *BootInfo) {
+    KiInitRootThread(BootInfo);
+    KeProcessorCount = BootInfo->numNodes;
     if (KeProcessorCount == 0) {
 	KeProcessorCount = 1;
     }
     KiRecordProcessorInformation();
-    KiRecordMachineInformation(bootinfo);
+    KiRecordMachineInformation(BootInfo);
 
 #ifdef CONFIG_DEBUG_BUILD
     seL4_DebugNameThread(NTOS_TCB_CAP, "NTOS Executive");
-    KiDumpBootInfoAll(bootinfo);
+    KiDumpBootInfoAll(BootInfo);
 #endif
 
-    KiRecordPhysicalMemoryInfo(bootinfo);
-    ExInitSystemPhase0(bootinfo);
+    KiRecordPhysicalMemoryInfo(BootInfo);
+    ExInitSystemPhase0(BootInfo);
     HalDisplayString(OS_BANNER "    ");
     BUGCHECK_IF_ERR(KiInitExecutiveServices());
     BUGCHECK_IF_ERR(KiInitBugCheck());

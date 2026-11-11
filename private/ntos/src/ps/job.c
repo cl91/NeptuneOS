@@ -1,7 +1,6 @@
 #include "psp.h"
 
 NTSTATUS NtCreateJobObject(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
 			   OUT HANDLE *JobHandle,
 			   IN ACCESS_MASK DesiredAccess,
 			   IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes)
@@ -10,7 +9,6 @@ NTSTATUS NtCreateJobObject(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtCreateJobSet(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
 			IN ULONG NumJob,
 			IN PJOB_SET_ARRAY UserJobSet,
 			IN ULONG Flags)
@@ -19,7 +17,6 @@ NTSTATUS NtCreateJobSet(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtOpenJobObject(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
 			 OUT HANDLE *JobHandle,
 			 IN ACCESS_MASK DesiredAccess,
 			 IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
@@ -28,7 +25,6 @@ NTSTATUS NtOpenJobObject(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtIsProcessInJob(IN ASYNC_STATE State,
-			  IN PTHREAD Thread,
 			  IN HANDLE ProcessHandle,
 			  IN HANDLE JobHandle)
 {
@@ -36,7 +32,6 @@ NTSTATUS NtIsProcessInJob(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtAssignProcessToJobObject(IN ASYNC_STATE State,
-				    IN PTHREAD Thread,
 				    IN HANDLE JobHandle,
 				    IN HANDLE ProcessHandle)
 {
@@ -44,7 +39,6 @@ NTSTATUS NtAssignProcessToJobObject(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtTerminateJobObject(IN ASYNC_STATE State,
-			      IN PTHREAD Thread,
 			      IN HANDLE JobHandle,
 			      IN NTSTATUS ExitStatus)
 {
@@ -52,7 +46,6 @@ NTSTATUS NtTerminateJobObject(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtQueryInformationJobObject(IN ASYNC_STATE State,
-				     IN PTHREAD Thread,
 				     IN HANDLE JobHandle,
 				     IN JOB_OBJECT_INFORMATION_CLASS JobInformationClass,
 				     OUT PVOID JobInformation,
@@ -63,7 +56,6 @@ NTSTATUS NtQueryInformationJobObject(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtSetInformationJobObject(IN ASYNC_STATE State,
-				   IN PTHREAD Thread,
 				   IN HANDLE JobHandle,
 				   IN JOB_OBJECT_INFORMATION_CLASS JobInformationClass,
 				   IN PVOID JobInformation,
