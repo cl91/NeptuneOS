@@ -1,7 +1,6 @@
 #include "sepriv.h"
 
 NTSTATUS NtQuerySecurityObject(IN ASYNC_STATE AsyncState,
-                               IN PTHREAD Thread,
                                IN HANDLE ObjectHandle,
                                IN SECURITY_INFORMATION SecurityInformationClass,
                                OUT PVOID DescriptorBuffer,
@@ -12,7 +11,6 @@ NTSTATUS NtQuerySecurityObject(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtSetSecurityObject(IN ASYNC_STATE AsyncState,
-                             IN PTHREAD Thread,
                              IN HANDLE ObjectHandle,
                              IN SECURITY_INFORMATION SecurityInformationClass,
                              IN PSECURITY_DESCRIPTOR SecurityDescriptor)

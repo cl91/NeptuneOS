@@ -230,14 +230,13 @@ static VOID IopDumpDriverPendingIoPacketList(IN PIO_DRIVER_OBJECT DriverObject,
 }
 
 NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
-					 IN PTHREAD Thread,
 					 IN BOOLEAN Alertable,
 					 IN WAIT_TYPE WaitType,
 					 IN PPENDING_IRP *PendingIrps,
 					 IN ULONG IrpCount)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PDISPATCHER_HEADER *DspObjs;
 	});
     if (!IrpCount) {
@@ -252,8 +251,8 @@ NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
 	assert(PendingIrps[i] != NULL);
 	Locals.DspObjs[i] = &PendingIrps[i]->IoCompletionEvent.Header;
     }
-    AWAIT_EX(Status, KeWaitForMultipleObjects, State, Locals, Thread, Alertable,
-	     WaitType, Locals.DspObjs, IrpCount, NULL);
+    AWAIT(Status, KeWaitForMultipleObjects, State, Locals, Alertable,
+	  WaitType, Locals.DspObjs, IrpCount, NULL);
     assert(Locals.DspObjs != NULL);
     ExFreePoolWithTag(Locals.DspObjs, NTOS_IO_TAG);
     ASYNC_END(State, Status);
@@ -890,7 +889,9 @@ VOID IopCompletePendingIrp(IN OUT PPENDING_IRP PendingIrp,
 /*
  * This routine is called when the original requestor of the PENDING_IRP
  * has either requested to cancel the IRP or, in the case where the original
- * requestor has crashed, is forced to cancel all its pending IRPs.
+ * requestor has crashed, is forced to cancel all its pending IRPs. This
+ * routine does NOT clean up the PENDING_IRP. The caller is required to
+ * call IopCleanupPendingIrp after it is done with the IRP.
  */
 VOID IopCancelPendingIrp(IN PPENDING_IRP PendingIrp)
 {

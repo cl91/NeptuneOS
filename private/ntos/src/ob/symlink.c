@@ -118,12 +118,13 @@ NTSTATUS ObCreateSymbolicLink(IN PCSTR LinkTarget,
 }
 
 NTSTATUS NtCreateSymbolicLinkObject(IN ASYNC_STATE AsyncState,
-                                    IN PTHREAD Thread,
                                     OUT HANDLE *SymbolicLinkHandle,
                                     IN ACCESS_MASK DesiredAccess,
                                     IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
                                     IN PCSTR LinkTarget)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     POBJECT_SYMBOLIC_LINK Symlink = NULL;
     POBJECT RootDirectory = NULL;
     NTSTATUS Status = STATUS_NTOS_BUG;
@@ -161,7 +162,6 @@ out:
 }
 
 NTSTATUS NtOpenSymbolicLinkObject(IN ASYNC_STATE AsyncState,
-                                  IN PTHREAD Thread,
                                   OUT HANDLE *SymbolicLinkHandle,
                                   IN ACCESS_MASK DesiredAccess,
                                   IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
@@ -170,7 +170,6 @@ NTSTATUS NtOpenSymbolicLinkObject(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtQuerySymbolicLinkObjectA(IN ASYNC_STATE AsyncState,
-                                   IN PTHREAD Thread,
                                    IN HANDLE SymbolicLinkHandle,
                                    OUT PVOID LinkName,
 				   IN ULONG LinkNameLength,
@@ -180,7 +179,6 @@ NTSTATUS NtQuerySymbolicLinkObjectA(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtQuerySymbolicLinkObjectW(IN ASYNC_STATE AsyncState,
-				    IN PTHREAD Thread,
 				    IN HANDLE SymbolicLinkHandle,
 				    OUT PVOID LinkNameW,
 				    IN ULONG LinkNameLength,

@@ -548,8 +548,8 @@ static NTSTATUS LdrpInitializeProcess(PNTDLL_PROCESS_INIT_INFO InitInfo)
 	    ProcessHeapFlags = LoadConfig->ProcessHeapFlags;
     }
 
-    /* Initialize Critical Section Data */
-    LdrpInitCriticalSection(InitInfo->CriticalSectionLockSemaphore);
+    /* Initialize the critical section that protects the critical section list */
+    RET_ERR(LdrpInitCriticalSectionLock(InitInfo->CriticalSectionLockSemaphore));
 
     /* Initialize VEH Call lists */
     RtlpInitializeVectoredExceptionHandling(InitInfo);

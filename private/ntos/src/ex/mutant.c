@@ -1,7 +1,6 @@
 #include "ei.h"
 
 NTSTATUS NtCreateMutant(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
 			OUT HANDLE *MutantHandle,
 			IN ACCESS_MASK DesiredAccess,
 			IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -11,7 +10,6 @@ NTSTATUS NtCreateMutant(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtOpenMutant(IN ASYNC_STATE State,
-		      IN PTHREAD Thread,
 		      OUT HANDLE *MutantHandle,
 		      IN ACCESS_MASK DesiredAccess,
 		      IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
@@ -20,7 +18,6 @@ NTSTATUS NtOpenMutant(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtReleaseMutant(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
 			 IN HANDLE MutantHandle,
 			 IN OPTIONAL PLONG ReleaseCount)
 {

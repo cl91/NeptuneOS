@@ -1624,7 +1624,6 @@ NTSTATUS MmFreePhysicallyContiguousMemory(IN PVIRT_ADDR_SPACE VSpace,
 }
 
 NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
-				 IN PTHREAD Thread,
                                  IN HANDLE ProcessHandle,
                                  IN OUT OPTIONAL PVOID *BaseAddress,
                                  IN ULONG_PTR HighZeroBits,
@@ -1632,6 +1631,8 @@ NTSTATUS NtAllocateVirtualMemory(IN ASYNC_STATE State,
                                  IN ULONG AllocationType,
                                  IN ULONG Protect)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     PPROCESS Process = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, ProcessHandle,
 				      OBJECT_TYPE_PROCESS, (POBJECT *)&Process));
@@ -1767,12 +1768,13 @@ out:
 }
 
 NTSTATUS NtFreeVirtualMemory(IN ASYNC_STATE State,
-			     IN PTHREAD Thread,
                              IN HANDLE ProcessHandle,
                              IN OUT PVOID *BaseAddress,
                              IN OUT SIZE_T *RegionSize,
                              IN ULONG FreeType)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(Thread != NULL);
     assert(BaseAddress != NULL);
     assert(RegionSize != NULL);
@@ -1850,7 +1852,6 @@ out:
 }
 
 NTSTATUS NtReadVirtualMemory(IN ASYNC_STATE State,
-			     IN PTHREAD Thread,
                              IN HANDLE ProcessHandle,
                              IN PVOID BaseAddress,
                              OUT PVOID Buffer,
@@ -1861,13 +1862,14 @@ NTSTATUS NtReadVirtualMemory(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtWriteVirtualMemory(IN ASYNC_STATE State,
-			      IN PTHREAD Thread,
                               IN HANDLE ProcessHandle,
                               IN PVOID BaseAddress,
                               IN PVOID Buffer,
                               IN SIZE_T NumberOfBytesToWrite,
                               OUT OPTIONAL SIZE_T *NumberOfBytesWritten)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(Buffer != NULL);
     assert(NumberOfBytesToWrite != 0);
     PPROCESS Process = NULL;
@@ -1899,7 +1901,6 @@ out:
 }
 
 NTSTATUS NtQueryVirtualMemory(IN ASYNC_STATE State,
-			      IN PTHREAD Thread,
                               IN HANDLE ProcessHandle,
                               IN PVOID BaseAddress,
                               IN MEMORY_INFORMATION_CLASS MemoryInformationClass,
@@ -1911,7 +1912,6 @@ NTSTATUS NtQueryVirtualMemory(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
-				IN PTHREAD Thread,
                                 IN HANDLE ProcessHandle,
                                 IN OUT PVOID *BaseAddress,
                                 IN OUT SIZE_T *NumberOfBytesToProtect,
@@ -1922,7 +1922,6 @@ NTSTATUS NtProtectVirtualMemory(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtFlushVirtualMemory(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread,
 			      IN HANDLE ProcessHandle,
 			      IN OUT PPVOID BaseAddress,
 			      IN OUT PSIZE_T RegionSize,
@@ -1932,7 +1931,6 @@ NTSTATUS NtFlushVirtualMemory(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtLockVirtualMemory(IN ASYNC_STATE AsyncState,
-			     IN PTHREAD Thread,
 			     IN HANDLE ProcessHandle,
 			     IN OUT PPVOID BaseAddress,
 			     IN OUT PSIZE_T NumberOfBytesToLock,
@@ -1942,7 +1940,6 @@ NTSTATUS NtLockVirtualMemory(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtUnlockVirtualMemory(IN ASYNC_STATE AsyncState,
-			       IN PTHREAD Thread,
 			       IN HANDLE ProcessHandle,
 			       IN OUT PPVOID BaseAddress,
 			       IN OUT PSIZE_T NumberOfBytesToUnlock,
@@ -1952,7 +1949,6 @@ NTSTATUS NtUnlockVirtualMemory(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtGetWriteWatch(IN ASYNC_STATE AsyncState,
-			 IN PTHREAD Thread,
 			 IN HANDLE ProcessHandle,
 			 IN ULONG Flags,
 			 IN PVOID BaseAddress,
@@ -1965,7 +1961,6 @@ NTSTATUS NtGetWriteWatch(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtResetWriteWatch(IN ASYNC_STATE AsyncState,
-			   IN PTHREAD Thread,
 			   IN HANDLE ProcessHandle,
 			   IN PVOID BaseAddress,
 			   IN SIZE_T RegionSize)
@@ -1974,7 +1969,6 @@ NTSTATUS NtResetWriteWatch(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtAllocateUserPhysicalPages(IN ASYNC_STATE AsyncState,
-				     IN PTHREAD Thread,
 				     IN HANDLE ProcessHandle,
 				     IN OUT PULONG_PTR NumberOfPages,
 				     IN OUT PULONG_PTR UserPfnArray)
@@ -1983,7 +1977,6 @@ NTSTATUS NtAllocateUserPhysicalPages(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtFreeUserPhysicalPages(IN ASYNC_STATE AsyncState,
-				 IN PTHREAD Thread,
 				 IN HANDLE ProcessHandle,
 				 IN OUT PULONG_PTR NumberOfPages,
 				 IN OUT PULONG_PTR UserPfnArray)
@@ -1992,7 +1985,6 @@ NTSTATUS NtFreeUserPhysicalPages(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtMapUserPhysicalPages(IN ASYNC_STATE AsyncState,
-				IN PTHREAD Thread,
 				IN PVOID VirtualAddresses,
 				IN ULONG_PTR NumberOfPages,
 				IN OUT PULONG_PTR UserPfnArray)
@@ -2001,7 +1993,6 @@ NTSTATUS NtMapUserPhysicalPages(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtMapUserPhysicalPagesScatter(IN ASYNC_STATE AsyncState,
-				       IN PTHREAD Thread,
 				       IN PPVOID VirtualAddresses,
 				       IN ULONG_PTR NumberOfPages,
 				       IN OUT PULONG_PTR UserPfnArray)
@@ -2010,7 +2001,6 @@ NTSTATUS NtMapUserPhysicalPagesScatter(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtFlushInstructionCache(IN ASYNC_STATE AsyncState,
-				 IN PTHREAD Thread,
 				 IN HANDLE ProcessHandle,
 				 IN PVOID BaseAddress,
 				 IN SIZE_T NumberOfBytesToFlush)
@@ -2019,13 +2009,13 @@ NTSTATUS NtFlushInstructionCache(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmMapIoSpace(IN ASYNC_STATE AsyncState,
-		       IN PTHREAD Thread,
 		       IN ULONG64 PhyAddr,
 		       IN MWORD WindowSize,
 		       IN MEMORY_CACHING_TYPE CacheType,
 		       OUT PVOID *VirtAddr)
 {
-    assert(Thread);
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(Thread->Process);
     assert(IoGetDriverObjectFromProcess(Thread->Process));
     return MmMapIoSpaceEx(&Thread->Process->VSpace, USER_IMAGE_REGION_START,
@@ -2034,11 +2024,11 @@ NTSTATUS WdmMapIoSpace(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmUnmapIoSpace(IN ASYNC_STATE AsyncState,
-			 IN PTHREAD Thread,
 			 IN PVOID VirtualBase,
 			 IN MWORD WindowSize)
 {
-    assert(Thread);
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(Thread->Process);
     assert(IoGetDriverObjectFromProcess(Thread->Process));
     MmUnmapIoSpaceEx(&Thread->Process->VSpace, (MWORD)VirtualBase);
@@ -2046,11 +2036,11 @@ NTSTATUS WdmUnmapIoSpace(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmMapPhysicalMemory(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread,
 			      IN PULONG_PTR PfnDb,
 			      IN ULONG PfnCount,
 			      OUT PVOID *VirtualAddress)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
     assert(Thread);
     assert(Thread->Process);
     assert(IoGetDriverObjectFromProcess(Thread->Process));

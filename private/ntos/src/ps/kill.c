@@ -47,9 +47,8 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
     assert(!IsListEmpty(&Thread->ThreadListEntry));
     RemoveEntryList(&Thread->ThreadListEntry);
 
-    /* Cancel and remove the wait timer used by KeWaitForSingleObject */
-    KeCancelTimer(&Thread->WaitTimer);
-    KeRemoveTimer(&Thread->WaitTimer);
+    /* Cancel all async context objects that the thread has created. */
+    KeCancelThreadAsyncContexts(Thread);
 
     /* Clean up the APC objects queued to this thread */
     LoopOverList(Apc, &Thread->QueuedApcList, KAPC, ThreadApcListEntry) {
@@ -201,17 +200,17 @@ NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread)
  * Thread termination port registration
  */
 NTSTATUS NtRegisterThreadTerminatePort(IN ASYNC_STATE AsyncState,
-				       IN PTHREAD Thread,
 				       IN LOCAL_HANDLE PortHandle)
 {
     UNIMPLEMENTED;
 }
 
 NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
                            IN HANDLE ThreadHandle,
                            IN NTSTATUS ExitStatus)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     PTHREAD ThreadToTerminate = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, ThreadHandle,
 				      OBJECT_TYPE_THREAD, (POBJECT *)&ThreadToTerminate));
@@ -226,11 +225,11 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
  * This routine dereferences the process object created by PsCreateProcess.
  */
 NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
-			    IN PTHREAD Thread,
 			    IN PPROCESS Process,
 			    IN NTSTATUS ExitStatus)
 {
-    ASYNC_BEGIN(State, Locals, {
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    HANDLE HandleToClose;
 	    PIO_DRIVER_OBJECT DriverObject;
 	});
@@ -253,9 +252,12 @@ NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
     if (!Locals.DriverObject) {
 	goto close;
     }
-    AWAIT(IoUnloadDriver, State, Locals, Thread, Locals.DriverObject,
+    AWAIT(Status, IoUnloadDriver, State, Locals, Locals.DriverObject,
 	  FALSE, ExitStatus);
     Locals.DriverObject = NULL;
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto out;
+    }
 
 close:
     {
@@ -265,8 +267,12 @@ close:
 	}
 	Locals.HandleToClose = (HANDLE)(ULONG_PTR)Node->Key;
     }
-    AWAIT(NtClose, State, Locals, Thread, Locals.HandleToClose);
-    goto close;
+    AWAIT(Status, NtClose, State, Locals, Locals.HandleToClose);
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto out;
+    } else {
+	goto close;
+    }
 
 out:
     LoopOverList(ThreadToTerminate, &Process->ThreadList, THREAD, ThreadListEntry) {
@@ -275,15 +281,15 @@ out:
     KeSignalDispatcherObject(&Process->Header);
     ObDereferenceObject(Process);
     ObDereferenceObject(Thread);
-    ASYNC_END(State, STATUS_SUCCESS);
+    ASYNC_END(State, Status == STATUS_ASYNC_CANCELED ? Status : STATUS_SUCCESS);
 }
 
 NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
-			    IN PTHREAD Thread,
                             IN HANDLE ProcessHandle,
                             IN NTSTATUS ExitStatus)
 {
-    ASYNC_BEGIN(State, Locals, {
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PPROCESS Process;
 	});
     ASYNC_RET_ERR(State, ObReferenceObjectByHandle(Thread, ProcessHandle,
@@ -294,19 +300,22 @@ NTSTATUS NtTerminateProcess(IN ASYNC_STATE State,
      * async routine mechanism breaks down (we use the THREAD object to store the async
      * stack, and if the THREAD object is deleted, the async stack becomes invalid). */
     ObReferenceObjectByPointer(Thread);
-    AWAIT(PsTerminateProcess, State, Locals, Thread, Locals.Process, ExitStatus);
+    AWAIT(Status, PsTerminateProcess, State, Locals, Locals.Process, ExitStatus);
     ObDereferenceObject(Locals.Process);
     ObDereferenceObject(Thread);
-    /* If the current process is terminating, do not reply to the calling thread. */
-    ASYNC_END(State,
-	      ProcessHandle == NtCurrentProcess() ? STATUS_NTOS_NO_REPLY : STATUS_SUCCESS);
+    if (Status != STATUS_ASYNC_CANCELED) {
+	/* If the current process is terminating, do not reply to the calling thread. */
+	Status = ProcessHandle == NtCurrentProcess() ? STATUS_NTOS_NO_REPLY : STATUS_SUCCESS;
+    }
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
-                        IN PTHREAD Thread,
                         IN HANDLE ThreadHandle,
                         OUT OPTIONAL ULONG *SuspendCount)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     PTHREAD ThreadToResume = NULL;
     if (ThreadHandle == NtCurrentThread()) {
 	return STATUS_INVALID_PARAMETER_1;
@@ -321,7 +330,6 @@ NTSTATUS NtResumeThread(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtSuspendThread(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
 			 IN HANDLE ThreadHandle,
 			 OUT OPTIONAL PULONG PreviousSuspendCount)
 {

@@ -1,7 +1,6 @@
 #include "ei.h"
 
 NTSTATUS NtCreateSemaphore(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
 			   OUT HANDLE *SemaphoreHandle,
 			   IN ACCESS_MASK DesiredAccess,
 			   IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -12,7 +11,6 @@ NTSTATUS NtCreateSemaphore(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtOpenSemaphore(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
 			 OUT HANDLE *SemaphoreHandle,
 			 IN ACCESS_MASK DesiredAccess,
 			 IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
@@ -21,7 +19,6 @@ NTSTATUS NtOpenSemaphore(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtReleaseSemaphore(IN ASYNC_STATE State,
-			    IN PTHREAD Thread,
 			    IN HANDLE SemaphoreHandle,
 			    IN LONG ReleaseCount,
 			    OUT OPTIONAL PLONG PreviousCount)

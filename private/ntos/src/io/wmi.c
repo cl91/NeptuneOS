@@ -1,10 +1,11 @@
 #include "iop.h"
 
 NTSTATUS WdmWmiQueryRawSmbiosTables(IN ASYNC_STATE AsyncState,
-				    IN PTHREAD Thread,
 				    IN OUT PULONG InOutBufferSize,
 				    IN OPTIONAL PVOID OutBuffer)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     PMSSmBios_RawSMBiosTables RawTables = HalGetRawSmbiosTables();
     if (!RawTables || !RawTables->Size) {
 	return STATUS_NOT_FOUND;

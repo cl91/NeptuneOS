@@ -178,7 +178,6 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 }
 
 NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
-			      IN PTHREAD Thread,
 			      IN POBJECT Self,
 			      IN PCSTR Path,
 			      IN ACCESS_MASK DesiredAccess,
@@ -261,7 +260,6 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 }
 
 NTSTATUS CmpKeyObjectCloseProc(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
 			       IN POBJECT Object)
 {
     return STATUS_SUCCESS;
@@ -652,14 +650,13 @@ VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key)
 }
 
 NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
-                   IN PTHREAD Thread,
                    OUT HANDLE *KeyHandle,
                    IN ACCESS_MASK DesiredAccess,
                    IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
     NTSTATUS Status;
 
-    ASYNC_BEGIN(AsyncState, Locals, {
+    ASYNC_BEGIN(AsyncState, Thread, Locals, {
 	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
 	    CM_OPEN_CONTEXT OpenContext;
 	});
@@ -672,14 +669,13 @@ NTSTATUS NtOpenKey(IN ASYNC_STATE AsyncState,
     Locals.OpenContext.Header.Type = OPEN_CONTEXT_KEY_OPEN;
     Locals.OpenContext.Create = FALSE;
 
-    AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals, Thread,
-	     Locals.ObjectAttributes, OBJECT_TYPE_KEY, DesiredAccess,
-	     (POB_OPEN_CONTEXT)&Locals.OpenContext, KeyHandle);
+    AWAIT(Status, ObOpenObjectByName, AsyncState, Locals,
+	  Locals.ObjectAttributes, OBJECT_TYPE_KEY, DesiredAccess,
+	  (POB_OPEN_CONTEXT)&Locals.OpenContext, KeyHandle);
     ASYNC_END(AsyncState, Status);
 }
 
 NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
-                     IN PTHREAD Thread,
                      OUT HANDLE *KeyHandle,
                      IN ACCESS_MASK DesiredAccess,
                      IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -690,7 +686,7 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
 {
     NTSTATUS Status;
 
-    ASYNC_BEGIN(AsyncState, Locals, {
+    ASYNC_BEGIN(AsyncState, Thread, Locals, {
 	    OB_OBJECT_ATTRIBUTES ObjectAttributes;
 	    CM_OPEN_CONTEXT OpenContext;
 	});
@@ -707,14 +703,13 @@ NTSTATUS NtCreateKey(IN ASYNC_STATE AsyncState,
     Locals.OpenContext.CreateOptions = CreateOptions;
     Locals.OpenContext.Disposition = Disposition;
 
-    AWAIT_EX(Status, ObOpenObjectByName, AsyncState, Locals,
-	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_KEY, DesiredAccess,
-	     (POB_OPEN_CONTEXT)&Locals.OpenContext, KeyHandle);
+    AWAIT(Status, ObOpenObjectByName, AsyncState, Locals,
+	  Locals.ObjectAttributes, OBJECT_TYPE_KEY, DesiredAccess,
+	  (POB_OPEN_CONTEXT)&Locals.OpenContext, KeyHandle);
     ASYNC_END(AsyncState, Status);
 }
 
 static NTSTATUS CmpEnumerateKeyByHandle(IN ASYNC_STATE AsyncState,
-					IN PTHREAD Thread,
 					IN HANDLE KeyHandle,
 					IN ULONG Index,
 					IN KEY_INFORMATION_CLASS KeyInformationClass,
@@ -725,6 +720,8 @@ static NTSTATUS CmpEnumerateKeyByHandle(IN ASYNC_STATE AsyncState,
 {
     CmDbg("KeyHandle %p, Index 0x%x, KIC %d, Length 0x%x\n",
 	  KeyHandle, Index, KeyInformationClass, BufferSize);
+    assert(AsyncState.AsyncContext);
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
@@ -739,7 +736,6 @@ static NTSTATUS CmpEnumerateKeyByHandle(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
 			 IN HANDLE KeyHandle,
 			 IN ULONG Index,
 			 IN KEY_INFORMATION_CLASS KeyInformationClass,
@@ -747,12 +743,11 @@ NTSTATUS NtEnumerateKeyW(IN ASYNC_STATE State,
 			 IN ULONG BufferSize,
 			 OUT ULONG *ResultLength)
 {
-    return CmpEnumerateKeyByHandle(State, Thread, KeyHandle, Index, KeyInformationClass,
+    return CmpEnumerateKeyByHandle(State, KeyHandle, Index, KeyInformationClass,
 				   InformationBuffer, BufferSize, ResultLength, TRUE);
 }
 
 NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
 			 IN HANDLE KeyHandle,
 			 IN ULONG Index,
 			 IN KEY_INFORMATION_CLASS KeyInformationClass,
@@ -760,12 +755,11 @@ NTSTATUS NtEnumerateKeyA(IN ASYNC_STATE State,
 			 IN ULONG BufferSize,
 			 OUT ULONG *ResultLength)
 {
-    return CmpEnumerateKeyByHandle(State, Thread, KeyHandle, Index, KeyInformationClass,
+    return CmpEnumerateKeyByHandle(State, KeyHandle, Index, KeyInformationClass,
 				   InformationBuffer, BufferSize, ResultLength, FALSE);
 }
 
 static NTSTATUS CmpQueryKeyByHandle(IN ASYNC_STATE AsyncState,
-				    IN PTHREAD Thread,
 				    IN HANDLE KeyHandle,
 				    IN KEY_INFORMATION_CLASS KeyInformationClass,
 				    OUT OPTIONAL PVOID OutputBuffer,
@@ -774,6 +768,8 @@ static NTSTATUS CmpQueryKeyByHandle(IN ASYNC_STATE AsyncState,
 				    IN BOOLEAN Utf16)
 {
     CmDbg("Querying key information for key handle %p\n", KeyHandle);
+    assert(AsyncState.AsyncContext);
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
     assert(Thread->Process != NULL);
 
     PCM_KEY_OBJECT Key = NULL;
@@ -787,38 +783,34 @@ static NTSTATUS CmpQueryKeyByHandle(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtQueryKeyW(IN ASYNC_STATE State,
-		     IN PTHREAD Thread,
 		     IN HANDLE KeyHandle,
 		     IN KEY_INFORMATION_CLASS KeyInformationClass,
 		     OUT OPTIONAL PVOID OutputBuffer,
 		     IN ULONG BufferSize,
 		     OUT ULONG *ResultLength)
 {
-    return CmpQueryKeyByHandle(State, Thread, KeyHandle, KeyInformationClass,
+    return CmpQueryKeyByHandle(State, KeyHandle, KeyInformationClass,
 			       OutputBuffer, BufferSize, ResultLength, TRUE);
 }
 
 NTSTATUS NtQueryKeyA(IN ASYNC_STATE State,
-		     IN PTHREAD Thread,
 		     IN HANDLE KeyHandle,
 		     IN KEY_INFORMATION_CLASS KeyInformationClass,
 		     OUT OPTIONAL PVOID OutputBuffer,
 		     IN ULONG BufferSize,
 		     OUT ULONG *ResultLength)
 {
-    return CmpQueryKeyByHandle(State, Thread, KeyHandle, KeyInformationClass,
+    return CmpQueryKeyByHandle(State, KeyHandle, KeyInformationClass,
 			       OutputBuffer, BufferSize, ResultLength, FALSE);
 }
 
 NTSTATUS NtDeleteKey(IN ASYNC_STATE AsyncState,
-                     IN PTHREAD Thread,
                      IN HANDLE KeyHandle)
 {
     UNIMPLEMENTED;
 }
 
 NTSTATUS NtFlushKey(IN ASYNC_STATE AsyncState,
-                    IN PTHREAD Thread,
                     IN HANDLE KeyHandle)
 {
     UNIMPLEMENTED;

@@ -464,7 +464,6 @@ FORCEINLINE PIO_DEVICE_OBJECT IopGetPhyDevObj(IN PIO_DEVICE_OBJECT Device)
 VOID IopInitIrpProcessing(VOID);
 VOID IopAssignSignalGroupForDriver(IN PIO_DRIVER_OBJECT DriverObject);
 NTSTATUS IopWaitForMultipleIoCompletions(IN ASYNC_STATE State,
-					 IN PTHREAD Thread,
 					 IN BOOLEAN Alertable,
 					 IN WAIT_TYPE WaitType,
 					 IN PPENDING_IRP *PendingIrps,
@@ -513,7 +512,6 @@ NTSTATUS IopFileObjectParseProc(IN POBJECT Self,
 				OUT POBJECT *FoundObject,
 				OUT PCSTR *RemainingPath);
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
 			       IN POBJECT Object,
 			       IN PCSTR SubPath,
 			       IN ACCESS_MASK DesiredAccess,
@@ -522,7 +520,6 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath);
 NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
-				IN struct _THREAD *Thread,
 				IN POBJECT Self);
 VOID IopFileObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopCreateMasterFileObject(IN PCSTR FileName,
@@ -568,7 +565,6 @@ NTSTATUS IopDeviceObjectQueryNameProc(IN POBJECT Self,
 				      OUT PCHAR Path,
 				      IN OUT ULONG *BufferLength);
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
-				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
 				 IN ACCESS_MASK DesiredAccess,
@@ -577,11 +573,9 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 OUT POBJECT *pOpenedInstance,
 				 OUT PCSTR *pRemainingPath);
 NTSTATUS IopDeviceObjectCloseProc(IN ASYNC_STATE State,
-				  IN PTHREAD Thread,
 				  IN POBJECT Object);
 VOID IopDeviceObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
-		       IN PTHREAD Thread,
 		       IN PIO_DEVICE_OBJECT Device,
 		       IN PIO_FILE_OBJECT MasterFileObject,
 		       IN PCSTR SubPath,
@@ -595,7 +589,6 @@ NTSTATUS IopGrantDeviceHandleToDriver(IN OPTIONAL PIO_DEVICE_OBJECT DeviceObject
 VOID IopRemoveDevice(IN PIO_DEVICE_OBJECT DevObj,
 		     IN BOOLEAN Force);
 NTSTATUS IopShutdownDevice(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
 			   IN PIO_DEVICE_OBJECT DeviceObject);
 VOID IopDbgDumpDeviceObject(IN PIO_DEVICE_OBJECT DeviceObject,
 			    IN ULONG Indentation);
@@ -621,15 +614,16 @@ NTSTATUS IopDriverObjectCreateProc(POBJECT Object,
 				   IN PVOID CreaCtx);
 VOID IopDriverObjectDeleteProc(IN POBJECT Self);
 NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
-		       IN PTHREAD Thread,
 		       IN PCSTR DriverServicePath);
 PIO_DRIVER_OBJECT IopGetDriverObject(IN PCSTR DriverName);
 
 FORCEINLINE BOOLEAN IopThreadIsAtPassiveLevel(IN PTHREAD Thread)
 {
     assert(Thread->Process);
+#if DBG
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject);
+#endif
     return !Thread->DpcThread && !Thread->IsrThread;
 }
 
@@ -648,13 +642,11 @@ BOOLEAN IopIsInterruptVectorAssigned(IN PIO_DRIVER_OBJECT DriverObject,
 /* volume.c */
 NTSTATUS IopInitFileSystem();
 NTSTATUS IopMountVolume(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
 			IN PIO_DEVICE_OBJECT DevObj);
 VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 		       IN BOOLEAN Force);
 VOID IopUnregisterFileSystem(IN PIO_DEVICE_OBJECT DevObj);
-NTSTATUS IopShutdownFileSystems(IN ASYNC_STATE State,
-				IN PTHREAD Thread);
+NTSTATUS IopShutdownFileSystems(IN ASYNC_STATE State);
 VOID IopDbgDumpVcb(IN PIO_VOLUME_CONTROL_BLOCK Vcb);
 
 FORCEINLINE BOOLEAN IopIsStorageDevice(IN PIO_DEVICE_OBJECT DevObj)

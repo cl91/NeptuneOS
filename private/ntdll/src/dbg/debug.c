@@ -39,37 +39,6 @@ ULONG DbgPrintEx(IN ULONG ComponentId,
     return 0;
 }
 
-#ifdef _MSC_VER
-
-static NTAPI ULONG DebugPrompt(IN PSTRING Output, IN PSTRING Input)
-{
-    /* Call the Debug Service */
-    return DebugService(BREAKPOINT_PROMPT, Output->Buffer, UlongToPtr(Output->Length),
-			Input->Buffer, UlongToPtr(Input->MaximumLength));
-}
-
-/*
- * @implemented
- */
-NTAPI ULONG DbgPrompt(IN PCCH Prompt, OUT PCH Response, IN ULONG MaximumResponseLength)
-{
-    STRING Output;
-    STRING Input;
-
-    /* Setup the input string */
-    Input.MaximumLength = (USHORT)MaximumResponseLength;
-    Input.Buffer = Response;
-
-    /* Setup the output string */
-    Output.Length = (USHORT)strlen(Prompt);
-    Output.Buffer = (PCHAR)Prompt;
-
-    /* Call the system service */
-    return DebugPrompt(&Output, &Input);
-}
-
-#endif	/* _MSC_VER */
-
 VOID _assert(PCSTR Str, PCSTR File, unsigned int Line)
 {
     DbgPrint("Assertion %s failed at line %d of file %s\n",
@@ -142,6 +111,37 @@ NTAPI ULONG RtlAssert(IN PVOID FailedAssertion,
 }
 
 #endif
+
+#ifdef _MSC_VER
+
+static NTAPI ULONG DebugPrompt(IN PSTRING Output, IN PSTRING Input)
+{
+    /* Call the Debug Service */
+    return DebugService(BREAKPOINT_PROMPT, Output->Buffer, UlongToPtr(Output->Length),
+			Input->Buffer, UlongToPtr(Input->MaximumLength));
+}
+
+/*
+ * @implemented
+ */
+NTAPI ULONG DbgPrompt(IN PCCH Prompt, OUT PCH Response, IN ULONG MaximumResponseLength)
+{
+    STRING Output;
+    STRING Input;
+
+    /* Setup the input string */
+    Input.MaximumLength = (USHORT)MaximumResponseLength;
+    Input.Buffer = Response;
+
+    /* Setup the output string */
+    Output.Length = (USHORT)strlen(Prompt);
+    Output.Buffer = (PCHAR)Prompt;
+
+    /* Call the system service */
+    return DebugPrompt(&Output, &Input);
+}
+
+#endif	/* _MSC_VER */
 
 /*
  * For libsel4, required in both debug and release build.

@@ -362,6 +362,8 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	return STATUS_INVALID_PARAMETER;
     }
 
+    RET_ERR(KeAllocateDefaultAsyncContext(Thread));
+
     PUNTYPED TcbUntyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
 
@@ -388,7 +390,6 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     InitializeListHead(&Thread->QueuedApcList);
     InitializeListHead(&Thread->TimerApcList);
     InitializeListHead(&Thread->LpcConnectionList);
-    KeInitializeTimer(&Thread->WaitTimer, SynchronizationTimer);
 
     Thread->InitialThread = !Process->Initialized;
     InsertTailList(&Process->ThreadList, &Thread->ThreadListEntry);
@@ -854,7 +855,6 @@ NTSTATUS PsCreateProcess(IN OPTIONAL PSECTION ImageSection,
 }
 
 NTSTATUS NtCreateThread(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
                         OUT HANDLE *ThreadHandle,
                         IN ACCESS_MASK DesiredAccess,
                         IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -864,6 +864,7 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
                         IN PINITIAL_TEB InitialTeb,
                         IN BOOLEAN CreateSuspended)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
 
@@ -890,7 +891,6 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
                          OUT HANDLE *ProcessHandle,
                          IN ACCESS_MASK DesiredAccess,
                          IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -900,13 +900,12 @@ NTSTATUS NtCreateProcess(IN ASYNC_STATE State,
                          IN LOCAL_HANDLE DebugPort,
                          IN LOCAL_HANDLE ExceptionPort)
 {
-    return NtCreateProcessEx(State, Thread, ProcessHandle, DesiredAccess, ObjectAttributes,
+    return NtCreateProcessEx(State, ProcessHandle, DesiredAccess, ObjectAttributes,
 			     ParentProcess, InheritObjectTable, SectionHandle,
 			     DebugPort, ExceptionPort, FALSE);
 }
 
 NTSTATUS NtCreateProcessEx(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
 			   OUT HANDLE *ProcessHandle,
 			   IN ACCESS_MASK DesiredAccess,
 			   IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -917,6 +916,7 @@ NTSTATUS NtCreateProcessEx(IN ASYNC_STATE State,
 			   IN LOCAL_HANDLE ExceptionPort,
 			   IN BOOLEAN InJob)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
 
@@ -947,7 +947,7 @@ NTSTATUS NtCreateProcessEx(IN ASYNC_STATE State,
     /* The NT kernel sets the ArbitraryUserPointer member of the calling thread's TIB
      * to the newly created thread's PEB address so the usermode loader (which runs
      * inside the calling thread) knows where the PEB of the new process is. */
-    ((PNT_TIB)Thread->IpcBufferServerAddr + NT_TIB_OFFSET)->ArbitraryUserPointer =
+    ((PNT_TIB)(Thread->IpcBufferServerAddr + NT_TIB_OFFSET))->ArbitraryUserPointer =
 	(PVOID)Process->InitInfo.PebAddress;
     Process->DebugPort = DebugPort;
     Process->ExceptionPort = ExceptionPort;
@@ -956,7 +956,6 @@ NTSTATUS NtCreateProcessEx(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtOpenProcess(IN ASYNC_STATE AsyncState,
-		       IN PTHREAD Thread,
 		       OUT HANDLE *ProcessHandle,
 		       IN ACCESS_MASK DesiredAccess,
 		       IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -966,7 +965,6 @@ NTSTATUS NtOpenProcess(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtOpenThread(IN ASYNC_STATE AsyncState,
-		      IN PTHREAD Thread,
 		      OUT HANDLE *ThreadHandle,
 		      IN ACCESS_MASK DesiredAccess,
 		      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -976,7 +974,6 @@ NTSTATUS NtOpenThread(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtGetContextThread(IN ASYNC_STATE State,
-			    IN PTHREAD Thread,
 			    IN HANDLE ThreadHandle,
 			    OUT PCONTEXT Context)
 {
@@ -984,7 +981,6 @@ NTSTATUS NtGetContextThread(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtSetContextThread(IN ASYNC_STATE State,
-			    IN PTHREAD Thread,
 			    IN HANDLE ThreadHandle,
 			    IN PCONTEXT Context)
 {

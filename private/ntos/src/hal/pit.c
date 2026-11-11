@@ -17,7 +17,6 @@ extern HAL_INTERRUPT_SOURCE_OVERRIDE HalpInterruptSourceOverrideTable[];
  * @implemented
  */
 NTSTATUS WdmHalMakeBeep(IN ASYNC_STATE AsyncState,
-			IN PTHREAD Thread,
 			IN ULONG Frequency)
 {
     DbgTrace("Frequency %d\n", Frequency);
@@ -182,7 +181,6 @@ VOID HalpSetPit(IN ULONG64 RelativeDueTime)
 #else
 
 NTSTATUS WdmHalMakeBeep(IN ASYNC_STATE AsyncState,
-			IN PTHREAD Thread,
 			IN ULONG Frequency)
 {
     return STATUS_NOT_SUPPORTED;
