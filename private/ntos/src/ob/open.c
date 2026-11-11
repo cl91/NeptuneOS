@@ -131,7 +131,6 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
  * if you are opening a DEVICE object).
  */
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
-			    IN PTHREAD Thread,
 			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			    IN OBJECT_TYPE_ENUM Type,
 			    IN ACCESS_MASK DesiredAccess,
@@ -139,15 +138,13 @@ NTSTATUS ObOpenObjectByName(IN ASYNC_STATE AsyncState,
 			    OUT PVOID *pHandle)
 {
     assert(ObpRootObjectDirectory != NULL);
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     assert(pHandle != NULL);
 
     NTSTATUS Status = STATUS_NTOS_BUG;
     PCSTR RemainingPath = NULL;
     POBJECT OpenedInstance = NULL;
 
-    ASYNC_BEGIN(AsyncState, Locals, {
+    ASYNC_BEGIN(AsyncState, Thread, Locals, {
 	    POBJECT UserRootDirectory;
 	    POBJECT Object;
 	    POBJECT OpenedInstance;
@@ -260,10 +257,10 @@ open:
     /* Call the open procedure, and wait asynchronously. */
     ObDbg("Invoking open routine for object %p with path %s\n",
 	  Locals.Object, Locals.Path);
-    AWAIT_EX(Status,
-	     OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc,
-	     AsyncState, Locals, Thread, Locals.Object, Locals.Path, DesiredAccess,
-	     ObjectAttributes.Attributes, OpenContext, &OpenedInstance, &RemainingPath);
+    AWAIT(Status,
+	  OBJECT_TO_OBJECT_HEADER(Locals.Object)->Type->TypeInfo.OpenProc,
+	  AsyncState, Locals, Locals.Object, Locals.Path, DesiredAccess,
+	  ObjectAttributes.Attributes, OpenContext, &OpenedInstance, &RemainingPath);
 
     /* Now that the open is done, dereference the object. */
     ObDereferenceObject(Locals.Object);

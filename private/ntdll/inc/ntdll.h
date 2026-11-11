@@ -44,8 +44,6 @@ VOID RtlpPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
 VOID RtlpVgaPrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo,
 			    IN BOOLEAN Unhandled);
 
-#if DBG
-
 /*
  * Debug Service calls
  */
@@ -53,5 +51,3 @@ NTAPI ULONG DebugService(IN ULONG Service, IN PVOID Argument1, IN PVOID Argument
 			 IN PVOID Argument3, IN PVOID Argument4);
 
 NTAPI VOID DebugService2(IN PVOID Argument1, IN PVOID Argument2, IN ULONG Service);
-
-#endif	/* DBG */

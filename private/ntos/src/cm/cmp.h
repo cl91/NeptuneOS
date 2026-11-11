@@ -165,7 +165,6 @@ NTSTATUS CmpKeyObjectParseProc(IN POBJECT Self,
 			       OUT POBJECT *FoundObject,
 			       OUT PCSTR *RemainingPath);
 NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
-			      IN PTHREAD Thread,
 			      IN POBJECT Object,
 			      IN PCSTR SubPath,
 			      IN ACCESS_MASK DesiredAccess,
@@ -174,7 +173,6 @@ NTSTATUS CmpKeyObjectOpenProc(IN ASYNC_STATE State,
 			      OUT POBJECT *pOpenedInstance,
 			      OUT PCSTR *pRemainingPath);
 NTSTATUS CmpKeyObjectCloseProc(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
 			       IN POBJECT Object);
 VOID CmpKeyObjectDeleteProc(IN POBJECT Self);
 VOID CmpDbgDumpKey(IN PCM_KEY_OBJECT Key);

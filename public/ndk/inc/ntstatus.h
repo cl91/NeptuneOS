@@ -13,6 +13,27 @@
 #define FACILITY_CLUSTER_ERROR_CODE     0x13
 #define FACILITY_ACPI_ERROR_CODE        0x14
 #define FACILITY_SXS_ERROR_CODE         0x15
+#define FACILITY_ASYNC		        0x43
+
+/*
+ * Async status code
+ */
+#define ASYNC_SUCCESS(Code)	((NTSTATUS)(Code | (FACILITY_ASYNC << 16) \
+					    | ERROR_SEVERITY_SUCCESS))
+#define ASYNC_INFORMATION(Code)	((NTSTATUS)(Code | (FACILITY_ASYNC << 16) \
+					    | ERROR_SEVERITY_INFORMATIONAL))
+#define ASYNC_WARNING(Code)	((NTSTATUS)(Code | (FACILITY_ASYNC << 16) \
+					    | ERROR_SEVERITY_WARNING))
+#define ASYNC_ERROR(Code)	((NTSTATUS)(Code | (FACILITY_ASYNC << 16) \
+					    | ERROR_SEVERITY_ERROR))
+
+#define IS_ASYNC_STATUS(Code) ((((((ULONG)(Code)) >> 16) << 3) >> 3) == FACILITY_ASYNC)
+
+#define STATUS_ASYNC_PENDING              ASYNC_INFORMATION(1)
+#define STATUS_ASYNC_CANCELED             ASYNC_WARNING(2)
+#define STATUS_ASYNC_NO_MEMORY            ASYNC_ERROR(3)
+#define STATUS_ASYNC_NO_MORE_ID           ASYNC_ERROR(4)
+#define STATUS_ASYNC_INVALID_ID           ASYNC_ERROR(5)
 
 /* Debug codes */
 

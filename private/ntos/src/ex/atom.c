@@ -1,7 +1,6 @@
 #include "ei.h"
 
 NTSTATUS NtAddAtom(IN ASYNC_STATE AsyncState,
-		   IN PTHREAD Thread,
 		   IN PCSTR AtomName,
 		   OUT PRTL_ATOM Atom)
 {
@@ -9,14 +8,12 @@ NTSTATUS NtAddAtom(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtDeleteAtom(IN ASYNC_STATE AsyncState,
-		      IN PTHREAD Thread,
 		      IN RTL_ATOM Atom)
 {
     UNIMPLEMENTED;
 }
 
 NTSTATUS NtFindAtom(IN ASYNC_STATE AsyncState,
-		    IN PTHREAD Thread,
 		    IN PCSTR AtomName,
 		    OUT OPTIONAL PRTL_ATOM Atom)
 {
@@ -24,7 +21,6 @@ NTSTATUS NtFindAtom(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtQueryInformationAtom(IN ASYNC_STATE AsyncState,
-				IN PTHREAD Thread,
 				IN RTL_ATOM Atom,
 				IN ATOM_INFORMATION_CLASS AtomInformationClass,
 				OUT PVOID AtomInformation,

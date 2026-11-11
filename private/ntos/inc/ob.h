@@ -298,7 +298,6 @@ typedef struct _OB_OPEN_CONTEXT {
     OPEN_CONTEXT_TYPE Type; /* Type of the parse context following the header */
 } OB_OPEN_CONTEXT, *POB_OPEN_CONTEXT;	 /* Header of the object parse context */
 typedef NTSTATUS (*OBJECT_OPEN_METHOD)(IN ASYNC_STATE State,
-				       IN struct _THREAD *Thread,
 				       IN POBJECT Self,
 				       IN PCSTR SubPath,
 				       IN ACCESS_MASK DesiredAccess,
@@ -376,7 +375,6 @@ typedef NTSTATUS (*OBJECT_QUERY_NAME_METHOD)(IN POBJECT Parent,
  * procedure.
  */
 typedef NTSTATUS (*OBJECT_CLOSE_METHOD)(IN ASYNC_STATE State,
-					IN struct _THREAD *Thread,
 					IN POBJECT Self);
 
 /*
@@ -630,7 +628,6 @@ NTSTATUS ObParseObjectByName(IN POBJECT DirectoryObject,
 			     IN BOOLEAN CaseInsensitive,
 			     OUT POBJECT *FoundObject);
 NTSTATUS ObOpenObjectByName(IN ASYNC_STATE State,
-			    IN struct _THREAD *Thread,
 			    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			    IN OBJECT_TYPE_ENUM Type,
 			    IN ACCESS_MASK DesiredAccess,

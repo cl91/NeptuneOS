@@ -22,8 +22,8 @@
 #include <util.h>
 #include <services.h>
 
-#include "ke.h"
 #include "mm.h"
+#include "ke.h"
 #include "ex.h"
 #include "ob.h"
 #include "io.h"
@@ -56,7 +56,7 @@
     }
 
 #if defined(CONFIG_DEBUG_BUILD)
-VOID vDbgPrint(PCSTR Format, va_list args);
+VOID vDbgPrint(PCSTR Format, va_list Args);
 #endif
 
 #define assert_ret(expr)	if (!(expr)) { return STATUS_NTOS_BUG; }

@@ -25,11 +25,10 @@ NTSTATUS IopInitFileSystem()
  * the network FS driver.
  */
 NTSTATUS IopMountVolume(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
 			IN PIO_DEVICE_OBJECT DevObj)
 {
     NTSTATUS Status;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PLIST_ENTRY FsList;
 	    PLIST_ENTRY Entry;
 	    PIO_FILE_SYSTEM CurrentFs;
@@ -52,8 +51,12 @@ NTSTATUS IopMountVolume(IN ASYNC_STATE State,
     }
 
     /* If another mount is already in progress, wait for it to complete. */
-    AWAIT_IF(DevObj->Vcb && DevObj->Vcb->MountInProgress, KeWaitForSingleObject,
-	     State, Locals, Thread, &DevObj->MountCompleted.Header, FALSE, NULL);
+    Status = STATUS_SUCCESS;
+    AWAIT_IF(DevObj->Vcb && DevObj->Vcb->MountInProgress, Status, KeWaitForSingleObject,
+	     State, Locals, &DevObj->MountCompleted.Header, FALSE, NULL);
+    if (Status == STATUS_ASYNC_CANCELED) {
+	ASYNC_RETURN(State, Status);
+    }
     if (DevObj->Vcb) {
 	assert(!DevObj->Vcb->MountInProgress);
 	ASYNC_RETURN(State, STATUS_SUCCESS);
@@ -120,8 +123,11 @@ next:
     /* Increase the refcount of the FSCTL device object, so it won't get deleted
      * if the file system driver crashed during the mount. */
     ObReferenceObjectByPointer(Locals.CurrentFs->FsctlDevObj);
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto out;
+    }
 
     Status = Locals.PendingIrp->IoResponseStatus.Status;
     if (NT_SUCCESS(Status)) {
@@ -185,7 +191,9 @@ out:
 	}
 	IopFreePool(DevObj->Vcb);
 	DevObj->Vcb = NULL;
-	DevObj->UnrecognizedVolume = TRUE;
+	if (Status != STATUS_ASYNC_CANCELED) {
+	    DevObj->UnrecognizedVolume = TRUE;
+	}
     }
     KeSetEvent(&DevObj->MountCompleted);
     ASYNC_END(State, Status);
@@ -197,9 +205,10 @@ out:
  * Unregistering is done automatically when the fsctl device gets deleted.
  */
 NTSTATUS WdmRegisterFileSystem(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
 			       IN GLOBAL_HANDLE DeviceHandle)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
     assert(DriverObject != NULL);
@@ -362,11 +371,10 @@ VOID IopDismountVolume(IN PIO_VOLUME_CONTROL_BLOCK Vcb,
 }
 
 static NTSTATUS IopShutdownFileSystemList(IN ASYNC_STATE State,
-					  IN PTHREAD Thread,
 					  IN PLIST_ENTRY FsList)
 {
     NTSTATUS Status = STATUS_SUCCESS;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PLIST_ENTRY Entry;
 	    PIO_FILE_SYSTEM Fs;
 	});
@@ -378,8 +386,10 @@ loop:
     }
     Locals.Fs = CONTAINING_RECORD(Locals.Entry, IO_FILE_SYSTEM, ListEntry);
     assert(Locals.Fs->FsctlDevObj);
-    AWAIT_EX(Status, IopShutdownDevice, State, Locals, Thread,
-	     Locals.Fs->FsctlDevObj);
+    AWAIT(Status, IopShutdownDevice, State, Locals, Locals.Fs->FsctlDevObj);
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto done;
+    }
     Locals.Entry = Locals.Entry->Flink;
     goto loop;
 
@@ -387,19 +397,23 @@ done:
     ASYNC_END(State, Status);
 }
 
-NTSTATUS IopShutdownFileSystems(IN ASYNC_STATE State,
-				IN PTHREAD Thread)
+NTSTATUS IopShutdownFileSystems(IN ASYNC_STATE State)
 {
     NTSTATUS Status;
-    ASYNC_BEGIN(State);
-    AWAIT_EX(Status, IopShutdownFileSystemList, State, _, Thread,
-	     &IopDiskFileSystemList);
-    AWAIT_EX(Status, IopShutdownFileSystemList, State, _, Thread,
-	     &IopNetworkFileSystemList);
-    AWAIT_EX(Status, IopShutdownFileSystemList, State, _, Thread,
-	     &IopCdRomFileSystemList);
-    AWAIT_EX(Status, IopShutdownFileSystemList, State, _, Thread,
-	     &IopTapeFileSystemList);
+    ASYNC_BEGIN(State, Thread);
+    AWAIT(Status, IopShutdownFileSystemList, State, _, &IopDiskFileSystemList);
+    if (Status == STATUS_ASYNC_CANCELED) {
+	ASYNC_RETURN(State, Status);
+    }
+    AWAIT(Status, IopShutdownFileSystemList, State, _, &IopNetworkFileSystemList);
+    if (Status == STATUS_ASYNC_CANCELED) {
+	ASYNC_RETURN(State, Status);
+    }
+    AWAIT(Status, IopShutdownFileSystemList, State, _, &IopCdRomFileSystemList);
+    if (Status == STATUS_ASYNC_CANCELED) {
+	ASYNC_RETURN(State, Status);
+    }
+    AWAIT(Status, IopShutdownFileSystemList, State, _, &IopTapeFileSystemList);
     ASYNC_END(State, Status);
 }
 

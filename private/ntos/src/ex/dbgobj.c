@@ -1,7 +1,6 @@
 #include "ei.h"
 
 NTSTATUS NtCreateDebugObject(IN ASYNC_STATE AsyncState,
-			     IN PTHREAD Thread,
 			     OUT HANDLE *DebugHandle,
 			     IN ACCESS_MASK DesiredAccess,
 			     IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -11,7 +10,6 @@ NTSTATUS NtCreateDebugObject(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtDebugActiveProcess(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread,
 			      IN HANDLE Process,
 			      IN HANDLE DebugObject)
 {
@@ -19,7 +17,6 @@ NTSTATUS NtDebugActiveProcess(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtDebugContinue(IN ASYNC_STATE AsyncState,
-			 IN PTHREAD Thread,
 			 IN HANDLE DebugObject,
 			 IN PCLIENT_ID AppClientId,
 			 IN NTSTATUS ContinueStatus)
@@ -28,7 +25,6 @@ NTSTATUS NtDebugContinue(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtWaitForDebugEvent(IN ASYNC_STATE AsyncState,
-			     IN PTHREAD Thread,
 			     IN HANDLE DebugObject,
 			     IN BOOLEAN Alertable,
 			     IN OPTIONAL PLARGE_INTEGER Timeout,
@@ -38,14 +34,13 @@ NTSTATUS NtWaitForDebugEvent(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtRemoveProcessDebug(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread,
 			      IN HANDLE Process,
 			      IN HANDLE DebugObject)
 {
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtSetInformationDebugObject(IN ASYNC_STATE AsyncState, IN PTHREAD Thread,
+NTSTATUS NtSetInformationDebugObject(IN ASYNC_STATE AsyncState,
 				     IN HANDLE DebugObject,
 				     IN DEBUG_OBJECT_INFORMATION_CLASS InformationClass,
 				     IN PVOID Information, IN ULONG InformationLength,

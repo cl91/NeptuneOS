@@ -147,7 +147,6 @@ NTSTATUS IopDeviceObjectInsertProc(IN POBJECT Self,
 }
 
 NTSTATUS IopDeviceObjectCloseProc(IN ASYNC_STATE State,
-				  IN PTHREAD Thread,
 				  IN POBJECT Object)
 {
     /* We don't have to do anything here since the close routine for file objects
@@ -186,7 +185,6 @@ NTSTATUS IopDeviceObjectQueryNameProc(IN POBJECT Self,
 }
 
 NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
-		       IN PTHREAD Thread,
 		       IN PIO_DEVICE_OBJECT Device,
 		       IN PIO_FILE_OBJECT MasterFileObject,
 		       IN PCSTR SubPath,
@@ -198,7 +196,7 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     assert(Device);
     NTSTATUS Status = STATUS_NTOS_BUG;
     POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PIO_DEVICE_OBJECT TargetDevice;
 	    PPENDING_IRP PendingIrp;
@@ -327,13 +325,18 @@ NTSTATUS IopOpenDevice(IN ASYNC_STATE State,
     }
 
     /* For create/open we always wait for the driver to complete the request. */
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
     /* This is the starting point when the function is resumed. Note if the driver
      * crashed during handling of the IO packet, IopUnloadDriver will have manually
      * completed the IO request with an error. */
     assert(Locals.FileObject != NULL);
+
+    /* If the async wait was canceled, clean up and return immediately. */
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto out;
+    }
 
     if (Locals.PendingIrp->IoResponseDataSize && Locals.FileObject->Fcb) {
 	PIO_RESPONSE_DATA IoResponseData = Locals.PendingIrp->IoResponseData;
@@ -366,7 +369,6 @@ out:
 }
 
 NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
-				 IN PTHREAD Thread,
 				 IN POBJECT Object,
 				 IN PCSTR SubPath,
 				 IN ACCESS_MASK DesiredAccess,
@@ -375,7 +377,6 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 				 OUT POBJECT *pOpenedInstance,
 				 OUT PCSTR *pRemainingPath)
 {
-    assert(Thread != NULL);
     assert(Object != NULL);
     assert(SubPath != NULL);
     assert(Context != NULL);
@@ -391,7 +392,7 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
     /* This is initialized to STATUS_NTOS_BUG so we can catch bugs */
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State);
+    ASYNC_BEGIN(State, Thread);
 
     /* Reject the open if the open context is not IO_OPEN_CONTEXT */
     if (Context->Type != OPEN_CONTEXT_DEVICE_OPEN) {
@@ -401,13 +402,13 @@ NTSTATUS IopDeviceObjectOpenProc(IN ASYNC_STATE State,
 
     /* If the device object represents a volume on a storage device,
      * make sure its file system is mounted. */
-    AWAIT_EX(Status, IopMountVolume, State, _, Thread, Device);
+    AWAIT(Status, IopMountVolume, State, _, Device);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
 
-    AWAIT_EX(Status, IopOpenDevice, State, _, Thread, Device, NULL,
-	     SubPath, DesiredAccess, Attributes, OpenContext, &FileObject);
+    AWAIT(Status, IopOpenDevice, State, _, Device, NULL,
+	  SubPath, DesiredAccess, Attributes, OpenContext, &FileObject);
 
 out:
     if (NT_SUCCESS(Status)) {
@@ -642,12 +643,12 @@ static ULONG IopGetDeviceStackSize(IN PIO_DEVICE_OBJECT DeviceObject)
  * Note: DeviceName must be a full path.
  */
 NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
                          IN OPTIONAL PCSTR DeviceName,
                          IN PIO_DEVICE_INFO DeviceInfo,
                          IN BOOLEAN Exclusive,
                          OUT GLOBAL_HANDLE *DeviceHandle)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(IoGetDriverObjectFromProcess(Thread->Process) != NULL);
     assert(DeviceHandle != NULL);
@@ -684,13 +685,14 @@ NTSTATUS WdmCreateDevice(IN ASYNC_STATE State,
 }
 
 NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
-				      IN PTHREAD Thread,
 				      IN GLOBAL_HANDLE SrcDevHandle,
 				      IN GLOBAL_HANDLE TgtDevHandle,
 				      OUT GLOBAL_HANDLE *PrevTopDevHandle,
 				      OUT IO_DEVICE_INFO *PrevTopDevInfo,
 				      OUT ULONG *PrevTopStackSize)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -720,12 +722,13 @@ NTSTATUS WdmAttachDeviceToDeviceStack(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmGetTopDeviceObject(IN ASYNC_STATE AsyncState,
-			       IN PTHREAD Thread,
 			       IN HANDLE OpenFileHandle,
 			       OUT GLOBAL_HANDLE *TopDeviceHandle,
 			       OUT IO_DEVICE_INFO *TopDeviceInfo,
 			       OUT ULONG *TopDeviceStackSize)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -752,11 +755,12 @@ out:
 }
 
 NTSTATUS WdmGetDevice(IN ASYNC_STATE AsyncState,
-		      IN PTHREAD Thread,
 		      IN GLOBAL_HANDLE DeviceHandle,
 		      OUT IO_DEVICE_INFO *DeviceInfo,
 		      OUT ULONG *StackSize)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
     if (!DeviceHandle) {
 	return STATUS_INVALID_PARAMETER;
@@ -790,9 +794,10 @@ NTSTATUS WdmGetDevice(IN ASYNC_STATE AsyncState,
  * object will be called.
  */
 NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
-                         IN PTHREAD Thread,
                          IN GLOBAL_HANDLE GlobalHandle)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -849,12 +854,13 @@ NTSTATUS WdmDeleteDevice(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
-                              IN PTHREAD Thread,
                               IN GLOBAL_HANDLE DeviceHandle,
                               OUT GLOBAL_HANDLE *TopDeviceHandle,
                               OUT IO_DEVICE_INFO *TopDeviceInfo,
 			      OUT ULONG *StackSize)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
     if (!DeviceHandle) {
 	return STATUS_INVALID_PARAMETER;
@@ -874,9 +880,10 @@ NTSTATUS WdmGetAttachedDevice(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmRegisterShutdownNotification(IN ASYNC_STATE AsyncState,
-                                         IN PTHREAD Thread,
                                          IN GLOBAL_HANDLE DeviceHandle)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
     if (!DeviceHandle) {
 	return STATUS_INVALID_PARAMETER;
@@ -902,9 +909,10 @@ NTSTATUS WdmRegisterShutdownNotification(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmUnregisterShutdownNotification(IN ASYNC_STATE AsyncState,
-					   IN PTHREAD Thread,
 					   IN GLOBAL_HANDLE DeviceHandle)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(IopThreadIsAtPassiveLevel(Thread));
     if (!DeviceHandle) {
 	return STATUS_INVALID_PARAMETER;
@@ -930,11 +938,10 @@ NTSTATUS WdmUnregisterShutdownNotification(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS IopShutdownDevice(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
 			   IN PIO_DEVICE_OBJECT DeviceObject)
 {
     NTSTATUS Status;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PPENDING_IRP PendingIrp;
 	});
 
@@ -946,10 +953,12 @@ NTSTATUS IopShutdownDevice(IN ASYNC_STATE State,
     if (!NT_SUCCESS(Status)) {
 	ASYNC_RETURN(State, Status);
     }
-    AWAIT_EX(Status, KeWaitForSingleObject, State, Locals, Thread,
-	     &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
-    assert(NT_SUCCESS(Status));
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
+	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = Locals.PendingIrp->IoResponseStatus.Status;
+	assert(NT_SUCCESS(Status));
+    }
     IopCleanupPendingIrp(Locals.PendingIrp);
     ASYNC_END(State, Status);
 }

@@ -24,7 +24,6 @@ static NTSTATUS EiPortObjectCreateProc(IN POBJECT Object,
 }
 
 static NTSTATUS EiPortObjectOpenProc(IN ASYNC_STATE State,
-				     IN PTHREAD Thread,
 				     IN POBJECT Self,
 				     IN PCSTR SubPath,
 				     IN ACCESS_MASK DesiredAccess,
@@ -44,7 +43,6 @@ static NTSTATUS EiPortObjectOpenProc(IN ASYNC_STATE State,
 }
 
 static NTSTATUS EiPortObjectCloseProc(IN ASYNC_STATE State,
-				      IN PTHREAD Thread,
 				      IN POBJECT Self)
 {
     /* Do nothing */
@@ -117,13 +115,14 @@ VOID ExClosePortConnection(IN PLPC_PORT_CONNECTION Connection,
 }
 
 NTSTATUS NtCreatePort(IN ASYNC_STATE AsyncState,
-		      IN PTHREAD Thread,
 		      OUT HANDLE *PortHandle,
 		      OUT LOCAL_HANDLE *CommPortHandle,
 		      IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
 		      IN ULONG MaxMessageLength,
 		      IN OPTIONAL PSECURITY_QUALITY_OF_SERVICE SecurityQos)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     POBJECT RootDirectory = NULL;
     if (ObjectAttributes.RootDirectory) {
 	RET_ERR(ObReferenceObjectByHandle(Thread, ObjectAttributes.RootDirectory,
@@ -171,29 +170,26 @@ out:
  * Opens the named LPC port for connection.
  */
 NTSTATUS NtOpenPort(IN ASYNC_STATE AsyncState,
-		    IN PTHREAD Thread,
 		    OUT HANDLE *PortHandle,
 		    IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
 		    IN ACCESS_MASK DesiredAccess)
 {
-    return ObOpenObjectByName(AsyncState, Thread, ObjectAttributes,
+    return ObOpenObjectByName(AsyncState, ObjectAttributes,
 			      OBJECT_TYPE_LPC_PORT, DesiredAccess, NULL, PortHandle);
 }
 
 NTSTATUS NtListenPort(IN ASYNC_STATE State,
-		      IN PTHREAD Thread,
 		      IN HANDLE PortHandle,
 		      OUT CLIENT_ID *ClientId,
 		      OUT OPTIONAL PVOID ConnectionInformation,
 		      IN ULONG MaxConnectionInfoLength,
 		      OUT OPTIONAL ULONG *ConnectionInformationLength)
 {
-    assert(Thread);
     assert(PortHandle);
     assert(ClientId);
 
     NTSTATUS Status = STATUS_NTOS_BUG;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PLPC_PORT_OBJECT PortObject;
 	});
 
@@ -201,8 +197,12 @@ NTSTATUS NtListenPort(IN ASYNC_STATE State,
 		ObReferenceObjectByHandle(Thread, PortHandle, OBJECT_TYPE_LPC_PORT,
 					  (POBJECT *)&Locals.PortObject));
 
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PortObject->ConnectionRequested.Header, FALSE, NULL);
+
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto out;
+    }
 
     assert(GetListLength(&Locals.PortObject->QueuedConnections));
     PLPC_PORT_CONNECTION Connection =
@@ -266,7 +266,6 @@ out:
 }
 
 NTSTATUS NtAcceptPort(IN ASYNC_STATE AsyncState,
-		      IN PTHREAD Thread,
 		      OUT OPTIONAL HANDLE *EventHandle,
 		      IN HANDLE PortHandle,
 		      IN ULONG_PTR PortContext,
@@ -278,6 +277,8 @@ NTSTATUS NtAcceptPort(IN ASYNC_STATE AsyncState,
     if (EventHandle) {
 	*EventHandle = NULL;
     }
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     PLPC_PORT_OBJECT Port = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, PortHandle, OBJECT_TYPE_LPC_PORT,
 				      (POBJECT *)&Port));
@@ -345,7 +346,6 @@ out:
  * impersonate the server when opening the port object.
  */
 NTSTATUS NtConnectPort(IN ASYNC_STATE State,
-		       IN PTHREAD Thread,
 		       IN HANDLE PortHandle,
 		       IN PSECURITY_QUALITY_OF_SERVICE SecurityQos,
 		       OUT LOCAL_HANDLE *CommPortHandle,
@@ -358,7 +358,7 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
 		       IN ULONG ConnectionInformationLength)
 {
     NTSTATUS Status = STATUS_NTOS_BUG;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PLPC_PORT_OBJECT PortObject;
 	    PLPC_PORT_CONNECTION Connection;
 	});
@@ -400,12 +400,16 @@ NTSTATUS NtConnectPort(IN ASYNC_STATE State,
     InsertHeadList(&Locals.PortObject->QueuedConnections, &Locals.Connection->Link);
     KeSetEvent(&Locals.PortObject->ConnectionRequested);
 
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.Connection->Connected.Header, FALSE, NULL);
+
+    PHANDLE_TABLE_ENTRY Entry = NULL;
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto err;
+    }
 
     assert(Locals.Connection->ConnectionInserted);
     assert(!Locals.Connection->ClientDied);
-    PHANDLE_TABLE_ENTRY Entry = NULL;
     if (Locals.Connection->ConnectionRefused) {
 	Status = STATUS_CONNECTION_REFUSED;
 	goto err;
@@ -448,7 +452,6 @@ out:
  * client of an LPC connection.
  */
 NTSTATUS NtDisconnectPort(IN ASYNC_STATE State,
-			  IN PTHREAD Thread,
 			  IN LOCAL_HANDLE CommPortHandle)
 {
     UNIMPLEMENTED;

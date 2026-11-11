@@ -1,16 +1,13 @@
 #include "ei.h"
 
 NTSTATUS NtShutdownSystem(IN ASYNC_STATE State,
-                          IN PTHREAD Thread,
                           IN SHUTDOWN_ACTION Action)
 {
-    assert(Thread);
-    assert(Thread->Process);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State);
+    ASYNC_BEGIN(State, Thread);
     HalVgaPrint("Syncing disks...\n");
-    AWAIT_EX(Status, IoShutdownSystem, State, _, Thread, Action);
+    AWAIT(Status, IoShutdownSystem, State, _, Action);
     assert(NT_SUCCESS(Status));
     if (NT_SUCCESS(Status)) {
 	/* The system doesn't seem to have the ability to turn itself off.

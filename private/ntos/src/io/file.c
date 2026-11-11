@@ -194,7 +194,6 @@ FORCEINLINE BOOLEAN DispositionIsOverwrite(IN ULONG Disposition)
 }
 
 NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
 			       IN POBJECT Self,
 			       IN PCSTR SubPath,
 			       IN ACCESS_MASK DesiredAccess,
@@ -203,7 +202,6 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 			       OUT POBJECT *pOpenedInstance,
 			       OUT PCSTR *pRemainingPath)
 {
-    assert(Thread != NULL);
     assert(Self != NULL);
     assert(SubPath != NULL);
     assert(pOpenedInstance != NULL);
@@ -213,7 +211,7 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     PIO_FILE_OBJECT OpenedFile = NULL;
     PIO_OPEN_CONTEXT OpenContext = (PIO_OPEN_CONTEXT)Context;
     POPEN_PACKET OpenPacket = &OpenContext->OpenPacket;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    BOOLEAN CallDriver;
 	});
 
@@ -234,9 +232,13 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
     }
 
     /* If there is an existing file open request, wait for it to finish. */
-    AWAIT_IF(FileObject->Fcb->Vcb && FileObject->Fcb->OpenInProgress,
-	     KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT_IF(FileObject->Fcb->Vcb && FileObject->Fcb->OpenInProgress, Status,
+	     KeWaitForSingleObject, State, Locals,
 	     &FileObject->Fcb->OpenCompleted.Header, FALSE, NULL);
+
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto out;
+    }
 
     /* TODO: We need to handle related open which is used by NTFS to
      * support multiple data streams of the same file. */
@@ -292,9 +294,9 @@ NTSTATUS IopFileObjectOpenProc(IN ASYNC_STATE State,
 	goto out;
     }
 
-    AWAIT_EX(Status, IopOpenDevice, State, Locals, Thread, FileObject->DeviceObject,
-	     FileObject, FileObject->Fcb->FileName, DesiredAccess, Attributes,
-	     OpenContext, &OpenedFile);
+    AWAIT(Status, IopOpenDevice, State, Locals, FileObject->DeviceObject,
+	  FileObject, FileObject->Fcb->FileName, DesiredAccess, Attributes,
+	  OpenContext, &OpenedFile);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -319,15 +321,13 @@ out:
 }
 
 NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
-				IN PTHREAD Thread,
 				IN POBJECT Self)
 {
-    assert(Thread != NULL);
     assert(Self != NULL);
 
     NTSTATUS Status = STATUS_NTOS_BUG;
     PIO_FILE_OBJECT FileObj = Self;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PPENDING_IRP PendingIrp;
 	});
 
@@ -390,13 +390,15 @@ NTSTATUS IopFileObjectCloseProc(IN ASYNC_STATE State,
 	.File.Object = TargetFileObject,
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     IopCleanupPendingIrp(Locals.PendingIrp);
 
     /* For files with caching initialized, flush dirty data to disk. */
     if (!FileObj->Fcb || !FileObj->Fcb->SharedCacheMap) {
-	Status = STATUS_SUCCESS;
+	if (Status != STATUS_ASYNC_CANCELED) {
+	    Status = STATUS_SUCCESS;
+	}
 	goto out;
     }
     CiFlushPrivateCacheToShared(FileObj->Fcb);
@@ -496,7 +498,6 @@ out:
 }
 
 static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
-			      IN PTHREAD Thread,
 			      OUT HANDLE *FileHandle,
 			      IN ACCESS_MASK DesiredAccess,
 			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -510,7 +511,7 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 {
     NTSTATUS Status;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    IO_OPEN_CONTEXT OpenContext;
 	});
     Locals.OpenContext.Header.Type = OPEN_CONTEXT_DEVICE_OPEN;
@@ -524,9 +525,9 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 	Locals.OpenContext.OpenPacket.AllocationSize = AllocationSize->QuadPart;
     }
 
-    AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
-	     Thread, ObjectAttributes, OBJECT_TYPE_FILE, DesiredAccess,
-	     (POB_OPEN_CONTEXT)&Locals.OpenContext, FileHandle);
+    AWAIT(Status, ObOpenObjectByName, State, Locals,
+	  ObjectAttributes, OBJECT_TYPE_FILE, DesiredAccess,
+	  (POB_OPEN_CONTEXT)&Locals.OpenContext, FileHandle);
     if (IoStatusBlock != NULL) {
 	IoStatusBlock->Status = Status;
 	IoStatusBlock->Information = NT_SUCCESS(Status) ? Locals.OpenContext.Information : 0;
@@ -535,7 +536,6 @@ static NTSTATUS IopCreateFile(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtCreateFile(IN ASYNC_STATE State,
-		      IN PTHREAD Thread,
                       OUT HANDLE *FileHandle,
                       IN ACCESS_MASK DesiredAccess,
                       IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -548,12 +548,12 @@ NTSTATUS NtCreateFile(IN ASYNC_STATE State,
                       IN OPTIONAL PVOID EaBuffer,
                       IN ULONG EaLength)
 {
-    return IopCreateFile(State, Thread, FileHandle, DesiredAccess, ObjectAttributes,
+    return IopCreateFile(State, FileHandle, DesiredAccess, ObjectAttributes,
 			 IoStatusBlock, AllocationSize, FileAttributes, ShareAccess,
 			 CreateDisposition, CreateOptions, FALSE);
 }
 
-NTSTATUS NtCreateMailslotFile(IN ASYNC_STATE State, IN PTHREAD Thread,
+NTSTATUS NtCreateMailslotFile(IN ASYNC_STATE State,
 			      OUT HANDLE *FileHandle, IN ACCESS_MASK DesiredAccess,
 			      IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			      OUT IO_STATUS_BLOCK *IoStatusBlock, IN ULONG CreateOptions,
@@ -563,7 +563,7 @@ NTSTATUS NtCreateMailslotFile(IN ASYNC_STATE State, IN PTHREAD Thread,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtCreateNamedPipeFile(IN ASYNC_STATE State, IN PTHREAD Thread,
+NTSTATUS NtCreateNamedPipeFile(IN ASYNC_STATE State,
 			       OUT HANDLE *FileHandle, IN ACCESS_MASK DesiredAccess,
 			       IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
 			       OUT IO_STATUS_BLOCK *IoStatusBlock, IN ULONG ShareAccess,
@@ -577,7 +577,6 @@ NTSTATUS NtCreateNamedPipeFile(IN ASYNC_STATE State, IN PTHREAD Thread,
 }
 
 NTSTATUS NtOpenFile(IN ASYNC_STATE State,
-		    IN PTHREAD Thread,
                     OUT HANDLE *FileHandle,
                     IN ACCESS_MASK DesiredAccess,
                     IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -585,7 +584,7 @@ NTSTATUS NtOpenFile(IN ASYNC_STATE State,
                     IN ULONG ShareAccess,
                     IN ULONG OpenOptions)
 {
-    return IopCreateFile(State, Thread, FileHandle, DesiredAccess, ObjectAttributes,
+    return IopCreateFile(State, FileHandle, DesiredAccess, ObjectAttributes,
 			 IoStatusBlock, NULL, 0, ShareAccess, FILE_OPEN, OpenOptions, FALSE);
 }
 
@@ -657,7 +656,6 @@ out:
 }
 
 static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
-				 IN PTHREAD Thread,
 				 IN HANDLE FileHandle,
 				 IN HANDLE EventHandle,
 				 IN PIO_APC_ROUTINE ApcRoutine,
@@ -669,11 +667,9 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
 				 IN OPTIONAL PULONG Key,
 				 IN BOOLEAN Write)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PEVENT_OBJECT EventObject;
 	    PPENDING_IRP PendingIrp;
@@ -739,9 +735,14 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
      * sure there isn't a concurrent WRITE IRP in progress. If there is one, wait for it
      * to finish. */
     AWAIT_IF(Locals.FileObject->Fcb && Locals.FileObject->Fcb->WritePending &&
-	     Locals.FileOffset + BufferLength > Locals.FileObject->Fcb->FileSize,
-	     KeWaitForSingleObject, State, Locals, Thread,
+	     Locals.FileOffset + BufferLength > Locals.FileObject->Fcb->FileSize, Status,
+	     KeWaitForSingleObject, State, Locals,
 	     &Locals.FileObject->Fcb->WriteCompleted.Header, FALSE, NULL);
+
+    /* If the async ops was canceled, get out immediately. */
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto out;
+    }
 
     /* If the target file is part of a mounted volume, go through Cc to do the IO,
      * unless FILE_NO_INTERMEDIATE_BUFFERING was set when the file was opened. */
@@ -801,11 +802,13 @@ static NTSTATUS IopReadWriteFile(IN ASYNC_STATE State,
     }
 
     /* For now every IO is synchronous. */
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.IoCompletionEvent->Header, FALSE, NULL);
     Locals.IoStatus = Locals.Context ? Locals.Context->IoStatus :
 	Locals.PendingIrp->IoResponseStatus;
-    Status = STATUS_SUCCESS;
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = STATUS_SUCCESS;
+    }
 
 out:
     if (!NT_SUCCESS(Status)) {
@@ -833,7 +836,6 @@ out:
 }
 
 NTSTATUS NtReadFile(IN ASYNC_STATE State,
-                    IN PTHREAD Thread,
                     IN HANDLE FileHandle,
                     IN HANDLE EventHandle,
                     IN PIO_APC_ROUTINE ApcRoutine,
@@ -844,12 +846,11 @@ NTSTATUS NtReadFile(IN ASYNC_STATE State,
                     IN OPTIONAL PLARGE_INTEGER ByteOffset,
                     IN OPTIONAL PULONG Key)
 {
-    return IopReadWriteFile(State, Thread, FileHandle, EventHandle, ApcRoutine, ApcContext,
+    return IopReadWriteFile(State, FileHandle, EventHandle, ApcRoutine, ApcContext,
 			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, FALSE);
 }
 
 NTSTATUS NtReadFileScatter(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
 			   IN HANDLE FileHandle,
 			   IN HANDLE Event,
 			   IN PIO_APC_ROUTINE UserApcRoutine,
@@ -864,7 +865,6 @@ NTSTATUS NtReadFileScatter(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtWriteFile(IN ASYNC_STATE State,
-                     IN PTHREAD Thread,
                      IN HANDLE FileHandle,
                      IN HANDLE EventHandle,
                      IN PIO_APC_ROUTINE ApcRoutine,
@@ -875,12 +875,11 @@ NTSTATUS NtWriteFile(IN ASYNC_STATE State,
                      IN OPTIONAL PLARGE_INTEGER ByteOffset,
                      IN OPTIONAL PULONG Key)
 {
-    return IopReadWriteFile(State, Thread, FileHandle, EventHandle, ApcRoutine, ApcContext,
+    return IopReadWriteFile(State, FileHandle, EventHandle, ApcRoutine, ApcContext,
 			    IoStatusBlock, Buffer, BufferLength, ByteOffset, Key, TRUE);
 }
 
 NTSTATUS NtWriteFileGather(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
 			   IN HANDLE FileHandle,
 			   IN HANDLE Event,
 			   IN PIO_APC_ROUTINE ApcRoutine,
@@ -894,7 +893,7 @@ NTSTATUS NtWriteFileGather(IN ASYNC_STATE State,
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtLockFile(IN ASYNC_STATE State, IN PTHREAD Thread, IN HANDLE FileHandle,
+NTSTATUS NtLockFile(IN ASYNC_STATE State, IN HANDLE FileHandle,
 		    IN HANDLE EventHandle, IN PIO_APC_ROUTINE ApcRoutine,
 		    IN PVOID ApcContext, OUT IO_STATUS_BLOCK *IoStatusBlock,
 		    IN PLARGE_INTEGER ByteOffset, IN PLARGE_INTEGER Length, IN ULONG Key,
@@ -903,7 +902,7 @@ NTSTATUS NtLockFile(IN ASYNC_STATE State, IN PTHREAD Thread, IN HANDLE FileHandl
     UNIMPLEMENTED;
 }
 
-NTSTATUS NtUnlockFile(IN ASYNC_STATE State, IN PTHREAD Thread, IN HANDLE FileHandle,
+NTSTATUS NtUnlockFile(IN ASYNC_STATE State, IN HANDLE FileHandle,
 		      OUT IO_STATUS_BLOCK *IoStatusBlock, IN PLARGE_INTEGER ByteOffset,
 		      IN PLARGE_INTEGER Length, IN ULONG Key)
 {
@@ -911,7 +910,6 @@ NTSTATUS NtUnlockFile(IN ASYNC_STATE State, IN PTHREAD Thread, IN HANDLE FileHan
 }
 
 static NTSTATUS IopDeviceIoControlFile(IN ASYNC_STATE State,
-				       IN PTHREAD Thread,
 				       IN HANDLE FileHandle,
 				       IN HANDLE EventHandle,
 				       IN PIO_APC_ROUTINE ApcRoutine,
@@ -924,11 +922,9 @@ static NTSTATUS IopDeviceIoControlFile(IN ASYNC_STATE State,
 				       IN ULONG OutputBufferLength,
 				       IN BOOLEAN FsControl)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PEVENT_OBJECT EventObject;
 	    PPENDING_IRP PendingIrp;
@@ -974,14 +970,16 @@ static NTSTATUS IopDeviceIoControlFile(IN ASYNC_STATE State,
      * The idea is to pass it via APC. When NtWaitForSingleObject
      * returns from the wait the special APC runs and write to the
      * IO_STATUS_BLOCK. We have reserved the APC_TYPE_IO for this. */
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
     /* This is the starting point when the function is resumed. */
     if (IoStatusBlock != NULL) {
 	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;
     }
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = Locals.PendingIrp->IoResponseStatus.Status;
+    }
     if (FsControl && ControlCode == FSCTL_DISMOUNT_VOLUME && NT_SUCCESS(Status)) {
 	assert(Locals.FileObject->DeviceObject);
 	assert(Locals.FileObject->DeviceObject->Vcb);
@@ -1007,7 +1005,6 @@ out:
 }
 
 NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
                                IN HANDLE FileHandle,
                                IN HANDLE EventHandle,
                                IN PIO_APC_ROUTINE ApcRoutine,
@@ -1019,14 +1016,13 @@ NTSTATUS NtDeviceIoControlFile(IN ASYNC_STATE State,
                                IN PVOID OutputBuffer,
                                IN ULONG OutputBufferLength)
 {
-    return IopDeviceIoControlFile(State, Thread, FileHandle, EventHandle,
+    return IopDeviceIoControlFile(State, FileHandle, EventHandle,
 				  ApcRoutine, ApcContext, IoStatusBlock, Ioctl,
 				  InputBuffer, InputBufferLength,
 				  OutputBuffer, OutputBufferLength, FALSE);
 }
 
 NTSTATUS NtFsControlFile(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
 			 IN HANDLE FileHandle,
 			 IN HANDLE EventHandle,
 			 IN PIO_APC_ROUTINE ApcRoutine,
@@ -1038,7 +1034,7 @@ NTSTATUS NtFsControlFile(IN ASYNC_STATE State,
 			 IN PVOID OutputBuffer,
 			 IN ULONG OutputBufferLength)
 {
-    return IopDeviceIoControlFile(State, Thread, FileHandle, EventHandle,
+    return IopDeviceIoControlFile(State, FileHandle, EventHandle,
 				  ApcRoutine, ApcContext, IoStatusBlock, Fsctl,
 				  InputBuffer, InputBufferLength,
 				  OutputBuffer, OutputBufferLength, TRUE);
@@ -1051,7 +1047,6 @@ NTSTATUS NtFsControlFile(IN ASYNC_STATE State,
             break
 
 NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE State,
-                              IN PTHREAD Thread,
                               IN HANDLE FileHandle,
                               IN HANDLE EventHandle,
                               IN PIO_APC_ROUTINE ApcRoutine,
@@ -1064,11 +1059,9 @@ NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE State,
                               IN OPTIONAL PCSTR FileName,
                               IN BOOLEAN RestartScan)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PEVENT_OBJECT EventObject;
 	    PIO_REQUEST_PARAMETERS Irp;
@@ -1128,10 +1121,12 @@ NTSTATUS NtQueryDirectoryFile(IN ASYNC_STATE State,
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, Locals.Irp, &Locals.PendingIrp));
 
     /* For now every IO is synchronous. */
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
-    Status = STATUS_SUCCESS;
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = STATUS_SUCCESS;
+    }
 
 out:
     if (!NT_SUCCESS(Status)) {
@@ -1159,16 +1154,13 @@ out:
 }
 
 NTSTATUS NtDeleteFile(IN ASYNC_STATE State,
-                      IN PTHREAD Thread,
                       IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
     HANDLE FileHandle = NULL;
     IO_STATUS_BLOCK IoStatus;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    HANDLE FileHandle;
 	});
 
@@ -1177,7 +1169,7 @@ NTSTATUS NtDeleteFile(IN ASYNC_STATE State,
      * driver so it can mark the file as being delete. Once all open handles
      * to the file are closed, the file system driver deletes the file in the
      * IRP_MJ_CLEANUP dispatch function. */
-    AWAIT_EX(Status, IopCreateFile, State, Locals, Thread, &FileHandle, DELETE,
+    AWAIT(Status, IopCreateFile, State, Locals, &FileHandle, DELETE,
 	     ObjectAttributes, &IoStatus, NULL, 0, FILE_SHARE_DELETE,
 	     FILE_OPEN, FILE_DELETE_ON_CLOSE, FALSE);
     Locals.FileHandle = FileHandle;
@@ -1185,12 +1177,14 @@ NTSTATUS NtDeleteFile(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, Status);
     }
 
-    AWAIT(NtClose, State, Locals, Thread, Locals.FileHandle);
-    ASYNC_END(State, STATUS_SUCCESS);
+    AWAIT(Status, NtClose, State, Locals, Locals.FileHandle);
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = STATUS_SUCCESS;
+    }
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS NtCancelIoFile(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
 			IN HANDLE FileHandle,
 			OUT PIO_STATUS_BLOCK IoStatusBlock)
 {
@@ -1199,16 +1193,13 @@ NTSTATUS NtCancelIoFile(IN ASYNC_STATE State,
 
 /* TODO: We need to cache basic file info since this is accessed frequently. */
 NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
-                               IN PTHREAD Thread,
                                IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
                                OUT FILE_BASIC_INFORMATION *FileInformation)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
     HANDLE FileHandle = NULL;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    HANDLE FileHandle;
 	    PIO_FILE_OBJECT FileObject;
 	    IO_OPEN_CONTEXT OpenContext;
@@ -1223,9 +1214,9 @@ NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
     Locals.OpenContext.OpenPacket.ShareAccess = FILE_SHARE_READ;
     Locals.OpenContext.OpenPacket.Disposition = FILE_OPEN;
 
-    AWAIT_EX(Status, ObOpenObjectByName, State, Locals, Thread,
-	     ObjectAttributes, OBJECT_TYPE_FILE, FILE_READ_ATTRIBUTES,
-	     (POB_OPEN_CONTEXT)&Locals.OpenContext, &FileHandle);
+    AWAIT(Status, ObOpenObjectByName, State, Locals,
+	  ObjectAttributes, OBJECT_TYPE_FILE, FILE_READ_ATTRIBUTES,
+	  (POB_OPEN_CONTEXT)&Locals.OpenContext, &FileHandle);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -1265,7 +1256,7 @@ NTSTATUS NtQueryAttributesFile(IN ASYNC_STATE State,
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
     Status = STATUS_SUCCESS;
@@ -1280,12 +1271,12 @@ out:
     if (Locals.FileObject) {
 	ObDereferenceObject(Locals.FileObject);
     }
-    AWAIT_IF(Locals.FileHandle, NtClose, State, Locals, Thread, Locals.FileHandle);
+    AWAIT_IF(Locals.FileHandle && Status != STATUS_ASYNC_CANCELED, Status,
+	     NtClose, State, Locals, Locals.FileHandle);
     ASYNC_END(State, Locals.IoStatus.Status);
 }
 
 NTSTATUS NtQueryFullAttributesFile(IN ASYNC_STATE State,
-                                   IN PTHREAD Thread,
                                    IN OB_OBJECT_ATTRIBUTES ObjectAttributes,
                                    OUT FILE_NETWORK_OPEN_INFORMATION *FileInformation)
 {
@@ -1293,7 +1284,6 @@ NTSTATUS NtQueryFullAttributesFile(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtNotifyChangeDirectoryFile(IN ASYNC_STATE State,
-				     IN PTHREAD Thread,
 				     IN HANDLE FileHandle,
 				     IN HANDLE EventHandle,
 				     IN PIO_APC_ROUTINE ApcRoutine,
@@ -1308,18 +1298,15 @@ NTSTATUS NtNotifyChangeDirectoryFile(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
-                                IN PTHREAD Thread,
                                 IN HANDLE FileHandle,
                                 OUT IO_STATUS_BLOCK *IoStatusBlock,
                                 OUT PVOID FileInfoBuffer,
                                 IN ULONG Length,
                                 IN FILE_INFORMATION_CLASS FileInfoClass)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PPENDING_IRP PendingIrp;
 	    IO_STATUS_BLOCK IoStatus;
@@ -1429,10 +1416,12 @@ NTSTATUS NtQueryInformationFile(IN ASYNC_STATE State,
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
-    Status = STATUS_SUCCESS;
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = STATUS_SUCCESS;
+    }
 
 out:
     if (!NT_SUCCESS(Status)) {
@@ -1454,7 +1443,6 @@ out:
 }
 
 NTSTATUS NtQueryEaFile(IN ASYNC_STATE State,
-		       IN PTHREAD Thread,
 		       IN HANDLE FileHandle,
 		       OUT PIO_STATUS_BLOCK IoStatusBlock,
 		       OUT PVOID Buffer,
@@ -1469,18 +1457,15 @@ NTSTATUS NtQueryEaFile(IN ASYNC_STATE State,
 }
 
 static NTSTATUS IopOpenTargetDirectory(IN ASYNC_STATE State,
-				       IN PTHREAD Thread,
 				       IN PFILE_RENAME_INFORMATION RenameInfo,
 				       IN PIO_FILE_OBJECT FileObject,
 				       OUT PIO_FILE_OBJECT *TargetDirectory,
 				       OUT HANDLE *TargetDirectoryHandle)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
     IO_STATUS_BLOCK IoStatus;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PCHAR FileName;
 	    OB_OBJECT_ATTRIBUTES ObjAttr;
 	});
@@ -1506,10 +1491,10 @@ static NTSTATUS IopOpenTargetDirectory(IN ASYNC_STATE State,
     Locals.ObjAttr.ObjectNameBufferLength = FileNameLength + 1;
     Locals.ObjAttr.RootDirectory = RenameInfo->RootDirectory;
     assert(FileObject->Fcb);
-    AWAIT_EX(Status, IopCreateFile, State, Locals, Thread, TargetDirectoryHandle,
-	     (FileObject->Fcb->IsDirectory ? FILE_ADD_SUBDIRECTORY : 0) | SYNCHRONIZE,
-	     Locals.ObjAttr, &IoStatus, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
-	     FILE_OPEN, FILE_OPEN_FOR_BACKUP_INTENT, TRUE);
+    AWAIT(Status, IopCreateFile, State, Locals, TargetDirectoryHandle,
+	  (FileObject->Fcb->IsDirectory ? FILE_ADD_SUBDIRECTORY : 0) | SYNCHRONIZE,
+	  Locals.ObjAttr, &IoStatus, NULL, 0, FILE_SHARE_READ | FILE_SHARE_WRITE,
+	  FILE_OPEN, FILE_OPEN_FOR_BACKUP_INTENT, TRUE);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -1535,7 +1520,8 @@ static NTSTATUS IopOpenTargetDirectory(IN ASYNC_STATE State,
     goto out;
 
 close:
-    AWAIT(NtClose, State, Locals, Thread, *TargetDirectoryHandle);
+    assert(Status != STATUS_ASYNC_CANCELED);
+    AWAIT(Status, NtClose, State, Locals, *TargetDirectoryHandle);
     if (*TargetDirectory) {
 	ObDereferenceObject(*TargetDirectory);
     }
@@ -1550,20 +1536,17 @@ out:
 }
 
 NTSTATUS NtSetInformationFile(IN ASYNC_STATE State,
-                              IN PTHREAD Thread,
                               IN HANDLE FileHandle,
                               OUT IO_STATUS_BLOCK *IoStatusBlock,
                               IN PVOID FileInfoBuffer,
                               IN ULONG Length,
                               IN FILE_INFORMATION_CLASS FileInfoClass)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
     PIO_FILE_OBJECT TargetDirectory = NULL;
     HANDLE TargetDirectoryHandle = NULL;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PFILE_RENAME_INFORMATION RenameInfo;
 	    PIO_FILE_OBJECT TargetDirectory;
@@ -1591,7 +1574,7 @@ NTSTATUS NtSetInformationFile(IN ASYNC_STATE State,
 	CHECK_LENGTH(Length, FileValidDataLengthInformation, FILE_VALID_DATA_LENGTH_INFORMATION);
 	CHECK_LENGTH(Length, FileShortNameInformation, UNICODE_STRING);
     default:
-	    Status = STATUS_INVALID_PARAMETER;
+	Status = STATUS_INVALID_PARAMETER;
 	goto out;
     }
 
@@ -1636,7 +1619,7 @@ NTSTATUS NtSetInformationFile(IN ASYNC_STATE State,
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wformat-invalid-specifier"
 		DbgTrace("Opening target directory failed. Path = %wZ\n", &Path);
-#pragma GCC diagnostic pop
+		#pragma GCC diagnostic pop
 #endif
 	    }
 	} else {
@@ -1654,8 +1637,8 @@ NTSTATUS NtSetInformationFile(IN ASYNC_STATE State,
     goto call_driver;
 
 open_target:
-    AWAIT_EX(Status, IopOpenTargetDirectory, State, Locals, Thread, Locals.RenameInfo,
-	     Locals.FileObject, &TargetDirectory, &TargetDirectoryHandle);
+    AWAIT(Status, IopOpenTargetDirectory, State, Locals, Locals.RenameInfo,
+	  Locals.FileObject, &TargetDirectory, &TargetDirectoryHandle);
     Locals.TargetDirectory = TargetDirectory;
     Locals.TargetDirectoryHandle = TargetDirectoryHandle;
     goto target_opened;
@@ -1685,16 +1668,21 @@ call_driver:
     }
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
+    if (Status == STATUS_ASYNC_CANCELED) {
+	goto out;
+    }
     Status = STATUS_SUCCESS;
 
     if (!Locals.TargetDirectoryHandle) {
 	goto out;
     }
-    AWAIT(NtClose, State, Locals, Thread, Locals.TargetDirectoryHandle);
-    Status = STATUS_SUCCESS;
+    AWAIT(Status, NtClose, State, Locals, Locals.TargetDirectoryHandle);
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = STATUS_SUCCESS;
+    }
 
 out:
     if (!NT_SUCCESS(Status)) {
@@ -1719,18 +1707,15 @@ out:
 }
 
 NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE State,
-                                      IN PTHREAD Thread,
                                       IN HANDLE FileHandle,
                                       OUT IO_STATUS_BLOCK *IoStatusBlock,
                                       IN PVOID FsInfoBuffer,
                                       IN ULONG Length,
                                       IN FS_INFORMATION_CLASS FsInformationClass)
 {
-    assert(Thread != NULL);
-    assert(Thread->Process != NULL);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PPENDING_IRP PendingIrp;
 	    IO_STATUS_BLOCK IoStatus;
@@ -1809,10 +1794,12 @@ NTSTATUS NtQueryVolumeInformationFile(IN ASYNC_STATE State,
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
     Locals.IoStatus = Locals.PendingIrp->IoResponseStatus;
-    Status = STATUS_SUCCESS;
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = STATUS_SUCCESS;
+    }
 
 out:
     if (!NT_SUCCESS(Status)) {
@@ -1834,7 +1821,6 @@ out:
 }
 
 NTSTATUS NtSetVolumeInformationFile(IN ASYNC_STATE State,
-				    IN PTHREAD Thread,
 				    IN HANDLE FileHandle,
 				    OUT IO_STATUS_BLOCK *IoStatusBlock,
 				    IN PVOID FsInformation,
@@ -1845,16 +1831,13 @@ NTSTATUS NtSetVolumeInformationFile(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtFlushBuffersFile(IN ASYNC_STATE State,
-			    IN PTHREAD Thread,
 			    IN HANDLE FileHandle,
 			    OUT IO_STATUS_BLOCK *IoStatusBlock)
 {
-    assert(Thread);
-    assert(Thread->Process);
     assert(IoStatusBlock);
     NTSTATUS Status = STATUS_NTOS_BUG;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	    PPENDING_IRP PendingIrp;
 	});
@@ -1891,13 +1874,15 @@ NTSTATUS NtFlushBuffersFile(IN ASYNC_STATE State,
     };
     IF_ERR_GOTO(out, Status, IopCallDriver(Thread, &Irp, &Locals.PendingIrp));
 
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.PendingIrp->IoCompletionEvent.Header, FALSE, NULL);
 
     if (IoStatusBlock != NULL) {
 	*IoStatusBlock = Locals.PendingIrp->IoResponseStatus;
     }
-    Status = Locals.PendingIrp->IoResponseStatus.Status;
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = Locals.PendingIrp->IoResponseStatus.Status;
+    }
 
 out:
     if (Locals.FileObject) {

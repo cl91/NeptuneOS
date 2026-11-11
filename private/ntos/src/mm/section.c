@@ -921,7 +921,6 @@ NTSTATUS MmCreateSection(IN OPTIONAL PIO_FILE_OBJECT FileObject,
 }
 
 NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
-			   IN PTHREAD Thread,
 			   IN OPTIONAL PIO_FILE_OBJECT FileObject,
 			   IN SIZE_T MaximumSize,
 			   IN ULONG PageProtection,
@@ -930,7 +929,7 @@ NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
 {
     NTSTATUS Status = STATUS_SUCCESS;
 
-    ASYNC_BEGIN(State);
+    ASYNC_BEGIN(State, Thread);
 
     /* You cannot create a section object for a non-file-system file object. */
     if (FileObject && !FileObject->Fcb) {
@@ -940,8 +939,8 @@ NTSTATUS MmCreateSectionEx(IN ASYNC_STATE State,
     /* For image section creation, we need to load the image file from disk
      * before calling MmCreateSection, because it needs to read the image headers
      * to create the image section. */
-    AWAIT_EX_IF(FileObject && (SectionAttributes & SEC_IMAGE), Status, CcPinData,
-		State, _, Thread, FileObject->Fcb, 0, FileObject->Fcb->FileSize);
+    AWAIT_IF(FileObject && (SectionAttributes & SEC_IMAGE), Status, CcPinData,
+	     State, _, FileObject->Fcb, 0, FileObject->Fcb->FileSize);
     if (!NT_SUCCESS(Status)) {
 	ASYNC_RETURN(State, Status);
     }
@@ -1317,7 +1316,6 @@ NTSTATUS MmUnmapViewOfSection(IN PVIRT_ADDR_SPACE VSpace,
 }
 
 NTSTATUS NtCreateSection(IN ASYNC_STATE State,
-			 IN PTHREAD Thread,
                          OUT HANDLE *SectionHandle,
                          IN ACCESS_MASK DesiredAccess,
                          IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -1329,7 +1327,7 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
     NTSTATUS Status;
     PSECTION Section;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_FILE_OBJECT FileObject;
 	});
 
@@ -1342,9 +1340,9 @@ NTSTATUS NtCreateSection(IN ASYNC_STATE State,
 	assert(Locals.FileObject);
     }
 
-    AWAIT_EX(Status, MmCreateSectionEx, State, Locals, Thread, Locals.FileObject,
-	     MaximumSize ? MaximumSize->QuadPart : 0, SectionPageProtection,
-	     SectionAttributes, &Section);
+    AWAIT(Status, MmCreateSectionEx, State, Locals, Locals.FileObject,
+	  MaximumSize ? MaximumSize->QuadPart : 0, SectionPageProtection,
+	  SectionAttributes, &Section);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -1368,7 +1366,6 @@ out:
 }
 
 NTSTATUS NtOpenSection(IN ASYNC_STATE State,
-		       IN PTHREAD Thread,
 		       OUT HANDLE *SectionHandle,
 		       IN ACCESS_MASK DesiredAccess,
 		       IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
@@ -1377,7 +1374,6 @@ NTSTATUS NtOpenSection(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtMapViewOfSection(IN ASYNC_STATE AsyncState,
-                            IN PTHREAD Thread,
                             IN HANDLE SectionHandle,
                             IN HANDLE ProcessHandle,
                             IN OUT OPTIONAL PPVOID BaseAddress,
@@ -1389,6 +1385,9 @@ NTSTATUS NtMapViewOfSection(IN ASYNC_STATE AsyncState,
                             IN ULONG AllocationType,
                             IN ULONG AccessProtection)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
+
     /* On 64-bit systems the HighZeroBits parameter is interpreted as a bit mask if
      * it is greater than or equal to 32. Convert the bit mask to the number of bits
      * in this case. */
@@ -1447,10 +1446,11 @@ out:
 }
 
 NTSTATUS NtUnmapViewOfSection(IN ASYNC_STATE AsyncState,
-                              IN PTHREAD Thread,
                               IN HANDLE ProcessHandle,
                               IN PVOID BaseAddress)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     PPROCESS Process = NULL;
     NTSTATUS Status;
 
@@ -1468,13 +1468,14 @@ out:
 }
 
 NTSTATUS NtQuerySection(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
                         IN HANDLE SectionHandle,
                         IN SECTION_INFORMATION_CLASS SectionInformationClass,
                         IN PVOID SectionInformationBuffer,
                         IN ULONG SectionInformationLength,
                         OUT ULONG *ReturnLength)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
+    assert(Thread != NULL);
     assert(ReturnLength);
     if (SectionHandle == NULL) {
 	return STATUS_INVALID_HANDLE;

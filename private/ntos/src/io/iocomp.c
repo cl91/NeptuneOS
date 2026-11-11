@@ -1,7 +1,6 @@
 #include "iop.h"
 
 NTSTATUS NtCreateIoCompletion(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread,
 			      OUT HANDLE *IoCompletionHandle,
 			      IN ACCESS_MASK DesiredAccess,
 			      IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -11,7 +10,6 @@ NTSTATUS NtCreateIoCompletion(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtRemoveIoCompletion(IN ASYNC_STATE AsyncState,
-			      IN PTHREAD Thread,
 			      IN HANDLE IoCompletionHandle,
 			      OUT PVOID *CompletionKey,
 			      OUT PVOID *CompletionContext,
@@ -22,7 +20,6 @@ NTSTATUS NtRemoveIoCompletion(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtSetIoCompletion(IN ASYNC_STATE AsyncState,
-			   IN PTHREAD Thread,
 			   IN HANDLE IoCompletionHandle,
 			   IN PVOID CompletionKey,
 			   IN PVOID CompletionContext,

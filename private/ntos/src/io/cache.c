@@ -588,12 +588,12 @@ static VOID CiPinDataCallback(IN PIO_FILE_CONTROL_BLOCK Fcb,
  *     status if an error has occurred.
  */
 NTSTATUS CcPinData(IN ASYNC_STATE State,
-		   IN PTHREAD Thread,
 		   IN PIO_FILE_CONTROL_BLOCK Fcb,
 		   IN ULONG64 FileOffset,
 		   IN ULONG64 Length)
 {
-    ASYNC_BEGIN(State, Locals, {
+    NTSTATUS Status;
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PPIN_DATA_CALLBACK_CONTEXT Context;
 	});
 
@@ -604,10 +604,12 @@ NTSTATUS CcPinData(IN ASYNC_STATE State,
     KeInitializeEvent(&Locals.Context->Event, NotificationEvent);
     CcPinDataEx(Fcb, FileOffset, Length, FALSE, CiPinDataCallback, Locals.Context);
 
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.Context->Event.Header, FALSE, NULL);
 
-    NTSTATUS Status = Locals.Context->Status;
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = Locals.Context->Status;
+    }
     KeUninitializeEvent(&Locals.Context->Event);
     CiFreePool(Locals.Context);
     ASYNC_END(State, Status);

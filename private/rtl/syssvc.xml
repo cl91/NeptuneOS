@@ -355,29 +355,6 @@
     <parameter annotation="in" type="LOCAL_HANDLE" name="CommPortHandle" />
   </svc>
 
-  <svc name="NtTestAlert" />
-
-  <svc name="NtWaitForSingleObject">
-    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
-    <parameter annotation="in" type="BOOLEAN" name="Alertable" />
-    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="TimeOut" />
-  </svc>
-
-  <svc name="NtSignalAndWaitForSingleObject">
-    <parameter annotation="in" type="HANDLE" name="SignalObject" />
-    <parameter annotation="in" type="HANDLE" name="WaitObject" />
-    <parameter annotation="in" type="BOOLEAN" name="Alertable" />
-    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="Timeout" />
-  </svc>
-
-  <svc name="NtWaitForMultipleObjects">
-    <parameter annotation="in" type="bufsize::ULONG" name="Count" />
-    <parameter annotation="in" type="buf::HandleArray" name="Handles" />
-    <parameter annotation="in" type="WAIT_TYPE" name="WaitType" />
-    <parameter annotation="in" type="BOOLEAN" name="Alertable" />
-    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="TimeOut" />
-  </svc>
-
   <svc name="NtAllocateVirtualMemory">
     <parameter annotation="in" type="HANDLE" name="ProcessHandle" />
     <parameter annotation="in out opt" type="ptr::PVOID" name="BaseAddress" />
@@ -599,7 +576,7 @@
 
   <svc name="NtQueryObject">
     <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
-    <parameter annotation="in" type="buftype::OBJECT_INFORMATION_CLASS" name="ObjectInformationClass" />
+    <parameter annotation="in" type="buftype::OBJECT_INFORMATION_CLASS" name="InfoClass" />
     <parameter annotation="out" type="buf::ObjectInformation" name="ObjectInformationBuffer" />
     <parameter annotation="in" type="bufsize::ULONG" name="ObjectInformationLength" />
     <parameter annotation="out opt" type="bufsize::ULONG" name="ReturnLength" />
@@ -1188,12 +1165,43 @@
     <parameter annotation="out opt" type="ptr::ULONG" name="ReturnLength" />
   </svc>
 
+  <svc name="NtWaitForSingleObject">
+    <parameter annotation="in" type="HANDLE" name="ObjectHandle" />
+    <parameter annotation="in" type="BOOLEAN" name="Alertable" />
+    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="TimeOut" />
+  </svc>
+
+  <svc name="NtSignalAndWaitForSingleObject">
+    <parameter annotation="in" type="HANDLE" name="SignalObject" />
+    <parameter annotation="in" type="HANDLE" name="WaitObject" />
+    <parameter annotation="in" type="BOOLEAN" name="Alertable" />
+    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="Timeout" />
+  </svc>
+
+  <svc name="NtWaitForMultipleObjects">
+    <parameter annotation="in" type="bufsize::ULONG" name="Count" />
+    <parameter annotation="in" type="buf::HandleArray" name="Handles" />
+    <parameter annotation="in" type="WAIT_TYPE" name="WaitType" />
+    <parameter annotation="in" type="BOOLEAN" name="Alertable" />
+    <parameter annotation="in opt" type="ptr::LARGE_INTEGER" name="TimeOut" />
+  </svc>
+
   <svc name="NtQueueApcThread">
     <parameter annotation="in" type="HANDLE" name="ThreadHandle" />
     <parameter annotation="in" type="PKNORMAL_ROUTINE" name="ApcRoutine" />
     <parameter annotation="in" type="PVOID" name="NormalContext" />
     <parameter annotation="in" type="PVOID" name="SystemArgument1" />
     <parameter annotation="in" type="PVOID" name="SystemArgument2" />
+  </svc>
+
+  <svc name="NtTestAlert" />
+
+  <svc name="NtSetThreadExecutionMode" noasync="true">
+    <parameter annotation="in" type="ptr::THREAD_EXECUTION_MODE" name="ExecutionMode" />
+  </svc>
+
+  <svc name="NtAsyncContinue" noasync="true">
+    <parameter annotation="in" type="ULONG_PTR" name="AsyncObjIdToResume" />
   </svc>
 
   <svc name="KeContinue" nofpu="true">

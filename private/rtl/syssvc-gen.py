@@ -138,8 +138,7 @@ NTOS_SVC_GEN_H_TEMPLATE = """#pragma once
 #include <ntos.h>
 {# #}
 {%- for svc in svc_list %}
-NTSTATUS {{svc.server_name}}(IN ASYNC_STATE AsyncState,
-{{svc.server_param_indent}}IN struct _THREAD *Thread{%- for param in svc.params %},
+NTSTATUS {{svc.server_name}}({%- if svc.noasync %}IN PTHREAD Thread{% else %}IN ASYNC_STATE AsyncState{% endif %}{%- for param in svc.params %},
 {{svc.server_param_indent}}{{param.annotations}} {{param.server_decl}}{%- endfor %});
 {# #}
 {%- endfor %}
@@ -167,11 +166,11 @@ SVC_PARAMS_GEN_H_TEMPLATE = """typedef union _SAVED_SERVICE_PARAMETERS {
 
 NTOS_SVC_GEN_C_TEMPLATE = """#include <ntos.h>
 {{extra_headers}}
-
 static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
                         {{handler_func_indent}}IN PTHREAD Thread,
                         {{handler_func_indent}}IN ULONG ReqMsgLength,
                         {{handler_func_indent}}OUT ULONG *pMsgBufferEnd,
+                        {{handler_func_indent}}OUT ULONG *AsyncObjId,
                         {{handler_func_indent}}OUT BOOLEAN *ReplyCapSaved)
 {
     *ReplyCapSaved = FALSE;
@@ -181,7 +180,8 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
     case {{svc.enum_tag}}:
     {
         if (ReqMsgLength != {{svc.msglength}}) {
-            DbgTrace("Invalid service message length for {{svc_group}} service %d (expect %d got %d)\\n",
+            DbgTrace("Invalid service message length for {{svc_group}} service %d "
+                     "(expect %d got %d)\\n",
                      SvcNum, {{svc.msglength}}, ReqMsgLength);
             break;
         }
@@ -196,11 +196,32 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
         {{param.server_pre_marshaling|indent(8, False)}}
 {%- endif %}
 {%- endfor %}
+{%- if svc.noasync %}
+        SAVED_SERVICE_PARAMETERS SavedParams = {};
+        UNUSED PSAVED_SERVICE_PARAMETERS pSavedParams = &SavedParams;
+{%- else %}
+        PASYNC_CONTEXT AsyncCtx = NULL;
+        *AsyncObjId = ULONG_MAX;
+        Status = KiAllocateAsyncContext(Thread, &AsyncCtx);
+        if (!NT_SUCCESS(Status)) {
+            DbgTrace("Unable to allocate async context for thread %s|%p, status 0x%x\\n",
+                     KEDBG_THREAD_TO_FILENAME(Thread), Thread, Status);
+            goto ServerPostMarshaling_{{svc.server_name}};
+        }
+        assert(AsyncCtx);
+        *AsyncObjId = AsyncCtx->AsyncObjId;
+        assert(*AsyncObjId <= Thread->AsyncObjMaxId);
+        assert(AsyncCtx == Thread->AsyncContexts[*AsyncObjId]);
+        UNUSED PSAVED_SERVICE_PARAMETERS pSavedParams = &AsyncCtx->SavedParams;
+{%- endif %}
 {%- for param in svc.params %}
 {%- if param.server_marshaling %}
         {{param.server_marshaling|indent(8, False)}}
 {%- endif %}
 {%- endfor %}
+{%- if svc.noasync %}
+        *ReplyCapSaved = FALSE;
+{%- else %}
         Status = KiServiceSaveReplyCap(Thread);
         if (!NT_SUCCESS(Status)) {
             /* This shouldn't happen, but if it did, something is seriously wrong. */
@@ -208,26 +229,54 @@ static inline NTSTATUS {{handler_func}}(IN ULONG SvcNum,
             goto ServerPostMarshaling_{{svc.server_name}};
         }
         *ReplyCapSaved = TRUE;
+{%- endif %}
         DbgTrace("Calling {{svc.server_name}}\\n");
-        KI_DEFINE_INIT_ASYNC_STATE(AsyncState, Thread);
-        Status = {{svc.server_name}}(AsyncState, Thread{% for param in svc.params %}, {{param.name}}{% endfor %});
+{%- if not svc.noasync %}
+        KI_DEFINE_INIT_ASYNC_STATE(AsyncState, AsyncCtx);
+{%- endif %}
+        Status = {{svc.server_name}}({%- if svc.noasync %}Thread{% else %}AsyncState{% endif %}{% for param in svc.params %}, {{param.name}}{% endfor %});
+{%- if not svc.noasync %}
         if (Status == STATUS_ASYNC_PENDING) {
-            DbgTrace("{{svc.server_name}} returned async pending status. Suspending thread %p\\n", Thread);
-            Thread->SvcNum = SvcNum;
-            Thread->WdmSvc = {% if wdmsvc %}TRUE{% else %}FALSE{% endif%};
-            Thread->MsgBufferEnd = MsgBufferEnd;
+            DbgTrace("{{svc.server_name}} returned async pending status. Suspending "
+                     "async context id %d (max %d) of thread %p\\n", *AsyncObjId,
+                     Thread->AsyncObjMaxId, Thread);
+            if (Thread->AsyncObjMaxId && MsgBufferEnd) {
+                assert(AsyncCtx->SavedMsgBuf);
+                RtlCopyMemory(AsyncCtx->SavedMsgBuf,
+                              &SVC_MSGBUF_OFFSET_TO_ARG(Thread->IpcBufferServerAddr, 0, CHAR),
+                              MsgBufferEnd);
+            }
+            AsyncCtx->SvcNum = SvcNum;
+            AsyncCtx->WdmSvc = {% if wdmsvc %}TRUE{% else %}FALSE{% endif%};
+            AsyncCtx->MsgBufferEnd = MsgBufferEnd;
 {%- for param in svc.params %}
-            Thread->SavedParams.{{svc.server_name}}Params.{{param.name}} = {{param.name}};
+            AsyncCtx->SavedParams.{{svc.server_name}}Params.{{param.name}} = {{param.name}};
 {%- endfor %}
         } else {
+{%- endif %}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-label"
 ServerPostMarshaling_{{svc.server_name}}:
-            DbgTrace("{{svc.server_name}} returned status 0x%x. %s to thread %p\\n", Status, Status == STATUS_NTOS_NO_REPLY ? "Not replying" : "Replying", Thread);
+#pragma GCC diagnostic pop
+{% if not svc.noasync %}    {% endif %}        DbgTrace("{{svc.server_name}} returned status 0x%x. %s to thread %p\\n",
+{% if not svc.noasync %}    {% endif %}                 Status,
+{% if not svc.noasync %}    {% endif %}                 Status == STATUS_NTOS_NO_REPLY ? "Not replying" : "Replying",
+{% if not svc.noasync %}    {% endif %}                 Thread);
 {%- for param in svc.params %}
 {%- if param.server_post_marshaling %}
-            {{param.server_post_marshaling|indent(12, False)}}
+{%- if not svc.noasync %}    {% endif %}        {{param.server_post_marshaling|indent(12, False)}}
 {%- endif %}
 {%- endfor %}
+{%- if not svc.noasync %}
+            /* Before we return, on debug build we check that the async function has
+             * correctly poped the async stack (by using ASYNC_RETURN rather than return). */
+            KiCheckAsyncStackEmpty(AsyncCtx);
+            KiFreeAsyncContext(Thread, AsyncCtx);
+{%- endif %}
+{% if not svc.noasync %}    {% endif %}        *AsyncObjId = ULONG_MAX;
+{%- if not svc.noasync %}
         }
+{%- endif %}
         break;
     }
 {# #}
@@ -239,25 +288,39 @@ ServerPostMarshaling_{{svc.server_name}}:
     return Status;
 }
 {# #}
-static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread)
+static inline NTSTATUS {{resume_func}}(IN PASYNC_CONTEXT AsyncCtx)
 {
-    assert(Thread->WdmSvc == {%- if wdmsvc %}TRUE{% else %}FALSE{% endif%});
+    assert(AsyncCtx->WdmSvc == {%- if wdmsvc %}TRUE{% else %}FALSE{% endif%});
+    PTHREAD Thread = AsyncCtx->Thread;
+    assert(Thread);
     NTSTATUS Status = STATUS_INVALID_PARAMETER;
-    ULONG SvcNum = Thread->SvcNum;
+    ULONG SvcNum = AsyncCtx->SvcNum;
     switch (SvcNum) {
-{%- for svc in svc_list %}
-    case {{svc.enum_tag}}:
+{% for svc in svc_list %}
+{%- if not svc.noasync %}    case {{svc.enum_tag}}:
     {
 {%- for param in svc.params %}
-        {{param.server_decl}} = Thread->SavedParams.{{svc.server_name}}Params.{{param.name}};
+        {{param.server_decl}} = AsyncCtx->SavedParams.{{svc.server_name}}Params.{{param.name}};
 {%- endfor %}
-        DbgTrace("Resuming thread %p. Calling {{svc.server_name}} with saved context.\\n", Thread);
-        KI_DEFINE_INIT_ASYNC_STATE(AsyncState, Thread);
-        Status = {{svc.server_name}}(AsyncState, Thread{% for param in svc.params %}, {{param.name}}{% endfor %});
+        UNUSED PSAVED_SERVICE_PARAMETERS pSavedParams = &AsyncCtx->SavedParams;
+        DbgTrace("Resuming thread %p (async obj id %d). Calling {{svc.server_name}} with saved "
+                 "context.\\n", Thread, AsyncCtx->AsyncObjId);
+        KI_DEFINE_INIT_ASYNC_STATE(AsyncState, AsyncCtx);
+        Status = {{svc.server_name}}(AsyncState{% for param in svc.params %}, {{param.name}}{% endfor %});
         if (Status == STATUS_ASYNC_PENDING) {
-            DbgTrace("{{svc.server_name}} returned async pending status. Suspending thread %p\\n", Thread);
+            DbgTrace("{{svc.server_name}} returned async pending status. Suspending "
+                     "async context id %d (max %d) of thread %p\\n", AsyncCtx->AsyncObjId,
+                     Thread->AsyncObjMaxId, Thread);
+            if (Thread->AsyncObjMaxId && AsyncCtx->MsgBufferEnd) {
+                assert(AsyncCtx->SavedMsgBuf);
+                RtlCopyMemory(AsyncCtx->SavedMsgBuf,
+                              &SVC_MSGBUF_OFFSET_TO_ARG(Thread->IpcBufferServerAddr, 0, CHAR),
+                              AsyncCtx->MsgBufferEnd);
+            }
         } else {
-            DbgTrace("{{svc.server_name}} returned status 0x%x. %s to thread %p\\n", Status, Status == STATUS_NTOS_NO_REPLY ? "Not replying" : "Replying", Thread);
+            DbgTrace("{{svc.server_name}} returned status 0x%x. %s to thread %p\\n", Status,
+                     Status == STATUS_NTOS_NO_REPLY ? "Not replying" : "Replying",
+                     Thread);
 {%- for param in svc.params %}
 {%- if param.server_post_marshaling %}
             {{param.server_post_marshaling|indent(12, False)}}
@@ -267,9 +330,12 @@ static inline NTSTATUS {{resume_func}}(IN PTHREAD Thread)
         break;
     }
 {# #}
+{% endif %}
 {%- endfor %}
-    default:
-        DbgTrace("BUGBUG!! BUGBUG!! Invalid {{svc_group}} service number %d when resuming thread %p.\\n", SvcNum, Thread);
+default:
+        DbgTrace("BUGBUG!! BUGBUG!! Invalid {{svc_group}} service number %d when "
+                 "resuming thread %p (async obj id %d, max %d).\\n", SvcNum, Thread,
+                 AsyncCtx->AsyncObjId, Thread->AsyncObjMaxId);
         assert(FALSE);
         break;
     }
@@ -761,9 +827,9 @@ if (!NT_SUCCESS(Status)) {
         p.marshaler_state_decl = self.format(pp, "BOOLEAN {{p.name}}Mapped")
         p.server_pre_marshaling = self.format(pp, """SERVICE_ARGUMENT {{p.name}}Arg = { .Word = seL4_GetMR({{p.idx}}) };
 {{server_type}} {{p.name}} = NULL;""")
-        p.server_marshaling = self.format(pp, """{%- if server_marshal_func %}Thread->SavedParams.{{svc_name}}MarshalerState.{{p.name}}Mapped = FALSE;
+        p.server_marshaling = self.format(pp, """{%- if server_marshal_func %}pSavedParams->{{svc_name}}MarshalerState.{{p.name}}Mapped = FALSE;
 if ({{p.name}}Arg.Word) {
-    Status = {{server_marshal_func}}(Thread, &Thread->SavedParams.{{svc_name}}MarshalerState.{{p.name}}Mapped, &{{p.name}}, {{p.name}}Arg.Word, {{sp.name}}{% if tp %}, {{tp.name}}{% endif %});
+    Status = {{server_marshal_func}}(Thread, &pSavedParams->{{svc_name}}MarshalerState.{{p.name}}Mapped, &{{p.name}}, {{p.name}}Arg.Word, {{sp.name}}{% if tp %}, {{tp.name}}{% endif %});
     if (!NT_SUCCESS(Status)) {
         DbgTrace("{{svc_name}}: Unable to marshal parameter at position {{p.idx+1}}. Error status is 0x%x\\n", Status);
         goto ServerPostMarshaling_{{svc_name}};
@@ -779,7 +845,7 @@ if ({{p.name}} == NULL) {
 }
 {%- endif %}""")
         p.server_post_marshaling = self.format(pp, """{%- if server_post_marshal_func %}if ({{p.name}} != NULL) {
-    {{server_post_marshal_func}}(Thread->SavedParams.{{svc_name}}MarshalerState.{{p.name}}Mapped, {{p.name}}, {{sp.name}}{% if tp %}, {{tp.name}}{% endif %});
+    {{server_post_marshal_func}}(pSavedParams->{{svc_name}}MarshalerState.{{p.name}}Mapped, {{p.name}}, {{sp.name}}{% if tp %}, {{tp.name}}{% endif %});
 }
 {%- endif %}""")
         p.marshaled = True
@@ -875,13 +941,14 @@ class ServiceParameter:
 class Service:
     # Record the service name, tag, parameter list, and invoke the marshallers
     # to generate the parameter marshaling code.
-    def __init__(self, server_name, client_name, params, client_only, wdmsvc, nofpu):
+    def __init__(self, server_name, client_name, params, client_only, wdmsvc, nofpu, noasync):
         self.server_name = server_name
         self.client_name = client_name
         self.enum_tag = camel_case_to_upper_snake_case(server_name)
         self.params = params
         self.client_only = client_only
         self.nofpu = nofpu
+        self.noasync = noasync
         self.server_param_indent = " " * (len("NTSTATUS") + len(server_name) + 2)
         self.msglength = len(params)+1
         if len(params) == 0 or wdmsvc:
@@ -1097,6 +1164,7 @@ def parse_svcxml(xml_file, wdmsvc, utf8_client):
     for svc in svcs.getElementsByTagName("svc"):
         name = str(svc.getAttribute("name"))
         nofpu = svc.getAttribute("nofpu")
+        noasync = svc.getAttribute("noasync")
         params = []
         ansi_params = []
         has_unicode_string = False
@@ -1128,13 +1196,13 @@ def parse_svcxml(xml_file, wdmsvc, utf8_client):
         # because we marshal Unicode input parameters on the client side.
         if has_unicode_out_param:
             if not utf8_client:
-                svc_list.append(Service(name+"W", name, params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu))
-            svc_list.append(Service(name+"A", name+"A", ansi_params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu))
+                svc_list.append(Service(name+"W", name, params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu, noasync = noasync))
+            svc_list.append(Service(name+"A", name+"A", ansi_params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu, noasync = noasync))
         else:
             if not has_unicode_string or not utf8_client:
-                svc_list.append(Service(name, name, params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu))
+                svc_list.append(Service(name, name, params, client_only = False, wdmsvc = wdmsvc, nofpu = nofpu, noasync = noasync))
             if has_unicode_string:
-                svc_list.append(Service(name, name+"A", ansi_params, client_only = True, wdmsvc = wdmsvc, nofpu = nofpu))
+                svc_list.append(Service(name, name+"A", ansi_params, client_only = True, wdmsvc = wdmsvc, nofpu = nofpu, noasync = noasync))
 
     # sanity check
     assert len(svc_list) != 0

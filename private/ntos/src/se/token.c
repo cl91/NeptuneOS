@@ -1,7 +1,6 @@
 #include "sepriv.h"
 
 NTSTATUS NtOpenProcessToken(IN ASYNC_STATE AsyncState,
-                            IN PTHREAD Thread,
                             IN HANDLE ProcessHandle,
                             IN ACCESS_MASK DesiredAccess,
                             OUT HANDLE *TokenHandle)
@@ -10,7 +9,6 @@ NTSTATUS NtOpenProcessToken(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtOpenProcessTokenEx(IN ASYNC_STATE AsyncState,
-                              IN PTHREAD Thread,
                               IN HANDLE ProcessHandle,
                               IN ACCESS_MASK DesiredAccess,
                               IN ULONG HandleAttributes,
@@ -20,7 +18,6 @@ NTSTATUS NtOpenProcessTokenEx(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtOpenThreadToken(IN ASYNC_STATE AsyncState,
-                           IN PTHREAD Thread,
                            IN HANDLE ThreadHandle,
                            IN ACCESS_MASK DesiredAccess,
                            IN BOOLEAN OpenAsSelf,
@@ -30,7 +27,6 @@ NTSTATUS NtOpenThreadToken(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtOpenThreadTokenEx(IN ASYNC_STATE AsyncState,
-                             IN PTHREAD Thread,
                              IN HANDLE ThreadHandle,
                              IN ACCESS_MASK DesiredAccess,
                              IN BOOLEAN OpenAsSelf,
@@ -41,7 +37,6 @@ NTSTATUS NtOpenThreadTokenEx(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtQueryInformationToken(IN ASYNC_STATE AsyncState,
-                                 IN PTHREAD Thread,
                                  IN HANDLE TokenHandle,
                                  IN TOKEN_INFORMATION_CLASS TokenInformationClass,
                                  IN PVOID TokenInformationBuffer,
@@ -52,7 +47,6 @@ NTSTATUS NtQueryInformationToken(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtAdjustPrivilegesToken(IN ASYNC_STATE AsyncState,
-                                 IN PTHREAD Thread,
                                  IN HANDLE TokenHandle,
                                  IN BOOLEAN DisableAllPrivileges,
                                  IN PVOID NewState,
@@ -64,7 +58,6 @@ NTSTATUS NtAdjustPrivilegesToken(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtDuplicateToken(IN ASYNC_STATE AsyncState,
-			  IN PTHREAD Thread,
 			  IN HANDLE ExistingTokenHandle,
 			  IN ACCESS_MASK DesiredAccess,
 			  IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -76,7 +69,6 @@ NTSTATUS NtDuplicateToken(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtImpersonateThread(IN ASYNC_STATE AsyncState,
-			     IN PTHREAD Thread,
 			     IN HANDLE ThreadHandle,
 			     IN HANDLE ThreadToImpersonate,
 			     IN PSECURITY_QUALITY_OF_SERVICE SecurityQualityOfService)

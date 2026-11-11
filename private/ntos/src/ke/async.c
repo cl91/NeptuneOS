@@ -7,7 +7,7 @@ static inline BOOLEAN KiApcQueueIsEmpty(IN PTHREAD Thread)
 }
 
 static inline VOID KiInitializeWaitBlock(IN PKWAIT_BLOCK WaitBlock,
-					 IN PTHREAD Thread,
+					 IN PASYNC_CONTEXT AsyncContext,
 					 IN PDISPATCHER_HEADER DispatcherObject,
 					 IN WAIT_TYPE WaitType,
 					 IN PKWAIT_BLOCK Next)
@@ -15,7 +15,7 @@ static inline VOID KiInitializeWaitBlock(IN PKWAIT_BLOCK WaitBlock,
     assert(WaitBlock != NULL);
     assert(DispatcherObject != NULL);
     memset(WaitBlock, 0, sizeof(KWAIT_BLOCK));
-    WaitBlock->Thread = Thread;
+    WaitBlock->AsyncContext = AsyncContext;
     WaitBlock->WaitType = WaitType;
     InsertHeadList(&DispatcherObject->WaitBlockList, &WaitBlock->DispatcherLink);
     WaitBlock->Dispatcher = DispatcherObject;
@@ -30,7 +30,7 @@ static inline VOID KiInitializeWaitBlock(IN PKWAIT_BLOCK WaitBlock,
 VOID KeDetachDispatcherObject(IN PDISPATCHER_HEADER Header)
 {
     LoopOverList(WaitBlock, &Header->WaitBlockList, KWAIT_BLOCK, DispatcherLink) {
-	assert(WaitBlock->Thread != NULL);
+	assert(WaitBlock->AsyncContext != NULL);
 	assert(WaitBlock->Dispatcher == Header);
 	/* Set the wait blocks' dispatcher object pointer to NULL so that later
 	 * the thread can be resumed (see KiWaitBlockIsSatisfied). */
@@ -68,15 +68,37 @@ static inline BOOLEAN KiInsertApc(IN PKAPC Apc)
     return TRUE;
 }
 
+static inline VOID KiDetachAsyncContextWaitBlocks(IN PASYNC_CONTEXT AsyncContext)
+{
+    /* Detach the dispatcher object from the async context's root wait block. If we
+     * don't do this, later when we add the root wait block to another (or the same)
+     * dispatcher object the WaitBlockList will be messed up. Note the dispatcher
+     * object can be NULL here because it may have been deleted, in which case we do
+     * nothing. */
+    for (PKWAIT_BLOCK Blk = &AsyncContext->RootWaitBlock; Blk != NULL; Blk = Blk->Next) {
+	if (Blk->Dispatcher != NULL) {
+	    RemoveEntryList(&Blk->DispatcherLink);
+	    Blk->Dispatcher = NULL;
+	}
+    }
+    AsyncContext->RootWaitBlock.Dispatcher = NULL;
+    AsyncContext->RootWaitBlock.Next = NULL;
+    /* Do the same for the timer wait block */
+    if (AsyncContext->TimerWaitBlock.Dispatcher != NULL) {
+	RemoveEntryList(&AsyncContext->TimerWaitBlock.DispatcherLink);
+	AsyncContext->TimerWaitBlock.Dispatcher = NULL;
+    }
+}
+
 NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
-			       IN PTHREAD Thread,
 			       IN PDISPATCHER_HEADER DispatcherObject,
 			       IN BOOLEAN Alertable,
 			       IN OPTIONAL PLARGE_INTEGER TimeOut)
 {
-    assert(Thread != NULL);
+    assert(State.AsyncContext != NULL);
+    assert(State.AsyncContext->Thread != NULL);
     assert(DispatcherObject != NULL);
-    ASYNC_BEGIN(State);
+    ASYNC_BEGIN(State, Thread);
 
     /* This is the first time that this function is being called. The thread
      * should not be in a suspended state. If it is, things are seriously wrong. */
@@ -98,41 +120,33 @@ NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
 
     /* If a timeout is specified, build the timer wait block. */
     if (TimeOut) {
-	KiInitializeWaitBlock(&Thread->TimerWaitBlock, Thread,
-			      &Thread->WaitTimer.Header, WaitAny, NULL);
-	KeSetTimer(&Thread->WaitTimer,
+	KiInitializeWaitBlock(&State.AsyncContext->TimerWaitBlock, State.AsyncContext,
+			      &State.AsyncContext->WaitTimer.Header, WaitAny, NULL);
+	KeSetTimer(&State.AsyncContext->WaitTimer,
 		   (SYSTEM_TIME) { .SystemTime = TimeOut->QuadPart },
 		   NULL, NULL, NULL, 0);
     }
-    KiInitializeWaitBlock(&Thread->RootWaitBlock, Thread, DispatcherObject,
-			  WaitAny, TimeOut ? &Thread->TimerWaitBlock : NULL);
+    KiInitializeWaitBlock(&State.AsyncContext->RootWaitBlock, State.AsyncContext,
+			  DispatcherObject, WaitAny,
+			  TimeOut ? &State.AsyncContext->TimerWaitBlock : NULL);
 
     /* Mark the thread as suspended and yield execution back to the system
      * service dispatcher. */
     Thread->Suspended = TRUE;
     Thread->Alertable = Alertable;
-    ASYNC_YIELD(State, _);
+    ASYNC_YIELD(State, _, {
+	    /* If we got here, it means that this async await is being canceled.
+	     * Detach the root wait blocks of the async context. */
+	    KiDetachAsyncContextWaitBlocks(State.AsyncContext);
+	});
 
     /* If control flow gets here it means that we are being called a second time
      * by the system service dispatcher. The thread will have been resumed at
      * this point so it should not be in the suspended state. */
     assert(Thread->Suspended == FALSE);
     assert(Thread->Alertable == Alertable);
-    /* Detach the dispatcher object from the thread's root wait block. If we don't
-     * do this here, later when we add the root wait block to another (or the same)
-     * dispatcher object the WaitBlockList will be messed up. Note the dispatcher
-     * object can be NULL here because it may have been deleted, in which case we
-     * do nothing. */
-    if (Thread->RootWaitBlock.Dispatcher != NULL) {
-	RemoveEntryList(&Thread->RootWaitBlock.DispatcherLink);
-	Thread->RootWaitBlock.Dispatcher = NULL;
-    }
-    /* Do the same for the timer wait block */
-    if (Thread->TimerWaitBlock.Dispatcher != NULL) {
-	RemoveEntryList(&Thread->TimerWaitBlock.DispatcherLink);
-	Thread->TimerWaitBlock.Dispatcher = NULL;
-    }
-    Thread->RootWaitBlock.Next = NULL;
+    /* Detach the root wait blocks of the async context. */
+    KiDetachAsyncContextWaitBlocks(State.AsyncContext);
     /* Reset the thread to non-alertable state */
     Thread->Alertable = FALSE;
     /* If the thread is in an alertable wait and the APC queue is not empty, return
@@ -144,18 +158,23 @@ NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
     ASYNC_END(State, STATUS_SUCCESS);
 }
 
+#define CLEAN_UP_WAIT_FOR_MULTIPLE_OBJECTS(State, Locals)   \
+    KiDetachAsyncContextWaitBlocks(State.AsyncContext);	    \
+    assert(Locals.WaitBlocks != NULL);                      \
+    ExFreePoolWithTag(Locals.WaitBlocks, NTOS_KE_TAG)
+
 NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
-				  IN PTHREAD Thread,
 				  IN BOOLEAN Alertable,
 				  IN WAIT_TYPE WaitType,
 				  IN PDISPATCHER_HEADER *DispatcherObjects,
 				  IN ULONG Count,
 				  IN OPTIONAL PLARGE_INTEGER TimeOut)
 {
-    assert(Thread != NULL);
+    assert(State.AsyncContext != NULL);
+    assert(State.AsyncContext->Thread != NULL);
     assert(DispatcherObjects != NULL);
     assert(Count != 0);
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PKWAIT_BLOCK WaitBlocks;
 	});
 
@@ -173,19 +192,19 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
      * wait block chain. Note we are not going to use the TimerWaitBlock. */
     assert(Thread->Suspended == FALSE);
     if (TimeOut) {
-	KiInitializeWaitBlock(&Thread->RootWaitBlock, Thread,
-			      &Thread->WaitTimer.Header, WaitAny, NULL);
-	KeSetTimer(&Thread->WaitTimer,
+	KiInitializeWaitBlock(&State.AsyncContext->RootWaitBlock, State.AsyncContext,
+			      &State.AsyncContext->WaitTimer.Header, WaitAny, NULL);
+	KeSetTimer(&State.AsyncContext->WaitTimer,
 		   (SYSTEM_TIME) { .SystemTime = TimeOut->QuadPart },
 		   NULL, NULL, NULL, 0);
     } else {
-	KiInitializeWaitBlock(&Thread->RootWaitBlock, Thread,
+	KiInitializeWaitBlock(&State.AsyncContext->RootWaitBlock, State.AsyncContext,
 			      DispatcherObjects[0], WaitType, NULL);
     }
-    PKWAIT_BLOCK CurrentWaitBlock = &Thread->RootWaitBlock;
+    PKWAIT_BLOCK CurrentWaitBlock = &State.AsyncContext->RootWaitBlock;
     for (ULONG i = (TimeOut ? 0 : 1); i < Count; i++) {
 	CurrentWaitBlock->Next = &Locals.WaitBlocks[i];
-	KiInitializeWaitBlock(&Locals.WaitBlocks[i], Thread,
+	KiInitializeWaitBlock(&Locals.WaitBlocks[i], State.AsyncContext,
 			      DispatcherObjects[i], WaitType, NULL);
 	CurrentWaitBlock = &Locals.WaitBlocks[i];
     }
@@ -193,22 +212,16 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
     /* Mark the thread as suspended and yield to the system service dispatcher. */
     Thread->Suspended = TRUE;
     Thread->Alertable = Alertable;
-    ASYNC_YIELD(State, Locals);
+    ASYNC_YIELD(State, Locals, {
+	    CLEAN_UP_WAIT_FOR_MULTIPLE_OBJECTS(State, Locals);
+	});
 
     /* If the control flow gets here it means that we are being called a second
      * time by the system service dispatcher. Free the wait block chain and
      * resume the thread. */
     assert(Thread->Suspended == FALSE);
     assert(Thread->Alertable == Alertable);
-    for (PKWAIT_BLOCK Blk = &Thread->RootWaitBlock; Blk != NULL; Blk = Blk->Next) {
-	if (Blk->Dispatcher != NULL) {
-	    RemoveEntryList(&Blk->DispatcherLink);
-	}
-    }
-    Thread->RootWaitBlock.Dispatcher = NULL;
-    Thread->RootWaitBlock.Next = NULL;
-    assert(Locals.WaitBlocks != NULL);
-    ExFreePoolWithTag(Locals.WaitBlocks, NTOS_KE_TAG);
+    CLEAN_UP_WAIT_FOR_MULTIPLE_OBJECTS(State, Locals);
     /* Reset the thread to non-alertable state */
     Thread->Alertable = FALSE;
     /* If the thread is in an alertable wait and the APC queue is not empty, return
@@ -218,6 +231,38 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
     }
 
     ASYNC_END(State, STATUS_SUCCESS);
+}
+
+/* This routine should only be called during thread object creation */
+NTSTATUS KeAllocateDefaultAsyncContext(IN PTHREAD Thread)
+{
+    assert(!Thread->AsyncContexts);
+    assert(!Thread->AsyncObjMaxId);
+    assert(!Thread->AsyncObjUsedMap);
+    assert(!Thread->AsyncResumeRoutine);
+    assert(!Thread->AsyncRoutineContext);
+    Thread->AsyncContexts = ExAllocatePoolWithTag(sizeof(PVOID), NTOS_KE_TAG);
+    if (!Thread->AsyncContexts) {
+	return STATUS_NO_MEMORY;
+    }
+    PASYNC_CONTEXT AsyncCtx = ExAllocatePoolWithTag(sizeof(ASYNC_CONTEXT), NTOS_KE_TAG);
+    if (!AsyncCtx) {
+	ExFreePoolWithTag(Thread->AsyncContexts, NTOS_KE_TAG);
+	Thread->AsyncContexts = NULL;
+	return STATUS_NO_MEMORY;
+    }
+    KiInitializeAsyncContext(Thread, 0, AsyncCtx);
+    return STATUS_SUCCESS;
+}
+
+VOID KeCancelThreadAsyncContexts(IN PTHREAD Thread)
+{
+    if (Thread->AsyncObjMaxId) {
+	/* TODO */
+    } else {
+	assert(Thread == Thread->AsyncContexts[0]->Thread);
+	ObDereferenceObject(Thread);
+    }
 }
 
 /*
@@ -238,6 +283,29 @@ static inline VOID KiResumeThread(IN PTHREAD Thread)
     Thread->Suspended = FALSE;
     /* Add the thread to the end of the ready list */
     InsertTailList(&KiReadyThreadList, &Thread->ReadyListLink);
+}
+
+/*
+ * If the thread object associated with the async context is running in
+ * synchronous execution mode, simply wake up the thread. If the thread
+ * has asynchronous execution enabled, queue an APC object to the thread
+ * to pass the async object id to the client.
+ */
+static inline VOID KiResumeAsyncContext(IN PASYNC_CONTEXT AsyncContext)
+{
+    assert(AsyncContext);
+    PTHREAD Thread = AsyncContext->Thread;
+    assert(Thread);
+    if (Thread->AsyncObjMaxId) {
+	if (Thread->AsyncResumeRoutine) {
+	    ULONG_PTR AsyncObjId = AsyncContext->AsyncObjId;
+	    KeQueueApcToThread(Thread, (PVOID)Thread->AsyncResumeRoutine,
+			       Thread->AsyncRoutineContext,
+			       (PVOID)AsyncObjId, NULL);
+	}
+    } else {
+	KiResumeThread(Thread);
+    }
 }
 
 NTSTATUS KeQueueApcToThread(IN PTHREAD Thread,
@@ -306,14 +374,21 @@ static BOOLEAN KiWaitBlockIsSatisfied(IN PKWAIT_BLOCK Block)
 
 /*
  * Returns true if all the wait conditions (ie. the master wake formula)
- * is satisfied, or if the thread is in an alertable wait and its APC
- * queue is not empty.
+ * of the async context is satisfied.
  */
-static inline BOOLEAN KiShouldWakeThread(IN PTHREAD Thread)
+static inline BOOLEAN KiShouldWakeAsyncContext(IN PASYNC_CONTEXT AsyncContext)
 {
-    assert(Thread != NULL);
-    return KiWaitBlockIsSatisfied(&Thread->RootWaitBlock) ||
-	(Thread->Alertable && !KiApcQueueIsEmpty(Thread));
+    assert(AsyncContext != NULL);
+    return KiWaitBlockIsSatisfied(&AsyncContext->RootWaitBlock);
+}
+
+/*
+ * Return true if the thread is in an alertable wait and its APC queue is
+ * not empty.
+ */
+static inline BOOLEAN KiShouldAlertThread(IN PTHREAD Thread)
+{
+    return Thread->Alertable && !KiApcQueueIsEmpty(Thread);
 }
 
 /*
@@ -364,9 +439,9 @@ VOID KeSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
     Dispatcher->Signaled = TRUE;
     /* Walk the wait block list and wake the thread up */
     LoopOverList(Block, &Dispatcher->WaitBlockList, KWAIT_BLOCK, DispatcherLink) {
-	assert(Block->Thread != NULL);
-	if (KiShouldWakeThread(Block->Thread)) {
-	    KiResumeThread(Block->Thread);
+	assert(Block->AsyncContext != NULL);
+	if (KiShouldWakeAsyncContext(Block->AsyncContext)) {
+	    KiResumeAsyncContext(Block->AsyncContext);
 	    /* If the dispatcher is a synchronization dispatcher, set it back to
 	     * non-signaled and exit the loop (we only wake up one thread). */
 	    if (Dispatcher->EventType == SynchronizationEvent) {
@@ -377,19 +452,29 @@ VOID KeSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
     }
 }
 
-NTSTATUS NtTestAlert(IN ASYNC_STATE State,
-		     IN PTHREAD Thread)
+NTSTATUS NtTestAlert(IN ASYNC_STATE State)
 {
     UNIMPLEMENTED;
 }
 
 NTSTATUS NtQueueApcThread(IN ASYNC_STATE AsyncState,
-			  IN PTHREAD Thread,
 			  IN HANDLE ThreadHandle,
 			  IN PKNORMAL_ROUTINE ApcRoutine,
 			  IN OPTIONAL PVOID NormalContext,
 			  IN OPTIONAL PVOID SystemArgument1,
 			  IN OPTIONAL PVOID SystemArgument2)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtSetThreadExecutionMode(IN PTHREAD Thread,
+				  IN PTHREAD_EXECUTION_MODE ExecutionMode)
+{
+    UNIMPLEMENTED;
+}
+
+NTSTATUS NtAsyncContinue(IN PTHREAD Thread,
+			 IN ULONG_PTR AsyncObjId)
 {
     UNIMPLEMENTED;
 }

@@ -165,10 +165,8 @@ static VOID RtlpUnWaitCriticalSection(PRTL_CRITICAL_SECTION CriticalSection)
  *--*/
 static PRTL_CRITICAL_SECTION_DEBUG RtlpAllocateDebugInfo(VOID)
 {
-    ULONG i;
-
     /* Try to allocate from our buffer first */
-    for (i = 0; i < MAX_STATIC_CS_DEBUG_OBJECTS; i++) {
+    for (ULONG i = 0; i < MAX_STATIC_CS_DEBUG_OBJECTS; i++) {
 	/* Check if Entry is free */
 	if (!RtlTestBit(&RtlpStaticDebugInfoFreeMap, i)) {
 	    /* Mark entry in use */
@@ -445,27 +443,31 @@ NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 }
 
 /*++
- * LdrpInitCriticalSection
+ * LdrpInitCriticalSectionLock
  *
- *     Initializes the Critical Section implementation. This is called
- *     during the process startup sequence by the loader component.
+ *     Initializes the critical section that protects the critical section
+ *     list. This is called during the process startup sequence by the loader.
  *
  * Params:
  *     None
  *
  * Returns:
- *     None.
+ *     STATUS_SUCCESS if successful. Error status if not.
  *
  * Remarks:
  *     After this call, the Process Critical Section list is protected.
  *
  *--*/
-VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore)
+NTSTATUS LdrpInitCriticalSectionLock(HANDLE CriticalSectionLockSemaphore)
 {
     /* Initialize the critical section protecting the process
-     * critical section list */
-    RtlpInitializeCriticalSection(&RtlpCriticalSectionLock,
-				  CriticalSectionLockSemaphore, 0, 0);
+     * critical section list. Note we force the routine below
+     * to allocate a debug info structure for this lock. This
+     * allocation uses the static debug info area, so it does
+     * not require the heap to be functional. */
+    RET_ERR(RtlpInitializeCriticalSection(&RtlpCriticalSectionLock,
+					  CriticalSectionLockSemaphore, 0,
+					  RTL_CRITICAL_SECTION_FLAG_FORCE_DEBUG_INFO));
 
     DPRINT("Inserting into ProcessLocks: %p, %p, %p\n",
 	   &RtlpCriticalSectionLock.DebugInfo->ProcessLocksList,
@@ -474,6 +476,7 @@ VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore)
     /* Add it to the process critical section list */
     InsertTailList(&RtlpCriticalSectionList,
 		   &RtlpCriticalSectionLock.DebugInfo->ProcessLocksList);
+    return STATUS_SUCCESS;
 }
 
 /*++

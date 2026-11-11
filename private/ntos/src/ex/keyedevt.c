@@ -1,7 +1,6 @@
 #include "ei.h"
 
 NTSTATUS NtCreateKeyedEvent(IN ASYNC_STATE AsyncState,
-			    IN PTHREAD Thread,
 			    OUT HANDLE *KeyedEventHandle,
 			    IN ACCESS_MASK DesiredAccess,
 			    IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
@@ -11,7 +10,6 @@ NTSTATUS NtCreateKeyedEvent(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtWaitForKeyedEvent(IN ASYNC_STATE AsyncState,
-			     IN PTHREAD Thread,
 			     IN OPTIONAL HANDLE KeyedEventHandle,
 			     IN PVOID Key,
 			     IN BOOLEAN Alertable,
@@ -21,7 +19,6 @@ NTSTATUS NtWaitForKeyedEvent(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtReleaseKeyedEvent(IN ASYNC_STATE AsyncState,
-			     IN PTHREAD Thread,
 			     IN OPTIONAL HANDLE KeyedEventHandle,
 			     IN PVOID Key,
 			     IN BOOLEAN Alertable,

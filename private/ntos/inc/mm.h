@@ -914,7 +914,6 @@ NTSTATUS MmCreateSection(IN OPTIONAL struct _IO_FILE_OBJECT *FileObject,
 			 IN ULONG SectionAttribute,
 			 OUT PSECTION *SectionObject);
 NTSTATUS MmCreateSectionEx(IN struct _ASYNC_STATE State,
-			   IN struct _THREAD *Thread,
 			   IN OPTIONAL struct _IO_FILE_OBJECT *FileObject,
 			   IN SIZE_T MaximumSize,
 			   IN ULONG PageProtection,
@@ -1022,7 +1021,6 @@ NTSTATUS MmMapHyperspacePage(IN PVIRT_ADDR_SPACE VSpace,
 			     OUT PVOID *MappedAddress,
 			     OUT ULONG *MappedLength);
 VOID MmUnmapHyperspacePage(IN PVOID MappedAddress);
-struct _THREAD;
 VOID MmHandleThreadVmFault(IN struct _THREAD *Thread,
 			   IN MWORD Addr,
 			   IN MWORD Ip,

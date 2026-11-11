@@ -428,6 +428,24 @@ typedef struct _THREAD_NAME_INFORMATION {
     UNICODE_STRING ThreadName;
 } THREAD_NAME_INFORMATION, *PTHREAD_NAME_INFORMATION;
 
+typedef VOID (NTAPI *PASYNC_RESUME_ROUTINE)(IN PVOID ApcContext,
+					    IN ULONG_PTR AsyncObjId,
+					    IN ULONG Reserved);
+
+/* Flags for THREAD_EXECUTION_MODE */
+#define THREAD_ASYNC_DELIVER_SPECIAL_APC	1 /* Deliver a special user APC when async
+						   * execution is to be resumed. Special user
+						   * APC does not require a thread to enter
+						   * an alertable wait and is delivered at
+						   * every return from a system service. */
+
+typedef struct _THREAD_EXECUTION_MODE {
+    ULONG MaxAsyncObjCount;	/* If 0, async execution is disabled. */
+    ULONG Flags;
+    PVOID ApcContext;
+    PASYNC_RESUME_ROUTINE ResumeRoutine;
+} THREAD_EXECUTION_MODE, *PTHREAD_EXECUTION_MODE;
+
 typedef struct _JOB_SET_ARRAY {
     HANDLE JobHandle;
     ULONG MemberLevel;
@@ -517,6 +535,10 @@ NTAPI NTSYSAPI NTSTATUS NtSuspendThread(IN HANDLE ThreadHandle,
 					OUT OPTIONAL PULONG PreviousSuspendCount);
 
 NTAPI NTSYSAPI NTSTATUS NtRegisterThreadTerminatePort(IN LOCAL_HANDLE PortHandle);
+
+NTAPI NTSYSAPI NTSTATUS NtSetThreadExecutionMode(IN PTHREAD_EXECUTION_MODE ExecutionMode);
+
+NTAPI NTSYSAPI NTSTATUS NtAsyncContinue(IN ULONG_PTR AsyncObjId);
 
 NTAPI NTSYSAPI NTSTATUS NtTerminateThread(IN HANDLE ThreadHandle,
 					  IN NTSTATUS ExitStatus);

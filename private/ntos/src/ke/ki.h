@@ -80,6 +80,17 @@ static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault,
     }
 }
 
+static inline VOID KiInitializeAsyncContext(IN PTHREAD Thread,
+					    IN ULONG AsyncObjId,
+					    OUT PASYNC_CONTEXT AsyncCtx)
+{
+    assert(AsyncObjId <= Thread->AsyncObjMaxId);
+    Thread->AsyncContexts[AsyncObjId] = AsyncCtx;
+    AsyncCtx->AsyncObjId = AsyncObjId;
+    AsyncCtx->Thread = Thread;
+    ObReferenceObjectByPointer(Thread);
+}
+
 /* async.c */
 ULONG KiDeliverApc(IN PTHREAD Thread,
 		   IN ULONG MsgBufOffset,

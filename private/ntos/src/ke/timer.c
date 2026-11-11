@@ -526,7 +526,7 @@ VOID KeUninitializeTimer(IN PTIMER Timer)
     if (Timer->ApcThread != NULL) {
 	RemoveEntryList(&Timer->ThreadLink);
     }
-    KeRemoveTimer(Timer);
+    KiRemoveTimer(Timer);
 }
 
 VOID KeAddIoTimer(IN PIO_TIMER Timer)
@@ -545,12 +545,12 @@ VOID KeRemoveIoTimer(IN PIO_TIMER Timer)
 }
 
 NTSTATUS NtCreateTimer(IN ASYNC_STATE State,
-                       IN PTHREAD Thread,
                        OUT HANDLE *Handle,
                        IN ACCESS_MASK DesiredAccess,
                        IN OPTIONAL OB_OBJECT_ATTRIBUTES ObjectAttributes,
                        IN TIMER_TYPE TimerType)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     assert(Handle != NULL);
@@ -568,7 +568,6 @@ NTSTATUS NtCreateTimer(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtOpenTimer(IN ASYNC_STATE State,
-		     IN PTHREAD Thread,
 		     OUT HANDLE *TimerHandle,
 		     IN ACCESS_MASK DesiredAccess,
 		     IN OB_OBJECT_ATTRIBUTES ObjectAttributes)
@@ -577,7 +576,6 @@ NTSTATUS NtOpenTimer(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtSetTimer(IN ASYNC_STATE State,
-                    IN PTHREAD Thread,
                     IN HANDLE TimerHandle,
                     IN PLARGE_INTEGER DueTime,
                     IN PTIMER_APC_ROUTINE TimerApcRoutine,
@@ -586,6 +584,7 @@ NTSTATUS NtSetTimer(IN ASYNC_STATE State,
                     IN LONG Period,
                     OUT OPTIONAL BOOLEAN *pPreviousState)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     PTIMER Timer = NULL;
@@ -601,7 +600,6 @@ NTSTATUS NtSetTimer(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtCancelTimer(IN ASYNC_STATE AsyncState,
-		       IN PTHREAD Thread,
 		       IN HANDLE TimerHandle,
 		       OUT OPTIONAL PBOOLEAN CurrentState)
 {
@@ -609,7 +607,6 @@ NTSTATUS NtCancelTimer(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS NtDelayExecution(IN ASYNC_STATE AsyncState,
-                          IN PTHREAD Thread,
                           IN BOOLEAN Alertable,
                           IN PLARGE_INTEGER Interval)
 {

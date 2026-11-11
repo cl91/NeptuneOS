@@ -377,7 +377,7 @@ typedef struct _PEB {                                                 /* win32/w
 
 C_ASSERT(sizeof(PEB) < PAGE_SIZE);
 
-typedef VOID (*PRTL_ASYNC_YIELD)(PVOID AsyncContext);
+typedef VOID (*PRTL_ASYNC_YIELD)(ULONG_PTR AsyncObjId);
 
 /*
  * Thread Environment Block (TEB).

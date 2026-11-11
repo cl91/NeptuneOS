@@ -295,7 +295,6 @@ VOID IopDriverObjectDeleteProc(IN POBJECT Self)
  * object already exists, this routine does nothing.
  */
 NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
-		       IN PTHREAD Thread,
 		       IN PCSTR DriverServicePath)
 {
     NTSTATUS Status;
@@ -305,7 +304,7 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     PVOID DriverImageHandle = NULL;
     PSECTION DriverImageSection = NULL;
 
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    POBJECT DriverObjectDirectory;
 	    PCSTR DriverName;
 	    PCSTR DriverImagePath;
@@ -360,9 +359,9 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     }
 
     /* Read the ImagePath value from the driver service registry key. */
-    AWAIT_EX(Status, CmReadKeyValueByPath, State, Locals, Thread,
-	     DriverServicePath, "ImagePath", &KeyObject,
-	     &RegValueType, (PPVOID)&DriverImagePath);
+    AWAIT(Status, CmReadKeyValueByPath, State, Locals,
+	  DriverServicePath, "ImagePath", &KeyObject,
+	  &RegValueType, (PPVOID)&DriverImagePath);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -389,9 +388,9 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
     Locals.OpenContext.OpenPacket.ShareAccess = FILE_SHARE_DELETE | FILE_SHARE_READ;
     Locals.OpenContext.OpenPacket.Disposition = 0;
 
-    AWAIT_EX(Status, ObOpenObjectByName, State, Locals,
-	     Thread, Locals.ObjectAttributes, OBJECT_TYPE_FILE, FILE_EXECUTE,
-	     (POB_OPEN_CONTEXT)&Locals.OpenContext, &DriverImageHandle);
+    AWAIT(Status, ObOpenObjectByName, State, Locals,
+	  Locals.ObjectAttributes, OBJECT_TYPE_FILE, FILE_EXECUTE,
+	  (POB_OPEN_CONTEXT)&Locals.OpenContext, &DriverImageHandle);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -406,12 +405,18 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
 	KeBugCheckMsg("IopLoadDriver: ObReferenceObjectByHandle should always succeed.");
     }
     Locals.DriverImageHandle = DriverImageHandle;
-    AWAIT(NtClose, State, Locals, Thread, Locals.DriverImageHandle);
+    AWAIT(Status, NtClose, State, Locals, Locals.DriverImageHandle);
+    /* If NtClose failed for some reason here (eg. if the async ops was canceled), we will
+     * have to leak this handle. This is fine as the handle table is eventually cleaned up
+     * during process termination. */
     Locals.DriverImageHandle = NULL;
+    if (!NT_SUCCESS(Status)) {
+	goto out;
+    }
 
     /* Create the driver image section */
-    AWAIT_EX(Status, MmCreateSectionEx, State, Locals, Thread,
-	     Locals.DriverImageFile, 0, PAGE_EXECUTE, SEC_IMAGE, &DriverImageSection);
+    AWAIT(Status, MmCreateSectionEx, State, Locals,
+	  Locals.DriverImageFile, 0, PAGE_EXECUTE, SEC_IMAGE, &DriverImageSection);
     if (!NT_SUCCESS(Status)) {
 	goto out;
     }
@@ -443,24 +448,26 @@ NTSTATUS IopLoadDriver(IN ASYNC_STATE State,
      * object as the driver process may crash during the load. */
     Locals.DriverObject = DriverObject;
     ObReferenceObjectByPointer(DriverObject);
-    AWAIT(KeWaitForSingleObject, State, Locals, Thread,
+    AWAIT(Status, KeWaitForSingleObject, State, Locals,
 	  &Locals.DriverObject->InitializationDoneEvent.Header, FALSE, NULL);
 
     /* If the driver initialization failed, inform the caller of the error status.
      * Otherwise return success (in case of success, MainEventLoopThread->ExitStatus
-     * will contain STATUS_SUCCESS). */
-    PPROCESS DriverProcess = IoDriverObjectToProcess(Locals.DriverObject);
-    PTHREAD MainEventLoopThread = DriverProcess ?
-	PsGetProcessInitialThread(DriverProcess) : NULL;
-    if (MainEventLoopThread) {
-	Status = MainEventLoopThread->ExitStatus;
-    } else {
-	Status = STATUS_UNSUCCESSFUL;
+     * will contain STATUS_SUCCESS), or the async cancel status if our async ops
+     * has been canceled. */
+    if (Status != STATUS_ASYNC_CANCELED) {
+	PPROCESS DriverProcess = IoDriverObjectToProcess(Locals.DriverObject);
+	PTHREAD MainEventLoopThread = DriverProcess ?
+	    PsGetProcessInitialThread(DriverProcess) : NULL;
+	if (MainEventLoopThread) {
+	    Status = MainEventLoopThread->ExitStatus;
+	} else {
+	    Status = STATUS_UNSUCCESSFUL;
+	}
     }
     ObDereferenceObject(Locals.DriverObject);
 
 out:
-    assert(!Locals.DriverImageHandle);
     /* Regardless of success or error, we need to dereference the objects
      * referenced above. */
     if (Locals.DriverObjectDirectory) {
@@ -505,13 +512,12 @@ PIO_DRIVER_OBJECT IopGetDriverObject(IN PCSTR DriverName)
  * At this point this routine is only called when the driver process has crashed.
  */
 NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
-			IN PTHREAD Thread,
 			IN PIO_DRIVER_OBJECT DriverObject,
 			IN BOOLEAN NormalExit,
 			IN NTSTATUS ExitStatus)
 {
     NTSTATUS Status;
-    ASYNC_BEGIN(State);
+    ASYNC_BEGIN(State, Thread);
 
     DbgTrace("Unloading driver %p (%s)\n", DriverObject,
 	     KEDBG_PROCESS_TO_FILENAME(IoDriverObjectToProcess(DriverObject)));
@@ -588,16 +594,15 @@ NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
 }
 
 NTSTATUS NtLoadDriver(IN ASYNC_STATE State,
-		      IN PTHREAD Thread,
 		      IN PCSTR DriverServicePath)
 {
-    return IopLoadDriver(State, Thread, DriverServicePath);
+    return IopLoadDriver(State, DriverServicePath);
 }
 
 NTSTATUS WdmCreateIoMutex(IN ASYNC_STATE AsyncState,
-                          IN PTHREAD Thread,
                           OUT MWORD *Cap)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Cap != NULL);
     PPROCESS Process = Thread->Process;
@@ -607,12 +612,12 @@ NTSTATUS WdmCreateIoMutex(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
-                          IN PTHREAD Thread,
                           IN USHORT PortNum,
 			  IN USHORT Count,
                           OUT MWORD *Cap)
 {
 #if defined(_M_IX86) || defined(_M_AMD64)
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Cap != NULL);
     assert(Count == 1 || Count == 2 || Count == 4);
@@ -633,12 +638,12 @@ NTSTATUS WdmEnableX86Port(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmDisableX86Port(IN ASYNC_STATE AsyncState,
-			   IN PTHREAD Thread,
 			   IN USHORT PortNum,
 			   IN USHORT Count,
 			   IN MWORD Cap)
 {
 #if defined(_M_IX86) || defined(_M_AMD64)
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Cap);
     assert(Count == 1 || Count == 2 || Count == 4);
@@ -766,7 +771,6 @@ err:
 }
 
 NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
-			     IN PTHREAD Thread,
 			     IN ULONG Vector,
 			     IN PIO_INTERRUPT_SERVICE_THREAD_ENTRY EntryPoint,
 			     IN PVOID ClientSideContext, /* Context as in EntryPoint(Context) */
@@ -775,6 +779,7 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 			     OUT MWORD *InterruptNotification,
 			     OUT MWORD *InterruptMutex)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -811,11 +816,10 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmDisconnectInterrupt(IN ASYNC_STATE State,
-				IN PTHREAD Thread,
 				IN ULONG Vector)
 {
     NTSTATUS Status;
-    ASYNC_BEGIN(State, Locals, {
+    ASYNC_BEGIN(State, Thread, Locals, {
 	    PIO_DRIVER_OBJECT DriverObject;
 	    PINTERRUPT_SERVICE Svc;
 	    PTHREAD IsrThread;
@@ -842,21 +846,24 @@ NTSTATUS WdmDisconnectInterrupt(IN ASYNC_STATE State,
 	ASYNC_RETURN(State, Status);
     }
     PsTerminateThread(Locals.IsrThread, STATUS_SUCCESS);
-    AWAIT(NtClose, State, Locals, Thread, Locals.Svc->ThreadHandle);
+    AWAIT(Status, NtClose, State, Locals, Locals.Svc->ThreadHandle);
     ObDereferenceObject(Locals.IsrThread);
     Locals.Svc->ThreadHandle = NULL;
     IopDeleteInterruptService(Locals.Svc);
-    ASYNC_END(State, STATUS_SUCCESS);
+    if (Status != STATUS_ASYNC_CANCELED) {
+	Status = STATUS_SUCCESS;
+    }
+    ASYNC_END(State, Status);
 }
 
 NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
-			    IN PTHREAD Thread,
 			    IN PVOID EntryPoint,
 			    OUT HANDLE *ThreadHandle,
 			    OUT MWORD *WdmServiceCap,
 			    OUT MWORD *DpcNotificationCap,
 			    OUT MWORD *TimerServiceCap)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -947,9 +954,9 @@ err:
     return Status;
 }
 
-NTSTATUS WdmRegisterBugcheckNotification(IN ASYNC_STATE State,
-					 IN PTHREAD Thread)
+NTSTATUS WdmRegisterBugcheckNotification(IN ASYNC_STATE State)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -963,9 +970,9 @@ NTSTATUS WdmRegisterBugcheckNotification(IN ASYNC_STATE State,
     return STATUS_ALREADY_REGISTERED;
 }
 
-NTSTATUS WdmUnregisterBugcheckNotification(IN ASYNC_STATE State,
-					   IN PTHREAD Thread)
+NTSTATUS WdmUnregisterBugcheckNotification(IN ASYNC_STATE State)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread != NULL);
     assert(Thread->Process != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
@@ -979,9 +986,9 @@ NTSTATUS WdmUnregisterBugcheckNotification(IN ASYNC_STATE State,
 }
 
 NTSTATUS WdmCreateCoroutineStack(IN ASYNC_STATE State,
-				 IN PTHREAD Thread,
 				 OUT PVOID *pStackTop)
 {
+    PTHREAD Thread = State.AsyncContext->Thread;
     assert(Thread->Process != NULL);
     assert(IoGetDriverObjectFromProcess(Thread->Process) != NULL);
     assert(Thread->InitialThread);

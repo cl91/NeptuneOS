@@ -372,10 +372,11 @@ static NTSTATUS HalpInitDma()
 }
 
 NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
-				    IN PTHREAD Thread,
 				    IN UCHAR DmaChannel,
 				    OUT HANDLE *Handle)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     if (DmaChannel >= 8) {
 	return STATUS_INVALID_PARAMETER;
     }
@@ -418,13 +419,14 @@ NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
 
 
 NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
-				IN PTHREAD Thread,
 				IN HANDLE AdapterHandle,
 				IN UCHAR DmaMode,
 				IN USHORT TransferOffset,
 				IN USHORT TransferLength,
 				IN UCHAR HighByte)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     if (TransferLength == 0) {
 	return STATUS_INVALID_PARAMETER_4;
     }
@@ -448,9 +450,10 @@ NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmHalDmaDisableChannel(IN ASYNC_STATE AsyncState,
-				 IN PTHREAD Thread,
 				 IN HANDLE AdapterHandle)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     RET_ERR(HalpInitDma());
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
@@ -473,10 +476,11 @@ NTSTATUS WdmHalDmaDisableChannel(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmHalDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
-				      IN PTHREAD Thread,
 				      IN HANDLE AdapterHandle,
 				      OUT ULONG *pCount)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     RET_ERR(HalpInitDma());
     PHAL_SYSTEM_ADAPTER AdapterObject = NULL;
     RET_ERR(ObReferenceObjectByHandle(Thread, AdapterHandle,
@@ -530,7 +534,6 @@ NTSTATUS HalpInitDma()
 }
 
 NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
-				    IN PTHREAD Thread,
 				    IN UCHAR DmaChannel,
 				    OUT HANDLE *Handle)
 {
@@ -538,7 +541,6 @@ NTSTATUS WdmHalDmaOpenSystemAdapter(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
-				IN PTHREAD Thread,
 				IN HANDLE AdapterHandle,
 				IN UCHAR DmaMode,
 				IN USHORT TransferOffset,
@@ -549,14 +551,12 @@ NTSTATUS WdmHalDmaStartTransfer(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmHalDmaDisableChannel(IN ASYNC_STATE AsyncState,
-				 IN PTHREAD Thread,
 				 IN HANDLE AdapterHandle)
 {
     return STATUS_NOT_SUPPORTED;
 }
 
 NTSTATUS WdmHalDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
-				      IN PTHREAD Thread,
 				      IN HANDLE AdapterHandle,
 				      OUT ULONG *pCount)
 {
@@ -565,7 +565,6 @@ NTSTATUS WdmHalDmaReadProgressCounter(IN ASYNC_STATE AsyncState,
 #endif
 
 NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
-				 IN PTHREAD Thread,
 				 IN MWORD Length,
 				 IN PPHYSICAL_ADDRESS HighestAddr,
 				 IN ULONG BoundaryAddressBits,
@@ -574,6 +573,8 @@ NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
 				 OUT PVOID *pVirtAddr,
 				 OUT PHYSICAL_ADDRESS *pPhyAddr)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     Length = PAGE_ALIGN_UP(Length);
     /* Length cannot be larger than the contiguous bank that the
      * DMA controller/device can access. For instance, if the
@@ -595,11 +596,12 @@ NTSTATUS WdmHalAllocateDmaBuffer(IN ASYNC_STATE AsyncState,
 }
 
 NTSTATUS WdmHalFreeDmaBuffer(IN ASYNC_STATE AsyncState,
-			     IN PTHREAD Thread,
 			     IN PVOID BaseAddress,
 			     IN SIZE_T NumberOfBytes,
 			     IN MEMORY_CACHING_TYPE CacheType)
 {
+    PTHREAD Thread = AsyncState.AsyncContext->Thread;
+    assert(Thread != NULL);
     return MmFreePhysicallyContiguousMemory(&Thread->Process->VSpace,
 					    (MWORD)BaseAddress,
 					    NumberOfBytes, CacheType);

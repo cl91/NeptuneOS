@@ -227,7 +227,6 @@ NTSTATUS CcInitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb,
 VOID CcUninitializeCacheMap(IN PIO_FILE_CONTROL_BLOCK Fcb);
 VOID CcUninitializeCacheSpace(IN struct _CC_CACHE_SPACE *CacheSpace);
 NTSTATUS CcPinData(IN ASYNC_STATE AsyncState,
-		   IN struct _THREAD *Thread,
 		   IN PIO_FILE_CONTROL_BLOCK Fcb,
 		   IN ULONG64 FileOffset,
 		   IN ULONG64 Length);
@@ -304,7 +303,6 @@ extern LIST_ENTRY IoBugcheckNotificationList;
 PIO_DRIVER_OBJECT IoGetDriverObjectFromProcess(IN struct _PROCESS *Process);
 VOID IoUnlinkDriverFromServiceLoop(IN PIO_DRIVER_OBJECT DriverObject);
 NTSTATUS IoUnloadDriver(IN ASYNC_STATE State,
-			IN struct _THREAD *Thread,
 			IN PIO_DRIVER_OBJECT DriverObject,
 			IN BOOLEAN NormalExit,
 			IN NTSTATUS ExitStatus);
@@ -338,7 +336,6 @@ NTSTATUS IoQueueServerMessage(IN PIO_DRIVER_OBJECT DriverObject,
 NTSTATUS IoMaskInterruptVector(IN ULONG Vector);
 NTSTATUS IoAllocateInterruptVector(OUT ULONG *Vector);
 NTSTATUS IoShutdownSystem(IN ASYNC_STATE State,
-                          IN struct _THREAD *Thread,
                           IN SHUTDOWN_ACTION Action);
 
 /*

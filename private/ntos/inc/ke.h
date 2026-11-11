@@ -19,6 +19,7 @@
 
 struct _THREAD;
 struct _SYSTEM_THREAD;
+struct _ASYNC_CONTEXT;
 
 typedef enum _THREAD_PRIORITY {
     PASSIVE_LEVEL = 1,
@@ -219,7 +220,7 @@ typedef struct _IRQ_HANDLER {
  *
  * RULES:
  *
- * 1. AWAIT, AWAIT_EX, AWAIT_IF, ASYNC_YIELD, ASYNC_BEGIN and ASYNC_END should
+ * 1. AWAIT, AWAIT_IF, ASYNC_YIELD, ASYNC_BEGIN and ASYNC_END should
  *    always be in the outermost scope explicitly. In other words, the following
  *    is strictly forbidden:
  *        if (...) {
@@ -243,10 +244,10 @@ typedef struct _IRQ_HANDLER {
  *    and (in another async function) we tried to pass an async local variable
  *    to it as an OUT variable and wait for it to complete:
  *
- *        ASYNC_BEGIN(AsyncState, Locals, {
+ *        ASYNC_BEGIN(AsyncState, Thread, Locals, {
  *            ULONG Var;
  *        });
- *        AWAIT(AsyncFcn, AsyncState, Locals, &Locals.Var);
+ *        AWAIT(Status, AsyncFcn, AsyncState, Locals, &Locals.Var);
  *
  *    THIS IS INCORRECT! This is due to the fact that Locals.Var gets overwritten
  *    by the variable restoration macro _ASYNC_RESTORE_LOCALS (see below), as
@@ -256,7 +257,7 @@ typedef struct _IRQ_HANDLER {
  *    outside the ASYNC_BEGIN macro:
  *
  *        ULONG Var;
- *        AWAIT(AsyncFcn, AsyncState, Locals, &Var);
+ *        AWAIT(State, AsyncFcn, AsyncState, Locals, &Var);
  *
  *    and manually save and restore Var if it is needed to survive another AWAIT
  *    call.
@@ -265,6 +266,12 @@ typedef struct _IRQ_HANDLER {
  *    Simply using the C return statement is INCORRECT!
  *
  * 4. You must end all async function with ASYNC_END. Otherwise it won't compile.
+ *
+ * 5. If an async await returned STATUS_ASYNC_CANCELED, you must perform any
+ *    necessary cleanups and return the same status code immediately. You must NOT
+ *    do any further async waits. The system bugchecks if a service routine returns
+ *    anything other than STATUS_ASYNC_CANCELED when an async context is being torn
+ *    down.
  *
  * HOW THIS WORKS:
  *
@@ -325,13 +332,13 @@ typedef struct _ASYNC_STACK {
  * It should always be passed as value and should never be passed as pointer.
  */
 typedef struct _ASYNC_STATE {
-    PASYNC_STACK AsyncStack;
+    struct _ASYNC_CONTEXT *AsyncContext; /* Defined in ps.h */
     ULONG StackTop; /* Points to the async status of the current call frame */
 } ASYNC_STATE;
 
-#define KI_DEFINE_INIT_ASYNC_STATE(state, thread)	\
-    ASYNC_STATE state = {				\
-	.AsyncStack = &thread->AsyncStack,		\
+#define KI_DEFINE_INIT_ASYNC_STATE(State, Ctx)		\
+    ASYNC_STATE State = {				\
+	.AsyncContext = (Ctx),				\
 	.StackTop = 0					\
     }
 
@@ -358,81 +365,99 @@ typedef struct _ASYNC_STATE {
     })
 
 /**
+ * Walk the async stack
+ */
+#define ASYNC_WALK_STACK(StackPtr, State, Frame, Ops)			\
+    for (ULONG StackPtr = 0; StackPtr < (State).StackTop; ) {		\
+	PASYNC_STACK_FRAME Frame = (PASYNC_STACK_FRAME)(		\
+	    (MWORD)&((State).AsyncContext->AsyncStack) + StackPtr);	\
+	Ops;								\
+	assert(Frame->Size != 0);					\
+	StackPtr += Frame->Size;					\
+    }
+
+/**
  * Dump the async state of the function
  */
 #ifdef CONFIG_DEBUG_BUILD
-#define ASYNC_DUMP(state)						\
+#define ASYNC_DUMP(State)						\
     {									\
-	PTHREAD Thread = CONTAINING_RECORD(state.AsyncStack,		\
-					   THREAD, AsyncStack);		\
+	PTHREAD Thread = (State).AsyncContext->Thread;			\
 	DbgTrace("Async state for thread %s|%p: Stack top %d. "		\
 		 "Async stack:", KEDBG_THREAD_TO_FILENAME(Thread),	\
-		 Thread, (state).StackTop);				\
-    }									\
-    for (ULONG StackPtr = 0; StackPtr < (state).StackTop; ) {		\
-	PASYNC_STACK_FRAME Frame = (PASYNC_STACK_FRAME)(		\
-	    (MWORD)((state).AsyncStack) + StackPtr);			\
-	DbgPrint(" (FS %d LN %d)",					\
-		 Frame->Size, Frame->LineNum);				\
-	assert(Frame->Size != 0);					\
-	StackPtr += Frame->Size;					\
+		 Thread, (State).StackTop);				\
+	ASYNC_WALK_STACK(StackPtr, State, Frame,			\
+			 DbgPrint(" (FS %d LN %d)",			\
+				  Frame->Size, Frame->LineNum));	\
     }									\
     DbgPrint("\n")
 #else
-#define ASYNC_DUMP(state)
+#define ASYNC_DUMP(State)
 #endif
 
 /*
  * The following macros that start with an underscore shall never be
  * called directly.
  */
-#define _ASYNC_GET_MACRO(_1, _2, _3, NAME, ...) NAME
-#define _ASYNC_GET_FRAME(state)						\
-    ((PASYNC_STACK_FRAME)((MWORD)((state).AsyncStack) +			\
-			  (state).StackTop - sizeof(ASYNC_STACK_FRAME)))
-#define _ASYNC_GET_NEXT_FRAME(state)					\
-    ((PASYNC_STACK_FRAME)((MWORD)((state).AsyncStack)			\
-			  + (state).StackTop))
-#define _ASYNC_GET_LINENUM(state)		\
-    (_ASYNC_GET_FRAME(state)->LineNum)
-#define _ASYNC_GET_LOCALS(state)		\
-    (_ASYNC_GET_FRAME(state)->Locals)
-#define _ASYNC_BEGIN_NO_LOCALS(state)					\
+#define _ASYNC_GET_MACRO(_1, _2, _3, _4, NAME, ...) NAME
+#define _ASYNC_GET_FRAME(State)						\
+    ((PASYNC_STACK_FRAME)((MWORD)&((State).AsyncContext->AsyncStack) +	\
+			  (State).StackTop - sizeof(ASYNC_STACK_FRAME)))
+#define _ASYNC_GET_NEXT_FRAME(State)					\
+    ((PASYNC_STACK_FRAME)((MWORD)&((State).AsyncContext->AsyncStack)	\
+			  + (State).StackTop))
+#define _ASYNC_GET_LINENUM(State)		\
+    (_ASYNC_GET_FRAME(State)->LineNum)
+#define _ASYNC_GET_LOCALS(State)		\
+    (_ASYNC_GET_FRAME(State)->Locals)
+#define _ASYNC_DEFINE_THREAD(State, _Thread)				\
+    UNUSED PTHREAD _Thread = (State).AsyncContext->Thread;		\
+    assert(_Thread);							\
+    assert(_Thread->Process);						\
+    assert(_Thread->AsyncContexts[(State).AsyncContext->AsyncObjId] ==	\
+	   (State).AsyncContext)
+#define _ASYNC_BEGIN_NO_LOCALS(State, _Thread)				\
+    _ASYNC_DEFINE_THREAD(State, _Thread);				\
     typedef struct POINTER_ALIGNMENT _ASYNC_STACK_FRAME {		\
 	ULONG LineNum;							\
 	ULONG Size;							\
     } ASYNC_STACK_FRAME, *PASYNC_STACK_FRAME
-#define _ASYNC_BEGIN_LOCALS(state, locals, vars)			\
-    struct POINTER_ALIGNMENT _ASYNC_SAVED_LOCALS vars locals;		\
+#define _ASYNC_BEGIN_LOCALS(State, _Thread, _Locals, Vars)		\
+    _ASYNC_DEFINE_THREAD(State, _Thread);				\
+    struct POINTER_ALIGNMENT _ASYNC_SAVED_LOCALS Vars _Locals;		\
     typedef struct POINTER_ALIGNMENT _ASYNC_STACK_FRAME {		\
 	ULONG LineNum;							\
 	ULONG Size;							\
 	struct POINTER_ALIGNMENT _ASYNC_SAVED_LOCALS Locals;		\
     } ASYNC_STACK_FRAME, *PASYNC_STACK_FRAME;				\
-    locals = _ASYNC_GET_NEXT_FRAME(state)->Locals
-#define _ASYNC_BEGIN_TAIL_NO_LOCALS(state)
-#define _ASYNC_BEGIN_TAIL_LOCALS(state, locals, vars)	\
-    memset(&(locals), 0, sizeof(locals))
+    _Locals = _ASYNC_GET_NEXT_FRAME(State)->Locals
+#define _ASYNC_BEGIN_TAIL_NO_LOCALS(State, Thread)
+#define _ASYNC_BEGIN_TAIL_LOCALS(State, Thread, Locals, Vars)	\
+    memset(&(Locals), 0, sizeof(Locals))
+/* This flag is OR-ed with the line number to indicate that the async
+ * operation is being canceled. */
+#define _ASYNC_CANCELED_FLAG (0x80000000UL)
 /* We define an unused typedef below so in non-async functions we can
  * generate an error if certain macros (RET_ERR, RET_ERR_EX) are used */
-#define _ASYNC_BEGIN_COMMON(state, ...)					\
+#define _ASYNC_BEGIN_COMMON(State, ...)					\
     typedef ASYNC_STACK_FRAME __ASYNC_RETURN_CHECK_HELPER;		\
-    _ASYNC_GET_NEXT_FRAME(state)->Size = sizeof(ASYNC_STACK_FRAME);	\
-    (state).StackTop += sizeof(ASYNC_STACK_FRAME);			\
-    ASYNC_DUMP(state);							\
-    switch (_ASYNC_GET_LINENUM(state)) {				\
+    _ASYNC_GET_NEXT_FRAME(State)->Size = sizeof(ASYNC_STACK_FRAME);	\
+    (State).StackTop += sizeof(ASYNC_STACK_FRAME);			\
+    ASYNC_DUMP(State);							\
+    switch (_ASYNC_GET_LINENUM(State)) {				\
+    case _ASYNC_CANCELED_FLAG:						\
     case 0: {
 /* This is magic! */
 #define _ASYNC_MAKE_EMPTY_ARG_			,
-#define _ASYNC_GET_SECOND_ARG(x, y, ...)	y
-#define _ASYNC_DEFERRED_EXPAND(x, ...)		\
-    _ASYNC_GET_SECOND_ARG(x, __VA_ARGS__)
-#define _ASYNC_SAVE_LOCALS(state, locals)				\
-    _ASYNC_DEFERRED_EXPAND(_ASYNC_MAKE_EMPTY_ARG##locals,		\
-			   _ASYNC_GET_LOCALS(state) = locals, )
-#define _ASYNC_RESTORE_LOCALS(state, locals)			\
-    _ASYNC_DEFERRED_EXPAND(_ASYNC_MAKE_EMPTY_ARG##locals,	\
-			   locals = _ASYNC_GET_LOCALS(state), )
+#define _ASYNC_GET_SECOND_ARG(_0, _1, ...)	_1
+#define _ASYNC_DEFERRED_EXPAND(_0, ...)		\
+    _ASYNC_GET_SECOND_ARG(_0, __VA_ARGS__)
+#define _ASYNC_SAVE_LOCALS(State, Locals)				\
+    _ASYNC_DEFERRED_EXPAND(_ASYNC_MAKE_EMPTY_ARG##Locals,		\
+			   _ASYNC_GET_LOCALS(State) = Locals, )
+#define _ASYNC_RESTORE_LOCALS(State, Locals)			\
+    _ASYNC_DEFERRED_EXPAND(_ASYNC_MAKE_EMPTY_ARG##Locals,	\
+			   Locals = _ASYNC_GET_LOCALS(State), )
 
 /**
  * Mark the start of an async subroutine
@@ -440,11 +465,11 @@ typedef struct _ASYNC_STATE {
  * There are two valid syntax:
  *
  *   Without defining local variables:
- *     ASYNC_BEGIN(AsyncState);
+ *     ASYNC_BEGIN(AsyncState, Thread);
  *     @param AsyncState The current async state
  *
  *   Defining local variables:
- *     ASYNC_BEGIN(AsyncState, Locals, {
+ *     ASYNC_BEGIN(AsyncState, Thread, Locals, {
  *         ULONG Local1;
  *         ULONG Local2;
  *         ...
@@ -473,11 +498,11 @@ typedef struct _ASYNC_STATE {
  * IMPORTANT: You must use ASYNC_RETURN to return from an async function.
  *    Simply writing "return Status;" is INCORRECT!
  */
-#define ASYNC_RETURN(state, status)					\
+#define ASYNC_RETURN(State, Status)					\
     COMPILE_CHECK_ASYNC_FRAME_SIZE;					\
-    assert(!IS_ASYNC_STATUS(status));					\
-    memset(_ASYNC_GET_FRAME(state), 0, sizeof(ASYNC_STACK_FRAME));	\
-    return status;
+    assert(!IS_ASYNC_STATUS(Status));					\
+    memset(_ASYNC_GET_FRAME(State), 0, sizeof(ASYNC_STACK_FRAME));	\
+    return Status;
 
 /**
  * Use these instead of RET_ERR and RET_ERR_EX inside async functions
@@ -502,8 +527,8 @@ typedef struct _ASYNC_STATE {
  * @param status The NTSTATUS to return to the caller. Must not be an
  *        async status.
  */
-#define ASYNC_END(state, status)				\
-    ASYNC_RETURN(state, status); }				\
+#define ASYNC_END(State, Status)				\
+    ASYNC_RETURN(State, Status); }				\
     default:							\
     KeBugCheckMsg("BUGBUG! Async function error.\n");		\
     return STATUS_UNSUCCESSFUL; }
@@ -520,15 +545,24 @@ static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
 /**
  * Wait for the completion of the asynchronous function
  *
- * @param func Function to call
- * @param state Async state of the current function
- * @param locals Saved local variables declared in ASYNC_BEGIN.
+ * @param Status Return status if the wait is resumed.
+ *               STATUS_ASYNC_CANCELED if the wait is canceled.
+ * @param Func Function to call
+ * @param State Async state of the current function
+ * @param Locals Saved local variables declared in ASYNC_BEGIN.
  *        If empty, use _
  *
  * Examples:
- *     AWAIT(KeWaitForSingleObject, AsyncState, Locals, Thread, ...)
+ *     AWAIT(Status, KeWaitForSingleObject, AsyncState, Locals, ...)
  *   If no local variables are being saved, use _ in place of Locals:
- *     AWAIT(KeWaitForSingleObject, AsyncState, _, Thread, ...)
+ *     AWAIT(Status, KeWaitForSingleObject, AsyncState, _, ...)
+ *
+ * Note if STATUS_ASYNC_CANCELED is returned (meaning an async context
+ * is in the process of being destroyed), you must perform any
+ * necessary cleanups and return the same status code immediately. You
+ * must NOT do any further async waits. The system bugchecks if a service
+ * routine returns STATUS_ASYNC_PENDING when an async context is being
+ * torn down.
  *
  * A note about __LINE__: It doesn't matter if the macro definition is
  * written in multiple lines. One might wonder if the macro invocations
@@ -541,59 +575,39 @@ static inline BOOLEAN KiAsyncIsDone(IN NTSTATUS Status)
  *
  * [1] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=94535
  */
-#define AWAIT(func, state, locals, ...)				\
-    _ASYNC_SAVE_LOCALS(state, locals);				\
-    } case __LINE__: {						\
-    if (!KiAsyncIsDone(func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	return _KI_ASYNC_YIELD(state, __LINE__);		\
-    _ASYNC_RESTORE_LOCALS(state, locals)
-
-/**
- * Wait for the completion of the asynchronous function and store its return status
- */
-#define AWAIT_EX(status, func, state, locals, ...)			\
-    _ASYNC_SAVE_LOCALS(state, locals);					\
-    } case __LINE__: {							\
-    if (!KiAsyncIsDone(status = func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	return _KI_ASYNC_YIELD(state, __LINE__);			\
-    _ASYNC_RESTORE_LOCALS(state, locals)
+#define AWAIT(Status, Func, State, Locals, ...)			\
+    _ASYNC_SAVE_LOCALS(State, Locals);					\
+    } case __LINE__: case __LINE__ | _ASYNC_CANCELED_FLAG: {		\
+    if (!KiAsyncIsDone(Status = Func(State __VA_OPT__(,) __VA_ARGS__)))	\
+	return _KI_ASYNC_YIELD(State, __LINE__);			\
+    _ASYNC_RESTORE_LOCALS(State, Locals)
 
 /**
  * IMPORTANT: You MUST use the following macros, AWAIT_IF if you want to await
  * conditionally. Enclosing the AWAIT statement in an if-statement is INCORRECT!
  */
-#define AWAIT_IF(cond, func, state, locals, ...)			\
-    if (cond) {								\
-	_ASYNC_SAVE_LOCALS(state, locals);				\
-    case __LINE__:							\
-	if (!KiAsyncIsDone(func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	    return _KI_ASYNC_YIELD(state, __LINE__);			\
-	_ASYNC_RESTORE_LOCALS(state, locals);				\
-    } } {
-
-/**
- * IMPORTANT: You MUST use the following macros if you want to await conditionally
- * and get the return status. Enclosing the AWAIT_EX statement in an if-statement
- * is INCORRECT!
- */
-#define AWAIT_EX_IF(cond, status, func, state, locals, ...)		\
-    if (cond) {								\
-	_ASYNC_SAVE_LOCALS(state, locals);				\
-    case __LINE__:							\
-	if (!KiAsyncIsDone(status =					\
-			   func(state __VA_OPT__(,) __VA_ARGS__)))	\
-	    return _KI_ASYNC_YIELD(state, __LINE__);			\
-	_ASYNC_RESTORE_LOCALS(state, locals);				\
+#define AWAIT_IF(Cond, Status, Func, State, Locals, ...)		\
+    if (Cond) {								\
+	_ASYNC_SAVE_LOCALS(State, Locals);				\
+    case __LINE__: case __LINE__ | _ASYNC_CANCELED_FLAG:		\
+	if (!KiAsyncIsDone(Status =					\
+			   Func(State __VA_OPT__(,) __VA_ARGS__)))	\
+	    return _KI_ASYNC_YIELD(State, __LINE__);			\
+	_ASYNC_RESTORE_LOCALS(State, Locals);				\
     } } {
 
 /**
  * Yield execution
  */
-#define ASYNC_YIELD(state, locals)		\
-    _ASYNC_SAVE_LOCALS(state, locals);		\
-    return _KI_ASYNC_YIELD(state, __LINE__);	\
+#define ASYNC_YIELD(State, Locals, CancelOps)	\
+    _ASYNC_SAVE_LOCALS(State, Locals);		\
+    return _KI_ASYNC_YIELD(State, __LINE__);	\
+    } case __LINE__ | _ASYNC_CANCELED_FLAG: {	\
+	_ASYNC_RESTORE_LOCALS(State, Locals);	\
+	CancelOps;				\
+	return STATUS_ASYNC_CANCELED;		\
     } case __LINE__: {				\
-    _ASYNC_RESTORE_LOCALS(state, locals);
+    _ASYNC_RESTORE_LOCALS(State, Locals);
 
 /* bugcheck.c */
 VOID KeBugCheckMsg(IN PCSTR Format, ...) __attribute__ ((format(printf, 1, 2)));
@@ -661,37 +675,46 @@ VOID KeDetachDispatcherObject(IN PDISPATCHER_HEADER Header);
  * (or) and logical conjunction (and). The WaitType member determines whether a
  * given wait block is a conjunction (WaitAll) or a disjunction (WaitAny) of its
  * dispatcher object with the Next member (if Next is NULL, it is simply ignored).
+ * When an async context requests to wait on a boolean condition, the KeWaitFor*
+ * routines construct the wait block tree that represents the boolean formula that
+ * must be satisfied for the async context to wake up. The root wait block of this
+ * boolean formula is stored in the ASYNC_CONTEXT structure, to which all wait blocks
+ * in the tree points. Once this boolean formula is satisfied, the system resumes
+ * the async context. Depending on whether the thread is configured to be executing
+ * in synchronous or asynchronous mode, the resumption of the async context will
+ * lead either to the resumption of the system service handler (in the synchronous
+ * case), or to the queuing of an APC notifying the thread of execution continuation.
  *
- * The root wait block of the THREAD object represents the master boolean formula
- * that must be satisfied for the thread to wake up. Once it is satisfied, the system
- * service dispatcher will invoke the reply capability stored in the THREAD object
- * to resume the thread.
+ * A schematic diagram is as follows. Here Async0 has a single term in its boolean
+ * formula, while Async1 has several.
  *
- * A schematic diagram is as follows. Here Thread0 has a single wait block in the
- * master boolean formula, while Thread1 has several.
- *
- *    |--------- |             |------------|
- *    | THREAD0  |             |  THREAD1   |
- *    |----------|             |------------|
- *    |   Root   |  Dispatcher | Root Wait  | Dispatcher
- *    |   Wait   |   Link      | Block TY=  |  Link
- *    |   Block  |>----------->|  WaitAll   |>-------|
- *    |TY=WaitAny|             |            |       \|/
- *    |----------|             |    Next    |--->|---------|     |---------|
- * Dispa|   ^                  |------------|    |WaitBlock|     |WaitBlock|<----------
- * tcher|   | DispatcherLink        \|/          |  Next   |---->|   Next  |->(nil)   |
- *     \|/  |_____________           |           |---------|     |---------|>-------| |
- *    |---------------|  | Dispatcher|              \|/ |            |              | | Dispa
- * |->|  DISPATCHER   |<-|-----------|               |  |            |Dispatcher    | | tcher
- * |  |---------------|  |                           |  |           \|/             | | Link
- * |  | WaitBlockList |---    DispatcherLink         |  |     |---------------|     | |
- * |  |---------------|<-----------------------------|  |     |  DISPATCHER   |     | |
- * |                                                    |     |---------------|<----| |
- * |                           Dispatcher               |     | WaitBlockList |>-------
- * |----------------------------------------------------|     |---------------|
+ *                               |------------------------|
+ *     |---------------|         |   |----------------|   |
+ *     |   ASYNC CTX0  |         |   |   ASYNC CTX1   |   |
+ *     | RootWaitBlock |         |   |  RootWaitBlock |   |
+ *     |---------------|         |   |----------------|   |
+ *     | Type=WaitAny  |         |   |  Type=WaitAll  |   |(DispatcherLink)
+ * |-->| DispatcherLink|>--------|   | DispatcherLink |   |--------------|
+ * |   |  Dispatcher   |>-|  |-------|   Dispatcher   |                  |
+ * |   |   Next = nil  |  |  |       |     Next       |--->|----------|  |
+ * |   |---------------|  |  |       |----------------|    | WaitBlock|  |
+ * |                |-----|  |                          |-<|Dispatcher|<-|
+ * |(DisptchLnk)    |        |(Dispatcher)              |  |   Link   |
+ * |---------------\|/----|  |                          |  |   Next   |>----->|----------|
+ *     |---------------|  |  |                          |  |Dispatcher|>-|    | WaitBlock|
+ * |-->|  DISPATCHER   |<-|--|                          |  |----------|  | |->| DispchLnk|>-----|
+ * |   |---------------|  |                             |         |------| |  | Next=nil |      |
+ * | ->| WaitBlockList |>-|                             |         |        |  |Dispatcher|>-|   |
+ * | | |---------------|         (DispatcherLink)       |         |  |-----|  |----------|  |   |
+ * | |--------------------------------------------------|         |  |(DispchLnk)           |   |
+ * |                                                              |  |  |---------------|<--|   |
+ * |--------------------------------------------------------------|  |  |  DISPATCHER   |       |
+ *                    (Dispatcher)                                   |  |---------------|       |
+ *                                                                   |-<| WaitBlockList |<------|
+ *                                                                      |---------------|
  */
 typedef struct _KWAIT_BLOCK {
-    struct _THREAD *Thread;
+    struct _ASYNC_CONTEXT *AsyncContext;
     WAIT_TYPE WaitType;
     LIST_ENTRY DispatcherLink; /* List entry for DISPATCHER_HEADER.WaitBlockList */
     PDISPATCHER_HEADER Dispatcher; /* The dispatcher object of this wait block */
@@ -861,12 +884,10 @@ typedef struct _TIMER {
 
 /* async.c */
 NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
-			       IN struct _THREAD *Thread,
 			       IN PDISPATCHER_HEADER DispatcherObject,
 			       IN BOOLEAN Alertable,
 			       IN OPTIONAL PLARGE_INTEGER TimeOut);
 NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
-				  IN struct _THREAD *Thread,
 				  IN BOOLEAN Alertable,
 				  IN WAIT_TYPE WaitType,
 				  IN PDISPATCHER_HEADER *DispatcherObjects,
@@ -878,6 +899,8 @@ NTSTATUS KeQueueApcToThread(IN struct _THREAD *Thread,
 			    IN PVOID SystemArgument2,
 			    IN PVOID SystemArgument3);
 BOOLEAN KeRemoveQueuedApc(IN PKAPC Apc);
+NTSTATUS KeAllocateDefaultAsyncContext(IN struct _THREAD *Thread);
+VOID KeCancelThreadAsyncContexts(IN struct _THREAD *Thread);
 
 /* bugcheck.c */
 VOID KeBugCheck(IN PCSTR Function,
@@ -983,9 +1006,9 @@ VOID KePopulateConstantUserSharedTimeData(PKUSER_SHARED_DATA Data);
 
 /* Remove the timer from the timer queue. Note that you normally should
  * call KeUninitializeTimer instead, which will take care of properly signaling
- * threads that are still waiting on it. This is only used by the thread
- * object deletion routine to remove the WaitTimer of the thread. */
-static inline VOID KeRemoveTimer(IN PTIMER Timer)
+ * threads that are still waiting on it. This is only used by the async context
+ * freeing routine to remove the WaitTimer of the async context object. */
+static inline VOID KiRemoveTimer(IN PTIMER Timer)
 {
     RemoveEntryList(&Timer->ListEntry);
 }

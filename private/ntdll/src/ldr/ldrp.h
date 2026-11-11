@@ -83,7 +83,7 @@ NTSTATUS RtlpInitializeActCtx(VOID);
 VOID RtlpInitializeKeyedEvent(VOID);
 
 /* ../rtl/critical.c */
-VOID LdrpInitCriticalSection(HANDLE CriticalSectionLockSemaphore);
+NTSTATUS LdrpInitCriticalSectionLock(HANDLE CriticalSectionLockSemaphore);
 
 NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 				       IN HANDLE LockSemaphore,
