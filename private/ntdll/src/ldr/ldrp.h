@@ -90,6 +90,9 @@ NTSTATUS RtlpInitializeCriticalSection(IN PRTL_CRITICAL_SECTION CriticalSection,
 				       IN ULONG SpinCount,
 				       IN ULONG Flags);
 
+/* ../rtl/fiber.c */
+VOID RtlpRundownFls(IN PRTL_FLS_DATA FlsData);
+
 /* ../rtl/heap.c */
 NTSTATUS LdrpInitializeHeapManager(IN PNTDLL_PROCESS_INIT_INFO InitInfo,
 				   IN ULONG ProcessHeapFlags,

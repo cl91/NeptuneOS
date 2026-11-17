@@ -1,56 +1,52 @@
 #pragma once
 
-#include <util.h>
+#include <nt.h>
 
 /*
  * This is placed at the top of the coroutine stack. The top of the
  * stack is a pointer to the stack top of the next coroutine stack,
- * followed by CoroutineSavedSP which saves the stack pointer at the
- * time that the coroutine yields execution via KiCoroutineYield.
- *
- * Following the SavedState pointer is the SP and IP of the master
- * thread before it switches to the coroutine via KiStartCoroutine
- * or KiResumeCoroutine. KiCoroutineYield will then restore these
- * when it yields the execution of the coroutine and switches back
- * to the master thread stack. This will appear to the master thread
- * as if KiStartCoroutine or KiResumeCoroutine were an ordinary function
- * that never messed with the stack.
- *
- * Note: Stack grows in the direction of lower address.
+ * followed by Fiber which is the FIBER associated with this stack.
  *
  * Schematics of the coroutine stack: (assuming i386, stack top is at 0x1000)
  *
- *   0xff0           0xff4           0xff8              0xffc          0x1000
- *   |-----------------------------------------------------------------|
- *   | MasterSavedSP | MasterSavedIP | CoroutineSavedSP | NextStackTop |
- *   |-----------------------------------------------------------------|
- *   ^                                                                 ^
- *   Beginning of the call stacks inside the                           StackTop
- *   coroutine, starting with IopCallDispatchRoutine
+ *   0xfec                0xff0               0xff8   0xffc          0x1000
+ *   |--------------------|------------------------------------------|
+ *   | return addr (NULL) | alignment padding | Fiber | NextStackTop |
+ *   |--------------------|------------------------------------------|
+ *   ^                    ^                                          ^
+ *   Beginning of the     Stack pointer at the time                  StackTop
+ *   call stack inside    KiCoroutineEntryPoint is entered
+ *   the coroutine,
+ *   starting with
+ *   IopCallDispatchRoutine
  *
- * IMPORTANT: If you change this you must change arch/coroutine.S
+ * Note: stack grows in the direction of lower address, so this structure
+ * needs to be defined with that in mind.
  */
-typedef struct _KI_COROUTINE_STACK {
-    PVOID MasterSavedSP; /* The master thread esp/rsp at the time that
-			  * KiStartCoroutine or KiResumeCoroutine is called */
-    PVOID MasterSavedIP; /* Address that KiCoroutineYield will jump back to */
-    PVOID CoroutineSavedSP; /* The stack pointer of the coroutine stack at the time
-			    * that KiYieldCoroutine yielded execution */
-    PVOID NextStackTop; /* Pointer to the next coroutine stack. */
-} KI_COROUTINE_STACK, *PKI_COROUTINE_STACK;
-
-#ifdef _M_AMD64
-#define MS_ABI __attribute__((__ms_abi__))
-#else
-#define MS_ABI
+typedef struct _KI_COROUTINE_STACK_TOP {
+#ifdef _M_IX86
+    ULONG_PTR ReturnAddress; /* We push a zero as the return address so an exception
+			      * will be raised when the fiber entry point tries to
+			      * return (it should not). */
+    ULONG_PTR Paddings[2]; /* GCC assumes a 16-byte aligned stack before
+			    * the call instruction pushes the return address. */
+#elif defined(_M_AMD64)
+    ULONG_PTR ReturnAddress; /* We push a zero as the return address so an exception
+			      * will be raised when the fiber entry point tries to
+			      * return (it should not). */
+    ULONG_PTR Paddings[4]; /* MS amd64 ABI requires a 32-byte shadow space
+			    * before the call instruction pushes the return
+			    * address. */
 #endif
+    PFIBER Fiber;          /* If NULL, this coroutine stack is free to use.
+			    * This must be at the beginning of this struct. */
+    PVOID NextStackTop;	   /* Pointer to the next coroutine stack. */
+} KI_COROUTINE_STACK_TOP, *PKI_COROUTINE_STACK_TOP;
 
 /*
- * Coroutine entry point. This is called by KiStartCoroutine
- *
- * Context is passed via %ecx (i386) or %rcx (amd64)
+ * Coroutine entry point. This is called when the fiber is first scheduled.
  */
-typedef NTSTATUS (FASTCALL MS_ABI *KI_COROUTINE_ENTRYPOINT)(IN PVOID Context);
+typedef NTSTATUS (*KI_COROUTINE_ENTRYPOINT)(IN PVOID Context);
 
 struct _IOP_EXEC_ENV;
 typedef VOID (*PIOP_EXEC_ENV_FINALIZER)(struct _IOP_EXEC_ENV *Env, NTSTATUS Status);
@@ -70,32 +66,35 @@ typedef struct _IOP_EXEC_ENV {
 } IOP_EXEC_ENV, *PIOP_EXEC_ENV;
 
 /* coroutine.c */
-extern PVOID KiCoroutineStackChainHead;
-extern PVOID KiCurrentCoroutineStackTop;
-PVOID KiGetFirstAvailableCoroutineStack();
-VOID KiDbgDumpCoroutineStacks();
+NTSTATUS KiStartCoroutine(IN PIOP_EXEC_ENV Env);
+NTSTATUS KiResumeCoroutine(IN PIOP_EXEC_ENV Env);
+VOID KiStopCoroutine(PIOP_EXEC_ENV Env);
+VOID KiYieldCoroutine(VOID);
+VOID KiDbgDumpCoroutineStacks(VOID);
+NTSTATUS KiInitCoroutine(PVOID CoroutineChainHead);
 
-static inline VOID KiReleaseCoroutineStack(PVOID StackTop)
+static inline PFIBER KiGetCoroutineFiber(PVOID StackTop)
 {
     assert(StackTop != NULL);
-    PKI_COROUTINE_STACK Stack = (PKI_COROUTINE_STACK)StackTop - 1;
-    DbgTrace("Releasing coroutine stack %p saved SP %p\n",
-	     StackTop, Stack->CoroutineSavedSP);
-    /* CoroutineSavedSP may already be NULL here if the coroutine
-     * has never been suspended. */
-    Stack->CoroutineSavedSP = NULL;
+    PKI_COROUTINE_STACK_TOP Stack = (PKI_COROUTINE_STACK_TOP)StackTop - 1;
+    return Stack->Fiber;
 }
 
-static inline PVOID KiGetCoroutineSavedSP(PVOID StackTop)
+static inline VOID KiSetCoroutineFiber(PVOID StackTop,
+				       IN PFIBER Fiber)
 {
     assert(StackTop != NULL);
-    PKI_COROUTINE_STACK Stack = (PKI_COROUTINE_STACK)StackTop - 1;
-    return Stack->CoroutineSavedSP;
+    PKI_COROUTINE_STACK_TOP Stack = (PKI_COROUTINE_STACK_TOP)StackTop - 1;
+    Stack->Fiber = Fiber;
 }
 
-/* arch/coroutine.S */
-MS_ABI NTSTATUS KiStartCoroutine(IN PVOID StackTop,
-				 IN KI_COROUTINE_ENTRYPOINT EntryPoint,
-				 IN PVOID Context);
-MS_ABI VOID KiYieldCoroutine();
-FASTCALL MS_ABI NTSTATUS KiResumeCoroutine(IN PVOID StackTop);
+static inline PIOP_EXEC_ENV KiGetCurrentEnv(VOID)
+{
+    PFIBER Fiber = NtCurrentTeb()->NtTib.FiberData;
+    return Fiber ? Fiber->FiberData : NULL;
+}
+
+static inline PVOID KiGetCurrentCoroutineStackTop(VOID)
+{
+    return KiGetCurrentEnv() ? KiGetCurrentEnv()->CoroutineStackTop : NULL;
+}

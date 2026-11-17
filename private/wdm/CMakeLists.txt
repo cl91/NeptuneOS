@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12.0)
 
 set(CMAKE_SYSTEM_NAME Windows)
 
-project(wdm C ASM)
+project(wdm C)
 
 list(APPEND CMAKE_MODULE_PATH
     ${CMAKE_CURRENT_LIST_DIR}/../rtl)
@@ -52,27 +52,6 @@ add_library(wdm SHARED ${SRC} wdm.rc)
 add_dependencies(wdm rtl)
 target_link_directories(wdm PRIVATE ${NDK_LIB_PATH})
 target_link_libraries(wdm PRIVATE rtl)
-
-add_library(genincdata MODULE tools/genincdata.c)
-set_entrypoint(genincdata 0)
-target_include_directories(
-    genincdata
-    PRIVATE
-	../../public/ndk/inc
-	../../public/ddk/inc
-	../../public/crt/inc
-	../../public/crt/inc/${Arch}
-	../rtl/inc
-	tools
-	inc
-)
-add_dependencies(genincdata rtl)
-add_custom_target(
-    geninc ALL
-    COMMAND ${GENINC_PATH} $<TARGET_FILE:genincdata> ${CMAKE_CURRENT_BINARY_DIR}/wdmasm.h
-    DEPENDS genincdata
-)
-add_dependencies(wdm geninc)
 
 spec2def(wdm wdm.spec ${Arch})
 set_dll_def(wdm wdm.def)

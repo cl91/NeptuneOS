@@ -101,7 +101,7 @@ NTAPI NTSTATUS KeWaitForSingleObject(IN PVOID Object,
     /* KeWaitForSingleObject must always be called in a context where we are
      * allowed to sleep. */
     PAGED_CODE();
-    assert(KiCurrentCoroutineStackTop);
+    assert(KiGetCurrentCoroutineStackTop());
 
     /* If the object has already been signaled, don't wait and simply return. */
     if (Header->Signaled) {
@@ -113,12 +113,13 @@ NTAPI NTSTATUS KeWaitForSingleObject(IN PVOID Object,
 
     /* Add the current execution environment to the dispatcher object
      * so we can wake it up when the dispatcher object is signaled. */
-    assert(IopCurrentEnv);
-    assert(!ListHasEntry(&Header->EnvList, &IopCurrentEnv->EventLink));
-    InsertHeadList(&Header->EnvList, &IopCurrentEnv->EventLink);
+    PIOP_EXEC_ENV CurrentEnv = KiGetCurrentEnv();
+    assert(CurrentEnv);
+    assert(!ListHasEntry(&Header->EnvList, &CurrentEnv->EventLink));
+    InsertHeadList(&Header->EnvList, &CurrentEnv->EventLink);
 
     DbgTrace("Suspending execution environment %p coroutine stack %p waiting for object %p\n",
-	     IopCurrentEnv, KiCurrentCoroutineStackTop, Object);
+	     CurrentEnv, KiGetCurrentCoroutineStackTop(), Object);
     /* Yield the current coroutine to the main thread. The control flow will
      * return to either KiStartCoroutine or KiResumeCoroutine. */
     KiYieldCoroutine();

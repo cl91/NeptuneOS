@@ -39,22 +39,38 @@ static inline NTSTATUS RtlpSafeCopyMemory(OUT VOID UNALIGNED *Destination,
     return STATUS_SUCCESS;
 }
 
-static inline WCHAR *strchrW(const WCHAR *str, WCHAR ch)
+static inline WCHAR *strchrW(const WCHAR *Str, WCHAR Ch)
 {
     do {
-	if (*str == ch) {
-	    return (WCHAR *)(ULONG_PTR)str;
+	if (*Str == Ch) {
+	    return (WCHAR *)(ULONG_PTR)Str;
 	}
-    } while (*str++);
+    } while (*Str++);
     return NULL;
 }
+
+/* We cannot make these ULONG_PTR as unfortunately on amd64, Microsoft does not
+ * support passing a 16-byte aggregate value using two registers (rax:rdx), unlike
+ * the SysV calling convention. */
+typedef struct _FIBER_CONTINUATION_STATUS {
+    ULONG Status;
+    ULONG Switched;
+} FIBER_CONTINUATION_STATUS;
+
+C_ASSERT(sizeof(FIBER_CONTINUATION_STATUS) == 8);
+C_ASSERT(FIELD_OFFSET(FIBER_CONTINUATION_STATUS, Switched) == 4);
+
+/* arch/fiber.S */
+FASTCALL NTSYSAPI FIBER_CONTINUATION_STATUS RtlpCaptureFiberContext(OUT PCONTEXT ContextRecord);
+
+FASTCALL NTSYSAPI VOID RtlpRestoreFiberContext(IN PCONTEXT ContextRecord);
 
 /* debug.c */
 ULONG RtlpVgaPrint(IN PCSTR Format, ...);
 
 /* exception.c */
 #if DBG
-VOID RtlpDumpContext(IN PCONTEXT pc);
+VOID RtlpDumpContext(IN PCONTEXT Context);
 #else
 #define RtlpDumpContext(...)
 #endif
@@ -106,13 +122,8 @@ NTAPI BOOLEAN RtlpCheckForActiveDebugger(VOID);
 static inline BOOLEAN RtlpIsStackPtrOk(IN PVOID Ptr)
 {
     PTEB Teb = NtCurrentTeb();
-    return (Ptr >= Teb->NtTib.StackLimit &&
-	    Ptr <= (Teb->NtTib.StackBase - sizeof(ULONG_PTR))) ||
-	(Teb->Wdm.CoroutineStackLow &&
-	 Teb->Wdm.CoroutineStackHigh &&
-	 Teb->Wdm.CoroutineStackLow < Teb->Wdm.CoroutineStackHigh &&
-	 Ptr >= Teb->Wdm.CoroutineStackLow &&
-	 Ptr <= (Teb->Wdm.CoroutineStackHigh - sizeof(ULONG_PTR)));
+    return Ptr >= Teb->NtTib.StackLimit &&
+	Ptr <= (Teb->NtTib.StackBase - sizeof(ULONG_PTR));
 }
 
 /* vectoreh.c */

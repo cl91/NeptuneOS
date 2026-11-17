@@ -49,7 +49,7 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     IopOutgoingIoPacketBuffer = InitInfo->OutgoingIoPacketBuffer;
     IopEventLoopNotification = InitInfo->EventLoopNotificationCap;
     IopExecutiveNotification = InitInfo->ExecutiveNotificationCap;
-    KiCoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;
+    PVOID CoroutineStackChainHead = (PVOID)InitInfo->InitialCoroutineStackTop;
     ULONG TscFreqInMHz = SharedUserData->TscFrequencyInMHz;
     KiCounterTimeMultiplier = (10ULL << TIME_MULTIPLIER_SHIFT) / TscFreqInMHz;
     KiInterruptTimeMultiplier = ((ULONG64)TscFreqInMHz << TIME_MULTIPLIER_SHIFT) / 10;
@@ -72,7 +72,12 @@ VOID WdmStartup(IN seL4_CPtr WdmServiceCap,
     HalpInitDma();
     CiInitialzeCacheManager();
 
-    NTSTATUS Status = IopDriverInitialize(RegistryPath);
+    NTSTATUS Status = KiInitCoroutine(CoroutineStackChainHead);
+    if (!NT_SUCCESS(Status)) {
+	goto fail;
+    }
+
+    Status = IopDriverInitialize(RegistryPath);
     if (!NT_SUCCESS(Status)) {
 	goto fail;
     }

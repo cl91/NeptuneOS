@@ -121,14 +121,9 @@ list(APPEND NT6_SOURCE
 
 if("${Arch}" STREQUAL "i386")
     list(APPEND ASM_SOURCE
-        src/i386/fiber.S
         src/i386/thread.S)
-elseif("${Arch}" STREQUAL "amd64")
-    list(APPEND ASM_SOURCE
-        src/amd64/fiber.S)
 elseif("${Arch}" STREQUAL "arm64")
     list(APPEND ASM_SOURCE
-        src/arm64/fiber.S
         src/arm64/thread.S)
 endif()
 

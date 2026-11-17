@@ -231,6 +231,9 @@ VOID RtlpPrintStackTraceEx(IN PEXCEPTION_POINTERS ExceptionInfo,
 	    DbgPrinter("Stack:\n");
 	    PPVOID Stack = (PPVOID)ContextRecord->STACK_POINTER;
 	    for (INT i = 0; i < 32; i++) {
+		if (!RtlpIsStackPtrOk(&Stack[i])) {
+		    break;
+		}
 		DbgPrinter("   %p:    ", &Stack[i]);
 		RtlpPrintAddressWithModuleName(Stack[i], DbgPrinter);
 	    }

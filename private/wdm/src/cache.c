@@ -857,7 +857,7 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
 			OUT OPTIONAL PIO_STATUS_BLOCK IoStatus)
 {
     /* This routine should be called in a context where we are allowed to sleep. */
-    assert(KiCurrentCoroutineStackTop);
+    assert(KiGetCurrentCoroutineStackTop());
 
     PFLUSH_CACHE_REQUEST Req = ExAllocatePool(NonPagedPool,
 					      sizeof(FLUSH_CACHE_REQUEST));
@@ -885,10 +885,10 @@ NTAPI VOID CcFlushCache(IN PFILE_OBJECT FileObject,
     assert(Vpb->DeviceObject);
     Req->DeviceHandle = Vpb->DeviceObject->Header.GlobalHandle;
     Req->FileHandle = FileObject->Header.GlobalHandle;
-    Req->EnvToWakeUp = IopCurrentEnv;
+    Req->EnvToWakeUp = KiGetCurrentEnv();
     InsertTailList(&CiFlushCacheRequestList, &Req->Link);
 
-    DbgTrace("Suspending coroutine stack %p\n", KiCurrentCoroutineStackTop);
+    DbgTrace("Suspending coroutine stack %p\n", KiGetCurrentCoroutineStackTop());
     KiYieldCoroutine();
 
     if (IoStatus) {

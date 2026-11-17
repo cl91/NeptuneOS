@@ -87,10 +87,10 @@
  * Case 4 (processing a server-originated IRP, invoking IoCallDriver and wait synchronously):
  *
  * |----------|
- * | Incoming | Copy |----------| Dispatch ret.    |--------------|----------------------|
- * | IoPacket | ---> | IrpQueue | ---------------> | ReplyIrpList | Add IopCurrentEnv to |
- * |----------|      |----------| ASYNC_PENDING    |              |   KEVENT::EnvList    |
- *                                                 |--------------|----------------------|
+ * | Incoming | Copy |----------| Dispatch ret.    |--------------|---------------------|
+ * | IoPacket | ---> | IrpQueue | ---------------> | ReplyIrpList | Add KiGetCurrentEnv |
+ * |----------|      |----------| ASYNC_PENDING    |              |  to KEVENT::EnvList |
+ *                                                 |--------------|---------------------|
  *                                                         |
  *                                                         |Forward  |----------|
  *                                                         |-------> | Outgoing |
@@ -108,7 +108,7 @@
  * In this case, the driver either sets the UserEvent member of the IRP or sets an IO
  * completion routine that will signal an event object when the IRP is completed. The
  * driver then invokes IoCallDriver and waits on the event object associated with the
- * IRP. KeWaitForSingleObject adds IopCurrentEnv to KEVENT::EnvList and suspends the
+ * IRP. KeWaitForSingleObject adds KiGetCurrentEnv to KEVENT::EnvList and suspends the
  * current execution environment (ie. coroutine). The control flow is then returned
  * to the IopExecuteCoroutines function which will process the next queued execution
  * environment.
@@ -134,8 +134,8 @@
  *  |----------------------|        |----------------|          |----------------|
  *  |     ReplyIrpList     | -----> | PendingIrpList | -------> | CleanupIrpList |
  *  |----------------------| |      |----------------|  |       |----------------|
- *  | Add IopCurrentEnv to | |                          |
- *  |   KEVENT::EnvList    | |---> Sent to server      (IoCompleted message
+ *  | Add KiGetCurrentEnv  | |                          |
+ *  |  to KEVENT::EnvList  | |---> Sent to server      (IoCompleted message
  *  |----------------------|       for processing      received and completion
  *                                                     routine returns Continue).
  *
@@ -196,9 +196,6 @@ static LIST_ENTRY IopCleanupIrpList;
 LIST_ENTRY IopSignaledObjectList;
 /* List of execution environments that are either running or suspended. */
 static LIST_ENTRY IopExecEnvList;
-/* Current execution environment. It may correspond to a dispatch function
- * (IOP_DISPATCH_FUNCTION) or an IO work item. */
-PIOP_EXEC_ENV IopCurrentEnv;
 
 #if DBG
 static inline BOOLEAN IrpIsInReplyList(IN PIRP Irp)
@@ -2007,12 +2004,9 @@ VOID IoDbgDumpIrp(IN PIRP Irp)
 }
 
 /*
- * The coroutine entry point for dispatch routines. This has to be FASTCALL
- * since we pass its argument in register %ecx (or %rcx in amd64).
- *
- * For details, see coroutine.h
+ * The coroutine entry point for dispatch routines.
  */
-FASTCALL NTSTATUS IopCallDispatchRoutine(IN PVOID Context) /* %ecx/%rcx */
+static NTSTATUS IopCallDispatchRoutine(IN PVOID Context)
 {
     assert(Context != NULL);
     PIRP Irp = (PIRP)Context;
@@ -2358,48 +2352,23 @@ static VOID IopExecuteCoroutines()
 	}
 
 	NTSTATUS Status = STATUS_NTOS_BUG;
-	IopCurrentEnv = Env;
 	if (!Env->CoroutineStackTop) {
-	    /* Find the first available coroutine stack to use */
-	    PUCHAR Stack = KiGetFirstAvailableCoroutineStack();
-	    /* If KiGetFirstAvailableCoroutineStack returns NULL, it means that
-	     * the system is out of memory. Simply stop processing and wait for
-	     * memory to become available in the future. */
-	    if (Stack == NULL) {
-		break;
-	    }
-	    Env->CoroutineStackTop = Stack;
-	    /* Switch to the coroutine stack and call the dispatch routine */
-	    DbgTrace("Switching to coroutine stack top %p\n", Stack);
-	    PTEB Teb = NtCurrentTeb();
-	    Teb->Wdm.CoroutineStackHigh = Stack;
-	    Teb->Wdm.CoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
-	    Status = KiStartCoroutine(Stack, Env->EntryPoint, Env->Context);
-	    Teb->Wdm.CoroutineStackHigh = Teb->Wdm.CoroutineStackLow = NULL;
+	    Status = KiStartCoroutine(Env);
 	} else {
-	    /* We are resuming a coroutine suspended due to KeWaitForSingleObject. */
-	    DbgTrace("Resuming coroutine stack top %p (entrypoint %p finalizer %p). "
-		     "Saved SP %p\n", Env->CoroutineStackTop, Env->EntryPoint,
-		     Env->Finalizer, KiGetCoroutineSavedSP(Env->CoroutineStackTop));
-	    PUCHAR Stack = Env->CoroutineStackTop;
-	    PTEB Teb = NtCurrentTeb();
-	    Teb->Wdm.CoroutineStackHigh = Stack;
-	    Teb->Wdm.CoroutineStackLow = Stack - DRIVER_COROUTINE_STACK_COMMIT;
-	    Status = KiResumeCoroutine(Env->CoroutineStackTop);
-	    Teb->Wdm.CoroutineStackHigh = Teb->Wdm.CoroutineStackLow = NULL;
+	    Status = KiResumeCoroutine(Env);
 	}
-	IopCurrentEnv = NULL;
 	if (Status == STATUS_ASYNC_PENDING) {
 	    /* Mark the execution environment as suspended. */
-	    DbgTrace("Suspending exec env %p, coroutine stack %p, saved SP %p, "
+	    DbgTrace("Suspending exec env %p, coroutine stack %p, fiber %p, "
 		     "context %p\n", Env, Env->CoroutineStackTop,
-		     KiGetCoroutineSavedSP(Env->CoroutineStackTop), Env->Context);
+		     KiGetCoroutineFiber(Env->CoroutineStackTop), Env->Context);
 	    Env->Suspended = TRUE;
 	} else {
 	    /* The dispatch function returns without suspending the coroutine.
 	     * Release the coroutine stack and execute the finalizer. */
-	    assert(Env->CoroutineStackTop);
-	    KiReleaseCoroutineStack(Env->CoroutineStackTop);
+	    ULONG_PTR CoroutineStackTop = (ULONG_PTR)Env->CoroutineStackTop;
+	    assert(CoroutineStackTop);
+	    KiStopCoroutine(Env);
 	    RemoveEntryList(&Env->QueueListEntry);
 	    if (Env->Finalizer) {
 		Env->Finalizer(Env, Status);
@@ -2408,13 +2377,12 @@ static VOID IopExecuteCoroutines()
 	     * that was allocated on the coroutine stack in the signaled object list. */
 	    IopAcquireDpcMutex();
 	    LoopOverList(Object, &IopSignaledObjectList, WAITABLE_OBJECT_HEADER, QueueListEntry) {
-		if ((ULONG_PTR)Object < (ULONG_PTR)Env->CoroutineStackTop &&
-		    (ULONG_PTR)Object >= ((ULONG_PTR)Env->CoroutineStackTop -
-					  DRIVER_COROUTINE_STACK_COMMIT)) {
+		if ((ULONG_PTR)Object < CoroutineStackTop &&
+		    (ULONG_PTR)Object >= (CoroutineStackTop - DRIVER_COROUTINE_STACK_COMMIT)) {
 #if DBG
 		    DbgTrace("ERROR: Object %p allocated on the coroutine stack %p of "
 			     "exec env %p remains in a set state when the coroutine is "
-			     "released.\n", Object, Env->CoroutineStackTop, Env);
+			     "released.\n", Object, (PVOID)CoroutineStackTop, Env);
 		    assert(FALSE);
 #else
 		    KiCancelWaitableObject(Object, FALSE);

@@ -402,39 +402,41 @@ typedef struct _TEB {                                        /* win32/win64 */
     PVOID                  *TlsExpansionSlots;                 /* 14c/290 */
     PVOID                   ActivationContextStackPointer;     /* 150/298 */
     PVOID                   DbgSsReserved[2];                  /* 154/2a0 */
-    union {
-        struct {
-            ULONG_PTR       ServiceCap;                        /* 15c/2b0 */
-            PVOID           CoroutineStackLow;                 /* 160/2b8 */
-            PVOID           CoroutineStackHigh;                /* 164/2c0 */
-            BOOLEAN         DpcQueued;                         /* 168/2c8 */
-            BOOLEAN         IoWorkItemQueued;                  /* 169/2c9 */
-            BOOLEAN         EventSignaled;                     /* 16a/2ca */
-            BOOLEAN         IsDpcThread;                       /* 16b/2cb */
-            BOOLEAN         IsIsrThread;                       /* 16c/2cc */
-            BOOLEAN         IsMainThread;                      /* 16d/2cd */
-        } Wdm;
-        struct {
-            CLIENT_ID       RealClientId;                      /* 15c/2b0 */
-	    ULONG           LastErrorValue;                    /* 164/2c0 */
-	    ULONG           LastStatusValue;                   /* 168/2c4 */
-            ULONG           HardErrorMode;                     /* 16c/2c8 */
-            ULONG           Padding;                           /* 170/2cc */
-            PVOID           SubProcessTag;                     /* 174/2d0 (advapi32) */
-            UNICODE_STRING  StaticUnicodeString;               /* 178/2d8 (kernel32) */
-            WCHAR           StaticUnicodeBuffer[264];          /* 180/2e8 (kernel32) */
-	    ULONG_PTR       Win32ClientInfo[62];               /* 390/4f8 (user32) */
-        } Win32;
-    };
+    struct {
+	ULONG_PTR           ServiceCap;                        /* 15c/2b0 */
+	BOOLEAN             DpcQueued;                         /* 160/2b8 */
+	BOOLEAN             IoWorkItemQueued;                  /* 161/2b9 */
+	BOOLEAN             EventSignaled;                     /* 162/2ba */
+	BOOLEAN             IsDpcThread;                       /* 163/2bb */
+	BOOLEAN             IsIsrThread;                       /* 164/2bc */
+	BOOLEAN             IsMainThread;                      /* 165/2bd */
+    } Wdm;
+    struct {
+	CLIENT_ID           RealClientId;                      /* 168/2c0 */
+	ULONG               LastErrorValue;                    /* 170/2d0 */
+	ULONG               LastStatusValue;                   /* 174/2d4 */
+	ULONG               HardErrorMode;                     /* 178/2d8 */
+	ULONG               Padding;                           /* 17c/2dc */
+	PVOID               SubProcessTag;                     /* 180/2e0 (advapi32) */
+	UNICODE_STRING      StaticUnicodeString;               /* 184/2e8 (kernel32) */
+	WCHAR               StaticUnicodeBuffer[264];          /* 18c/2f8 (kernel32) */
+	ULONG_PTR           Win32ClientInfo[62];               /* 39c/508 (user32) */
+    } Win32;
 } TEB, *PTEB;
 #include <poppack.h>
 
 #ifdef _WIN64
-C_ASSERT(FIELD_OFFSET(TEB, Wdm.IsMainThread) == 0x2cd);
-C_ASSERT(FIELD_OFFSET(TEB, Win32.Win32ClientInfo) == 0x4f8);
+C_ASSERT(FIELD_OFFSET(TEB, Wdm.ServiceCap) == 0x2b0);
+C_ASSERT(FIELD_OFFSET(TEB, Wdm.IsMainThread) == 0x2bd);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.RealClientId) == 0x2c0);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.StaticUnicodeBuffer) == 0x2f8);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.Win32ClientInfo) == 0x508);
 #else
-C_ASSERT(FIELD_OFFSET(TEB, Wdm.IsMainThread) == 0x16d);
-C_ASSERT(FIELD_OFFSET(TEB, Win32.Win32ClientInfo) == 0x390);
+C_ASSERT(FIELD_OFFSET(TEB, Wdm.ServiceCap) == 0x15c);
+C_ASSERT(FIELD_OFFSET(TEB, Wdm.IsMainThread) == 0x165);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.RealClientId) == 0x168);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.StaticUnicodeBuffer) == 0x18c);
+C_ASSERT(FIELD_OFFSET(TEB, Win32.Win32ClientInfo) == 0x39c);
 #endif
 
 /* The driver process's IO packet buffer pointers are placed at the end of the TEB page,
@@ -3779,6 +3781,9 @@ NTAPI NTSYSAPI NTSTATUS RtlQueryInformationActiveActivationContext(
 
 NTAPI NTSYSAPI NTSTATUS RtlZombifyActivationContext(PVOID Context);
 
+/*
+ * Fiber data in the NT_TIB
+ */
 typedef struct _FIBER {                     /* Field offsets:    i386  x64   */
     PVOID FiberData;                                          /* 0x000 0x000 */
     PEXCEPTION_REGISTRATION_RECORD ExceptionList;             /* 0x004 0x008 */
@@ -3793,6 +3798,12 @@ typedef struct _FIBER {                     /* Field offsets:    i386  x64   */
     ULONG TebFlags;                                           /* 0x2F0 0x51C */
 } FIBER, *PFIBER;
 
+typedef NTSTATUS (NTAPI *PRTL_FIBER_STACK_ALLOCATION_ROUTINE)(IN SIZE_T StackCommitSize,
+							      IN SIZE_T StackReserveSize,
+							      OUT PINITIAL_TEB InitialTeb);
+
+typedef VOID (NTAPI *PRTL_FIBER_STACK_DEALLOCATION_ROUTINE)(IN PVOID DeallocationStack);
+
 #ifdef _M_IX86
 C_ASSERT(FIELD_OFFSET(FIBER, ExceptionList) == 0x04);
 C_ASSERT(FIELD_OFFSET(FIBER, StackBase) == 0x08);
@@ -3800,6 +3811,32 @@ C_ASSERT(FIELD_OFFSET(FIBER, StackLimit) == 0x0C);
 C_ASSERT(FIELD_OFFSET(FIBER, DeallocationStack) == 0x10);
 C_ASSERT(FIELD_OFFSET(FIBER, FiberContext) == 0x20);
 #endif // _M_IX86
+
+NTAPI NTSYSAPI NTSTATUS RtlConvertThreadToFiber(IN OPTIONAL LPVOID Parameter,
+						IN BOOLEAN SaveFpuState);
+
+NTAPI NTSYSAPI NTSTATUS RtlConvertFiberToThread(VOID);
+
+NTAPI NTSYSAPI NTSTATUS RtlCreateFiber(IN SIZE_T StackCommitSize,
+				       IN SIZE_T StackReserveSize,
+				       IN BOOLEAN SaveFpuState,
+				       IN PRTL_FIBER_STACK_ALLOCATION_ROUTINE AllocateStack,
+				       IN PVOID FiberData,
+				       OUT PFIBER *pFiber);
+
+NTAPI NTSYSAPI VOID RtlDeleteFiber(IN PFIBER Fiber,
+				   IN PRTL_FIBER_STACK_DEALLOCATION_ROUTINE DeallocateStack);
+
+NTAPI NTSYSAPI ULONG RtlSwitchToFiber(IN PFIBER Fiber);
+
+NTAPI NTSYSAPI NTSTATUS RtlFlsAlloc(PFLS_CALLBACK_FUNCTION Callback,
+				    OUT ULONG *pFlsIndex);
+
+NTAPI NTSYSAPI NTSTATUS RtlFlsFree(ULONG FlsIndex);
+
+NTAPI NTSYSAPI PVOID RtlFlsGetValue(ULONG FlsIndex);
+
+NTAPI NTSYSAPI NTSTATUS RtlFlsSetValue(ULONG FlsIndex, PVOID Data);
 
 /*
  * PEB.AppCompatFlags.LowPart

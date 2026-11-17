@@ -6,7 +6,7 @@
  * PROGRAMMER:
  */
 
-#include <ksarm.h>
+#include <ksarm64.h>
 
     IMPORT BaseThreadStartup
     IMPORT BaseProcessStartup

@@ -1150,7 +1150,7 @@
 @ stdcall -version=0x600+ StartThreadpoolIo(ptr) ntdll.TpStartAsyncIoOperation
 @ stdcall -version=0x600+ SubmitThreadpoolWork(ptr) ntdll.TpPostWork
 @ stdcall SuspendThread(long)
-@ stdcall SwitchToFiber(ptr)
+@ stdcall SwitchToFiber(ptr) ntdll.RtlSwitchToFiber
 @ stdcall SwitchToThread()
 @ stdcall SystemTimeToFileTime(ptr ptr)
 @ stdcall SystemTimeToTzSpecificLocalTime(ptr ptr ptr)

@@ -9,29 +9,33 @@
 
 #include <k32.h>
 
-/* PRIVATE FUNCTIONS **********************************************************/
-
-WINAPI VOID BaseRundownFls(_In_ PVOID FlsData)
+/*
+ * @implemented
+ *
+ * Entry point of a freshly scheduled fiber.
+ */
+WINAPI DECLSPEC_NORETURN VOID BaseFiberStartup(VOID)
 {
-    ULONG n, FlsHighIndex;
-    PRTL_FLS_DATA pFlsData;
-    PFLS_CALLBACK_FUNCTION lpCallback;
-
-    pFlsData = FlsData;
-
-    RtlAcquirePebLock();
-    FlsHighIndex = NtCurrentPeb()->FlsHighIndex;
-    RemoveEntryList(&pFlsData->ListEntry);
-    RtlReleasePebLock();
-
-    for (n = 1; n <= FlsHighIndex; ++n) {
-	lpCallback = NtCurrentPeb()->FlsCallback[n];
-	if (lpCallback && pFlsData->Data[n]) {
-	    lpCallback(pFlsData->Data[n]);
-	}
-    }
-
-    RtlFreeHeap(RtlGetProcessHeap(), 0, FlsData);
+    PFIBER Fiber = (PFIBER)NtCurrentTeb()->NtTib.FiberData;
+#ifdef _M_IX86
+    /* For i386, BaseInitializeContext() initializes the fiber context with
+     * the start routine in eax and its single parameter in ebx. */
+    ULONG_PTR StartRoutine = Fiber->FiberContext.Eax;
+    ULONG_PTR Parameter = Fiber->FiberContext.Ebx;
+#elif defined(_M_AMD64)
+    /* For amd64, BaseInitializeContext() initializes the fiber context with
+     * the start routine in rcx and its single parameter in rdx. */
+    ULONG_PTR StartRoutine = Fiber->FiberContext.Rcx;
+    ULONG_PTR Parameter = Fiber->FiberContext.Rdx;
+#elif defined(_M_ARM64)
+    /* For arm64, BaseInitializeContext() initializes the fiber context with
+     * the start routine in X0 and its single parameter in X1. */
+    ULONG_PTR StartRoutine = Fiber->FiberContext.X0;
+    ULONG_PTR Parameter = Fiber->FiberContext.X1;
+#else
+#error "Unsupported architecture"
+#endif
+    BaseThreadStartup((LPTHREAD_START_ROUTINE)StartRoutine, (LPVOID)Parameter);
 }
 
 /* PUBLIC FUNCTIONS ***********************************************************/
@@ -41,28 +45,11 @@ WINAPI VOID BaseRundownFls(_In_ PVOID FlsData)
  */
 WINAPI BOOL ConvertFiberToThread(VOID)
 {
-    PTEB Teb;
-    PFIBER FiberData;
-    DPRINT1("Converting Fiber to Thread\n");
-
-    /* Check if the thread is already not a fiber */
-    Teb = NtCurrentTeb();
-    if (!Teb->NtTib.FiberData) {
-	/* Fail */
-	SetLastError(ERROR_ALREADY_THREAD);
-	return FALSE;
+    NTSTATUS Status = RtlConvertFiberToThread();
+    if (Status == STATUS_ALREADY_INITIALIZED) {
+	SetLastError(ERROR_ALREADY_FIBER);
     }
-
-    /* This thread won't run a fiber anymore */
-    FiberData = Teb->NtTib.FiberData;
-    Teb->NtTib.FiberData = NULL;
-
-    /* Free the fiber */
-    ASSERT(FiberData != NULL);
-    RtlFreeHeap(RtlGetProcessHeap(), 0, FiberData);
-
-    /* Success */
-    return TRUE;
+    return NT_SUCCESS(Status);
 }
 
 /*
@@ -70,8 +57,6 @@ WINAPI BOOL ConvertFiberToThread(VOID)
  */
 WINAPI LPVOID ConvertThreadToFiberEx(_In_opt_ LPVOID lpParameter, _In_ DWORD dwFlags)
 {
-    PTEB Teb;
-    PFIBER Fiber;
     DPRINT1("Converting Thread to Fiber\n");
 
     /* Check for invalid flags */
@@ -81,42 +66,19 @@ WINAPI LPVOID ConvertThreadToFiberEx(_In_opt_ LPVOID lpParameter, _In_ DWORD dwF
 	return NULL;
     }
 
-    /* Are we already a fiber? */
-    Teb = NtCurrentTeb();
-    if (Teb->NtTib.FiberData) {
-	/* Fail */
-	SetLastError(ERROR_ALREADY_FIBER);
+    NTSTATUS Status = RtlConvertThreadToFiber(lpParameter,
+					      !!(dwFlags & FIBER_FLAG_FLOAT_SWITCH));
+    if (!NT_SUCCESS(Status)) {
+	if (Status == STATUS_ALREADY_INITIALIZED) {
+	    SetLastError(ERROR_ALREADY_FIBER);
+	} else {
+	    BaseSetLastNTError(Status);
+	}
 	return NULL;
     }
 
-    /* Allocate the fiber */
-    Fiber = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(FIBER));
-    if (!Fiber) {
-	/* Fail */
-	SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-	return NULL;
-    }
-
-    /* Copy some contextual data from the thread to the fiber */
-    Fiber->FiberData = lpParameter;
-    Fiber->ExceptionList = Teb->NtTib.ExceptionList;
-    Fiber->StackBase = Teb->NtTib.StackBase;
-    Fiber->StackLimit = Teb->NtTib.StackLimit;
-    Fiber->DeallocationStack = Teb->NtTib.DeallocationStack;
-    Fiber->FlsData = Teb->FlsData;
-    Fiber->GuaranteedStackBytes = Teb->GuaranteedStackBytes;
-    Fiber->ActivationContextStackPointer = Teb->ActivationContextStackPointer;
-
-    /* Save FPU State if requested, otherwise just the basic registers */
-    Fiber->FiberContext.ContextFlags = (dwFlags & FIBER_FLAG_FLOAT_SWITCH) ?
-					   (CONTEXT_FULL | CONTEXT_FLOATING_POINT) :
-					   CONTEXT_FULL;
-
-    /* Associate the fiber to the current thread */
-    Teb->NtTib.FiberData = Fiber;
-
-    /* Return opaque fiber data */
-    return (LPVOID)Fiber;
+    assert(NtCurrentTeb()->NtTib.FiberData);
+    return NtCurrentTeb()->NtTib.FiberData;
 }
 
 /*
@@ -139,6 +101,14 @@ WINAPI LPVOID CreateFiber(_In_ SIZE_T dwStackSize,
     return CreateFiberEx(dwStackSize, 0, 0, lpStartAddress, lpParameter);
 }
 
+static NTAPI NTSTATUS BasepCreaetFiberStack(IN SIZE_T StackCommitSize,
+					    IN SIZE_T StackReserveSize,
+					    OUT PINITIAL_TEB InitialTeb)
+{
+    return BaseCreateStack(NtCurrentProcess(), StackCommitSize, StackReserveSize,
+			   InitialTeb);
+}
+
 /*
  * @implemented
  */
@@ -146,10 +116,6 @@ WINAPI LPVOID CreateFiberEx(_In_ SIZE_T dwStackCommitSize, _In_ SIZE_T dwStackRe
 			    _In_ DWORD dwFlags, _In_ LPFIBER_START_ROUTINE lpStartAddress,
 			    _In_opt_ LPVOID lpParameter)
 {
-    PFIBER Fiber;
-    NTSTATUS Status;
-    INITIAL_TEB InitialTeb;
-    PACTIVATION_CONTEXT_STACK ActivationContextStackPointer;
     DPRINT("Creating Fiber\n");
 
     /* Check for invalid flags */
@@ -159,65 +125,28 @@ WINAPI LPVOID CreateFiberEx(_In_ SIZE_T dwStackCommitSize, _In_ SIZE_T dwStackRe
 	return NULL;
     }
 
-    /* Allocate the Activation Context Stack */
-    ActivationContextStackPointer = NULL;
-    Status = RtlAllocateActivationContextStack(&ActivationContextStackPointer);
+    PFIBER Fiber = NULL;
+    NTSTATUS Status = RtlCreateFiber(dwStackCommitSize, dwStackReserveSize,
+				     !!(dwFlags & FIBER_FLAG_FLOAT_SWITCH),
+				     BasepCreaetFiberStack, lpParameter, &Fiber);
     if (!NT_SUCCESS(Status)) {
-	/* Fail */
 	BaseSetLastNTError(Status);
 	return NULL;
     }
-
-    /* Allocate the fiber */
-    Fiber = RtlAllocateHeap(RtlGetProcessHeap(), 0, sizeof(FIBER));
-    if (!Fiber) {
-	/* Free the activation context stack */
-	RtlFreeActivationContextStack(ActivationContextStackPointer);
-
-	/* Fail */
-	SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-	return NULL;
-    }
-
-    /* Create the stack for the fiber */
-    Status = BaseCreateStack(NtCurrentProcess(), dwStackCommitSize, dwStackReserveSize,
-			     &InitialTeb);
-    if (!NT_SUCCESS(Status)) {
-	/* Free the fiber */
-	RtlFreeHeap(GetProcessHeap(), 0, Fiber);
-
-	/* Free the activation context stack */
-	RtlFreeActivationContextStack(ActivationContextStackPointer);
-
-	/* Failure */
-	BaseSetLastNTError(Status);
-	return NULL;
-    }
-
-    /* Clear the context */
-    RtlZeroMemory(&Fiber->FiberContext, sizeof(CONTEXT));
-
-    /* Copy the data into the fiber */
-    Fiber->StackBase = InitialTeb.StackBase;
-    Fiber->StackLimit = InitialTeb.StackLimit;
-    Fiber->DeallocationStack = InitialTeb.AllocatedStackBase;
-    Fiber->FiberData = lpParameter;
-    Fiber->ExceptionList = EXCEPTION_CHAIN_END;
-    Fiber->GuaranteedStackBytes = 0;
-    Fiber->FlsData = NULL;
-    Fiber->ActivationContextStackPointer = ActivationContextStackPointer;
-
-    /* Save FPU State if requested, otherwise just the basic registers */
-    Fiber->FiberContext.ContextFlags = (dwFlags & FIBER_FLAG_FLOAT_SWITCH) ?
-					   (CONTEXT_FULL | CONTEXT_FLOATING_POINT) :
-					   CONTEXT_FULL;
 
     /* Initialize the context for the fiber */
     BaseInitializeContext(&Fiber->FiberContext, lpParameter, lpStartAddress,
-			  InitialTeb.StackBase, 2);
+			  Fiber->StackBase, 2);
 
     /* Return the Fiber */
     return Fiber;
+}
+
+static NTAPI VOID BasepDeallocateFiberStack(IN PVOID DeallocationStack)
+{
+    SIZE_T Size = 0;
+    NtFreeVirtualMemory(NtCurrentProcess(), &DeallocationStack, &Size,
+			MEM_RELEASE);
 }
 
 /*
@@ -225,32 +154,13 @@ WINAPI LPVOID CreateFiberEx(_In_ SIZE_T dwStackCommitSize, _In_ SIZE_T dwStackRe
  */
 WINAPI VOID DeleteFiber(_In_ LPVOID lpFiber)
 {
-    SIZE_T Size;
-    PFIBER Fiber;
-    PTEB Teb;
-
     /* Are we deleting ourselves? */
-    Teb = NtCurrentTeb();
-    Fiber = (PFIBER)lpFiber;
-    if ((Teb->NtTib.FiberData) && (Teb->NtTib.FiberData == Fiber)) {
+    PTEB Teb = NtCurrentTeb();
+    if ((Teb->NtTib.FiberData) && (Teb->NtTib.FiberData == lpFiber)) {
 	/* Just exit */
 	ExitThread(1);
     }
-
-    /* Not ourselves, de-allocate the stack */
-    Size = 0;
-    NtFreeVirtualMemory(NtCurrentProcess(), &Fiber->DeallocationStack, &Size,
-			MEM_RELEASE);
-
-    /* Get rid of FLS */
-    if (Fiber->FlsData)
-	BaseRundownFls(Fiber->FlsData);
-
-    /* Get rid of the activation context stack */
-    RtlFreeActivationContextStack(Fiber->ActivationContextStackPointer);
-
-    /* Free the fiber data */
-    RtlFreeHeap(RtlGetProcessHeap(), 0, lpFiber);
+    RtlDeleteFiber(lpFiber, BasepDeallocateFiberStack);
 }
 
 /*
@@ -267,45 +177,11 @@ WINAPI BOOL IsThreadAFiber(VOID)
  */
 WINAPI DWORD FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback)
 {
-    DWORD dwFlsIndex;
-    PPEB Peb = NtCurrentPeb();
-    PRTL_FLS_DATA pFlsData;
-
-    RtlAcquirePebLock();
-
-    pFlsData = NtCurrentTeb()->FlsData;
-
-    if (!Peb->FlsCallback &&
-	!(Peb->FlsCallback = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
-					     RTL_FLS_MAXIMUM_AVAILABLE * sizeof(PVOID)))) {
-	SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-	dwFlsIndex = FLS_OUT_OF_INDEXES;
-    } else {
-	dwFlsIndex = RtlFindClearBitsAndSet(Peb->FlsBitmap, 1, 1);
-	if (dwFlsIndex != FLS_OUT_OF_INDEXES) {
-	    if (!pFlsData &&
-		!(pFlsData = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
-					     sizeof(RTL_FLS_DATA)))) {
-		RtlClearBits(Peb->FlsBitmap, dwFlsIndex, 1);
-		dwFlsIndex = FLS_OUT_OF_INDEXES;
-		SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-	    } else {
-		if (!NtCurrentTeb()->FlsData) {
-		    NtCurrentTeb()->FlsData = pFlsData;
-		    InsertTailList(&Peb->FlsListHead, &pFlsData->ListEntry);
-		}
-
-		pFlsData->Data[dwFlsIndex] = NULL; /* clear the value */
-		Peb->FlsCallback[dwFlsIndex] = lpCallback;
-
-		if (dwFlsIndex > Peb->FlsHighIndex)
-		    Peb->FlsHighIndex = dwFlsIndex;
-	    }
-	} else {
-	    SetLastError(ERROR_NO_MORE_ITEMS);
-	}
+    ULONG dwFlsIndex = FLS_OUT_OF_INDEXES;
+    NTSTATUS Status = RtlFlsAlloc(lpCallback, &dwFlsIndex);
+    if (!NT_SUCCESS(Status)) {
+	BaseSetLastNTError(Status);
     }
-    RtlReleasePebLock();
     return dwFlsIndex;
 }
 
@@ -314,46 +190,11 @@ WINAPI DWORD FlsAlloc(PFLS_CALLBACK_FUNCTION lpCallback)
  */
 WINAPI BOOL FlsFree(DWORD dwFlsIndex)
 {
-    BOOL Ret;
-    PPEB Peb = NtCurrentPeb();
-
-    if (dwFlsIndex >= RTL_FLS_MAXIMUM_AVAILABLE) {
-	SetLastError(ERROR_INVALID_PARAMETER);
-	return FALSE;
+    NTSTATUS Status = RtlFlsFree(dwFlsIndex);
+    if (!NT_SUCCESS(Status)) {
+	BaseSetLastNTError(Status);
     }
-
-    RtlAcquirePebLock();
-
-    __try {
-	Ret = RtlAreBitsSet(Peb->FlsBitmap, dwFlsIndex, 1);
-	if (Ret) {
-	    PLIST_ENTRY Entry;
-	    PFLS_CALLBACK_FUNCTION lpCallback;
-
-	    RtlClearBits(Peb->FlsBitmap, dwFlsIndex, 1);
-	    lpCallback = Peb->FlsCallback[dwFlsIndex];
-
-	    for (Entry = Peb->FlsListHead.Flink; Entry != &Peb->FlsListHead;
-		 Entry = Entry->Flink) {
-		PRTL_FLS_DATA pFlsData;
-
-		pFlsData = CONTAINING_RECORD(Entry, RTL_FLS_DATA, ListEntry);
-		if (pFlsData->Data[dwFlsIndex]) {
-		    if (lpCallback) {
-			lpCallback(pFlsData->Data[dwFlsIndex]);
-		    }
-		    pFlsData->Data[dwFlsIndex] = NULL;
-		}
-	    }
-	    Peb->FlsCallback[dwFlsIndex] = NULL;
-	} else {
-	    SetLastError(ERROR_INVALID_PARAMETER);
-	}
-    } __finally {
-	RtlReleasePebLock();
-    }
-
-    return Ret;
+    return NT_SUCCESS(Status);
 }
 
 /*
@@ -361,16 +202,13 @@ WINAPI BOOL FlsFree(DWORD dwFlsIndex)
  */
 WINAPI PVOID FlsGetValue(DWORD dwFlsIndex)
 {
-    PRTL_FLS_DATA pFlsData;
-
-    pFlsData = NtCurrentTeb()->FlsData;
-    if (!dwFlsIndex || dwFlsIndex >= RTL_FLS_MAXIMUM_AVAILABLE || !pFlsData) {
+    PVOID Value = RtlFlsGetValue(dwFlsIndex);
+    if (Value) {
+	SetLastError(ERROR_SUCCESS);
+    } else {
 	SetLastError(ERROR_INVALID_PARAMETER);
-	return NULL;
     }
-
-    SetLastError(ERROR_SUCCESS);
-    return pFlsData->Data[dwFlsIndex];
+    return Value;
 }
 
 /*
@@ -378,29 +216,11 @@ WINAPI PVOID FlsGetValue(DWORD dwFlsIndex)
  */
 WINAPI BOOL FlsSetValue(DWORD dwFlsIndex, PVOID lpFlsData)
 {
-    PRTL_FLS_DATA pFlsData;
-
-    if (!dwFlsIndex || dwFlsIndex >= RTL_FLS_MAXIMUM_AVAILABLE) {
-	SetLastError(ERROR_INVALID_PARAMETER);
-	return FALSE;
+    NTSTATUS Status = RtlFlsSetValue(dwFlsIndex, lpFlsData);
+    if (!NT_SUCCESS(Status)) {
+	BaseSetLastNTError(Status);
     }
-
-    pFlsData = NtCurrentTeb()->FlsData;
-
-    if (!NtCurrentTeb()->FlsData &&
-	!(NtCurrentTeb()->FlsData = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
-						    sizeof(RTL_FLS_DATA)))) {
-	SetLastError(ERROR_NOT_ENOUGH_MEMORY);
-	return FALSE;
-    }
-    if (!pFlsData) {
-	pFlsData = NtCurrentTeb()->FlsData;
-	RtlAcquirePebLock();
-	InsertTailList(&NtCurrentPeb()->FlsListHead, &pFlsData->ListEntry);
-	RtlReleasePebLock();
-    }
-    pFlsData->Data[dwFlsIndex] = lpFlsData;
-    return TRUE;
+    return NT_SUCCESS(Status);
 }
 
 /* EOF */
