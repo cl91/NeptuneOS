@@ -1210,30 +1210,8 @@ NTAPI NTSTATUS LdrShutdownThread(VOID)
 	RtlFreeHeap(RtlGetProcessHeap(), 0, Teb->TlsExpansionSlots);
     }
 
-    /* Check for FLS Data */
-    if (Teb->FlsData) {
-	/* Mimic BaseRundownFls */
-	ULONG n, FlsHighIndex;
-	PRTL_FLS_DATA pFlsData;
-	PFLS_CALLBACK_FUNCTION lpCallback;
-
-	pFlsData = Teb->FlsData;
-
-	RtlAcquirePebLock();
-	FlsHighIndex = Peb->FlsHighIndex;
-	RemoveEntryList(&pFlsData->ListEntry);
-	RtlReleasePebLock();
-
-	for (n = 1; n <= FlsHighIndex; ++n) {
-	    lpCallback = Peb->FlsCallback[n];
-	    if (lpCallback && pFlsData->Data[n]) {
-		lpCallback(pFlsData->Data[n]);
-	    }
-	}
-
-	RtlFreeHeap(RtlGetProcessHeap(), 0, pFlsData);
-	Teb->FlsData = NULL;
-    }
+    RtlpRundownFls(Teb->FlsData);
+    Teb->FlsData = NULL;
 
     /* Check for Fiber data */
     if (Teb->NtTib.FiberData) {

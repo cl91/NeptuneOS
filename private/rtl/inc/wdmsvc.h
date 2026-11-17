@@ -24,9 +24,6 @@ compile_assert(TOO_MANY_WDM_SERVICES, NUMBER_OF_WDM_SERVICES < 0x1000UL);
  */
 #define DRIVER_IO_PACKET_BUFFER_RESERVE	(16 * PAGE_SIZE)
 #define DRIVER_IO_PACKET_BUFFER_COMMIT	(4 * PAGE_SIZE)
-#define DRIVER_COROUTINE_STACK_RESERVE	(8 * PAGE_SIZE)
-#define DRIVER_COROUTINE_STACK_GUARD	(2 * PAGE_SIZE)
-#define DRIVER_COROUTINE_STACK_COMMIT	(4 * PAGE_SIZE)
 
 typedef struct _IO_PACKET_BUFFER_POINTERS {
     /* Cacheline written by the NT Executive server */
@@ -46,6 +43,21 @@ typedef struct _IO_PACKET_BUFFER_POINTERS {
 } IO_PACKET_BUFFER_POINTERS, *PIO_PACKET_BUFFER_POINTERS;
 
 C_ASSERT(sizeof(IO_PACKET_BUFFER_POINTERS) == 2 * SYSTEM_CACHE_ALIGNMENT_SIZE);
+
+/*
+ * Coroutine stack allocation scheme:
+ *
+ *  |----------|-------|----------|
+ *  |    8KB   |  16KB |   8KB    |
+ *  | UNMAPPED | STACK | UNMAPPED |
+ *  |----------|-------|----------|
+ *
+ * The regions above and below the stack are intentionally unmapped to catch
+ * stack underflow and overflow.
+ */
+#define DRIVER_COROUTINE_STACK_RESERVE	(8 * PAGE_SIZE)
+#define DRIVER_COROUTINE_STACK_GUARD	(2 * PAGE_SIZE)
+#define DRIVER_COROUTINE_STACK_COMMIT	(4 * PAGE_SIZE)
 
 #define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
 

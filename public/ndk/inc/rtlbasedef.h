@@ -20,6 +20,10 @@ typedef struct _EXCEPTION_RECORD {
 
 #if defined(_MSC_VER) && !defined(_NTOSKRNL_)
 
+typedef VOID (NTAPI *PFIBER_START_ROUTINE)(PVOID FiberParameter);
+
+#define FLS_OUT_OF_INDEXES 0xFFFFFFFF
+
 /*
  * Thread Error Mode Flags
  */

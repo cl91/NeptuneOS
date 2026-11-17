@@ -113,7 +113,7 @@ NTAPI VOID IoQueueWorkItemEx(IN OUT PIO_WORKITEM IoWorkItem,
 /*
  * This is the coroutine entry point for the workitem routines
  */
-FASTCALL NTSTATUS IopCallWorkItemRoutine(IN PVOID Context) /* %ecx/%rcx */
+static NTSTATUS IopCallWorkItemRoutine(IN PVOID Context)
 {
     PIO_WORKITEM WorkItem = (PIO_WORKITEM)Context;
     assert(WorkItem != NULL);

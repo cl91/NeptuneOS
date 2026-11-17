@@ -196,7 +196,6 @@ extern MWORD IopIncomingIoPacketBuffer;
 extern MWORD IopOutgoingIoPacketBuffer;
 extern LIST_ENTRY IopSignaledObjectList;
 extern LIST_ENTRY IopExecEnvList;
-extern PIOP_EXEC_ENV IopCurrentEnv;
 NTSTATUS IopAllocateMdl(IN PVOID Buffer,
 			IN ULONG BufferLength,
 			IN PULONG_PTR PfnDb,
