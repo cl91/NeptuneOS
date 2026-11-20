@@ -55,6 +55,7 @@ enum _ARCH {
     ARCH_AMD64,
     ARCH_IA64,
     ARCH_ARM,
+    ARCH_ARM64,
     ARCH_PPC
 };
 
@@ -447,14 +448,14 @@ void OutputHeader_asmstub(FILE *file, char *libname)
 	fprintf(file, ".586\n.model flat\n.code\n");
     } else if (giArch == ARCH_AMD64) {
 	fprintf(file, ".code\n");
-    } else if (giArch == ARCH_ARM) {
+    } else if (giArch == ARCH_ARM || giArch == ARCH_ARM64) {
 	fprintf(file, "    AREA |.text|,ALIGN=2,CODE,READONLY\n\n");
     }
 }
 
 void Output_stublabel(FILE *fileDest, char *pszSymbolName)
 {
-    if (giArch == ARCH_ARM) {
+    if (giArch == ARCH_ARM || giArch == ARCH_ARM64) {
 	fprintf(fileDest,
 		"\tEXPORT |%s| [FUNC]\n|%s|\n",
 		pszSymbolName, pszSymbolName);
@@ -1342,10 +1343,12 @@ int main(int argc, char *argv[])
 	giArch = ARCH_IA64;
     else if (strcasecmp(pszArchString, "arm") == 0)
 	giArch = ARCH_ARM;
+    else if (strcasecmp(pszArchString, "arm64") == 0)
+	giArch = ARCH_ARM64;
     else if (strcasecmp(pszArchString, "ppc") == 0)
 	giArch = ARCH_PPC;
 
-    if ((giArch == ARCH_AMD64) || (giArch == ARCH_IA64)) {
+    if ((giArch == ARCH_AMD64) || (giArch == ARCH_IA64) || (giArch == ARCH_ARM64)) {
 	pszArchString2 = "win64";
     } else
 	pszArchString2 = "win32";

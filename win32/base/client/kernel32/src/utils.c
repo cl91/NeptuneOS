@@ -483,11 +483,11 @@ WINAPI VOID BaseInitializeContext(IN PCONTEXT Context, IN PVOID Parameter,
 #elif defined(_M_ARM64)
     DPRINT("BaseInitializeContext: %p\n", Context);
 
-    // FIXME: check if this is correct!
     /* Setup the Initial Win32 Thread Context */
-    Context->R0 = (ULONG_PTR)StartAddress;
-    Context->R1 = (ULONG_PTR)Parameter;
+    Context->X0 = (ULONG_PTR)StartAddress;
+    Context->X1 = (ULONG_PTR)Parameter;
     Context->Sp = (ULONG_PTR)StackAddress;
+    Context->Lr = 0;
 
     if (ContextType == 1) {
 	/* For Threads */
@@ -495,6 +495,7 @@ WINAPI VOID BaseInitializeContext(IN PCONTEXT Context, IN PVOID Parameter,
     } else if (ContextType == 2) {
 	/* For Fibers */
 	Context->Pc = (ULONG_PTR)BaseFiberStartup;
+	Context->Lr = (ULONG_PTR)ExitThread;
     } else {
 	/* For first thread in a Process */
 	Context->Pc = (ULONG_PTR)BaseProcessStartThunk;
@@ -502,9 +503,6 @@ WINAPI VOID BaseInitializeContext(IN PCONTEXT Context, IN PVOID Parameter,
 
     /* Set the Context Flags */
     Context->ContextFlags = CONTEXT_FULL;
-
-    /* Give it some room for the Parameter */
-    Context->Sp -= sizeof(PVOID);
 #else
 #error "Unsupported architecture"
 #endif
