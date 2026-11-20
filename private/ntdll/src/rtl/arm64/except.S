@@ -37,13 +37,6 @@
     ret
 .ENDP
 
-.PROC DbgBreakPoint
-    brk #0xf000
-    ret
-    nop; nop; nop; nop; nop; nop; nop
-    nop; nop; nop; nop; nop; nop; nop
-.ENDP
-
 .PROC __C_ExecuteExceptionFilter
     stp x29, x30, [sp, #-96]!
     .seh_save_fplr_x 96
