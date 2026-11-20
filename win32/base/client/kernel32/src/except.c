@@ -70,19 +70,31 @@ static VOID DumpContext(PCONTEXT Ctx)
     DbgPrint("R12: %I64x   R13: %I64x   R14: %I64x   R15: %I64x\n", Ctx->R12, Ctx->R13,
 	     Ctx->R14, Ctx->R15);
     DbgPrint("EFLAGS: %.8x\n", Ctx->EFlags);
-#elif defined(_M_ARM)
-    DbgPrint("CTX:  %08lx   LR:  %08lx   SP:  %08lx\n", Ctx->Ctx, Ctx->Lr, Ctx->Sp);
-    DbgPrint("R0:  %08lx   R1:  %08lx   R2:  %08lx   R3:  %08lx\n", Ctx->R0, Ctx->R1,
-	     Ctx->R2, Ctx->R3);
-    DbgPrint("R4:  %08lx   R5:  %08lx   R6:  %08lx   R7:  %08lx\n", Ctx->R4, Ctx->R5,
-	     Ctx->R6, Ctx->R7);
-    DbgPrint("R8:  %08lx   R9:  %08lx   R10: %08lx   R11: %08lx\n", Ctx->R8, Ctx->R9,
-	     Ctx->R10, Ctx->R11);
-    DbgPrint("R12: %08lx   CPSR: %08lx  FPSCR: %08lx\n", Ctx->R12, Ctx->Cpsr, Ctx->Fpscr);
+#elif defined(_M_ARM64)
+    DbgPrint("PC:  %I64x   LR:  %I64x   SP:  %I64x   FP:  %I64x\n", Ctx->Pc, Ctx->Lr,
+	     Ctx->Sp, Ctx->Fp);
+    DbgPrint("X0:  %I64x   X1:  %I64x   X2:  %I64x   X3:  %I64x\n", Ctx->X0, Ctx->X1,
+	     Ctx->X2, Ctx->X3);
+    DbgPrint("X4:  %I64x   X5:  %I64x   X6:  %I64x   X7:  %I64x\n", Ctx->X4, Ctx->X5,
+	     Ctx->X6, Ctx->X7);
+    DbgPrint("X8:  %I64x   X9:  %I64x   X10: %I64x   X11: %I64x\n", Ctx->X8, Ctx->X9,
+	     Ctx->X10, Ctx->X11);
+    DbgPrint("X12: %I64x   X13: %I64x   X14: %I64x   X15: %I64x\n", Ctx->X12, Ctx->X13,
+	     Ctx->X14, Ctx->X15);
+    DbgPrint("X16: %I64x   X17: %I64x   X18: %I64x   X19: %I64x\n", Ctx->X16, Ctx->X17,
+	     Ctx->X18, Ctx->X19);
+    DbgPrint("X20: %I64x   X21: %I64x   X22: %I64x   X23: %I64x\n", Ctx->X20, Ctx->X21,
+	     Ctx->X22, Ctx->X23);
+    DbgPrint("X24: %I64x   X25: %I64x   X26: %I64x   X27: %I64x\n", Ctx->X24, Ctx->X25,
+	     Ctx->X26, Ctx->X27);
+    DbgPrint("X28: %I64x   CPSR: %08x  FPCR: %08x  FPSR: %08x\n", Ctx->X28, Ctx->Cpsr,
+	     Ctx->Fpcr, Ctx->Fpsr);
 #else
 #error "Unknown architecture"
 #endif
 }
+
+#define NUM_BACKTRACE_LINES 128
 
 static VOID PrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo)
 {
@@ -115,14 +127,15 @@ static VOID PrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo)
     DbgPrint("Address:\n<%s:%zx> (%s@%p)\n", szModFile,
 	     (ULONG_PTR)ExceptionRecord->ExceptionAddress - (ULONG_PTR)StartAddr, szMod,
 	     StartAddr);
-#ifdef _M_IX86
-    DbgPrint("Frames:\n");
 
+    DbgPrint("Frames:\n");
     __try {
+
+#ifdef _M_IX86
 	UINT i;
 	PULONG Frame = (PULONG)ContextRecord->Ebp;
 
-	for (i = 0; Frame[1] != 0 && Frame[1] != 0xdeadbeef && i < 128; i++) {
+	for (i = 0; Frame[1] != 0 && Frame[1] != 0xdeadbeef && i < NUM_BACKTRACE_LINES; i++) {
 	    if (IsBadReadPtr((PVOID)Frame[1], 4)) {
 		DbgPrint("<%s:%x>\n", "[invalid address]", Frame[1]);
 	    } else {
@@ -137,10 +150,92 @@ static VOID PrintStackTrace(IN PEXCEPTION_POINTERS ExceptionInfo)
 
 	    Frame = (PULONG)Frame[0];
 	}
+
+#else
+
+#ifdef _M_AMD64
+#define INSTRUCTION_POINTER Rip
+#define STACK_POINTER Rsp
+#elif defined(_M_ARM64)
+#define INSTRUCTION_POINTER Pc
+#define STACK_POINTER Sp
+#else
+#error "Unsupported architecture"
+#endif
+
+	CONTEXT UnwindContext = *ContextRecord;
+	ULONG64 ImageBase = 0;
+	PRUNTIME_FUNCTION FunctionEntry;
+	PVOID HandlerData;
+	ULONG64 EstablisherFrame;
+	INT FrameCount = 0;
+
+	while (FrameCount < NUM_BACKTRACE_LINES) {
+	    ULONG64 ControlPc = UnwindContext.INSTRUCTION_POINTER;
+	    if (ControlPc == 0)
+		break;
+
+	    /* Lookup unwind metadata for this PC */
+	    FunctionEntry = RtlLookupFunctionEntry(ControlPc, &ImageBase, NULL);
+
+	    if (FunctionEntry) {
+		/* Use metadata to unwind */
+		RtlVirtualUnwind(UNW_FLAG_NHANDLER,
+				 ImageBase,
+				 ControlPc,
+				 FunctionEntry,
+				 &UnwindContext,
+				 &HandlerData,
+				 &EstablisherFrame,
+				 NULL);
+	    } else {
+		/* Leaf function: simulate a return */
+#ifdef _M_AMD64
+		if (IsBadReadPtr((PVOID)UnwindContext.Rsp, sizeof(PVOID)))
+		    break;
+
+		UnwindContext.Rip = *(ULONG64*)UnwindContext.Rsp;
+		UnwindContext.Rsp += sizeof(ULONG64);
+#elif defined(_M_ARM64)
+		/* On ARM64, return address is typically in LR (X30),
+		 * not necessarily on the stack. */
+		ULONG64 NextPc = UnwindContext.Lr;
+
+		if (NextPc == 0)
+		    break;
+
+		/* Advance SP conservatively (stack frame size unknown) */
+		if (IsBadReadPtr((PVOID)UnwindContext.Sp, sizeof(PVOID)))
+		    break;
+
+		/* Move to caller */
+		UnwindContext.Pc = NextPc;
+
+		/* Heuristic: assume minimal frame (16 bytes alignment).
+		 * This is imperfect but avoids infinite loops. */
+		UnwindContext.Sp += 16;
+#else
+#error "Unsupported architecture"
+#endif
+	    }
+
+	    if (UnwindContext.INSTRUCTION_POINTER == 0)
+		break;
+
+	    /* Print frame */
+	    ModuleNameFromAddr((PVOID)UnwindContext.INSTRUCTION_POINTER, &StartAddr, szMod,
+			       sizeof(szMod), &szModFile);
+	    DbgPrint("<%s:%zx> (%s@%p)\n", szModFile,
+		     UnwindContext.INSTRUCTION_POINTER - (ULONG_PTR)StartAddr, szMod,
+		     StartAddr);
+
+	    FrameCount++;
+	}
+#endif
+
     } __except (EXCEPTION_EXECUTE_HANDLER) {
 	DbgPrint("<error dumping stack trace: 0x%lx>\n", GetExceptionCode());
     }
-#endif
 }
 
 /* GLOBALS ********************************************************************/
@@ -220,8 +315,8 @@ WINAPI UINT GetErrorMode(VOID)
  */
 WINAPI LONG UnhandledExceptionFilter(IN PEXCEPTION_POINTERS ExceptionInfo)
 {
-    static UNICODE_STRING AeDebugKey = RTL_CONSTANT_STRING(L"\\Registry\\Machine"
-							   L"\\" REGSTR_PATH_AEDEBUG);
+    static UNICODE_STRING AeDebugKey = RTL_CONSTANT_STRING(L"\\Registry\\Machine\\"
+							   REGSTR_PATH_AEDEBUG);
 
     static BOOLEAN IsSecondChance = FALSE;
 

@@ -3394,6 +3394,9 @@ AppNameRetry:
     case IMAGE_FILE_MACHINE_AMD64:
 	CreateProcessMsg->ProcessorArchitecture = PROCESSOR_ARCHITECTURE_AMD64;
 	break;
+    case IMAGE_FILE_MACHINE_ARM64:
+	CreateProcessMsg->ProcessorArchitecture = PROCESSOR_ARCHITECTURE_ARM64;
+	break;
 
     /* Anything else results in image unknown -- but no failure */
     default:
