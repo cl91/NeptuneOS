@@ -260,7 +260,6 @@ NTSTATUS CsrpInsertClientThread(IN PCSR_PROCESS Process, IN PCSR_THREAD Thread)
 VOID CsrpDeallocateClientThread(IN PCSR_THREAD CsrThread)
 {
     /* Free the process object from the heap */
-    // ASSERT(CsrThread->WaitBlock == NULL);
     RtlFreeHeap(RtlGetProcessHeap(), 0, CsrThread);
 }
 

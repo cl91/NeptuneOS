@@ -12,6 +12,17 @@
 #include "srv.h"
 #include <stdio.h>
 
+#define CSR_FIBER_STACK_COMMIT		(4 * PAGE_SIZE)
+#define CSR_FIBER_STACK_RESERVE		(8 * PAGE_SIZE)
+
+typedef struct _CSR_THREAD_PRIVATE {
+    PCSR_SERVER_DLL ServerDll;
+    ULONG ApiId;
+    CSR_API_MESSAGE CsrMsg;
+} CSR_THREAD_PRIVATE, *PCSR_THREAD_PRIVATE;
+
+static PFIBER CsrpMasterFiber;
+
 /* PRIVATE FUNCTIONS ***********************************************************/
 
 static NTSTATUS CsrpMapPortView(IN PCSR_PROCESS CsrProcess, OUT PVOID *ServerViewBase,
@@ -48,6 +59,111 @@ static NTSTATUS CsrpMapPortView(IN PCSR_PROCESS CsrProcess, OUT PVOID *ServerVie
     return Status;
 }
 
+static NTAPI NTSTATUS CsrpAllocateStackForFiber(IN SIZE_T StackCommitSize,
+						IN SIZE_T StackReserveSize,
+						OUT PINITIAL_TEB InitialTeb)
+{
+    if (StackCommitSize > StackReserveSize) {
+	assert(FALSE);
+	return STATUS_INVALID_PARAMETER;
+    }
+
+    /* Reserve memory for the stack */
+    PVOID AllocatedStackBase = NULL;
+    NTSTATUS Status = NtAllocateVirtualMemory(NtCurrentProcess(),
+					      (PVOID *)&AllocatedStackBase,
+					      0, &StackReserveSize,
+					      MEM_RESERVE, PAGE_READWRITE);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failure to reserve stack for CSR fiber: %x\n", Status);
+	return Status;
+    }
+
+    /* Allocate memory for the stack */
+    PVOID StackLimit = (PCHAR)AllocatedStackBase + StackReserveSize - StackCommitSize;
+    Status = NtAllocateVirtualMemory(NtCurrentProcess(),
+				     (PVOID *)&StackLimit, 0, &StackCommitSize,
+				     MEM_COMMIT, PAGE_READWRITE);
+    if (!NT_SUCCESS(Status)) {
+	DPRINT1("Failure to allocate stack for CSR fiber: %x\n", Status);
+	NtFreeVirtualMemory(NtCurrentProcess(), (PVOID *)&AllocatedStackBase,
+			    &StackReserveSize, MEM_RELEASE);
+	return Status;
+    }
+
+    RtlZeroMemory(InitialTeb, sizeof(INITIAL_TEB));
+    InitialTeb->AllocatedStackBase = AllocatedStackBase;
+    InitialTeb->StackBase = (PVOID)((ULONG_PTR)AllocatedStackBase + StackReserveSize);
+    InitialTeb->StackLimit = StackLimit;
+    return STATUS_SUCCESS;
+}
+
+static VOID CsrpFiberEntryPoint(VOID)
+{
+    PFIBER Fiber = (PFIBER)NtCurrentTeb()->NtTib.FiberData;
+    PCSR_THREAD CsrThread = Fiber->FiberData;
+    PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+    /* Call the API, get the reply code and return the result */
+    CSR_REPLY_CODE ReplyCode = CsrReplyImmediately;
+    Private->CsrMsg.Status =
+	Private->ServerDll->DispatchTable[Private->ApiId](CsrThread,
+							  &Private->CsrMsg,
+							  &ReplyCode);
+    BOOLEAN Reply = TRUE;
+    if (ReplyCode == CsrReplyAlreadySent || ReplyCode == CsrReplyDeadClient ||
+	ReplyCode == CsrReplyPending) {
+	Reply = FALSE;
+    }
+    assert(CsrpMasterFiber);
+#ifdef _M_IX86
+    CsrpMasterFiber->FiberContext.Eax = Reply;
+#elif defined(_M_AMD64)
+    CsrpMasterFiber->FiberContext.Rax = Reply;
+#elif defined(_M_ARM64)
+    CsrpMasterFiber->FiberContext.X0 = Reply;
+#else
+#error "Unsupported architecture"
+#endif
+    RtlSwitchToFiber(CsrpMasterFiber);
+}
+
+static VOID CsrpInitializeFiberContext(IN PFIBER Fiber)
+{
+#ifdef _M_IX86
+    Fiber->FiberContext.Eip = (ULONG_PTR)CsrpFiberEntryPoint;
+    Fiber->FiberContext.Esp = (ULONG_PTR)Fiber->StackBase;
+#elif defined(_M_AMD64)
+    Fiber->FiberContext.Rip = (ULONG_PTR)CsrpFiberEntryPoint;
+    Fiber->FiberContext.Rsp = (ULONG_PTR)Fiber->StackBase;
+#elif defined(_M_ARM64)
+    Fiber->FiberContext.Pc = (ULONG_PTR)CsrpFiberEntryPoint;
+    Fiber->FiberContext.Sp = (ULONG_PTR)Fiber->StackBase;
+#else
+#error "Unsupported architecture"
+#endif
+}
+
+static NTSTATUS CsrpAllocateFiberForThread(IN PCSR_THREAD CsrThread)
+{
+    assert(!CsrThread->CsrPrivate);
+    assert(!CsrThread->Fiber);
+    CsrThread->CsrPrivate = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
+					    sizeof(CSR_THREAD_PRIVATE));
+    if (!CsrThread->CsrPrivate) {
+	return STATUS_NO_MEMORY;
+    }
+    NTSTATUS Status = RtlCreateFiber(CSR_FIBER_STACK_COMMIT, CSR_FIBER_STACK_RESERVE,
+				     TRUE, CsrpAllocateStackForFiber, CsrThread,
+				     &CsrThread->Fiber);
+    if (!NT_SUCCESS(Status)) {
+	RtlFreeHeap(RtlGetProcessHeap(), 0, CsrThread->CsrPrivate);
+	CsrThread->CsrPrivate = NULL;
+	return Status;
+    }
+    CsrpInitializeFiberContext(CsrThread->Fiber);
+    return STATUS_SUCCESS;
+}
+
 static NTSTATUS CsrpRegisterSessionClient(IN PCLIENT_ID ClientId)
 {
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -55,8 +171,9 @@ static NTSTATUS CsrpRegisterSessionClient(IN PCLIENT_ID ClientId)
     KERNEL_USER_TIMES KernelTimes;
     CLIENT_ID ProcessCid;
     HANDLE hProcess = NULL, hThread = NULL;
-    PCSR_PROCESS CsrProcess;
-    PCSR_THREAD CsrThread;
+    PCSR_PROCESS CsrProcess = NULL;
+    PCSR_THREAD CsrThread = NULL;
+    BOOLEAN ProcessLockAcquired = FALSE;
     NTSTATUS Status;
 
     InitializeObjectAttributes(&ObjectAttributes, NULL, 0, NULL, NULL);
@@ -85,20 +202,22 @@ static NTSTATUS CsrpRegisterSessionClient(IN PCLIENT_ID ClientId)
 	goto Cleanup;
 
     CsrpAcquireProcessLock();
+    ProcessLockAcquired = TRUE;
     if (CsrpLocateClientThreadByThreadId(NULL, ClientId)) {
-	CsrpReleaseProcessLock();
 	goto Cleanup;
     }
 
     CsrProcess = CsrpAllocateClientProcess();
     if (!CsrProcess) {
-	CsrpReleaseProcessLock();
 	goto Cleanup;
     }
     CsrThread = CsrpAllocateClientThread(CsrProcess);
     if (!CsrThread) {
-	CsrpDeallocateClientProcess(CsrProcess);
-	CsrpReleaseProcessLock();
+	goto Cleanup;
+    }
+
+    Status = CsrpAllocateFiberForThread(CsrThread);
+    if (!NT_SUCCESS(Status)) {
 	goto Cleanup;
     }
 
@@ -110,9 +229,6 @@ static NTSTATUS CsrpRegisterSessionClient(IN PCLIENT_ID ClientId)
     Status = CsrpInsertClientThread(CsrProcess, CsrThread);
     if (!NT_SUCCESS(Status)) {
 	CsrpUnProtectHandle(hThread);
-	CsrpDeallocateClientProcess(CsrProcess);
-	CsrpDeallocateClientThread(CsrThread);
-	CsrpReleaseProcessLock();
 	goto Cleanup;
     }
 
@@ -126,6 +242,15 @@ static NTSTATUS CsrpRegisterSessionClient(IN PCLIENT_ID ClientId)
     return STATUS_SUCCESS;
 
 Cleanup:
+    if (CsrProcess) {
+	CsrpDeallocateClientProcess(CsrProcess);
+    }
+    if (CsrThread) {
+	CsrpDeallocateClientThread(CsrThread);
+    }
+    if (ProcessLockAcquired) {
+	CsrpReleaseProcessLock();
+    }
     if (hThread)
 	NtClose(hThread);
     if (hProcess)
@@ -212,7 +337,7 @@ static NTSTATUS CsrpApiHandleConnectionRequest(IN PCLIENT_ID ClientId,
 			  AllowConnection ? (ULONG_PTR)ClientId->UniqueThread : 0,
 			  ClientId, AllowConnection, NULL, NULL);
     if (!NT_SUCCESS(Status)) {
-	DPRINT1("CSRSS: NtAlpcAcceptConnectPort - failed.  Status == %X\n", Status);
+	DPRINT1("CSRSS: NtAcceptPort - failed.  Status == %X\n", Status);
 	if (AllowConnection) {
 	    NtUnmapViewOfSection(CsrProcess->ProcessHandle, ClientViewBase);
 	    NtUnmapViewOfSection(NtCurrentProcess(), ServerViewBase);
@@ -554,8 +679,15 @@ static NTAPI ULONG CsrpApiRequestThread(IN PVOID Parameter)
 	HARDERROR_MSG Error;
 	DBGKM_MSG Dbg;
     } Msg = {};
-    NTSTATUS Status = NtReceivePort(CsrSrv->CsrApiCommPort, &PortContext,
-				    &Msg.Header, sizeof(Msg), NULL);
+    NTSTATUS Status = RtlConvertThreadToFiber(NULL, TRUE);
+    if (!NT_SUCCESS(Status)) {
+	return Status;
+    }
+    CsrpMasterFiber = NtCurrentTeb()->NtTib.FiberData;
+    assert(CsrpMasterFiber);
+
+    Status = NtReceivePort(CsrSrv->CsrApiCommPort, &PortContext,
+			   &Msg.Header, sizeof(Msg), NULL);
     while (TRUE) {
 	if (!NT_SUCCESS(Status)) {
 	    return Status;
@@ -647,15 +779,13 @@ static NTAPI ULONG CsrpApiRequestThread(IN PVOID Parameter)
 
 	    /* Validation complete, start SEH */
 	    __try {
-		/* Call the API, get the reply code and return the result */
-		CSR_REPLY_CODE ReplyCode = CsrReplyImmediately;
-		Msg.Csr.Status = ServerDll->DispatchTable[ApiId](CsrThread, &Msg.Csr,
-								 &ReplyCode);
-
-		if (ReplyCode == CsrReplyAlreadySent || ReplyCode == CsrReplyDeadClient ||
-		    ReplyCode == CsrReplyPending) {
-		    Reply = FALSE;
-		}
+		assert(CsrThread->Fiber);
+		assert(CsrThread->CsrPrivate);
+		PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+		Private->ServerDll = ServerDll;
+		Private->ApiId = ApiId;
+		Private->CsrMsg = Msg.Csr;
+		Reply = RtlSwitchToFiber(CsrThread->Fiber);
 	    } __except (CsrUnhandledExceptionFilter(GetExceptionInformation())) {
 		Reply = FALSE;
 	    }
@@ -850,7 +980,7 @@ Out:
  * @remarks None.
  *
  *--*/
-NTAPI NTSTATUS CsrStartServer()
+NTAPI NTSTATUS CsrStartServer(VOID)
 {
     NTSTATUS Status;
     while (TRUE) {
@@ -874,6 +1004,7 @@ NTAPI NTSTATUS CsrStartServer()
 	    /* TODO: Handle client death */
 	} else {
 	    /* This is a fatal error. */
+	    DPRINT("Csrsrv: fatal error 0x%x during NtListenPort, exiting\n", Status);
 	    return Status;
 	}
     }
