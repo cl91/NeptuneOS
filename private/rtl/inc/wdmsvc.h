@@ -49,12 +49,15 @@ C_ASSERT(sizeof(IO_PACKET_BUFFER_POINTERS) == 2 * SYSTEM_CACHE_ALIGNMENT_SIZE);
 
 #define PNP_ROOT_ENUMERATOR	"\\Device\\pnp"
 
+/* When the driver DPC, ISR, or event loop thread get notified, we use the
+ * following flag to indicate that it comes from async context continuation. */
+#define ASYNC_NOTIFICATION_BADGE	(1)
 /* When the driver DPC thread gets notified, we use the following flag to
  * indicate that it comes from timer expiration. */
-#define TIMER_NOTIFICATION_BADGE	(1)
+#define TIMER_NOTIFICATION_BADGE	(2)
 /* When the driver DPC thread gets notified, we use the following flag to
  * indicate that the server has bugchecked. */
-#define BUGCHECK_NOTIFICATION_BADGE	(2)
+#define BUGCHECK_NOTIFICATION_BADGE	(4)
 
 #define VIEWS_PER_TABLE		(PAGE_SIZE / sizeof(PVOID))
 #define VIEW_TABLE_ADDRESS_BITS	(PAGE_LOG2SIZE - MWORD_LOG2SIZE)

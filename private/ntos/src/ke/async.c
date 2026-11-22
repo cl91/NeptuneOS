@@ -423,6 +423,9 @@ static inline VOID KiResumeAsyncContext(IN PASYNC_CONTEXT AsyncContext)
 		KiResumeThread(Thread);
 	    }
 	}
+	if (Thread->AsyncNotification.TreeNode.Cap) {
+	    seL4_Signal(Thread->AsyncNotification.TreeNode.Cap);
+	}
     } else {
 	KiResumeThread(Thread);
     }
@@ -638,6 +641,57 @@ NTSTATUS NtSetThreadExecutionMode(IN PTHREAD Thread,
 	ExFreePoolWithTag(AsyncContexts, NTOS_KE_TAG);
 	return STATUS_NO_MEMORY;
     }
+
+    NTSTATUS Status = STATUS_SUCCESS;
+    if (ExecutionMode->Flags & THREAD_ASYNC_DELIVER_SPECIAL_APC) {
+	Status = STATUS_NOT_IMPLEMENTED;
+	goto Error;
+    }
+
+    if (ExecutionMode->Flags & THREAD_ASYNC_SIGNAL_NOTIFICATION) {
+	extern CNODE MiNtosCNode;
+	PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(Thread->Process);
+	if (Thread->DpcThread) {
+	    IF_ERR_GOTO(Error, Status, KeDeriveNotification(&Thread->AsyncNotification,
+							    &MiNtosCNode,
+							    &DriverObject->DpcNotification,
+							    ASYNC_NOTIFICATION_BADGE));
+	} else if (Thread->IsrThread) {
+	    LoopOverList(Interrupt, &DriverObject->InterruptServiceList,
+			 INTERRUPT_SERVICE, Link) {
+		PTHREAD IsrThread = NULL;
+		Status = ObReferenceObjectByHandle(Thread, Interrupt->ThreadHandle,
+						   OBJECT_TYPE_THREAD,
+						   (PVOID)&IsrThread);
+		assert(NT_SUCCESS(Status));
+		if (IsrThread) {
+		    ObDereferenceObject(IsrThread);
+		    if (IsrThread == Thread) {
+			IF_ERR_GOTO(Error, Status,
+				    KeDeriveNotification(&Thread->AsyncNotification,
+							 &MiNtosCNode,
+							 &Interrupt->Notification,
+							 ASYNC_NOTIFICATION_BADGE));
+			break;
+		    }
+		}
+	    }
+	    assert(FALSE);
+	} else if (DriverObject && Thread->InitialThread) {
+	    IF_ERR_GOTO(Error, Status, KeDeriveNotification(&Thread->AsyncNotification,
+							    &MiNtosCNode,
+							    &DriverObject->EventLoopNotification,
+							    ASYNC_NOTIFICATION_BADGE));
+	} else {
+	    IF_ERR_GOTO(Error, Status, KeCreateNotification(&Thread->AsyncNotification));
+	    Status = KiBindNotificationToThread(Thread->TreeNode.Cap,
+						Thread->AsyncNotification.TreeNode.Cap);
+	    if (!NT_SUCCESS(Status)) {
+		KeDestroyNotification(&Thread->AsyncNotification);
+	    }
+	}
+    }
+
     RtlCopyMemory(AsyncContexts, Thread->AsyncContexts,
 		  sizeof(PVOID) * (Thread->AsyncObjMaxId + 1));
     ExFreePoolWithTag(Thread->AsyncContexts, NTOS_KE_TAG);
@@ -652,6 +706,11 @@ NTSTATUS NtSetThreadExecutionMode(IN PTHREAD Thread,
     Thread->AsyncResumeRoutine = ExecutionMode->ResumeRoutine;
     Thread->AsyncContexts = ExecutionMode->ApcContext;
     return STATUS_SUCCESS;
+
+Error:
+    ExFreePoolWithTag(AsyncContexts, NTOS_KE_TAG);
+    ExFreePoolWithTag(UsedMap, NTOS_KE_TAG);
+    return Status;
 }
 
 NTSTATUS NtAsyncContinue(IN PTHREAD Thread,

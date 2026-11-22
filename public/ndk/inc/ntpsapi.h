@@ -439,6 +439,15 @@ typedef VOID (NTAPI *PASYNC_RESUME_ROUTINE)(IN PVOID ApcContext,
 						   * an alertable wait and is delivered at
 						   * every return from a system service. */
 
+#define THREAD_ASYNC_SIGNAL_NOTIFICATION	2 /* For driver event loop thread, DPC, and
+						   * ISR threads, if this flag is set their
+						   * thread notification will be signaled
+						   * when an async object is to be resumed.
+						   * For other threads, bind a notification
+						   * to the thread TCB and signal this
+						   * notification when an async object is to
+						   * be resumed. */
+
 typedef struct _THREAD_EXECUTION_MODE {
     ULONG AsyncObjMaxId;
     ULONG Flags;

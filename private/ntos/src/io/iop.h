@@ -276,18 +276,6 @@ typedef struct _WORKER_THREAD {
 } WORKER_THREAD, *PWORKER_THREAD;
 
 /*
- * Interrupt service of a driver object
- */
-typedef struct _INTERRUPT_SERVICE {
-    ULONG Vector;
-    LIST_ENTRY Link;
-    IRQ_HANDLER IrqHandler;
-    HANDLE ThreadHandle; /* Handle of the ISR thread in the driver process */
-    NOTIFICATION Notification;	      /* Cap in the driver ISR thread private CNode */
-    NOTIFICATION InterruptMutex;      /* Cap in the driver process shared CNode */
-} INTERRUPT_SERVICE, *PINTERRUPT_SERVICE;
-
-/*
  * Device node state.
  */
 typedef enum _DEVICE_NODE_STATE {
