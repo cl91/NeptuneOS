@@ -56,7 +56,6 @@ typedef struct _CSR_THREAD {
     CLIENT_ID ClientId;
     PCSR_PROCESS Process;
     HANDLE ThreadHandle;
-    PFIBER Fiber; /* Fiber that handles the API requests from this thread */
     PVOID CsrPrivate; /* Except csrdll, server dlls should not touch this */
     ULONG Flags;
     ULONG ReferenceCount;

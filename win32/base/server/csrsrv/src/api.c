@@ -12,16 +12,14 @@
 #include "srv.h"
 #include <stdio.h>
 
+#define MAX_ASYNC_OBJ_COUNT		64
+
 #define CSR_FIBER_STACK_COMMIT		(4 * PAGE_SIZE)
 #define CSR_FIBER_STACK_RESERVE		(8 * PAGE_SIZE)
 
-typedef struct _CSR_THREAD_PRIVATE {
-    PCSR_SERVER_DLL ServerDll;
-    ULONG ApiId;
-    CSR_API_MESSAGE CsrMsg;
-} CSR_THREAD_PRIVATE, *PCSR_THREAD_PRIVATE;
-
 static PFIBER CsrpMasterFiber;
+static PCSR_THREAD CsrpAsyncObjMap[MAX_ASYNC_OBJ_COUNT];
+static LIST_ENTRY CsrpResumedThreadList;
 
 /* PRIVATE FUNCTIONS ***********************************************************/
 
@@ -98,6 +96,26 @@ static NTAPI NTSTATUS CsrpAllocateStackForFiber(IN SIZE_T StackCommitSize,
     return STATUS_SUCCESS;
 }
 
+static VOID CsrpSetFiberContextReturnValue(IN PFIBER Fiber,
+					   IN ULONG Value)
+{
+    assert(Fiber);
+#ifdef _M_IX86
+    Fiber->FiberContext.Eax = Value;
+#elif defined(_M_AMD64)
+    Fiber->FiberContext.Rax = Value;
+#elif defined(_M_ARM64)
+    Fiber->FiberContext.X0 = Value;
+#else
+#error "Unsupported architecture"
+#endif
+}
+
+static VOID CsrpSetMasterFiberReturnValue(IN BOOLEAN Reply)
+{
+    CsrpSetFiberContextReturnValue(CsrpMasterFiber, Reply);
+}
+
 static VOID CsrpFiberEntryPoint(VOID)
 {
     PFIBER Fiber = (PFIBER)NtCurrentTeb()->NtTib.FiberData;
@@ -114,16 +132,7 @@ static VOID CsrpFiberEntryPoint(VOID)
 	ReplyCode == CsrReplyPending) {
 	Reply = FALSE;
     }
-    assert(CsrpMasterFiber);
-#ifdef _M_IX86
-    CsrpMasterFiber->FiberContext.Eax = Reply;
-#elif defined(_M_AMD64)
-    CsrpMasterFiber->FiberContext.Rax = Reply;
-#elif defined(_M_ARM64)
-    CsrpMasterFiber->FiberContext.X0 = Reply;
-#else
-#error "Unsupported architecture"
-#endif
+    CsrpSetMasterFiberReturnValue(Reply);
     RtlSwitchToFiber(CsrpMasterFiber);
 }
 
@@ -146,21 +155,21 @@ static VOID CsrpInitializeFiberContext(IN PFIBER Fiber)
 static NTSTATUS CsrpAllocateFiberForThread(IN PCSR_THREAD CsrThread)
 {
     assert(!CsrThread->CsrPrivate);
-    assert(!CsrThread->Fiber);
-    CsrThread->CsrPrivate = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
-					    sizeof(CSR_THREAD_PRIVATE));
-    if (!CsrThread->CsrPrivate) {
+    PCSR_THREAD_PRIVATE Private = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY,
+						  sizeof(CSR_THREAD_PRIVATE));
+    Private->AsyncObjId = ~0UL;
+    if (!Private) {
 	return STATUS_NO_MEMORY;
     }
     NTSTATUS Status = RtlCreateFiber(CSR_FIBER_STACK_COMMIT, CSR_FIBER_STACK_RESERVE,
 				     TRUE, CsrpAllocateStackForFiber, CsrThread,
-				     &CsrThread->Fiber);
+				     &Private->Fiber);
     if (!NT_SUCCESS(Status)) {
-	RtlFreeHeap(RtlGetProcessHeap(), 0, CsrThread->CsrPrivate);
-	CsrThread->CsrPrivate = NULL;
+	RtlFreeHeap(RtlGetProcessHeap(), 0, Private);
 	return Status;
     }
-    CsrpInitializeFiberContext(CsrThread->Fiber);
+    CsrThread->CsrPrivate = Private;
+    CsrpInitializeFiberContext(Private->Fiber);
     return STATUS_SUCCESS;
 }
 
@@ -264,9 +273,11 @@ Cleanup:
  * The CsrpApiHandleConnectionRequest routine handles and accepts a new
  * connection request to the CSR API LPC Port.
  *
- * @param ApiMessage
- *        Pointer to the incoming CSR API Message which contains the
- *        connection request.
+ * @param ClientId
+ *        Client ID of the connecting client.
+ *
+ * @param ConnectInfo
+ *        Information of the connection request.
  *
  * @return STATUS_SUCCESS in case of success, or status code which caused
  *         the routine to error.
@@ -333,6 +344,8 @@ static NTSTATUS CsrpApiHandleConnectionRequest(IN PCLIENT_ID ClientId,
 
     /* Accept the Connection */
     ASSERT(!AllowConnection || CsrProcess);
+    PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+    assert(Private);
     Status = NtAcceptPort(NULL, CsrSrv->CsrApiPort,
 			  AllowConnection ? (ULONG_PTR)ClientId->UniqueThread : 0,
 			  ClientId, AllowConnection, NULL, NULL);
@@ -655,6 +668,110 @@ VOID CsrpReleaseCapturedArguments(IN PCSR_API_MESSAGE ApiMessage)
     RtlFreeHeap(RtlGetProcessHeap(), 0, ServerCaptureBuffer);
 }
 
+static NTAPI NTSTATUS CsrpAsyncYield(IN ULONG AsyncObjId)
+{
+    PFIBER Fiber = NtCurrentTeb()->NtTib.FiberData;
+    PCSR_THREAD CsrThread = Fiber->FiberData;
+    PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+    if (Private->AsyncObjId == ~0UL) {
+	assert(!CsrpAsyncObjMap[AsyncObjId]);
+	CsrpAsyncObjMap[AsyncObjId] = CsrThread;
+	CsrReferenceThread(CsrThread);
+	NTSTATUS Status = STATUS_SUCCESS;
+	if (!Private->ReplyPort) {
+	    Status = NtReserveReplyPort(CsrSrv->CsrApiPort, &CsrThread->ClientId,
+					&Private->ReplyPort);
+	    if (!NT_SUCCESS(Status)) {
+		return Status;
+	    }
+	}
+	Status = NtSaveReplyPort(Private->ReplyPort);
+	if (!NT_SUCCESS(Status)) {
+	    assert(FALSE);
+	    return Status;
+	}
+	Private->AsyncObjId = AsyncObjId;
+    } else {
+	assert(Private->AsyncObjId == AsyncObjId);
+    }
+    CsrpSetMasterFiberReturnValue(FALSE);
+    RtlSwitchToFiber(CsrpMasterFiber);
+    return NtAsyncContinue(AsyncObjId);
+}
+
+static NTAPI VOID CsrpResumeFiber(IN PVOID ApcContext,
+				  IN ULONG AsyncObjId,
+				  IN ULONG Reserved)
+{
+    UNREFERENCED_PARAMETER(ApcContext);
+    UNREFERENCED_PARAMETER(Reserved);
+    PCSR_THREAD CsrThread = CsrpAsyncObjMap[AsyncObjId];
+    assert(CsrThread);
+    PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+    assert(Private->AsyncObjId == AsyncObjId);
+    /* Resume the thread by adding it to the resume list */
+    assert(!Private->ResumeListLink.Blink);
+    assert(!Private->ResumeListLink.Flink);
+    InsertTailList(&CsrpResumedThreadList, &Private->ResumeListLink);
+}
+
+static VOID CsrpCleanupAsyncObjForThread(IN PFIBER Fiber)
+{
+    PCSR_THREAD CsrThread = Fiber->FiberData;
+    assert(CsrThread);
+    PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+    if (Private->AsyncObjId != ~0UL) {
+	assert(CsrThread == CsrpAsyncObjMap[Private->AsyncObjId]);
+	CsrpAsyncObjMap[Private->AsyncObjId] = NULL;
+	CsrDereferenceThread(CsrThread);
+	Private->AsyncObjId = ~0UL;
+    }
+    Private->ApiId = ~0UL;
+    Private->ServerDll = NULL;
+}
+
+/*++
+ * @name CsrpHandleConnectionClose
+ *
+ * The CsrpHandleConnectionClose routine handles a thread closing its
+ * CSR API port connection, either due to it calling NtDisconnectPort,
+ * or being forcibly terminated.
+ *
+ * @param ClientId
+ *        Client ID of the client thread.
+ *
+ * @return STATUS_SUCCESS if successful. Error status if error.
+ *
+ * @remarks None.
+ *
+ *--*/
+static NTSTATUS CsrpHandleConnectionClose(IN PCLIENT_ID ClientId)
+{
+    CsrpAcquireProcessLock();
+    PCSR_THREAD CsrThread = CsrpLocateClientThreadByThreadId(NULL, ClientId->UniqueThread);
+    if (!CsrThread) {
+	CsrpReleaseProcessLock();
+	return STATUS_NOT_FOUND;
+    }
+    /* If the thread is still in the resume list, forcibly remove it and clean up the
+     * async object id. Note we don't need to clean up the reply port as that is
+     * automatically cleaned up by the NT Executive. */
+    PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+    if (Private && Private->ResumeListLink.Flink) {
+	assert(Private->ResumeListLink.Blink);
+	assert(Private->AsyncObjId != ~0UL);
+	/* CsrpCleanupAsyncObjForThread takes the process lock, so release it here. */
+	CsrpReleaseProcessLock();
+	NtAsyncCancel(Private->AsyncObjId);
+	CsrpCleanupAsyncObjForThread(Private->Fiber);
+	CsrpAcquireProcessLock();
+    }
+
+    CsrpLockedDereferenceClientThread(CsrThread);
+    CsrpReleaseProcessLock();
+    return STATUS_SUCCESS;
+}
+
 /*++
  * @name CsrApiRequestThread
  *
@@ -672,13 +789,8 @@ VOID CsrpReleaseCapturedArguments(IN PCSR_API_MESSAGE ApiMessage)
  *--*/
 static NTAPI ULONG CsrpApiRequestThread(IN PVOID Parameter)
 {
-    ULONG_PTR PortContext = 0;
-    union {
-	PORT_MESSAGE Header;
-	CSR_API_MESSAGE Csr;
-	HARDERROR_MSG Error;
-	DBGKM_MSG Dbg;
-    } Msg = {};
+    UNREFERENCED_PARAMETER(Parameter);
+
     NTSTATUS Status = RtlConvertThreadToFiber(NULL, TRUE);
     if (!NT_SUCCESS(Status)) {
 	return Status;
@@ -686,14 +798,38 @@ static NTAPI ULONG CsrpApiRequestThread(IN PVOID Parameter)
     CsrpMasterFiber = NtCurrentTeb()->NtTib.FiberData;
     assert(CsrpMasterFiber);
 
+    assert(!NtCurrentTeb()->AsyncYield);
+    NtCurrentTeb()->AsyncYield = CsrpAsyncYield;
+    THREAD_EXECUTION_MODE ExecutionMode = {
+	.AsyncObjMaxId = MAX_ASYNC_OBJ_COUNT - 1,
+	.Flags = THREAD_ASYNC_SIGNAL_NOTIFICATION,
+	.ResumeRoutine = CsrpResumeFiber
+    };
+    Status = NtSetThreadExecutionMode(&ExecutionMode);
+
+    ULONG_PTR PortContext = 0;
+    union {
+	PORT_MESSAGE Header;
+	CSR_API_MESSAGE Csr;
+	HARDERROR_MSG Error;
+	DBGKM_MSG Dbg;
+    } Msg = {};
     Status = NtReceivePort(CsrSrv->CsrApiCommPort, &PortContext,
 			   &Msg.Header, sizeof(Msg), NULL);
     while (TRUE) {
+	if (PortContext == 0) {
+	    /* We were notified due to an async continue. Deliver APCs. */
+	    NtTestAlert();
+	    continue;
+	}
+
+	/* For regular messages, an error status during receive is a fatal error */
 	if (!NT_SUCCESS(Status)) {
 	    return Status;
 	}
 
 	BOOLEAN Reply = TRUE;
+	PPORT_MESSAGE ReplyMsg = &Msg.Header;
 
 	/* Get the Message Type */
 	ULONG MessageType = Msg.Header.Type &
@@ -779,13 +915,16 @@ static NTAPI ULONG CsrpApiRequestThread(IN PVOID Parameter)
 
 	    /* Validation complete, start SEH */
 	    __try {
-		assert(CsrThread->Fiber);
 		assert(CsrThread->CsrPrivate);
 		PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+		assert(Private->Fiber);
 		Private->ServerDll = ServerDll;
 		Private->ApiId = ApiId;
 		Private->CsrMsg = Msg.Csr;
-		Reply = RtlSwitchToFiber(CsrThread->Fiber);
+		ReplyMsg = &Private->CsrMsg.Header;
+		assert(NtCurrentTeb()->NtTib.FiberData == CsrpMasterFiber);
+		Reply = RtlSwitchToFiber(Private->Fiber);
+		CsrpCleanupAsyncObjForThread(Private->Fiber);
 	    } __except (CsrUnhandledExceptionFilter(GetExceptionInformation())) {
 		Reply = FALSE;
 	    }
@@ -844,9 +983,24 @@ static NTAPI ULONG CsrpApiRequestThread(IN PVOID Parameter)
 	/* Remove our extra reference */
 	CsrDereferenceThread(CsrThread);
 
+	/* Check the resume list for thread we need to resume */
+	LoopOverList(Private, &CsrpResumedThreadList, CSR_THREAD_PRIVATE, ResumeListLink) {
+	    RemoveEntryList(&Private->ResumeListLink);
+	    assert(NtCurrentTeb()->NtTib.FiberData == CsrpMasterFiber);
+	    BOOLEAN Reply = RtlSwitchToFiber(Private->Fiber);
+	    CsrpCleanupAsyncObjForThread(Private->Fiber);
+	    if (Reply) {
+		Status = NtReplyPort(Private->ReplyPort, &Private->CsrMsg.Header, NULL);
+		Private->ReplyPort = 0;
+		if (!NT_SUCCESS(Status)) {
+		    return Status;
+		}
+	    }
+	}
+
     Reply:
 	if (Reply) {
-	    Status = NtReplyWaitReceivePort(CsrSrv->CsrApiCommPort, &Msg.Header,
+	    Status = NtReplyWaitReceivePort(CsrSrv->CsrApiCommPort, ReplyMsg,
 					    &PortContext, &Msg.Header, sizeof(Msg), NULL);
 	} else {
 	    Status = NtReceivePort(CsrSrv->CsrApiCommPort, &PortContext, &Msg.Header,
@@ -875,12 +1029,7 @@ static NTAPI ULONG CsrpApiRequestThread(IN PVOID Parameter)
  *--*/
 NTSTATUS CsrpApiPortInitialize(VOID)
 {
-    SECURITY_DESCRIPTOR CsrApiPortSd = {};
-    PACL CsrApiPortSacl = NULL;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    NTSTATUS Status;
-    HANDLE hThread;
-    CLIENT_ID ClientId;
+    InitializeListHead(&CsrpResumedThreadList);
 
     /* Calculate how much space we'll need for the Port Name */
     ULONG Size = wcslen(CsrSrv->ObjectDirectoryName) * sizeof(WCHAR) +
@@ -906,9 +1055,10 @@ NTSTATUS CsrpApiPortInitialize(VOID)
 
     SID_IDENTIFIER_AUTHORITY LabelAuthority = { SECURITY_MANDATORY_LABEL_AUTHORITY };
     PSID UntrustedSid = NULL;
-    Status = RtlAllocateAndInitializeSid(&LabelAuthority, 1,
-					 SECURITY_MANDATORY_UNTRUSTED_RID, 0, 0, 0, 0, 0,
-					 0, 0, &UntrustedSid);
+    PACL CsrApiPortSacl = NULL;
+    NTSTATUS Status = RtlAllocateAndInitializeSid(&LabelAuthority, 1,
+						  SECURITY_MANDATORY_UNTRUSTED_RID, 0, 0,
+						  0, 0, 0, 0, 0, &UntrustedSid);
     if (!NT_SUCCESS(Status)) {
 	goto Out;
     }
@@ -923,11 +1073,13 @@ NTSTATUS CsrpApiPortInitialize(VOID)
     RtlAddMandatoryAce(CsrApiPortSacl, ACL_REVISION, 0,
 		       SYSTEM_MANDATORY_LABEL_NO_WRITE_UP,
 		       SYSTEM_MANDATORY_LABEL_ACE_TYPE, UntrustedSid);
+    SECURITY_DESCRIPTOR CsrApiPortSd = {};
     RtlCreateSecurityDescriptor(&CsrApiPortSd, SECURITY_DESCRIPTOR_REVISION);
     RtlSetDaclSecurityDescriptor(&CsrApiPortSd, TRUE, NULL, FALSE);
     RtlSetSaclSecurityDescriptor(&CsrApiPortSd, TRUE, CsrApiPortSacl, FALSE);
 
     /* Initialize the Attributes */
+    OBJECT_ATTRIBUTES ObjectAttributes;
     InitializeObjectAttributes(&ObjectAttributes, &CsrApiPortName, 0, NULL,
 			       &CsrApiPortSd);
 
@@ -944,6 +1096,8 @@ NTSTATUS CsrpApiPortInitialize(VOID)
     }
 
     /* Create the Request Thread */
+    HANDLE hThread;
+    CLIENT_ID ClientId;
     Status = RtlCreateUserThread(NtCurrentProcess(), NULL, TRUE, 0, 0, 0,
 				 CsrpApiRequestThread, NULL,
 				 &hThread, &ClientId);
@@ -996,15 +1150,29 @@ NTAPI NTSTATUS CsrStartServer(VOID)
 		Status = NtAcceptPort(NULL, CsrSrv->CsrApiPort, 0, &ClientId, FALSE,
 				      NULL, NULL);
 	    }
+	    /* The calls above should always return sucess unless client canceled the
+	     * connection request using NtAsyncCancel(). */
+	    if (!NT_SUCCESS(Status)) {
+		if (Status == STATUS_INVALID_CID) {
+		    DPRINT1("CSRSS: ClientId: %p.%p canceled connection request.\n",
+			    ClientId.UniqueProcess, ClientId.UniqueThread);
+		    continue;
+		} else {
+		    assert(FALSE);
+		    return Status;
+		}
+	    }
+	} else if (Status == STATUS_PORT_CLOSED || Status == STATUS_THREAD_IS_TERMINATING) {
+	    Status = CsrpHandleConnectionClose(&ClientId);
 	    /* The calls above should always return sucess unless in a fatal error. */
 	    if (!NT_SUCCESS(Status)) {
+		assert(FALSE);
 		return Status;
 	    }
-	} else if (Status == STATUS_PORT_CLOSED) {
-	    /* TODO: Handle client death */
 	} else {
 	    /* This is a fatal error. */
 	    DPRINT("Csrsrv: fatal error 0x%x during NtListenPort, exiting\n", Status);
+	    assert(FALSE);
 	    return Status;
 	}
     }

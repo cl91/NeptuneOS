@@ -242,6 +242,13 @@ NTSTATUS CsrpInsertClientThread(IN PCSR_PROCESS Process, IN PCSR_THREAD Thread)
     return STATUS_SUCCESS;
 }
 
+static NTAPI VOID CsrpDeallocateStackForFiber(IN PVOID DeallocationStack)
+{
+    SIZE_T Size = 0;
+    NtFreeVirtualMemory(NtCurrentProcess(), &DeallocationStack, &Size,
+			MEM_RELEASE);
+}
+
 /*++
  * @name CsrpDeallocateClientThread
  *
@@ -259,6 +266,13 @@ NTSTATUS CsrpInsertClientThread(IN PCSR_PROCESS Process, IN PCSR_THREAD Thread)
  *--*/
 VOID CsrpDeallocateClientThread(IN PCSR_THREAD CsrThread)
 {
+    if (CsrThread->CsrPrivate) {
+	PCSR_THREAD_PRIVATE Private = CsrThread->CsrPrivate;
+	assert(!Private->ResumeListLink.Blink && !Private->ResumeListLink.Flink);
+	assert(NtCurrentTeb()->NtTib.FiberData != Private->Fiber);
+	RtlDeleteFiber(Private->Fiber, CsrpDeallocateStackForFiber);
+	RtlFreeHeap(RtlGetProcessHeap(), 0, CsrThread->CsrPrivate);
+    }
     /* Free the process object from the heap */
     RtlFreeHeap(RtlGetProcessHeap(), 0, CsrThread);
 }

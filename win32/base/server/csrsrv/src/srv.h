@@ -30,8 +30,24 @@
 #define InterlockedIncrementUL(Value) (ULONG) _InterlockedIncrement((volatile long *)(Value))
 #define InterlockedDecrementUL(Value) (ULONG) _InterlockedDecrement((volatile long *)(Value))
 
+#define LoopOverList(Entry, ListHead, Type, Field)			\
+    for (Type *Entry = CONTAINING_RECORD((ListHead)->Flink, Type, Field), \
+	     *__LoopOverList_flink = CONTAINING_RECORD((Entry)->Field.Flink, Type, Field); \
+	 &(Entry)->Field != (ListHead); Entry = __LoopOverList_flink,	\
+	     __LoopOverList_flink = CONTAINING_RECORD((__LoopOverList_flink)->Field.Flink, Type, Field))
+
 #define CSR_SERVER_DLL_MAX 8
 #define NUMBER_THREAD_HASH_BUCKETS 257
+
+typedef struct _CSR_THREAD_PRIVATE {
+    PFIBER Fiber; /* Fiber that handles the API requests from this thread */
+    ULONG AsyncObjId;
+    LOCAL_HANDLE ReplyPort;
+    LIST_ENTRY ResumeListLink;
+    PCSR_SERVER_DLL ServerDll;
+    ULONG ApiId;
+    CSR_API_MESSAGE CsrMsg;
+} CSR_THREAD_PRIVATE, *PCSR_THREAD_PRIVATE;
 
 /*
  * Represents a server process. There is exactly one such struct per csrss process.
