@@ -338,6 +338,12 @@
     <parameter annotation="out opt" type="ptr::REMOTE_PORT_VIEW" name="ClientView" />
   </svc>
 
+  <svc name="NtReserveReplyPort">
+    <parameter annotation="in" type="HANDLE" name="PortHandle" />
+    <parameter annotation="in" type="ptr::CLIENT_ID" name="ClientId" />
+    <parameter annotation="out" type="ptr::LOCAL_HANDLE" name="ReplyPort" />
+  </svc>
+
   <svc name="NtConnectPort">
     <parameter annotation="in" type="HANDLE" name="PortHandle" />
     <parameter annotation="in" type="ptr::SECURITY_QUALITY_OF_SERVICE" name="SecurityQos" />

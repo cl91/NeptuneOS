@@ -50,6 +50,10 @@ typedef struct _THREAD {
     IPC_ENDPOINT ReplyEndpoint;
     struct _PROCESS *Process;
     PCNODE CSpace;
+    PPCNODE PrivateCNodes; /* Array size is 1 << THREAD_OUTER_CNODE_LOG2SIZE.
+			    * The zeroth element of this array is always NULL.
+			    * This member is NULL if the thread does not have
+			    * any private inner CNodes. */
 #ifndef _WIN64
     AVL_NODE CidMapNode;      /* Node in the PspCidMap. Key is mapped TID. */
 #endif
@@ -130,6 +134,7 @@ typedef struct _PROCESS {
     ULONG_PTR AffinityMask;
     ULONG_PTR InheritedFromUniqueProcessId;
     ULONG_PTR BasePriority;
+    LIST_ENTRY PortObjectList; /* List of all LPC_PORT_OBJECT that this process has created. */
     LOCAL_HANDLE ExceptionPort;	  /* Local handle of the LPC communication port. The NT
 				   * Executive does not interpret this field and passes
 				   * it verbatim to the client when requested. */
@@ -239,6 +244,8 @@ NTSTATUS PsSetThreadPriority(IN PTHREAD Thread,
 			     IN THREAD_PRIORITY Priority);
 NTSTATUS PsSetSystemThreadPriority(IN PSYSTEM_THREAD Thread,
 				   IN THREAD_PRIORITY Priority);
+NTSTATUS PsRequestThreadPrivateCNode(IN PTHREAD Thread,
+				     OUT PCNODE *CNode);
 
 /* kill.c */
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,

@@ -661,17 +661,22 @@ static inline VOID KiCheckAsyncStack(IN ASYNC_STATE State)
 typedef struct _DISPATCHER_HEADER {
     LIST_ENTRY WaitBlockList;	/* List of KWAIT_BLOCK satisfied when this
 				 * dispatcher object is signaled. */
-    BOOLEAN Signaled;
+    LONG SignalState;		/* If greater than zero, this dispatcher
+				 * object is in the signaled state. */
+    LONG Limit;			/* Maximal signal state this object supports. */
     EVENT_TYPE EventType;
 } DISPATCHER_HEADER, *PDISPATCHER_HEADER;
 
 FORCEINLINE VOID KeInitializeDispatcherHeader(IN PDISPATCHER_HEADER Header,
-					      IN EVENT_TYPE EventType)
+					      IN EVENT_TYPE EventType,
+					      IN LONG Limit)
 {
+    assert(Limit > 0);
     assert(Header != NULL);
     InitializeListHead(&Header->WaitBlockList);
     Header->EventType = EventType;
-    Header->Signaled = FALSE;
+    Header->SignalState = 0;
+    Header->Limit = Limit;
 }
 
 VOID KeSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher);
@@ -730,7 +735,7 @@ typedef struct _KWAIT_BLOCK {
 } KWAIT_BLOCK, *PKWAIT_BLOCK;
 
 /*
- * A kernel event is simply a dispatcher header.
+ * A kernel event is simply a dispatcher header with a signal limit of 1.
  *
  * Note: you may wonder why we didn't call it "Executive" Event, since we are
  * in the NTOS executive. The reason is to match WinNT/ReactOS. Additionally,
@@ -750,7 +755,7 @@ static inline VOID KeInitializeEvent(IN PKEVENT Event,
 				     IN EVENT_TYPE EventType)
 {
     assert(Event != NULL);
-    KeInitializeDispatcherHeader(&Event->Header, EventType);
+    KeInitializeDispatcherHeader(&Event->Header, EventType, 1);
 }
 
 static inline VOID KeSetEvent(IN PKEVENT Event)
@@ -760,7 +765,7 @@ static inline VOID KeSetEvent(IN PKEVENT Event)
 
 static inline VOID KeResetEvent(IN PKEVENT Event)
 {
-    Event->Header.Signaled = FALSE;
+    Event->Header.SignalState = 0;
 }
 
 static inline VOID KePulseEvent(IN PKEVENT Event)
@@ -775,6 +780,31 @@ static inline VOID KeUninitializeEvent(IN PKEVENT Event)
      * on this event gets resumed. */
     KeSetEvent(Event);
     KeDetachDispatcherObject(&Event->Header);
+}
+
+typedef struct _KSEMAPHORE {
+    DISPATCHER_HEADER Header;
+} KSEMAPHORE, *PKSEMAPHORE;
+
+static inline VOID KeInitializeSemaphore(IN PKSEMAPHORE Semaphore,
+					 IN LONG Limit)
+{
+    assert(Semaphore != NULL);
+    KeInitializeDispatcherHeader(&Semaphore->Header, SynchronizationEvent, Limit);
+}
+
+static inline VOID KeReleaseSemaphore(IN PKSEMAPHORE Semaphore)
+{
+    KeSignalDispatcherObject(&Semaphore->Header);
+}
+
+static inline VOID KeUninitializeSemaphore(IN PKSEMAPHORE Semaphore)
+{
+    /* Release the semaphore so any thread that is blocked on waiting for
+     * this semaphore gets resumed. */
+    KeReleaseSemaphore(Semaphore);
+    KeDetachDispatcherObject(&Semaphore->Header);
+    Semaphore->Header.SignalState = 0;
 }
 
 /*

@@ -158,7 +158,7 @@ NTSTATUS NtSetEvent(IN ASYNC_STATE State,
 				      (POBJECT *)&EventObject));
     assert(EventObject != NULL);
     if (PreviousState) {
-	*PreviousState = EventObject->Event.Header.Signaled;
+	*PreviousState = EventObject->Event.Header.SignalState;
     }
     KeSetEvent(&EventObject->Event);
     ObDereferenceObject(EventObject);
@@ -176,7 +176,7 @@ NTSTATUS NtResetEvent(IN ASYNC_STATE State,
 				      (POBJECT *)&EventObject));
     assert(EventObject != NULL);
     if (PreviousState) {
-	*PreviousState = EventObject->Event.Header.Signaled;
+	*PreviousState = EventObject->Event.Header.SignalState;
     }
     KeResetEvent(&EventObject->Event);
     ObDereferenceObject(EventObject);
@@ -194,7 +194,7 @@ NTSTATUS NtPulseEvent(IN ASYNC_STATE State,
 				      (POBJECT *)&EventObject));
     assert(EventObject != NULL);
     if (PreviousState) {
-	*PreviousState = EventObject->Event.Header.Signaled;
+	*PreviousState = EventObject->Event.Header.SignalState;
     }
     KePulseEvent(&EventObject->Event);
     ObDereferenceObject(EventObject);
@@ -262,7 +262,7 @@ NTSTATUS NtQueryEvent(IN ASYNC_STATE State,
     if (EventInformationClass == EventBasicInformation) {
 	PEVENT_BASIC_INFORMATION Info = EventInformation;
 	Info->EventType = Event->Event.Header.EventType;
-	Info->EventState = Event->Event.Header.Signaled;
+	Info->EventState = Event->Event.Header.SignalState;
 	*ReturnLength = sizeof(EVENT_BASIC_INFORMATION);
     } else {
 	assert(FALSE);

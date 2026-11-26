@@ -63,9 +63,11 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
 	RemoveEntryList(&Timer->ThreadLink);
     }
 
-    /* Close all LPC port connections established by the thread */
+    /* By this point all LPC port connections established by the thread should have
+     * been closed. Nonetheless we will close them here if they have not been closed. */
+    assert(IsListEmpty(&Thread->LpcConnectionList));
     LoopOverList(Connection, &Thread->LpcConnectionList, LPC_PORT_CONNECTION, ThreadLink) {
-	ExClosePortConnection(Connection, TRUE);
+	ExClosePortConnection(Connection, STATUS_THREAD_IS_TERMINATING);
     }
 
     /* Free the debug name allocated during thread creation */
@@ -117,6 +119,10 @@ VOID PspProcessObjectDeleteProc(IN POBJECT Object)
     assert(IsListEmpty(&Process->ThreadList));
     KeDetachDispatcherObject(&Process->Header);
     ObDereferenceObject(Process->ImageSection);
+    /* Close all LPC port objects created by the process */
+    LoopOverList(Port, &Process->PortObjectList, LPC_PORT_OBJECT, ServerProcessLink) {
+	ExClosePort(Port);
+    }
 #define DESTROY_EVENT(ObjName)					\
     if (Process->ObjName) {					\
 	assert(ObGetObjectRefCount(Process->ObjName) == 1);	\
@@ -186,6 +192,12 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
      * An active async context is distinguished by the fact that its thread
      * pointer is not NULL. */
     KeCancelThreadInactiveAsyncContexts(Thread, ActiveAsyncCtx);
+    /* Close all LPC port connections established by the thread. Since LPC
+     * connections increase the refcount of the client thread object, we need
+     * to close them here rather than in the thread delete routine. */
+    LoopOverList(Connection, &Thread->LpcConnectionList, LPC_PORT_CONNECTION, ThreadLink) {
+	ExClosePortConnection(Connection, STATUS_THREAD_IS_TERMINATING);
+    }
     /* Dereference the THREAD object so the object manager will delete it
      * (if no one else is referring to it) */
     ObDereferenceObject(Thread);

@@ -103,6 +103,13 @@ NTAPI NTSYSAPI NTSTATUS NtAcceptPort(OUT OPTIONAL HANDLE *EventHandle,
 				     OUT OPTIONAL PREMOTE_PORT_VIEW ClientView);
 
 /*
+ * Reply port reservation (server)
+ */
+NTAPI NTSYSAPI NTSTATUS NtReserveReplyPort(IN HANDLE PortHandle,
+					   IN PCLIENT_ID ClientId,
+					   OUT LOCAL_HANDLE *ReplyPort);
+
+/*
  * Port opening (client)
  */
 #ifdef _MSC_VER
@@ -136,8 +143,14 @@ NTAPI NTSYSAPI NTSTATUS NtDisconnectPort(IN LOCAL_HANDLE CommPortHandle);
 /*
  * Port reply (server)
  */
-NTAPI NTSYSAPI NTSTATUS NtReplyPort(IN PPORT_MESSAGE ReplyMessage,
+NTAPI NTSYSAPI NTSTATUS NtReplyPort(IN OPTIONAL LOCAL_HANDLE ReplyPort,
+				    IN PPORT_MESSAGE ReplyMessage,
 				    IN OPTIONAL PPORT_VIEW ServerView);
+
+/*
+ * Save the reply cap (server)
+ */
+NTAPI NTSYSAPI NTSTATUS NtSaveReplyPort(IN LOCAL_HANDLE ReplyPort);
 
 /*
  * Port receive (client and server)

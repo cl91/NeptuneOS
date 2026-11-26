@@ -377,7 +377,7 @@ typedef struct _PEB {                                                 /* win32/w
 
 C_ASSERT(sizeof(PEB) < PAGE_SIZE);
 
-typedef NTSTATUS (*PRTL_ASYNC_YIELD)(ULONG AsyncObjId);
+typedef NTSTATUS (NTAPI *PRTL_ASYNC_YIELD)(ULONG AsyncObjId);
 
 /*
  * Thread Environment Block (TEB).
@@ -2645,12 +2645,12 @@ NTAPI NTSYSAPI USHORT RtlQueryDepthSList(IN PSLIST_HEADER ListHead);
  * Process Management Functions
  */
 
-FORCEINLINE NTAPI PTEB NtCurrentTeb(VOID)
+FORCEINLINE NTAPI DECLSPEC_NOFPU PTEB NtCurrentTeb(VOID)
 {
     return (PVOID)NtCurrentTib();
 }
 
-FORCEINLINE NTAPI PPEB NtCurrentPeb(VOID)
+FORCEINLINE NTAPI DECLSPEC_NOFPU PPEB NtCurrentPeb(VOID)
 {
     return NtCurrentTeb()->ProcessEnvironmentBlock;
 }

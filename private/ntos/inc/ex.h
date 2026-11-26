@@ -30,33 +30,43 @@ typedef struct _EVENT_OBJECT {
  */
 typedef struct _LPC_PORT_OBJECT {
     IPC_ENDPOINT Endpoint;
-    LIST_ENTRY Link;
+    LIST_ENTRY ServerProcessLink;
     AVL_TREE Connections;
-    KEVENT ConnectionRequested;
+    KSEMAPHORE ConnectionRequested;
     LIST_ENTRY QueuedConnections;
     ULONG MaxMessageLength;
 } LPC_PORT_OBJECT, *PLPC_PORT_OBJECT;
 
+/*
+ * LPC port connection.
+ */
 typedef struct _LPC_PORT_CONNECTION {
     union {
 	AVL_NODE Node;	    /* Key is thread id. */
 	LIST_ENTRY Link;    /* List link for queued connection list */
-    };
+    };			    /* A connection object that has been attached to the client
+			     * thread is always either in the connection AVL tree or the
+			     * queued connection list of the port object. */
     PLPC_PORT_OBJECT PortObject;
     struct _THREAD *ClientThread;
     IPC_ENDPOINT ClientEndpoint;
     union {
-	LIST_ENTRY ThreadLink;
+	LIST_ENTRY ThreadLink;	/* List link for ClientThread::LpcConnectionList */
 	CLIENT_ID OldClientId;	/* Client ID of the dead client. */
     };
     KEVENT Connected;
     PEVENT_OBJECT EventObject;
+    CAP_TREE_NODE ReplyPort;
     ULONG_PTR PortContext;
     PVOID ConnectionInformation;
     ULONG ConnectionInformationLength;
+    NTSTATUS ClientExitStatus;	/* If non-zero, this represents the status that the server
+				 * should receive when a port is closed. In this case the
+				 * union above has the exiting client ID, and the connection
+				 * is detached from the client thread (ClientThread == NULL). */
     BOOLEAN ConnectionInserted;	/* TRUE if the connection is inserted into the AVL tree. */
     BOOLEAN ConnectionRefused;
-    BOOLEAN ClientDied;
+    BOOLEAN ConnectionAccepted;
 } LPC_PORT_CONNECTION, *PLPC_PORT_CONNECTION;
 
 /*
@@ -105,12 +115,13 @@ NTSTATUS ExCreateEvent(IN struct _PROCESS *Process,
 		       OUT struct _HANDLE_TABLE_ENTRY **HandleTableEntry);
 
 /* init.c */
-NTSTATUS ExInitSystemPhase0(seL4_BootInfo *bootinfo);
+NTSTATUS ExInitSystemPhase0(seL4_BootInfo *Bootinfo);
 NTSTATUS ExInitSystemPhase1();
 
 /* lpc.c */
+VOID ExClosePort(IN PLPC_PORT_OBJECT PortObject);
 VOID ExClosePortConnection(IN PLPC_PORT_CONNECTION Connection,
-			   IN BOOLEAN ThreadIsTerminating);
+			   IN NTSTATUS ClientExitStatus);
 
 /* pool.c */
 NTSTATUS ExInitializePool(IN MWORD HeapStart, IN LONG NumPages);

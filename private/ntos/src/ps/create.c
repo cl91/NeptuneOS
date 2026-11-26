@@ -376,8 +376,8 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     /* Copy the process shared CNode into the zeroth slot of the thread private CNode.
      * Note we don't track the cap tree derivation of this cap in a CAP_TREE_NODE, since
      * it is only used as a pointer into the process-wide shared CNode. Deleting the
-     * thread-private CNode itself will automatically revoke this cap (and every other cap
-     * in the thread-private CNode). */
+     * thread-private CNode itself will automatically revoke this cap (and every other
+     * cap in the thread-private CNode). */
     RET_ERR(MmCopyCap(Thread->CSpace, 0, Process->SharedCNode->TreeNode.CNode,
 		      Process->SharedCNode->TreeNode.Cap, seL4_AllRights));
 
@@ -530,6 +530,50 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
     return STATUS_SUCCESS;
 }
 
+NTSTATUS PsRequestThreadPrivateCNode(IN PTHREAD Thread,
+				     OUT PCNODE *CNode)
+{
+    *CNode = NULL;
+    ULONG OuterCNodeSize = 1UL << THREAD_OUTER_CNODE_LOG2SIZE;
+    if (!Thread->PrivateCNodes) {
+	Thread->PrivateCNodes = ExAllocatePoolWithTag(sizeof(PVOID) * OuterCNodeSize,
+						      NTOS_PS_TAG);
+	if (!Thread->PrivateCNodes) {
+	    return STATUS_NO_MEMORY;
+	}
+    }
+    for (ULONG i = 1; i < OuterCNodeSize; i++) {
+	if (Thread->PrivateCNodes[i]) {
+	    if (!MmCNodeIsFull(Thread->PrivateCNodes[i])) {
+		*CNode = Thread->PrivateCNodes[i];
+	    } else {
+		continue;
+	    }
+	} else {
+	    RET_ERR(MmCreateCNode(THREAD_INNER_CNODE_LOG2SIZE, &Thread->PrivateCNodes[i]));
+	    /* We copy the cap to this CNode to the zeroth slot of this CNode, so client
+	     * can call seL4_SaveCaller and save the reply cap into it. Of course, client
+	     * is now granted the full rights to this CNode and can, for instance, delete
+	     * slots in it or revoke the entire CNode. This is considered OK because we
+	     * only put reply caps into these CNodes. */
+	    NTSTATUS Status = MmCopyCap(Thread->PrivateCNodes[i], 0,
+					Thread->PrivateCNodes[i]->TreeNode.CNode,
+					Thread->PrivateCNodes[i]->TreeNode.Cap,
+					seL4_AllRights);
+	    /* This should always succeed. */
+	    if (!NT_SUCCESS(Status)) {
+		assert(FALSE);
+		MmDeleteCNode(Thread->PrivateCNodes[i]);
+		Thread->PrivateCNodes[i] = NULL;
+		return Status;
+	    }
+	    *CNode = Thread->PrivateCNodes[i];
+	    return STATUS_SUCCESS;
+	}
+    }
+    return STATUS_INSUFFICIENT_RESOURCES;
+}
+
 /*
  * Reserve and commit a coroutine stack for the driver process. Drivers can have
  * many coroutine stacks, each of which has 4 pages of reserved space, and the
@@ -573,7 +617,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     ObReferenceObjectByPointer(Section);
     Process->ImageSection = Section;
-    KeInitializeDispatcherHeader(&Process->Header, NotificationEvent);
+    KeInitializeDispatcherHeader(&Process->Header, NotificationEvent, 1);
 
     RET_ERR(MmCreateCNode(THREAD_INNER_CNODE_LOG2SIZE, &Process->SharedCNode));
     RET_ERR(MmCreateVSpace(&Process->VSpace));
@@ -584,6 +628,7 @@ NTSTATUS PspProcessObjectCreateProc(IN POBJECT Object,
 
     InitializeListHead(&Process->ThreadList);
     InitializeListHead(&Process->ProcessListEntry);
+    InitializeListHead(&Process->PortObjectList);
     ObInitializeHandleTable(&Process->HandleTable);
 
     /* Assign an ASID for the virtual address space just created */

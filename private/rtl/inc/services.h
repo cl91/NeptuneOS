@@ -106,7 +106,7 @@ C_ASSERT(sizeof(KUSER_SHARED_DATA) < PAGE_SIZE);
 #define IRP_DATA_BUFFER_SIZE	(512)
 
 /* Each client thread gets its own private CSpace with two layers of CNode.
- * The outer CNode has the the zeroth slot pointing to the shared CNode,
+ * The outer CNode has the zeroth slot pointing to the shared CNode,
  * containing capabilities accessible by all threads of the same process.
  * The rest of the slots in the outer CNode either contain an endpoint or
  * notification capability, or point to a thread-private CNode containing

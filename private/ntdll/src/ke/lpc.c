@@ -68,16 +68,20 @@ FORCEINLINE NTSTATUS KiUnmarshalPortMessage(IN seL4_MessageInfo_t Msg,
 }
 
 /*
- * Reply to client with the given message. The port replying to is
- * implicitly the one receving the last message, and the thread is
- * implicitly the one sending the last message received by the server.
+ * Reply to client with the given message. If ReplyPort is 0, the port
+ * being replied to is implicitly the one receving the last message.
  */
-NTAPI NTSTATUS NtReplyPort(IN PPORT_MESSAGE ReplyMessage,
+NTAPI NTSTATUS NtReplyPort(IN OPTIONAL LOCAL_HANDLE ReplyPort,
+			   IN PPORT_MESSAGE ReplyMessage,
 			   IN OPTIONAL PPORT_VIEW ServerView)
 {
     seL4_MessageInfo_t MsgInfo;
     RET_ERR(KiMarshalPortMessage(ReplyMessage, ServerView, &MsgInfo));
-    seL4_Reply(MsgInfo);
+    if (ReplyPort) {
+	seL4_Send(LOCAL_HANDLE_TO_CAP(ReplyPort), MsgInfo);
+    } else {
+	seL4_Reply(MsgInfo);
+    }
     return STATUS_SUCCESS;
 }
 
@@ -94,6 +98,22 @@ NTAPI NTSTATUS NtReceivePort(IN LOCAL_HANDLE CommPort,
     seL4_MessageInfo_t Msg = seL4_Recv(LOCAL_HANDLE_TO_CAP(CommPort), &Badge);
     return KiUnmarshalPortMessage(Msg, Badge, PortContext, ReceivedMessage,
 				  MsgBufferLength, LocalView);
+}
+
+/*
+ * Save the reply cap (server)
+ */
+NTAPI NTSTATUS NtSaveReplyPort(IN LOCAL_HANDLE ReplyPort)
+{
+    assert(PsCapIsThreadPrivate(ReplyPort));
+    int Error = seL4_CNode_SaveCaller(LOCAL_HANDLE_TO_CAP(PsGetCNodeOfLocalHandle(ReplyPort)),
+				      LOCAL_HANDLE_TO_CAP(ReplyPort),
+				      MWORD_BITS);
+    if (Error != 0) {
+	KeDbgDumpIPCError(Error);
+	return SEL4_ERROR(Error);
+    }
+    return STATUS_SUCCESS;
 }
 
 /*

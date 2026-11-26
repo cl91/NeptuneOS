@@ -406,7 +406,7 @@ VOID KeInitializeTimer(IN PTIMER Timer,
 		       IN TIMER_TYPE Type)
 {
     KeInitializeDispatcherHeader(&Timer->Header, Type == NotificationTimer ?
-				 NotificationEvent : SynchronizationEvent);
+				 NotificationEvent : SynchronizationEvent, 1);
     InsertTailList(&KiTimerList, &Timer->ListEntry);
 }
 

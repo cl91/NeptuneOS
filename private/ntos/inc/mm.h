@@ -236,7 +236,7 @@ typedef struct _CNODE {
     ULONG TotalUsed;		/* Number of used slots */
     BOOLEAN Deleted;		/* TRUE if the CNode is marked for deletion. Actual
 				 * deletion will happen when all its caps are deleted. */
-} CNODE, *PCNODE;
+} CNODE, *PCNODE, **PPCNODE;
 
 #define TREE_NODE_TO_UNTYPED(Node) CONTAINING_RECORD(Node, UNTYPED, TreeNode)
 
@@ -257,6 +257,14 @@ FORCEINLINE ULONG MmCNodeGetDepth(IN PCNODE CNode)
     seL4_CNode_CapData_t GuardData = { .words[0] = CNode->TreeNode.Badge };
     ULONG GuardBits = seL4_CNode_CapData_get_guardSize(GuardData);
     return CNode->Log2Size + GuardBits;
+}
+
+/*
+ * Returns TRUE if the CNode is full.
+ */
+FORCEINLINE BOOLEAN MmCNodeIsFull(IN PCNODE CNode)
+{
+    return CNode->TotalUsed == (1UL << CNode->Log2Size);
 }
 
 /*

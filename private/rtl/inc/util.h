@@ -49,6 +49,12 @@ FORCEINLINE BOOLEAN PsCapIsThreadPrivate(IN MWORD Cap)
     return !!PsGetThreadOuterCNodeIndexOfCap(Cap);
 }
 
+/* We place the cap to the thread private CNode itself at the zeroth slot of that CNode. */
+FORCEINLINE LOCAL_HANDLE PsGetCNodeOfLocalHandle(IN LOCAL_HANDLE Cap)
+{
+    return (Cap >> THREAD_INNER_CNODE_LOG2SIZE) << THREAD_INNER_CNODE_LOG2SIZE;
+}
+
 #ifndef _NTOSKRNL_
 FORCEINLINE MWORD RtlGetThreadCSpaceGuard()
 {

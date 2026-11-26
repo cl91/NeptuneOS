@@ -99,6 +99,8 @@ typedef struct _PEB {
     PVOID ImageBaseAddress;
 } PEB, *PPEB;
 
+typedef NTSTATUS (*PRTL_ASYNC_YIELD)(ULONG AsyncObjId);
+
 /*
  * Thread Environment Block of POSIX processes
  */
@@ -106,6 +108,7 @@ typedef struct _TEB {
     NT_TIB NtTib;
     PVOID SubsystemThreadObject;
     PPEB ProcessEnvironmentBlock;
+    PRTL_ASYNC_YIELD AsyncYield;
 } TEB, *PTEB;
 
 FORCEINLINE NTAPI PTEB NtCurrentTeb(VOID)

@@ -115,6 +115,8 @@
 @ stdcall NtOpenPortA(ptr ptr long)
 @ stdcall NtConnectPort(ptr ptr ptr ptr ptr ptr ptr ptr long)
 @ stdcall NtDisconnectPort(ptr)
+@ stdcall NtReserveReplyPort(ptr ptr ptr)
+@ stdcall NtSaveReplyPort(ptr)
 @ stdcall NtReplyPort(ptr ptr)
 @ stdcall NtReceivePort(ptr ptr ptr ptr)
 @ stdcall NtReplyWaitReceivePort(ptr ptr ptr ptr ptr)

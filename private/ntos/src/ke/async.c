@@ -116,11 +116,11 @@ NTSTATUS KeWaitForSingleObject(IN ASYNC_STATE State,
     assert(Thread->Suspended == FALSE);
 
     /* If the dispatcher object has already been signaled, we do not need to wait.
-     * If the event type is a synchronization event, set the event to non-signaled.
+     * If the event type is a synchronization event, decrease the signal count.
      * Check the APC queue and return. */
-    if (DispatcherObject->Signaled) {
+    if (DispatcherObject->SignalState) {
 	if (DispatcherObject->EventType == SynchronizationEvent) {
-	    DispatcherObject->Signaled = FALSE;
+	    DispatcherObject->SignalState--;
 	}
 	if (Alertable && !KiApcQueueIsEmpty(Thread)) {
 	    ASYNC_RETURN(State, STATUS_USER_APC);
@@ -192,9 +192,9 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
     /* Check whether the wait is satisfied. Return immediately if it is. */
     if (WaitType == WaitAny) {
 	for (ULONG i = 0; i < Count; i++) {
-	    if (DispatcherObjects[i]->Signaled) {
+	    if (DispatcherObjects[i]->SignalState) {
 		if (DispatcherObjects[i]->EventType == SynchronizationEvent) {
-		    DispatcherObjects[i]->Signaled = FALSE;
+		    DispatcherObjects[i]->SignalState--;
 		}
 		if (Alertable && !KiApcQueueIsEmpty(Thread)) {
 		    ASYNC_RETURN(State, STATUS_USER_APC);
@@ -207,7 +207,7 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 	assert(WaitType == WaitAll);
 	BOOLEAN Satisfied = TRUE;
 	for (ULONG i = 0; i < Count; i++) {
-	    if (!DispatcherObjects[i]->Signaled) {
+	    if (!DispatcherObjects[i]->SignalState) {
 		Satisfied = FALSE;
 		break;
 	    }
@@ -215,7 +215,7 @@ NTSTATUS KeWaitForMultipleObjects(IN ASYNC_STATE State,
 	if (Satisfied) {
 	    for (ULONG i = 0; i < Count; i++) {
 		if (DispatcherObjects[i]->EventType == SynchronizationEvent) {
-		    DispatcherObjects[i]->Signaled = FALSE;
+		    DispatcherObjects[i]->SignalState--;
 		}
 	    }
 	    if (Alertable && !KiApcQueueIsEmpty(Thread)) {
@@ -497,7 +497,7 @@ BOOLEAN KeRemoveQueuedApc(IN PKAPC Apc)
  */
 static BOOLEAN KiWaitBlockIsSatisfied(IN PKWAIT_BLOCK Block)
 {
-    BOOLEAN Satisfied = Block->Dispatcher ? Block->Dispatcher->Signaled : TRUE;
+    BOOLEAN Satisfied = Block->Dispatcher ? Block->Dispatcher->SignalState : TRUE;
     if (Block->Next != NULL) {
 	if (Block->WaitType == WaitAny) {
 	    return Satisfied || KiWaitBlockIsSatisfied(Block->Next);
@@ -581,20 +581,30 @@ VOID KeSignalDispatcherObject(IN PDISPATCHER_HEADER Dispatcher)
 {
     DbgTrace("Signaling dispatcher %p\n", Dispatcher);
     assert(Dispatcher != NULL);
-    if (Dispatcher->Signaled) {
-	DbgTrace("Dispatcher %p already signaled\n", Dispatcher);
+    assert(Dispatcher->SignalState >= 0);
+    if (Dispatcher->SignalState) {
+	DbgTrace("Increasing dispatcher signal state %p (%d -> %d)\n",
+		 Dispatcher, Dispatcher->SignalState,
+		 min(Dispatcher->SignalState + 1, Dispatcher->Limit));
     }
-    Dispatcher->Signaled = TRUE;
+    Dispatcher->SignalState++;
+    if (Dispatcher->SignalState > Dispatcher->Limit) {
+	Dispatcher->SignalState = Dispatcher->Limit;
+    }
     /* Walk the wait block list and wake the thread up */
     LoopOverList(Block, &Dispatcher->WaitBlockList, KWAIT_BLOCK, DispatcherLink) {
 	assert(Block->AsyncContext != NULL);
 	if (KiShouldWakeAsyncContext(Block->AsyncContext)) {
 	    KiResumeAsyncContext(Block->AsyncContext);
-	    /* If the dispatcher is a synchronization dispatcher, set it back to
-	     * non-signaled and exit the loop (we only wake up one async context). */
+	    /* If the dispatcher is a synchronization dispatcher, decrease its
+	     * signal state and exit the loop if it is no longer signaled (we
+	     * only wake up one async context). */
 	    if (Dispatcher->EventType == SynchronizationEvent) {
-		Dispatcher->Signaled = FALSE;
-		break;
+		Dispatcher->SignalState--;
+		assert(Dispatcher->SignalState >= 0);
+		if (!Dispatcher->SignalState) {
+		    break;
+		}
 	    }
 	}
     }
