@@ -47,8 +47,8 @@ VOID PspThreadObjectDeleteProc(IN POBJECT Object)
     assert(!IsListEmpty(&Thread->ThreadListEntry));
     RemoveEntryList(&Thread->ThreadListEntry);
 
-    /* Cancel all async context objects that the thread has created. */
-    KeCancelThreadAsyncContexts(Thread);
+    /* Deallocate the async context objects of the thread */
+    KeDeallocateThreadAsyncContexts(Thread);
 
     /* Clean up the APC objects queued to this thread */
     LoopOverList(Apc, &Thread->QueuedApcList, KAPC, ThreadApcListEntry) {
@@ -158,7 +158,8 @@ static NTSTATUS PspSuspendThread(IN MWORD Cap)
  * This routine dereferences the thread object created by PsCreateThread.
  */
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,
-			   IN NTSTATUS ExitStatus)
+			   IN NTSTATUS ExitStatus,
+			   IN OPTIONAL PASYNC_CONTEXT ActiveAsyncCtx)
 {
     assert(Thread->Process != NULL);
     if (Thread->Terminated) {
@@ -181,6 +182,10 @@ NTSTATUS PsTerminateThread(IN PTHREAD Thread,
      * the dereference below does not yet delete the THREAD object). */
     RET_ERR(PspSuspendThread(Thread->TreeNode.Cap));
     KeRemoveThreadFromReadyList(Thread);
+    /* Cancel all async context of the thread, except the currently active one.
+     * An active async context is distinguished by the fact that its thread
+     * pointer is not NULL. */
+    KeCancelThreadInactiveAsyncContexts(Thread, ActiveAsyncCtx);
     /* Dereference the THREAD object so the object manager will delete it
      * (if no one else is referring to it) */
     ObDereferenceObject(Thread);
@@ -216,7 +221,7 @@ NTSTATUS NtTerminateThread(IN ASYNC_STATE State,
 				      OBJECT_TYPE_THREAD, (POBJECT *)&ThreadToTerminate));
     ObDereferenceObject(ThreadToTerminate);
     assert(ThreadToTerminate != NULL);
-    PsTerminateThread(ThreadToTerminate, ExitStatus);
+    PsTerminateThread(ThreadToTerminate, ExitStatus, State.AsyncContext);
     /* If the current thread is terminating, do not reply to it */
     return ThreadHandle == NtCurrentThread() ? STATUS_NTOS_NO_REPLY : STATUS_SUCCESS;
 }
@@ -276,7 +281,7 @@ close:
 
 out:
     LoopOverList(ThreadToTerminate, &Process->ThreadList, THREAD, ThreadListEntry) {
-	PsTerminateThread(ThreadToTerminate, ExitStatus);
+	PsTerminateThread(ThreadToTerminate, ExitStatus, State.AsyncContext);
     }
     KeSignalDispatcherObject(&Process->Header);
     ObDereferenceObject(Process);

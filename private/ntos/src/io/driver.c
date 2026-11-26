@@ -670,7 +670,7 @@ NTSTATUS WdmDisableX86Port(IN ASYNC_STATE AsyncState,
 #endif
 }
 
-static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
+static NTSTATUS IopCreateInterruptServiceThread(IN PASYNC_CONTEXT AsyncCtx,
 						IN PPNP_BUS_INFORMATION BusInfo,
 						IN ULONG SlotNumber,
 						IN PCM_PARTIAL_RESOURCE_DESCRIPTOR Raw,
@@ -680,6 +680,8 @@ static NTSTATUS IopCreateInterruptServiceThread(IN PTHREAD DriverThread,
 						OUT PINTERRUPT_SERVICE *pSvc,
 						OUT PTHREAD *pIsrThread)
 {
+    PTHREAD DriverThread = AsyncCtx->Thread;
+    assert(DriverThread);
     PPROCESS DriverProcess = DriverThread->Process;
     assert(DriverProcess != NULL);
     PIO_DRIVER_OBJECT DriverObject = IoGetDriverObjectFromProcess(DriverProcess);
@@ -766,7 +768,7 @@ err:
 	IopFreePool(Svc);
     }
     if (IsrThread != NULL) {
-	PsTerminateThread(IsrThread, STATUS_UNSUCCESSFUL);
+	PsTerminateThread(IsrThread, STATUS_UNSUCCESSFUL, AsyncCtx);
     }
     return Status;
 }
@@ -800,8 +802,8 @@ NTSTATUS WdmConnectInterrupt(IN ASYNC_STATE AsyncState,
      * and interrupt mutex object */
     PINTERRUPT_SERVICE Svc = NULL;
     PTHREAD IsrThread = NULL;
-    RET_ERR(IopCreateInterruptServiceThread(Thread, &BusInfo, SlotNumber, Raw, Vector,
-					    EntryPoint, ClientSideContext,
+    RET_ERR(IopCreateInterruptServiceThread(AsyncState.AsyncContext, &BusInfo, SlotNumber,
+					    Raw, Vector, EntryPoint, ClientSideContext,
 					    &Svc, &IsrThread));
     assert(Svc != NULL);
     assert(IsrThread != NULL);
@@ -846,7 +848,7 @@ NTSTATUS WdmDisconnectInterrupt(IN ASYNC_STATE State,
 	assert(FALSE);
 	ASYNC_RETURN(State, Status);
     }
-    PsTerminateThread(Locals.IsrThread, STATUS_SUCCESS);
+    PsTerminateThread(Locals.IsrThread, STATUS_SUCCESS, State.AsyncContext);
     AWAIT(Status, NtClose, State, Locals, Locals.Svc->ThreadHandle);
     ObDereferenceObject(Locals.IsrThread);
     Locals.Svc->ThreadHandle = NULL;
@@ -937,7 +939,7 @@ NTSTATUS WdmCreateDpcThread(IN ASYNC_STATE AsyncState,
 
 err:
     if (DpcThread) {
-	PsTerminateThread(DpcThread, STATUS_UNSUCCESSFUL);
+	PsTerminateThread(DpcThread, STATUS_UNSUCCESSFUL, AsyncState.AsyncContext);
     }
     if (DriverObject->IoTimer.Notification.TreeNode.Cap) {
 	KeDestroyNotification(&DriverObject->IoTimer.Notification);

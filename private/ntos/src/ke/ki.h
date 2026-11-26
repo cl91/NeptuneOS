@@ -80,22 +80,6 @@ static inline VOID KiDbgDumpFault(IN seL4_Fault_t Fault,
     }
 }
 
-static inline VOID KiInitializeAsyncContext(IN PTHREAD Thread,
-					    IN ULONG AsyncObjId,
-					    IN ULONG MsgBufferEnd,
-					    IN PVOID SavedMsgBuf,
-					    OUT PASYNC_CONTEXT AsyncCtx)
-{
-    assert(AsyncObjId <= Thread->AsyncObjMaxId);
-    Thread->AsyncContexts[AsyncObjId] = AsyncCtx;
-    AsyncCtx->AsyncObjId = AsyncObjId;
-    AsyncCtx->Thread = Thread;
-    AsyncCtx->MsgBufferEnd = MsgBufferEnd;
-    AsyncCtx->SavedMsgBufSize = MsgBufferEnd;
-    AsyncCtx->SavedMsgBuf = SavedMsgBuf;
-    ObReferenceObjectByPointer(Thread);
-}
-
 /* async.c */
 ULONG KiDeliverApc(IN PTHREAD Thread,
 		   IN ULONG MsgBufOffset,
@@ -118,6 +102,10 @@ LIST_ENTRY KiReadyThreadList;
 NTSTATUS KiBindNotificationToThread(IN MWORD ThreadCap,
 				    IN MWORD NotificationCap);
 NTSTATUS KiAsyncContinue(IN PASYNC_CONTEXT AsyncContext);
+NTSTATUS KiGetAsyncContext(IN PTHREAD Thread,
+			   IN OPTIONAL ULONG MsgBufferEnd,
+			   OUT PASYNC_CONTEXT *pAsyncCtx);
+VOID KiPutAsyncContext(IN PASYNC_CONTEXT AsyncCtx);
 NTSTATUS KiInitExecutiveServices();
 VOID KiDispatchExecutiveServices();
 

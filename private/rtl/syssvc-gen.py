@@ -269,10 +269,7 @@ ServerPostMarshaling_{{svc.server_name}}:
 {%- endif %}
 {%- endfor %}
 {%- if not svc.noasync %}
-            /* Before we return, on debug build we check that the async function has
-             * correctly poped the async stack (by using ASYNC_RETURN rather than return). */
-            KiCheckAsyncStackEmpty(AsyncCtx);
-            KiPutAsyncContext(Thread, AsyncCtx);
+            KiPutAsyncContext(AsyncCtx);
 {%- endif %}
 {% if not svc.noasync %}    {% endif %}        *AsyncObjId = ULONG_MAX;
 {%- if not svc.noasync %}

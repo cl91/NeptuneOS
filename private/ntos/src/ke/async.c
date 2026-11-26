@@ -297,11 +297,42 @@ NTSTATUS KeAllocateDefaultAsyncContext(IN PTHREAD Thread)
 	Thread->AsyncContexts = NULL;
 	return STATUS_NO_MEMORY;
     }
-    KiInitializeAsyncContext(Thread, 0, 0, NULL, AsyncCtx);
+    Thread->AsyncContexts[0] = AsyncCtx;
     return STATUS_SUCCESS;
 }
 
-static VOID KiCancelAsyncContext(IN PASYNC_CONTEXT AsyncCtx)
+/* This routine should only be called during thread object deletion. */
+VOID KeDeallocateThreadAsyncContexts(IN PTHREAD Thread)
+{
+    if (!Thread->AsyncContexts) {
+	return;
+    }
+
+    for (ULONG i = 0; i <= Thread->AsyncObjMaxId; i++) {
+	PASYNC_CONTEXT AsyncCtx = Thread->AsyncContexts[i];
+	if (!AsyncCtx) {
+	    continue;
+	}
+	/* By the time this routine is called, none of the async contexts should
+	 * be active. */
+	assert(!Thread->AsyncContexts[i]->Thread);
+	if (AsyncCtx->SavedMsgBuf) {
+	    assert(AsyncCtx->SavedMsgBufSize);
+	    ExFreePoolWithTag(AsyncCtx->SavedMsgBuf, NTOS_KE_TAG);
+	}
+	ExFreePoolWithTag(AsyncCtx, NTOS_KE_TAG);
+	Thread->AsyncContexts[i] = NULL;
+    }
+    Thread->AsyncObjMaxId = 0;
+    if (Thread->AsyncObjUsedMap) {
+	ExFreePoolWithTag(Thread->AsyncObjUsedMap, NTOS_KE_TAG);
+	Thread->AsyncObjUsedMap = NULL;
+    }
+    ExFreePoolWithTag(Thread->AsyncContexts, NTOS_KE_TAG);
+    Thread->AsyncContexts = NULL;
+}
+
+static VOID KiCancelInactiveAsyncContext(IN PASYNC_CONTEXT AsyncCtx)
 {
     /* Set the cancel flag for every async frame in the async context, and
      * call the service handler to cancel the async ops. Note we need to do
@@ -326,39 +357,22 @@ static VOID KiCancelAsyncContext(IN PASYNC_CONTEXT AsyncCtx)
      * KeWaitForMultipleObjects */
     KeCancelTimer(&AsyncCtx->WaitTimer);
     KiRemoveTimer(&AsyncCtx->WaitTimer);
-    if (AsyncCtx->SavedMsgBuf) {
-	assert(AsyncCtx->SavedMsgBufSize);
-	ExFreePoolWithTag(AsyncCtx->SavedMsgBuf, NTOS_KE_TAG);
-    }
-    if (Thread->AsyncObjUsedMap) {
-	ClearBit(Thread->AsyncObjUsedMap, AsyncCtx->AsyncObjId);
-    }
-    Thread->AsyncContexts[AsyncCtx->AsyncObjId] = NULL;
-    ObDereferenceObject(Thread);
-    ExFreePoolWithTag(AsyncCtx, NTOS_KE_TAG);
+    KiPutAsyncContext(AsyncCtx);
 }
 
 /*
- * This routine will deallocate all the async contexts of a thread. It should
- * only be called during thread object deletion.
+ * This routine will cancel all inactive async contexts of a thread.
  */
-VOID KeCancelThreadAsyncContexts(IN PTHREAD Thread)
+VOID KeCancelThreadInactiveAsyncContexts(IN PTHREAD Thread,
+					 IN OPTIONAL PASYNC_CONTEXT ActiveAsyncCtx)
 {
-    if (Thread->AsyncObjMaxId) {
-	if (Thread->AsyncContexts) {
-	    for (ULONG i = 0; i < Thread->AsyncObjMaxId; i++) {
-		KiCancelAsyncContext(Thread->AsyncContexts[i]);
+    if (Thread->AsyncContexts) {
+	for (ULONG i = 0; i <= Thread->AsyncObjMaxId; i++) {
+	    if (Thread->AsyncContexts[i] && Thread->AsyncContexts[i]->Thread &&
+		Thread->AsyncContexts[i] != ActiveAsyncCtx) {
+		KiCancelInactiveAsyncContext(Thread->AsyncContexts[i]);
 	    }
-	    ExFreePoolWithTag(Thread->AsyncContexts, NTOS_KE_TAG);
-	    Thread->AsyncContexts = NULL;
 	}
-	if (Thread->AsyncObjUsedMap) {
-	    ExFreePoolWithTag(Thread->AsyncObjUsedMap, NTOS_KE_TAG);
-	    Thread->AsyncObjUsedMap = NULL;
-	}
-	Thread->AsyncObjMaxId = 0;
-    } else if (Thread->AsyncContexts) {
-	KiCancelAsyncContext(Thread->AsyncContexts[0]);
     }
 }
 
@@ -692,19 +706,28 @@ NTSTATUS NtSetThreadExecutionMode(IN PTHREAD Thread,
 	}
     }
 
+    ULONG OldAsyncObjMaxId = Thread->AsyncObjMaxId;
+    PASYNC_CONTEXT DefaultAsyncCtx = NULL;
+    if (!OldAsyncObjMaxId) {
+	KiGetAsyncContext(Thread, 0, &DefaultAsyncCtx);
+	assert(DefaultAsyncCtx);
+    }
+    Thread->AsyncObjMaxId = ExecutionMode->AsyncObjMaxId;
     RtlCopyMemory(AsyncContexts, Thread->AsyncContexts,
-		  sizeof(PVOID) * (Thread->AsyncObjMaxId + 1));
+		  sizeof(PVOID) * (OldAsyncObjMaxId + 1));
     ExFreePoolWithTag(Thread->AsyncContexts, NTOS_KE_TAG);
     if (Thread->AsyncObjUsedMap) {
 	RtlCopyMemory(UsedMap, Thread->AsyncObjUsedMap,
-		      (Thread->AsyncObjMaxId + MWORD_BITS) / MWORD_BITS);
+		      (OldAsyncObjMaxId + MWORD_BITS) / MWORD_BITS);
 	ExFreePoolWithTag(Thread->AsyncObjUsedMap, NTOS_KE_TAG);
     }
     Thread->AsyncObjUsedMap = UsedMap;
     Thread->AsyncContexts = AsyncContexts;
-    Thread->AsyncObjMaxId = ExecutionMode->AsyncObjMaxId;
+    if (!OldAsyncObjMaxId) {
+	KiPutAsyncContext(DefaultAsyncCtx);
+    }
     Thread->AsyncResumeRoutine = ExecutionMode->ResumeRoutine;
-    Thread->AsyncContexts = ExecutionMode->ApcContext;
+    Thread->AsyncRoutineContext = ExecutionMode->ApcContext;
     return STATUS_SUCCESS;
 
 Error:
@@ -717,7 +740,7 @@ NTSTATUS NtAsyncContinue(IN PTHREAD Thread,
 			 IN ULONG AsyncObjId)
 {
     assert(Thread);
-    if (AsyncObjId > Thread->AsyncObjMaxId) {
+    if (!Thread->AsyncObjMaxId || AsyncObjId > Thread->AsyncObjMaxId) {
 	return STATUS_INVALID_PARAMETER;
     }
     if (!GetBit(Thread->AsyncObjUsedMap, AsyncObjId)) {
@@ -728,19 +751,23 @@ NTSTATUS NtAsyncContinue(IN PTHREAD Thread,
 	return STATUS_ASYNC_NOT_READY;
     }
     AsyncCtx->Pending = FALSE;
-    return KiAsyncContinue(AsyncCtx);
+    NTSTATUS Status = KiAsyncContinue(AsyncCtx);
+    if (Status != STATUS_ASYNC_PENDING) {
+	KiPutAsyncContext(AsyncCtx);
+    }
+    return Status;
 }
 
 NTSTATUS NtAsyncCancel(IN PTHREAD Thread,
 		       IN ULONG AsyncObjId)
 {
     assert(Thread);
-    if (AsyncObjId > Thread->AsyncObjMaxId) {
+    if (!Thread->AsyncObjMaxId || AsyncObjId > Thread->AsyncObjMaxId) {
 	return STATUS_INVALID_PARAMETER;
     }
     if (!GetBit(Thread->AsyncObjUsedMap, AsyncObjId)) {
 	return STATUS_ASYNC_INVALID_ID;
     }
-    KiCancelAsyncContext(Thread->AsyncContexts[AsyncObjId]);
+    KiCancelInactiveAsyncContext(Thread->AsyncContexts[AsyncObjId]);
     return STATUS_SUCCESS;
 }

@@ -242,7 +242,8 @@ NTSTATUS PsSetSystemThreadPriority(IN PSYSTEM_THREAD Thread,
 
 /* kill.c */
 NTSTATUS PsTerminateThread(IN PTHREAD Thread,
-    			   IN NTSTATUS ExitStatus);
+			   IN NTSTATUS ExitStatus,
+			   IN PASYNC_CONTEXT ActiveAsyncCtx);
 NTSTATUS PsTerminateSystemThread(IN PSYSTEM_THREAD Thread);
 NTSTATUS PsTerminateProcess(IN ASYNC_STATE State,
 			    IN PPROCESS Process,

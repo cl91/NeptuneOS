@@ -1313,7 +1313,7 @@ static VOID MiDispatchUserException(IN PTHREAD Thread,
     if (!NT_SUCCESS(Status)) {
 	MmDbg("Failed to dispatch user exception (status 0x%x), terminating thread.\n",
 	      Status);
-	PsTerminateThread(Thread, Status);
+	PsTerminateThread(Thread, Status, NULL);
     }
 }
 

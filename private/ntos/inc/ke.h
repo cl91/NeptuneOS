@@ -908,7 +908,9 @@ NTSTATUS KeQueueApcToThread(IN struct _THREAD *Thread,
 			    IN PVOID SystemArgument3);
 BOOLEAN KeRemoveQueuedApc(IN PKAPC Apc);
 NTSTATUS KeAllocateDefaultAsyncContext(IN struct _THREAD *Thread);
-VOID KeCancelThreadAsyncContexts(IN struct _THREAD *Thread);
+VOID KeDeallocateThreadAsyncContexts(IN struct _THREAD *Thread);
+VOID KeCancelThreadInactiveAsyncContexts(IN struct _THREAD *Thread,
+					 IN OPTIONAL struct _ASYNC_CONTEXT *ActiveAsyncCtx);
 
 /* bugcheck.c */
 VOID KeBugCheck(IN PCSTR Function,

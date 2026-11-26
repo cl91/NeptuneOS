@@ -362,8 +362,6 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 	return STATUS_INVALID_PARAMETER;
     }
 
-    RET_ERR(KeAllocateDefaultAsyncContext(Thread));
-
     PUNTYPED TcbUntyped = NULL;
     RET_ERR(MmRequestUntyped(seL4_TCBBits, &TcbUntyped));
 
@@ -393,6 +391,8 @@ NTSTATUS PspThreadObjectCreateProc(IN POBJECT Object,
 
     Thread->InitialThread = !Process->Initialized;
     InsertTailList(&Process->ThreadList, &Thread->ThreadListEntry);
+
+    RET_ERR(KeAllocateDefaultAsyncContext(Thread));
 
     RET_ERR(PspSetThreadDebugName(Thread));
 
@@ -885,7 +885,7 @@ NTSTATUS NtCreateThread(IN ASYNC_STATE State,
      * it temporary at this point. The refcount decrement is done in PsTerminateThread,
      * when the thread exits. */
     RET_ERR_EX(ObCreateHandle(Thread->Process, CreatedThread, FALSE, ThreadHandle, NULL),
-	       ObDereferenceObject(CreatedThread));
+	       PsTerminateThread(CreatedThread, Status, State.AsyncContext));
     *ClientId = PsGetClientId(CreatedThread);
     return STATUS_SUCCESS;
 }
