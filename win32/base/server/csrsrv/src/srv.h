@@ -74,7 +74,6 @@ typedef struct _CSR_SERVER {
     HANDLE SharedSection;
     PVOID SharedSectionBase;
     PPVOID SharedStaticServerData; /* Allocated from the shared section above */
-    PULONG SharedStaticServerData32; /* Allocated from the shared section above */
     HANDLE InitializationEvent;
     PCSR_SERVER_DLL LoadedServerDll[CSR_SERVER_DLL_MAX];
     WCHAR ServerDllNames[CSR_SERVER_DLL_MAX][32];

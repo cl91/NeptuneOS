@@ -980,11 +980,6 @@ WINAPI BOOL GetExitCodeProcess(IN HANDLE hProcess, IN LPDWORD lpExitCode)
     Status = NtQueryInformationProcess(hProcess, ProcessBasicInformation, &ProcessBasic,
 				       sizeof(ProcessBasic), NULL);
     if (!NT_SUCCESS(Status)) {
-	/* We failed, was this because this is a VDM process? */
-	if (BaseCheckForVDM(hProcess, lpExitCode) != FALSE)
-	    return TRUE;
-
-	/* Not a VDM process, fail the call */
 	BaseSetLastNTError(Status);
 	return FALSE;
     }
@@ -1752,10 +1747,10 @@ WINAPI BOOL CreateProcessInternalW(IN HANDLE hUserToken, IN LPCWSTR lpApplicatio
     BOOLEAN InJob, SaferNeeded, UseLargePages, HavePrivilege;
     BOOLEAN QuerySection, SkipSaferAndAppCompat;
     CONTEXT Context;
-    BASE_API_MESSAGE CsrMsg[2];
+    BASE_API_MESSAGE CsrMsg;
     PBASE_CREATE_PROCESS CreateProcessMsg;
     PCSR_CAPTURE_BUFFER CaptureBuffer;
-    PVOID BaseAddress, PrivilegeState, RealTimePrivilegeState;
+    PVOID PrivilegeState, RealTimePrivilegeState;
     LOCAL_HANDLE DebugPort;
     HANDLE TokenHandle, JobHandle, KeyHandle, ThreadHandle;
     HANDLE FileHandle, SectionHandle, ProcessHandle;
@@ -1777,14 +1772,14 @@ WINAPI BOOL CreateProcessInternalW(IN HANDLE hUserToken, IN LPCWSTR lpApplicatio
     PCHAR pcScan;
     SIZE_T n;
     WCHAR SaveChar;
-    ULONG Length, FileAttribs, CmdQuoteLength;
+    ULONG Length, FileAttribs;
     ULONG ResultSize;
-    SIZE_T EnvironmentLength, CmdLineLength;
-    PWCHAR QuotedCmdLine, AnsiCmdCommand, ExtBuffer, CurrentDirectory;
+    SIZE_T EnvironmentLength;
+    PWCHAR QuotedCmdLine, CurrentDirectory;
     PWCHAR NullBuffer, ScanString, NameBuffer, SearchPath, DebuggerCmdLine;
     ANSI_STRING AnsiEnv;
     UNICODE_STRING UnicodeEnv, PathName;
-    BOOLEAN SearchRetry, QuotesNeeded, CmdLineIsAppName, HasQuotes;
+    BOOLEAN SearchRetry, QuotesNeeded, CmdLineIsAppName;
 
     //
     // Variables used for Fusion/SxS (Side-by-Side Assemblies)
@@ -1820,17 +1815,6 @@ WINAPI BOOL CreateProcessInternalW(IN HANDLE hUserToken, IN LPCWSTR lpApplicatio
     //
     PVOID AppCompatSxsData, AppCompatData;
     ULONG AppCompatSxsDataSize, AppCompatDataSize;
-    //
-    // Variables used by VDM (Virtual Dos Machine) and WOW32 (16-bit Support)
-    //
-    ULONG BinarySubType, VdmBinaryType, VdmTask, VdmReserve;
-    ULONG VdmUndoLevel;
-    BOOLEAN UseVdmReserve;
-    HANDLE VdmWaitObject;
-    ANSI_STRING VdmAnsiEnv;
-    UNICODE_STRING VdmString, VdmUnicodeEnv;
-    BOOLEAN IsWowApp;
-    PBASE_CHECK_VDM CheckVdmMsg;
 
     /* Zero out the initial core variables and handles */
     QuerySection = FALSE;
@@ -1846,7 +1830,6 @@ WINAPI BOOL CreateProcessInternalW(IN HANDLE hUserToken, IN LPCWSTR lpApplicatio
     ProcessHandle = NULL;
     ThreadHandle = NULL;
     ClientId.UniqueProcess = ClientId.UniqueThread = 0;
-    BaseAddress = (PVOID)1;
 
     /* Zero out initial SxS and Application Compatibility state */
     AppCompatData = NULL;
@@ -1869,24 +1852,10 @@ WINAPI BOOL CreateProcessInternalW(IN HANDLE hUserToken, IN LPCWSTR lpApplicatio
     CurrentDirectory = NULL;
     FilePart = NULL;
     DebuggerString.Buffer = NULL;
-    HasQuotes = FALSE;
     QuotedCmdLine = NULL;
 
-    /* Zero out initial VDM state */
-    VdmAnsiEnv.Buffer = NULL;
-    VdmUnicodeEnv.Buffer = NULL;
-    VdmString.Buffer = NULL;
-    VdmTask = 0;
-    VdmUndoLevel = 0;
-    VdmBinaryType = 0;
-    VdmReserve = 0;
-    VdmWaitObject = NULL;
-    UseVdmReserve = FALSE;
-    IsWowApp = FALSE;
-
     /* Set message structures */
-    CreateProcessMsg = &CsrMsg[0].Data.CreateProcessRequest;
-    CheckVdmMsg = &CsrMsg[1].Data.CheckVDMRequest;
+    CreateProcessMsg = &CsrMsg.Data.CreateProcessRequest;
 
     /* Clear the more complex structures by zeroing out their entire memory */
     RtlZeroMemory(&Context, sizeof(Context));
@@ -1969,10 +1938,6 @@ WINAPI BOOL CreateProcessInternalW(IN HANDLE hUserToken, IN LPCWSTR lpApplicatio
 	DPRINT1("Invalid WOW flags\n");
 	SetLastError(ERROR_INVALID_PARAMETER);
 	return FALSE;
-    } else if (!(dwCreationFlags & CREATE_SHARED_WOW_VDM) &&
-	       (BaseStaticServerData->DefaultSeparateVDM)) {
-	/* A shared WoW VDM was not requested but system enforces separation */
-	dwCreationFlags |= CREATE_SEPARATE_WOW_VDM;
     }
 
     /* If a shared WoW VDM is used, make sure the process isn't in a job */
@@ -2091,7 +2056,6 @@ AppNameRetry:
 		if (*ScanString == L'\"') {
 		    /* We're done, get out of here */
 		    NullBuffer = ScanString;
-		    HasQuotes = TRUE;
 		    break;
 		}
 
@@ -2206,7 +2170,6 @@ AppNameRetry:
 
 	    /* We will have to add a quote, since there is a space */
 	    QuotesNeeded = TRUE;
-	    HasQuotes = TRUE;
 	    goto StartScan;
 	}
     } else if (!(lpCommandLine) || !(*lpCommandLine)) {
@@ -2333,24 +2296,6 @@ AppNameRetry:
 	    goto Quickie;
 	}
 
-	/* Is a DOS VDM being forced, but we already have a WOW32 instance ready? */
-	if ((dwCreationFlags & CREATE_FORCEDOS) &&
-	    (BaseStaticServerData->IsWowTaskReady)) {
-	    /* This request can't be satisfied, instead, a separate VDM is needed */
-	    dwCreationFlags &= ~(CREATE_FORCEDOS | CREATE_SHARED_WOW_VDM);
-	    dwCreationFlags |= CREATE_SEPARATE_WOW_VDM;
-
-	    /* Set a failure code, ask for VDM reservation */
-	    Status = STATUS_INVALID_IMAGE_WIN_16;
-	    UseVdmReserve = TRUE;
-
-	    /* Close the current handle */
-	    NtClose(SectionHandle);
-	    SectionHandle = NULL;
-
-	    /* Don't query the section later */
-	    QuerySection = FALSE;
-	}
     }
 
     /* Did we already do these checks? */
@@ -2475,287 +2420,12 @@ AppNameRetry:
 
     /* The last step is to figure out why the section object was not created */
     switch (Status) {
-    case STATUS_INVALID_IMAGE_WIN_16: {
-	/* 16-bit binary. Should we use WOW or does the caller force VDM? */
-	if (!(dwCreationFlags & CREATE_FORCEDOS)) {
-	    /* Remember that we're launching WOW */
-	    IsWowApp = TRUE;
-
-	    /* Create the VDM environment, it's valid for WOW too */
-	    Result = BaseCreateVDMEnvironment(lpEnvironment, &VdmAnsiEnv, &VdmUnicodeEnv);
-	    if (!Result) {
-		DPRINT1("VDM environment for WOW app failed\n");
-		goto Quickie;
-	    }
-
-	    /* We're going to try this twice, so do a loop */
-	    while (TRUE) {
-		/* Pick which kind of WOW mode we want to run in */
-		VdmBinaryType = (dwCreationFlags & CREATE_SEPARATE_WOW_VDM) ?
-				    BINARY_TYPE_SEPARATE_WOW :
-				    BINARY_TYPE_WOW;
-
-		/* Get all the VDM settings and current status */
-		Status = BaseCheckVDM(VdmBinaryType, lpApplicationName, lpCommandLine,
-				      lpCurrentDirectory, &VdmAnsiEnv, &CsrMsg[1],
-				      &VdmTask, dwCreationFlags, &StartupInfo,
-				      hUserToken);
-
-		/* If it worked, no need to try again */
-		if (NT_SUCCESS(Status))
-		    break;
-
-		/* Check if it's disallowed or if it's our second time */
-		BaseSetLastNTError(Status);
-		if ((Status == STATUS_VDM_DISALLOWED) ||
-		    (VdmBinaryType == BINARY_TYPE_SEPARATE_WOW) ||
-		    (GetLastError() == ERROR_ACCESS_DENIED)) {
-		    /* Fail the call -- we won't try again */
-		    DPRINT1("VDM message failure for WOW: %x\n", Status);
-		    Result = FALSE;
-		    goto Quickie;
-		}
-
-		/* Try one more time, but with a separate WOW instance */
-		dwCreationFlags |= CREATE_SEPARATE_WOW_VDM;
-	    }
-
-	    /* Check which VDM state we're currently in */
-	    switch (CheckVdmMsg->VDMState &
-		    (VDM_NOT_LOADED | VDM_NOT_READY | VDM_READY)) {
-	    case VDM_NOT_LOADED:
-		/* VDM is not fully loaded, so not that much to undo */
-		VdmUndoLevel = VDM_UNDO_PARTIAL;
-
-		/* Reset VDM reserve if needed */
-		if (UseVdmReserve)
-		    VdmReserve = 1;
-
-		/* Get the required parameters and names for launch */
-		Result = BaseGetVdmConfigInfo(lpCommandLine, VdmTask, VdmBinaryType,
-					      &VdmString, &VdmReserve);
-		if (!Result) {
-		    DPRINT1("VDM Configuration failed for WOW\n");
-		    BaseSetLastNTError(Status);
-		    goto Quickie;
-		}
-
-		/* Update the command-line with the VDM one instead */
-		lpCommandLine = VdmString.Buffer;
-		lpApplicationName = NULL;
-
-		/* We don't want a console, detachment, nor a window */
-		dwCreationFlags |= CREATE_NO_WINDOW;
-		dwCreationFlags &= ~(CREATE_NEW_CONSOLE | DETACHED_PROCESS);
-
-		/* Force feedback on */
-		StartupInfo.dwFlags |= STARTF_FORCEONFEEDBACK;
-		break;
-
-	    case VDM_READY:
-		/* VDM is ready, so we have to undo everything */
-		VdmUndoLevel = VDM_UNDO_REUSE;
-
-		/* Check if CSRSS wants us to wait on VDM */
-		VdmWaitObject = CheckVdmMsg->WaitObjectForParent;
-		break;
-
-	    case VDM_NOT_READY:
-		/* Something is wrong with VDM, we'll fail the call */
-		DPRINT1("VDM is not ready for WOW\n");
-		SetLastError(ERROR_NOT_READY);
-		Result = FALSE;
-		goto Quickie;
-
-	    default:
-		break;
-	    }
-
-	    /* Since to get NULL, we allocate from 0x1, account for this */
-	    VdmReserve--;
-
-	    /* This implies VDM is ready, so skip everything else */
-	    if (VdmWaitObject)
-		goto VdmShortCircuit;
-
-	    /* Don't inherit handles since we're doing VDM now */
-	    bInheritHandles = FALSE;
-
-	    /* Had the user passed in environment? If so, destroy it */
-	    if ((lpEnvironment) && !(dwCreationFlags & CREATE_UNICODE_ENVIRONMENT)) {
-		RtlDestroyEnvironment(lpEnvironment);
-	    }
-
-	    /* We've already done all these checks, don't do them again */
-	    SkipSaferAndAppCompat = TRUE;
-	    goto AppNameRetry;
-	}
-
-	// There is no break here on purpose, so FORCEDOS drops down!
-    }
-
+    case STATUS_INVALID_IMAGE_WIN_16:
     case STATUS_INVALID_IMAGE_PROTECT:
     case STATUS_INVALID_IMAGE_NOT_MZ:
-    case STATUS_INVALID_IMAGE_NE_FORMAT: {
-	/* We're launching an executable application */
-	BinarySubType = BINARY_TYPE_EXE;
-
-	/* We can drop here from other "cases" above too, so check */
-	if ((Status == STATUS_INVALID_IMAGE_PROTECT) ||
-	    (Status == STATUS_INVALID_IMAGE_NE_FORMAT) ||
-	    (BinarySubType = BaseIsDosApplication(&PathName, Status))) {
-	    /* We're launching a DOS application */
-	    VdmBinaryType = BINARY_TYPE_DOS;
-
-	    /* Based on the caller environment, create a VDM one */
-	    Result = BaseCreateVDMEnvironment(lpEnvironment, &VdmAnsiEnv, &VdmUnicodeEnv);
-	    if (!Result) {
-		DPRINT1("VDM environment for DOS failed\n");
-		goto Quickie;
-	    }
-
-	    /* Check the current state of the VDM subsystem */
-	    Status = BaseCheckVDM(VdmBinaryType | BinarySubType, lpApplicationName,
-				  lpCommandLine, lpCurrentDirectory, &VdmAnsiEnv,
-				  &CsrMsg[1], &VdmTask, dwCreationFlags, &StartupInfo,
-				  NULL);
-	    if (!NT_SUCCESS(Status)) {
-		/* Failed to inquire about VDM, fail the call */
-		DPRINT1("VDM message failure for DOS: %x\n", Status);
-		BaseSetLastNTError(Status);
-		Result = FALSE;
-		goto Quickie;
-	    };
-
-	    /* Handle possible VDM states */
-	    switch (CheckVdmMsg->VDMState &
-		    (VDM_NOT_LOADED | VDM_NOT_READY | VDM_READY)) {
-	    case VDM_NOT_LOADED:
-		/* If VDM is not loaded, we'll do a partial undo */
-		VdmUndoLevel = VDM_UNDO_PARTIAL;
-
-		/* A VDM process can't also be detached, so fail */
-		if (dwCreationFlags & DETACHED_PROCESS) {
-		    DPRINT1("Detached process but no VDM, not allowed\n");
-		    SetLastError(ERROR_ACCESS_DENIED);
-		    return FALSE;
-		}
-
-		/* Get the required parameters and names for launch */
-		Result = BaseGetVdmConfigInfo(lpCommandLine, VdmTask, VdmBinaryType,
-					      &VdmString, &VdmReserve);
-		if (!Result) {
-		    DPRINT1("VDM Configuration failed for DOS\n");
-		    BaseSetLastNTError(Status);
-		    goto Quickie;
-		}
-
-		/* Update the command-line to launch VDM instead */
-		lpCommandLine = VdmString.Buffer;
-		lpApplicationName = NULL;
-		break;
-
-	    case VDM_READY:
-		/* VDM is ready, so we have to undo everything */
-		VdmUndoLevel = VDM_UNDO_REUSE;
-
-		/* Check if CSRSS wants us to wait on VDM */
-		VdmWaitObject = CheckVdmMsg->WaitObjectForParent;
-		break;
-
-	    case VDM_NOT_READY:
-		/* Something is wrong with VDM, we'll fail the call */
-		DPRINT1("VDM is not ready for DOS\n");
-		SetLastError(ERROR_NOT_READY);
-		Result = FALSE;
-		goto Quickie;
-
-	    default:
-		break;
-	    }
-
-	    /* Since to get NULL, we allocate from 0x1, account for this */
-	    VdmReserve--;
-
-	    /* This implies VDM is ready, so skip everything else */
-	    if (VdmWaitObject)
-		goto VdmShortCircuit;
-
-	    /* Don't inherit handles since we're doing VDM now */
-	    bInheritHandles = FALSE;
-
-	    /* Had the user passed in environment? If so, destroy it */
-	    if ((lpEnvironment) && !(dwCreationFlags & CREATE_UNICODE_ENVIRONMENT)) {
-		RtlDestroyEnvironment(lpEnvironment);
-	    }
-
-	    /* Use our VDM Unicode environment instead */
-	    lpEnvironment = VdmUnicodeEnv.Buffer;
-	} else {
-	    /* It's a batch file, get the extension */
-	    ExtBuffer = &PathName.Buffer[PathName.Length / sizeof(WCHAR) - 4];
-
-	    /* Make sure the extensions are correct */
-	    if ((PathName.Length < (4 * sizeof(WCHAR))) ||
-		((_wcsnicmp(ExtBuffer, L".bat", 4)) &&
-		 (_wcsnicmp(ExtBuffer, L".cmd", 4)))) {
-		DPRINT1("'%wZ': Invalid EXE, and not a batch or script file\n",
-			&PathName);
-		SetLastError(ERROR_BAD_EXE_FORMAT);
-		Result = FALSE;
-		goto Quickie;
-	    }
-
-	    /* Check if we need to account for quotes around the path */
-	    CmdQuoteLength = CmdLineIsAppName || HasQuotes;
-	    if (!CmdLineIsAppName) {
-		if (HasQuotes)
-		    CmdQuoteLength++;
-	    } else {
-		CmdQuoteLength++;
-	    }
-
-	    /* Calculate the length of the command line */
-	    CmdLineLength = wcslen(lpCommandLine);
-	    CmdLineLength += wcslen(CMD_STRING);
-	    CmdLineLength += CmdQuoteLength + sizeof(ANSI_NULL);
-	    CmdLineLength *= sizeof(WCHAR);
-
-	    /* Allocate space for the new command line */
-	    AnsiCmdCommand = RtlAllocateHeap(RtlGetProcessHeap(), 0, CmdLineLength);
-	    if (!AnsiCmdCommand) {
-		BaseSetLastNTError(STATUS_NO_MEMORY);
-		Result = FALSE;
-		goto Quickie;
-	    }
-
-	    /* Build it */
-	    wcscpy_s(AnsiCmdCommand, CmdLineLength / sizeof(WCHAR), CMD_STRING);
-	    if ((CmdLineIsAppName) || (HasQuotes)) {
-		wcscat_s(AnsiCmdCommand, CmdLineLength / sizeof(WCHAR), L"\"");
-	    }
-	    wcscat_s(AnsiCmdCommand, CmdLineLength / sizeof(WCHAR), lpCommandLine);
-	    if ((CmdLineIsAppName) || (HasQuotes)) {
-		wcscat_s(AnsiCmdCommand, CmdLineLength / sizeof(WCHAR), L"\"");
-	    }
-
-	    /* Create it as a Unicode String */
-	    RtlInitUnicodeString(&DebuggerString, AnsiCmdCommand);
-
-	    /* Set the command line to this */
-	    lpCommandLine = DebuggerString.Buffer;
-	    lpApplicationName = NULL;
-	    DPRINT1("Retrying with: %S\n", lpCommandLine);
-	}
-
-	/* We've already done all these checks, don't do them again */
-	SkipSaferAndAppCompat = TRUE;
-	goto AppNameRetry;
-    }
-
+    case STATUS_INVALID_IMAGE_NE_FORMAT:
     case STATUS_INVALID_IMAGE_WIN_64: {
-	/* 64-bit binaries are not allowed to run on 32-bit ReactOS */
-	DPRINT1("64-bit binary, failing\n");
+	DPRINT1("unsupported binary image format, failing\n");
 	SetLastError(ERROR_EXE_MACHINE_TYPE_MISMATCH);
 	Result = FALSE;
 	goto Quickie;
@@ -2781,12 +2451,6 @@ AppNameRetry:
 	ASSERT(Status == STATUS_SUCCESS);
 	break;
     }
-    }
-
-    /* Is this not a WOW application, but a WOW32 VDM was requested for it? */
-    if (!(IsWowApp) && (dwCreationFlags & CREATE_SEPARATE_WOW_VDM)) {
-	/* Ignore the nonsensical request */
-	dwCreationFlags &= ~CREATE_SEPARATE_WOW_VDM;
     }
 
     /* Did we already check information for the section? */
@@ -3142,41 +2806,6 @@ AppNameRetry:
 				&HardErrorMode, sizeof(ULONG));
     }
 
-    /* Check if this was a VDM binary */
-    if (VdmBinaryType) {
-	/* Update VDM by telling it the process has now been created */
-	VdmWaitObject = ProcessHandle;
-	Result = BaseUpdateVDMEntry(VdmEntryUpdateProcess, &VdmWaitObject, VdmTask,
-				    VdmBinaryType);
-
-	if (!Result) {
-	    /* Bail out on failure */
-	    DPRINT1("Failed to update VDM with wait object\n");
-	    VdmWaitObject = NULL;
-	    goto Quickie;
-	}
-
-	/* At this point, a failure means VDM has to undo all the state */
-	VdmUndoLevel |= VDM_UNDO_FULL;
-    }
-
-    /* Check if VDM needed reserved low-memory */
-    if (VdmReserve) {
-	/* Reserve the requested allocation */
-	RegionSize = VdmReserve;
-	Status = NtAllocateVirtualMemory(ProcessHandle, &BaseAddress, 0, &RegionSize,
-					 MEM_RESERVE, PAGE_EXECUTE_READWRITE);
-	if (!NT_SUCCESS(Status)) {
-	    /* Bail out on failure */
-	    DPRINT1("Failed to reserve memory for VDM: %x\n", Status);
-	    BaseSetLastNTError(Status);
-	    Result = FALSE;
-	    goto Quickie;
-	}
-
-	VdmReserve = (ULONG)RegionSize;
-    }
-
     /* Check if we've already queried information on the section */
     if (!QuerySection) {
 	/* We haven't, so get some information about the executable */
@@ -3287,8 +2916,7 @@ AppNameRetry:
     Result = BasePushProcessParameters(ParameterFlags, ProcessHandle, RemotePeb,
 				       lpApplicationName, CurrentDirectory, lpCommandLine,
 				       lpEnvironment, &StartupInfo,
-				       dwCreationFlags | NoWindow, bInheritHandles,
-				       IsWowApp ? IMAGE_SUBSYSTEM_WINDOWS_GUI : 0,
+				       dwCreationFlags | NoWindow, bInheritHandles, 0,
 				       AppCompatData, AppCompatDataSize);
     if (!Result) {
 	/* The remote process would have an undefined state, so fail the call */
@@ -3296,12 +2924,8 @@ AppNameRetry:
 	goto Quickie;
     }
 
-    /* Free the VDM command line string as it's no longer needed */
-    RtlFreeUnicodeString(&VdmString);
-    VdmString.Buffer = NULL;
-
     /* Non-VDM console applications usually inherit handles unless specified */
-    if (!(VdmBinaryType) && !(bInheritHandles) &&
+    if (!(bInheritHandles) &&
 	!(StartupInfo.dwFlags & STARTF_USESTDHANDLES) &&
 	!(dwCreationFlags & (CREATE_NO_WINDOW | CREATE_NEW_CONSOLE | DETACHED_PROCESS)) &&
 	(ImageInformation.SubSystemType == IMAGE_SUBSYSTEM_WINDOWS_CUI)) {
@@ -3411,7 +3035,7 @@ AppNameRetry:
 				      ~(DEBUG_PROCESS | DEBUG_ONLY_THIS_PROCESS);
 
     /* CSRSS needs to know if this is a GUI app or not */
-    if ((ImageInformation.SubSystemType == IMAGE_SUBSYSTEM_WINDOWS_GUI) || (IsWowApp)) {
+    if (ImageInformation.SubSystemType == IMAGE_SUBSYSTEM_WINDOWS_GUI) {
 	/*
 	 * For GUI apps we turn on the 2nd bit. This allow CSRSS server dlls
 	 * (basesrv in particular) to know whether or not this is a GUI or a
@@ -3437,19 +3061,6 @@ AppNameRetry:
 	RemoveFromHandle(CreateProcessMsg->ProcessHandle, 1);
     }
 
-    /* Also store which kind of VDM app (if any) this is */
-    CreateProcessMsg->VdmBinaryType = VdmBinaryType;
-
-    /* And if it really is a VDM app... */
-    if (VdmBinaryType) {
-	/* Store the VDM console handle (none if inherited or WOW app) and the task ID */
-	CreateProcessMsg->hVDM = VdmTask ? NULL : Peb->ProcessParameters->ConsoleHandle;
-	CreateProcessMsg->VdmTask = VdmTask;
-    } else if (VdmReserve) {
-	/* Extended VDM, set a flag */
-	CreateProcessMsg->VdmBinaryType |= BINARY_TYPE_WOW_EX;
-    }
-
     /* Check if there's side-by-side assembly data associated with the process */
     if (CreateProcessMsg->Sxs.Flags) {
 	/* This should not happen in ReactOS yet */
@@ -3461,7 +3072,7 @@ AppNameRetry:
     }
 
     /* We are finally ready to call CSRSS to tell it about our new process! */
-    CsrClientCallServer((PCSR_API_MESSAGE)&CsrMsg[0], CaptureBuffer,
+    CsrClientCallServer((PCSR_API_MESSAGE)&CsrMsg, CaptureBuffer,
 			CSR_CREATE_API_NUMBER(BASESRV_SERVERDLL_INDEX,
 					      BasepCreateProcess),
 			sizeof(*CreateProcessMsg));
@@ -3473,11 +3084,11 @@ AppNameRetry:
     }
 
     /* Check if CSRSS failed to accept ownership of the new Windows process */
-    if (!NT_SUCCESS(CsrMsg[0].Status)) {
+    if (!NT_SUCCESS(CsrMsg.Status)) {
 	/* Terminate the process and enter failure path with the CSRSS status */
 	DPRINT1("Failed to tell csrss about new process\n");
-	BaseSetLastNTError(CsrMsg[0].Status);
-	NtTerminateProcess(ProcessHandle, CsrMsg[0].Status);
+	BaseSetLastNTError(CsrMsg.Status);
+	NtTerminateProcess(ProcessHandle, CsrMsg.Status);
 	Result = FALSE;
 	goto Quickie;
     }
@@ -3516,42 +3127,11 @@ AppNameRetry:
 	NtResumeThread(ThreadHandle, &ResumeCount);
     }
 
-VdmShortCircuit:
     /* We made it this far, meaning we have a fully created process and thread */
     Result = TRUE;
 
-    /* Anyone doing a VDM undo should now undo everything, since we are done */
-    if (VdmUndoLevel)
-	VdmUndoLevel |= VDM_UNDO_COMPLETED;
-
-    /* Having a VDM wait object implies this must be a VDM process */
-    if (VdmWaitObject) {
-	/* Check if it's a 16-bit separate WOW process */
-	if (VdmBinaryType == BINARY_TYPE_SEPARATE_WOW) {
-	    /* OR-in the special flag to indicate this, and return to caller */
-	    AddToHandle(VdmWaitObject, 2);
-	    lpProcessInformation->hProcess = VdmWaitObject;
-
-	    /* Check if this was a re-used VDM */
-	    if (VdmUndoLevel & VDM_UNDO_REUSE) {
-		/* No Client ID should be returned in this case */
-		ClientId.UniqueProcess = 0;
-		ClientId.UniqueThread = 0;
-	    }
-	} else {
-	    /* OR-in the special flag to indicate this is not a separate VDM,
-	     * and return the handle to the caller */
-	    AddToHandle(VdmWaitObject, 1);
-	    lpProcessInformation->hProcess = VdmWaitObject;
-	}
-
-	/* Close the original process handle, since it's not needed for VDM */
-	if (ProcessHandle)
-	    NtClose(ProcessHandle);
-    } else {
-	/* This is a regular process, so return the real process handle */
-	lpProcessInformation->hProcess = ProcessHandle;
-    }
+    /* This is a regular process, so return the real process handle */
+    lpProcessInformation->hProcess = ProcessHandle;
 
     /* Return the rest of the process information based on what we have so far */
     lpProcessInformation->hThread = ThreadHandle;
@@ -3623,10 +3203,6 @@ Quickie:
     if ((lpEnvironment) && !(dwCreationFlags & CREATE_UNICODE_ENVIRONMENT)) {
 	/* Destroy it */
 	RtlDestroyEnvironment(lpEnvironment);
-
-	/* If this was the VDM environment too, clear that as well */
-	if (VdmUnicodeEnv.Buffer == lpEnvironment)
-	    VdmUnicodeEnv.Buffer = NULL;
 	lpEnvironment = NULL;
     }
 
@@ -3673,24 +3249,7 @@ Quickie:
     BasepFreeAppCompatData(AppCompatData, AppCompatSxsData);
 
     /* Free a few strings. The API takes care of these possibly being NULL */
-    RtlFreeUnicodeString(&VdmString);
     RtlFreeUnicodeString(&DebuggerString);
-
-    /* Check if we had built any sort of VDM environment */
-    if ((VdmAnsiEnv.Buffer) || (VdmUnicodeEnv.Buffer)) {
-	/* Free it */
-	BaseDestroyVDMEnvironment(&VdmAnsiEnv, &VdmUnicodeEnv);
-    }
-
-    /* Check if this was any kind of VDM application that we ended up creating */
-    if ((VdmUndoLevel) && (!(VdmUndoLevel & VDM_UNDO_COMPLETED))) {
-	/* Send an undo */
-	BaseUpdateVDMEntry(VdmEntryUndo, (PHANDLE)&VdmTask, VdmUndoLevel, VdmBinaryType);
-
-	/* And close whatever VDM handle we were using for notifications */
-	if (VdmWaitObject)
-	    NtClose(VdmWaitObject);
-    }
 
     /* Check if we ended up here with an allocated search path, and free it */
     if (SearchPath)

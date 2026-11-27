@@ -3998,7 +3998,6 @@ typedef struct tagGUITHREADINFO {
 typedef VOID (CALLBACK *WINEVENTPROC)(HWINEVENTHOOK,DWORD,HWND,LONG,LONG,DWORD,DWORD);
 #endif /* (WINVER >= 0x0500) */
 
-#if (_WIN32_WINNT >= 0x0501)
 typedef struct {
 	UINT  cbSize;
 	HDESK hdesk;
@@ -4100,8 +4099,6 @@ typedef struct tagRID_DEVICE_INFO {
     RID_DEVICE_INFO_HID hid;
   } DUMMYUNIONNAME;
 } RID_DEVICE_INFO, *PRID_DEVICE_INFO, *LPRID_DEVICE_INFO;
-
-#endif /* (_WIN32_WINNT >= 0x0501) */
 
 #define AnsiToOem CharToOemA
 #define OemToAnsi OemToCharA

@@ -119,8 +119,6 @@ typedef struct _BASE_STATIC_SERVER_DATA {
     SYSTEM_TIMEOFDAY_INFORMATION TimeOfDay;
     PVOID IniFileMapping;
     NLS_USER_INFO NlsUserInfo;
-    BOOLEAN DefaultSeparateVDM;
-    BOOLEAN IsWowTaskReady;
     UNICODE_STRING WindowsSys32x86Directory;
     BOOLEAN fTermsrvAppInstallMode;
     TIME_ZONE_INFORMATION tziTermsrvClientTimeZone;

@@ -53,9 +53,6 @@
 /* Console API Client Definitions */
 #include "console.h"
 
-/* Virtual DOS Machines (VDM) Support Definitions */
-#include "vdm.h"
-
 /* The following routines are moved from ntdll to kernel32 as they are Win32-specific. */
 ULONG RtlNtStatusToDosError(IN NTSTATUS Status);
 NTAPI ULONG RtlGetLastWin32Error(VOID);

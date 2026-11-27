@@ -23,24 +23,12 @@ typedef enum _BASESRV_API_NUMBER {
     BasepGetTempFile,
     BasepExitProcess,
     BasepDebugProcess, // Deprecated
-    BasepCheckVDM,
-    BasepUpdateVDMEntry,
-    BasepGetNextVDMCommand,
-    BasepExitVDM,
-    BasepIsFirstVDM,
-    BasepGetVDMExitCode,
-    BasepSetReenterCount,
     BasepSetProcessShutdownParam,
     BasepGetProcessShutdownParam,
     BasepNlsSetUserInfo,
     BasepNlsSetMultipleUserInfo,
     BasepNlsCreateSection,
-    BasepSetVDMCurDirs,
-    BasepGetVDMCurDirs,
-    BasepBatNotification,
-    BasepRegisterWowExec,
     BasepSoundSentryNotification,
-    BasepRefreshIniFileMapping,
     BasepDefineDosDevice,
     BasepSetTermsrvAppInstallMode,
     BasepNlsUpdateCacheCount,
@@ -86,9 +74,6 @@ typedef struct _BASE_CREATE_PROCESS {
     HANDLE ThreadHandle;
     CLIENT_ID ClientId;
     ULONG CreationFlags;
-    ULONG VdmBinaryType;
-    ULONG VdmTask;
-    HANDLE hVDM;
     BASE_SXS_CREATEPROCESS_MSG Sxs;
     PVOID PebAddressNative;
     ULONG PebAddressWow64;
@@ -108,127 +93,14 @@ typedef struct _BASE_EXIT_PROCESS {
     UINT uExitCode;
 } BASE_EXIT_PROCESS, *PBASE_EXIT_PROCESS;
 
-typedef struct _BASE_CHECK_VDM {
-    ULONG iTask;
-    HANDLE ConsoleHandle;
-    ULONG BinaryType;
-    HANDLE WaitObjectForParent;
-    HANDLE StdIn;
-    HANDLE StdOut;
-    HANDLE StdErr;
-    ULONG CodePage;
-    ULONG dwCreationFlags;
-    PCHAR CmdLine;
-    PCHAR AppName;
-    PCHAR PifFile;
-    PCHAR CurDirectory;
-    PCHAR Env;
-    ULONG EnvLen;
-    LPSTARTUPINFOA StartupInfo;
-    PCHAR Desktop;
-    ULONG DesktopLen;
-    PCHAR Title;
-    ULONG TitleLen;
-    PCHAR Reserved;
-    ULONG ReservedLen;
-    USHORT CmdLen;
-    USHORT AppLen;
-    USHORT PifLen;
-    USHORT CurDirectoryLen;
-    USHORT CurDrive;
-    USHORT VDMState;
-} BASE_CHECK_VDM, *PBASE_CHECK_VDM;
-
-typedef struct _BASE_UPDATE_VDM_ENTRY {
-    ULONG iTask;
-    ULONG BinaryType;
-    HANDLE ConsoleHandle;
-    HANDLE VDMProcessHandle;
-    HANDLE WaitObjectForParent;
-    USHORT EntryIndex;
-    USHORT VDMCreationState;
-} BASE_UPDATE_VDM_ENTRY, *PBASE_UPDATE_VDM_ENTRY;
-
-typedef struct _BASE_GET_NEXT_VDM_COMMAND {
-    ULONG iTask;
-    HANDLE ConsoleHandle;
-    HANDLE WaitObjectForVDM;
-    HANDLE StdIn;
-    HANDLE StdOut;
-    HANDLE StdErr;
-    ULONG CodePage;
-    ULONG dwCreationFlags;
-    ULONG ExitCode;
-    PCHAR CmdLine;
-    PCHAR AppName;
-    PCHAR PifFile;
-    PCHAR CurDirectory;
-    PCHAR Env;
-    ULONG EnvLen;
-    LPSTARTUPINFOA StartupInfo;
-    PCHAR Desktop;
-    ULONG DesktopLen;
-    PCHAR Title;
-    ULONG TitleLen;
-    PCHAR Reserved;
-    ULONG ReservedLen;
-    USHORT CurrentDrive;
-    USHORT CmdLen;
-    USHORT AppLen;
-    USHORT PifLen;
-    USHORT CurDirectoryLen;
-    USHORT VDMState;
-    ULONG fComingFromBat;
-} BASE_GET_NEXT_VDM_COMMAND, *PBASE_GET_NEXT_VDM_COMMAND;
-
-typedef struct _BASE_EXIT_VDM {
-    HANDLE ConsoleHandle;
-    ULONG iWowTask;
-    HANDLE WaitObjectForVDM;
-} BASE_EXIT_VDM, *PBASE_EXIT_VDM;
-
-typedef struct _BASE_IS_FIRST_VDM {
-    ULONG FirstVDM;
-} BASE_IS_FIRST_VDM, *PBASE_IS_FIRST_VDM;
-
-typedef struct _BASE_GET_VDM_EXIT_CODE {
-    HANDLE ConsoleHandle;
-    HANDLE hParent;
-    ULONG ExitCode;
-} BASE_GET_VDM_EXIT_CODE, *PBASE_GET_VDM_EXIT_CODE;
-
-typedef struct _BASE_SET_REENTER_COUNT {
-    HANDLE ConsoleHandle;
-    ULONG fIncDec;
-} BASE_SET_REENTER_COUNT, *PBASE_SET_REENTER_COUNT;
-
 typedef struct _BASE_GETSET_PROCESS_SHUTDOWN_PARAMS {
     ULONG ShutdownLevel;
     ULONG ShutdownFlags;
 } BASE_GETSET_PROCESS_SHUTDOWN_PARAMS, *PBASE_GETSET_PROCESS_SHUTDOWN_PARAMS;
 
-typedef struct _BASE_GETSET_VDM_CURDIRS {
-    HANDLE ConsoleHandle;
-    PCHAR lpszzCurDirs;
-    ULONG cchCurDirs;
-} BASE_GETSET_VDM_CURDIRS, *PBASE_GETSET_VDM_CURDIRS;
-
-typedef struct _BASE_BAT_NOTIFICATION {
-    HANDLE ConsoleHandle;
-    ULONG fBeginEnd;
-} BASE_BAT_NOTIFICATION, *PBASE_BAT_NOTIFICATION;
-
-typedef struct _BASE_REGISTER_WOWEXEC {
-    HANDLE hwndWowExec;
-} BASE_REGISTER_WOWEXEC, *PBASE_REGISTER_WOWEXEC;
-
 typedef struct _BASE_SOUND_SENTRY {
     ULONG VideoMode;
 } BASE_SOUND_SENTRY, *PBASE_SOUND_SENTRY;
-
-typedef struct _BASE_REFRESH_INIFILE_MAPPING {
-    UNICODE_STRING IniFileName;
-} BASE_REFRESH_INIFILE_MAPPING, *PBASE_REFRESH_INIFILE_MAPPING;
 
 typedef struct _BASE_DEFINE_DOS_DEVICE {
     ULONG Flags;
@@ -259,19 +131,8 @@ typedef struct _BASE_API_MESSAGE {
 	BASE_CREATE_THREAD CreateThreadRequest;
 	BASE_GET_TEMP_FILE GetTempFileRequest;
 	BASE_EXIT_PROCESS ExitProcessRequest;
-	BASE_CHECK_VDM CheckVDMRequest;
-	BASE_UPDATE_VDM_ENTRY UpdateVDMEntryRequest;
-	BASE_GET_NEXT_VDM_COMMAND GetNextVDMCommandRequest;
-	BASE_EXIT_VDM ExitVDMRequest;
-	BASE_IS_FIRST_VDM IsFirstVDMRequest;
-	BASE_GET_VDM_EXIT_CODE GetVDMExitCodeRequest;
-	BASE_SET_REENTER_COUNT SetReenterCountRequest;
 	BASE_GETSET_PROCESS_SHUTDOWN_PARAMS ShutdownParametersRequest;
-	BASE_GETSET_VDM_CURDIRS VDMCurrentDirsRequest;
-	BASE_BAT_NOTIFICATION BatNotificationRequest;
-	BASE_REGISTER_WOWEXEC RegisterWowExecRequest;
 	BASE_SOUND_SENTRY SoundSentryRequest;
-	BASE_REFRESH_INIFILE_MAPPING RefreshIniFileMappingRequest;
 	BASE_DEFINE_DOS_DEVICE DefineDosDeviceRequest;
 	BASE_NLS_CREATE_SECTION NlsCreateSection;
 	BASE_NLS_GET_USER_INFO NlsGetUserInfo;

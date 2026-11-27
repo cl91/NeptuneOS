@@ -80,7 +80,6 @@
 @ stdcall -version=0x600+ CloseThreadpoolTimer(ptr) ntdll.TpReleaseTimer
 @ stdcall -version=0x600+ CloseThreadpoolWait(ptr) ntdll.TpReleaseWait
 @ stdcall -version=0x600+ CloseThreadpoolWork(ptr) ntdll.TpReleaseWork
-@ stdcall CmdBatNotification(long)
 @ stdcall CommConfigDialogA(str long ptr)
 @ stdcall CommConfigDialogW(wstr long ptr)
 @ stdcall -stub -version=0x600+ CompareCalendarDates(ptr ptr ptr)
@@ -268,7 +267,6 @@
 @ stdcall EscapeCommFunction(long long)
 @ stdcall ExitProcess(long) ; FIXME: ntdll.RtlExitUserProcess
 @ stdcall ExitThread(long) ; FIXME: ntdll.RtlExitUserThread
-@ stdcall ExitVDM(long long)
 @ stdcall ExpandEnvironmentStringsA(str ptr long)
 @ stdcall ExpandEnvironmentStringsW(wstr ptr long)
 @ stdcall ExpungeConsoleCommandHistoryA(long)
@@ -537,7 +535,6 @@
 @ stub -version=0x600+ GetNamedPipeServerProcessId
 @ stub -version=0x600+ GetNamedPipeServerSessionId
 @ stdcall GetNativeSystemInfo(ptr)
-@ stdcall GetNextVDMCommand(long)
 @ stdcall -version=0x500-0x502 GetNlsSectionName(long long long str str long)
 @ stdcall GetNumaAvailableMemoryNode(long ptr)
 @ stdcall GetNumaHighestNodeNumber(ptr)
@@ -655,7 +652,6 @@
 @ stdcall GetUserDefaultUILanguage()
 @ stdcall GetUserGeoID(long)
 @ stdcall -version=0x600+ GetUserPreferredUILanguages(long ptr wstr ptr)
-@ stdcall GetVDMCurrentDirectories(long long)
 @ stdcall GetVersion()
 @ stdcall GetVersionExA(ptr)
 @ stdcall GetVersionExW(ptr)
@@ -943,12 +939,9 @@
 @ stdcall -version=0x600+ RegisterApplicationRestart(wstr long)
 @ stdcall RegisterConsoleIME(ptr ptr)
 @ stdcall RegisterConsoleOS2(long)
-@ stdcall RegisterConsoleVDM(long long long long long long long long long long long)
 @ stdcall RegisterWaitForInputIdle(ptr)
 @ stdcall RegisterWaitForSingleObject(ptr long ptr ptr long long)
 @ stdcall RegisterWaitForSingleObjectEx(long ptr ptr long long)
-@ stdcall RegisterWowBaseHandlers(long)
-@ stdcall RegisterWowExec(long)
 @ stdcall ReleaseActCtx(ptr)
 @ stdcall ReleaseMutex(long)
 @ stub -version=0x600+ ReleaseMutexWhenCallbackReturns
@@ -1133,7 +1126,6 @@
 @ stdcall SetTimerQueueTimer(long ptr ptr long long long)
 @ stdcall SetUnhandledExceptionFilter(ptr)
 @ stdcall SetUserGeoID(long)
-@ stdcall SetVDMCurrentDirectories(long long)
 @ stdcall SetVolumeLabelA(str str)
 @ stdcall SetVolumeLabelW(wstr wstr)
 @ stdcall SetVolumeMountPointA(str str)
@@ -1187,8 +1179,6 @@
 @ stdcall -stub -version=0x600+ UpdateProcThreadAttribute(ptr long ptr ptr ptr ptr ptr)
 @ stdcall UpdateResourceA(long str str long ptr long)
 @ stdcall UpdateResourceW(long wstr wstr long ptr long)
-@ stdcall VDMConsoleOperation(long long)
-@ stdcall VDMOperationStarted(long)
 @ stdcall -version=0x500-0x502 ValidateLCType(long long ptr ptr)
 @ stdcall -version=0x500-0x502 ValidateLocale(long)
 @ stdcall VerLanguageNameA(long str long)
@@ -1246,8 +1236,6 @@
 @ stub -version=0x600+ Wow64SuspendThread
 @ stdcall WriteConsoleA(long ptr long ptr ptr)
 @ stdcall WriteConsoleInputA(long ptr long ptr)
-@ stdcall WriteConsoleInputVDMA(long long long long)
-@ stdcall WriteConsoleInputVDMW(long long long long)
 @ stdcall WriteConsoleInputW(long ptr long ptr)
 @ stdcall WriteConsoleOutputA(long ptr long long ptr)
 @ stdcall WriteConsoleOutputAttribute(long ptr long long ptr)

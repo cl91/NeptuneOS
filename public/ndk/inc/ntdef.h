@@ -25,6 +25,12 @@ FORCEINLINE BOOLEAN RtlEqualLuid(IN PLUID L1, IN PLUID L2) {
     return L1->HighPart == L2->HighPart && L1->LowPart  == L2->LowPart;
 }
 
+FORCEINLINE VOID RtlCopyLuid(PLUID LuidDest, PLUID LuidSrc)
+{
+    LuidDest->LowPart = LuidSrc->LowPart;
+    LuidDest->HighPart = LuidSrc->HighPart;
+}
+
 FORCEINLINE LUID RtlConvertUlongToLuid(IN ULONG Ulong)
 {
     LUID TempLuid;

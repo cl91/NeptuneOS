@@ -75,7 +75,6 @@ typedef enum _CSR_PROCESS_FLAGS {
     CsrProcessTerminated = 0x200,
     CsrProcessLastThreadTerminated = 0x400,
     CsrProcessIsConsoleApp = 0x800,
-    CsrProcessIsWow64 = 0x1000,
     CsrProcessSharedSectionMapped = 0x2000
 } CSR_PROCESS_FLAGS, *PCSR_PROCESS_FLAGS;
 
@@ -159,7 +158,6 @@ typedef struct _CSR_SERVER_DLL {
     PCSR_DISCONNECT_CALLBACK DisconnectCallback;
     PCSR_HARDERROR_CALLBACK HardErrorCallback;
     PVOID SharedSection;
-    PVOID SharedSection32;
     PCSR_SHUTDOWNPROCESS_CALLBACK ShutdownProcessCallback;
 } CSR_SERVER_DLL, *PCSR_SERVER_DLL;
 

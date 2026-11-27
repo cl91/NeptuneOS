@@ -12,12 +12,6 @@
 
 /* DATA ***********************************************************************/
 
-#ifdef _WIN64
-#define CSR_WOW64_ADDRESS_LIMIT 0x80000000ULL
-#define CSR_WOW64_RESERVED_TAIL 0x00100000ULL
-#define MM_ALLOCATION_GRANULARITY 0x10000
-#endif
-
 /* PRIVATE FUNCTIONS **********************************************************/
 
 /*++
@@ -91,7 +85,6 @@ static NTSTATUS CsrpLoadServerDll(IN PCUNICODE_STRING DllName,
     ServerDll->Length = Size;
     /* Send our shared heap pointer to the server dll. */
     ServerDll->SharedSection = CsrSrv->SharedSectionHeap;
-    ServerDll->SharedSection32 = CsrSrv->SharedSectionHeap;
     ServerDll->Name.Length = DllName->Length;
     ServerDll->Name.MaximumLength = DllName->MaximumLength;
     ServerDll->Name.Buffer = (PWCHAR)(ServerDll + 1);
@@ -140,9 +133,6 @@ static NTSTATUS CsrpLoadServerDll(IN PCUNICODE_STRING DllName,
 		CsrSrv->SharedStaticServerData[ServerDll->ServerId] =
 		    ServerDll->SharedSection;
 	    }
-	    if (ServerDll->SharedSection32 != CsrSrv->SharedSectionHeap)
-		CsrSrv->SharedStaticServerData32[ServerDll->ServerId] =
-		    PtrToUlong(ServerDll->SharedSection32);
 	}
     }
 
@@ -242,27 +232,6 @@ NTSTATUS CsrpCreateSharedSection(VOID)
 	return Status;
     }
 
-#ifdef _WIN64
-    if ((ULONG_PTR)CsrSrv->SharedSectionBase + CsrSrv->SharedSectionSize >
-	CSR_WOW64_ADDRESS_LIMIT - CSR_WOW64_RESERVED_TAIL) {
-	NtUnmapViewOfSection(NtCurrentProcess(), CsrSrv->SharedSectionBase);
-
-	CsrSrv->SharedSectionBase = (PVOID)
-	    ALIGN_DOWN_BY(CSR_WOW64_ADDRESS_LIMIT - CSR_WOW64_RESERVED_TAIL -
-			      CsrSrv->SharedSectionSize,
-			  MM_ALLOCATION_GRANULARITY);
-	ViewSize = 0;
-	Status = NtMapViewOfSection(CsrSrv->SharedSection, NtCurrentProcess(),
-				    &CsrSrv->SharedSectionBase, 0, 0, NULL,
-				    &ViewSize, ViewUnmap, 0, PAGE_EXECUTE_READWRITE);
-	if (!NT_SUCCESS(Status)) {
-	    NtClose(CsrSrv->SharedSection);
-	    CsrSrv->SharedSection = NULL;
-	    return Status;
-	}
-    }
-#endif
-
     /* FIXME: Write the value to registry */
 
     /* The Heap is the same place as the Base */
@@ -284,12 +253,6 @@ NTSTATUS CsrpCreateSharedSection(VOID)
 	RtlAllocateHeap(CsrSrv->SharedSectionHeap, HEAP_ZERO_MEMORY,
 			CSR_SERVER_DLL_MAX * sizeof(PVOID));
     if (!CsrSrv->SharedStaticServerData)
-	return STATUS_NO_MEMORY;
-
-    CsrSrv->SharedStaticServerData32 =
-	RtlAllocateHeap(CsrSrv->SharedSectionHeap, HEAP_ZERO_MEMORY,
-			CSR_SERVER_DLL_MAX * sizeof(ULONG));
-    if (!CsrSrv->SharedStaticServerData32)
 	return STATUS_NO_MEMORY;
 
     /* Write the values to the PEB */
@@ -341,10 +304,7 @@ NTSTATUS CsrpAttachSharedSection(IN PCSR_PROCESS CsrProcess OPTIONAL,
     /* Write the values in the Connection Info structure */
     ConnectInfo->SharedSectionBase = CsrSrv->SharedSectionBase;
     ConnectInfo->SharedSectionHeap = CsrSrv->SharedSectionHeap;
-    ConnectInfo->SharedStaticServerData = (CsrProcess &&
-					   (CsrProcess->Flags & CsrProcessIsWow64)) ?
-					      (PVOID)CsrSrv->SharedStaticServerData32 :
-					      (PVOID)CsrSrv->SharedStaticServerData;
+    ConnectInfo->SharedStaticServerData = (PVOID)CsrSrv->SharedStaticServerData;
 
     /* Return success */
     return STATUS_SUCCESS;

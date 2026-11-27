@@ -30,7 +30,6 @@ static NTSTATUS CsrpMapPortView(IN PCSR_PROCESS CsrProcess, OUT PVOID *ServerVie
     HANDLE SectionHandle;
     LARGE_INTEGER SectionSize;
     SIZE_T ViewSize;
-    ULONG_PTR ZeroBits = (CsrProcess->Flags & CsrProcessIsWow64) ? MAXULONG : 0;
 
     SectionSize.QuadPart = CSR_CSRSS_SECTION_SIZE;
     Status = NtCreateSection(&SectionHandle, SECTION_ALL_ACCESS, NULL, &SectionSize,
@@ -41,13 +40,13 @@ static NTSTATUS CsrpMapPortView(IN PCSR_PROCESS CsrProcess, OUT PVOID *ServerVie
     *ServerViewBase = NULL;
     ViewSize = 0;
     Status = NtMapViewOfSection(SectionHandle, NtCurrentProcess(), ServerViewBase,
-				ZeroBits, 0, NULL, &ViewSize, ViewUnmap, 0,
+				0, 0, NULL, &ViewSize, ViewUnmap, 0,
 				PAGE_READWRITE);
     if (NT_SUCCESS(Status)) {
 	*ClientViewBase = NULL;
 	ViewSize = 0;
 	Status = NtMapViewOfSection(SectionHandle, CsrProcess->ProcessHandle,
-				    ClientViewBase, ZeroBits, 0, NULL, &ViewSize,
+				    ClientViewBase, 0, 0, NULL, &ViewSize,
 				    ViewUnmap, 0, PAGE_READWRITE);
 	if (!NT_SUCCESS(Status))
 	    NtUnmapViewOfSection(NtCurrentProcess(), *ServerViewBase);

@@ -4,3 +4,4 @@ project(server)
 
 add_subdirectory(csrsrv)
 add_subdirectory(csrss)
+add_subdirectory(basesrv)
