@@ -11,12 +11,8 @@
 #define _SRV_H
 
 #include <nt.h>
-#include <csrsrv.h>
-#include <smlib.h>
-
-/* Defines */
-#define SM_REG_KEY \
-    L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Session Manager"
+#include <ntcsrsrv.h>
+#include <ntsmlib.h>
 
 #define SESSION_ROOT L"\\Sessions"
 #define GLOBAL_ROOT L"\\GLOBAL??"

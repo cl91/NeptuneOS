@@ -5,5 +5,6 @@ project(base)
 include(../public/ndk/cmake/native.cmake)
 
 add_subdirectory(sm)
+add_subdirectory(csr)
 add_subdirectory(ntcmd)
 add_subdirectory(umtests)

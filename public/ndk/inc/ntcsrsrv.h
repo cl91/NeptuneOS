@@ -7,8 +7,8 @@
  *                  Hermes Belusca-Maito (hermes.belusca@sfr.fr)
  */
 
-#ifndef _CSRSRV_H
-#define _CSRSRV_H
+#ifndef _NTCSRSRV_H
+#define _NTCSRSRV_H
 
 /*
  * The CSR_DBG macro is defined for building CSR Servers
@@ -18,7 +18,7 @@
 #define CSR_DBG
 #endif
 
-#include <csrmsg.h>
+#include <ntcsrmsg.h>
 
 /* TYPES **********************************************************************/
 
@@ -233,6 +233,6 @@ NTAPI NTSYSAPI BOOLEAN CsrValidateMessageBuffer(IN PCSR_API_MESSAGE ApiMessage,
 NTAPI NTSYSAPI BOOLEAN CsrValidateMessageString(IN PCSR_API_MESSAGE ApiMessage,
 						IN PWSTR *MessageString);
 
-#endif // _CSRSRV_H
+#endif // _NTCSRSRV_H
 
 /* EOF */

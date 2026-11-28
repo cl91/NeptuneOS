@@ -296,14 +296,15 @@ cmake ../../base \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
       -G Ninja
 ninja || build_failed
+cp sm/smlib/smdll.lib ../ndk_lib || build_failed
+cp csr/csrlib/csrdll.lib ../ndk_lib || build_failed
+cp csr/csrsrv/csrsrv.lib ../ndk_lib || build_failed
 
 # Build Win32 subsystem with the PE toolchain
 cd ../win32
 echo
 echo "---- Building Win32 subsystem ----"
 echo
-cp ../ntdll/ks*.h .
-cp ../base/sm/smlib/smdll.lib .
 cmake ../../win32 \
       -DArch=${ARCH} \
       -DTRIPLE=${PE_TRIPLE} \

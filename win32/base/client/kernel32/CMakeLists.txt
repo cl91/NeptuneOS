@@ -136,7 +136,7 @@ add_library(kernel32 SHARED
 add_dependencies(kernel32 errcodes)
 target_link_libraries(kernel32 csrdll)
 
-target_include_directories(kernel32 PRIVATE inc ../../inc ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_BINARY_DIR}/../../..)
+target_include_directories(kernel32 PRIVATE inc ../../inc ${CMAKE_CURRENT_BINARY_DIR})
 set_module_type(kernel32 basedll)
 spec2def(kernel32 kernel32.spec ${Arch})
 set_dll_def(kernel32 kernel32.def)

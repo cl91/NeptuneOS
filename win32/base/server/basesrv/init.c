@@ -29,8 +29,6 @@ PBASE_STATIC_SERVER_DATA BaseStaticServerData = NULL; // Data that we can share 
 ULONG SessionId = 0;
 ULONG ProtectionMode = 0;
 
-PINIFILE_MAPPING BaseSrvIniFileMapping;
-
 // Windows Server 2003 table from
 // http://j00ru.vexillium.org/csrss_list/api_list.html#Windows_2k3
 PCSR_API_ROUTINE BaseServerApiDispatchTable[] = {
@@ -86,25 +84,6 @@ C_ASSERT(ARRAYSIZE(BaseServerApiNameTable) == BasepMaxApiNumber - BASESRV_FIRST_
 #endif
 
 /* FUNCTIONS ******************************************************************/
-
-NTSTATUS
-NTAPI
-BaseSrvInitializeIniFileMappings(IN PBASE_STATIC_SERVER_DATA StaticServerData)
-{
-    /* Allocate the mapping blob */
-    BaseSrvIniFileMapping = RtlAllocateHeap(BaseSrvSharedHeap, HEAP_ZERO_MEMORY,
-					    sizeof(*BaseSrvIniFileMapping));
-    if (BaseSrvIniFileMapping == NULL) {
-	DPRINT1("BASESRV: Unable to allocate memory in shared heap for IniFileMapping\n");
-	return STATUS_NO_MEMORY;
-    }
-
-    /* Set it*/
-    StaticServerData->IniFileMapping = BaseSrvIniFileMapping;
-
-    /* FIXME: Do the work to initialize the mappings */
-    return STATUS_SUCCESS;
-}
 
 static HANDLE BaseSrvAppContainerObjectDirectory;
 
@@ -548,10 +527,6 @@ VOID NTAPI BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
     Status = NtQuerySystemInformation(SystemBasicInformation,
 				      &BaseStaticServerData->SysInfo,
 				      sizeof(BaseStaticServerData->SysInfo), NULL);
-    ASSERT(NT_SUCCESS(Status));
-
-    /* Setup the ini file mappings */
-    Status = BaseSrvInitializeIniFileMappings(BaseStaticServerData);
     ASSERT(NT_SUCCESS(Status));
 
     /* Allocate a security descriptor and create it */

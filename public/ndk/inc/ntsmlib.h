@@ -1,7 +1,7 @@
 #pragma once
 
 #include <nt.h>
-#include <smmsg.h>
+#include <ntsmmsg.h>
 
 //
 // The actual server functions that a client linking with SMLIB can call.

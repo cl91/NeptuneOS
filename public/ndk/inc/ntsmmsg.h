@@ -7,13 +7,13 @@
  *              Copyright 2022 Hermès Bélusca-Maïto <hermes.belusca-maito@reactos.org>
  */
 
-#ifndef _SM_MSG_
-#define _SM_MSG_
+#ifndef _NTSMMSG_H_
+#define _NTSMMSG_H_
 
 #pragma once
 
 #include <nt.h>
-#include <smdbg.h>
+#include <ntsmdbg.h>
 
 //
 // There are the APIs that a Client (such as CSRSS) can send to the SMSS Server.
@@ -106,4 +106,4 @@ typedef struct _SM_API_MSG {
     } u;
 } SM_API_MSG, *PSM_API_MSG;
 
-#endif // _SM_MSG_
+#endif // _NTSMMSG_H_

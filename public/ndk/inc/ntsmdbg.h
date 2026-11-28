@@ -7,8 +7,8 @@
  *              Copyright 2022 Hermès Bélusca-Maïto <hermes.belusca-maito@reactos.org>
  */
 
-#ifndef _SMDBG_H_
-#define _SMDBG_H_
+#ifndef _NTSMDBG_H_
+#define _NTSMDBG_H_
 
 #pragma once
 
@@ -52,4 +52,4 @@ typedef struct _SM_QUERYINFO_MSG {
     };
 } SM_QUERYINFO_MSG, *PSM_QUERYINFO_MSG;
 
-#endif // _SMDBG_H_
+#endif // _NTSMDBG_H_

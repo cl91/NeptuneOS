@@ -13,7 +13,7 @@
 #include <nt.h>
 
 /* CSRSS Client Header */
-#include <csr.h>
+#include <ntcsrlib.h>
 
 /* GLOBALS ********************************************************************/
 

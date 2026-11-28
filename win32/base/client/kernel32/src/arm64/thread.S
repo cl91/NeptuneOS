@@ -7,7 +7,6 @@
  */
 
 #include "../../../../../../private/rtl/inc/arm64asm.h"
-#include <ksarm64.h>
 
 .PROC BaseThreadStartupThunk
     /* BaseInitializeContext enters here with X0 containing the start routine

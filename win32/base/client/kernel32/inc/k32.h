@@ -33,25 +33,25 @@
 #include <nt.h>
 #include <ntstrsafe.h>
 
-/* CSRSS Headers */
-#include <csr.h>
-#include <win/base.h>
-#include <win/basemsg.h>
-#include <win/console.h>
-#include <win/conmsg.h>
-#include <win/vdm.h>
+#include <ntcsrlib.h>
+/* Base service API headers */
+#include <base.h>
+#include <basemsg.h>
+#include <console.h>
+#include <conmsg.h>
+#include <vdm.h>
 
 /* DDK Driver Headers */
 #include <mountmgr.h>
 
 /* Internal Kernel32 Header */
-#include "base.h"
+#include "basep.h"
 
 /* Base Macros */
 #include "base_x.h"
 
 /* Console API Client Definitions */
-#include "console.h"
+#include "consolep.h"
 
 /* The following routines are moved from ntdll to kernel32 as they are Win32-specific. */
 ULONG RtlNtStatusToDosError(IN NTSTATUS Status);

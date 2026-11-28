@@ -7,7 +7,7 @@
  */
 
 #include <nt.h>
-#include <smlib.h>
+#include <ntsmlib.h>
 
 #if DBG
 BOOLEAN SmpDebug = TRUE;

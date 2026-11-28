@@ -7,10 +7,10 @@
  * <hermes.belusca-maito@reactos.org>
  */
 
-#ifndef _CSR_H
-#define _CSR_H
+#ifndef _NTCSRLIB_H
+#define _NTCSRLIB_H
 
-#include <csr/csrmsg.h>
+#include <ntcsrmsg.h>
 
 NTAPI NTSYSAPI NTSTATUS CsrClientConnectToServer(_In_ PCWSTR ObjectDirectory,
 						 _In_ ULONG ServerId,
@@ -61,6 +61,6 @@ NTAPI NTSYSAPI VOID CsrProbeForWrite(_In_ PVOID Address, _In_ ULONG Length,
 
 NTAPI NTSYSAPI HANDLE CsrGetProcessId(VOID);
 
-#endif // _CSR_H
+#endif // _NTCSRLIB_H
 
 /* EOF */

@@ -20,7 +20,7 @@
 #include <nt.h>
 
 /* CSRSS Header */
-#include <csrsrv.h>
+#include <ntcsrsrv.h>
 
 /* BASE Headers */
 #include <basemsg.h>

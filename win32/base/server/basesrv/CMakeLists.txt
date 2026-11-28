@@ -14,7 +14,7 @@ add_library(basesrv SHARED
     basesrv.rc)
 
 set_module_type(basesrv native)
-target_include_directories(basesrv PUBLIC ../../inc/win)
+target_include_directories(basesrv PUBLIC ../../inc)
 target_link_libraries(basesrv csrsrv)
 spec2def(basesrv basesrv.spec ${Arch})
 set_dll_def(basesrv basesrv.def)

@@ -7,7 +7,6 @@
  */
 
 #include "../../../../../../private/rtl/inc/x86asm.h"
-#include <ks386.h>
 .intel_syntax noprefix
 
 .code

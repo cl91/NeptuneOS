@@ -8,8 +8,8 @@
  *                  Hermes Belusca-Maito (hermes.belusca@sfr.fr)
  */
 
-#ifndef _CSRMSG_H
-#define _CSRMSG_H
+#ifndef _NTCSRMSG_H
+#define _NTCSRMSG_H
 
 #pragma once
 
@@ -106,6 +106,6 @@ C_ASSERT(sizeof(CSR_API_MESSAGE) <= LPC_MAX_MESSAGE_LENGTH);
 // are at most equal to the size of the CSR_API_MESSAGE structure.
 #define CHECK_API_MSG_SIZE(type) C_ASSERT(sizeof(type) <= sizeof(CSR_API_MESSAGE))
 
-#endif // _CSRMSG_H
+#endif // _NTCSRMSG_H
 
 /* EOF */
