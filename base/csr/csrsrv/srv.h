@@ -14,7 +14,6 @@
 #include <ntcsrsrv.h>
 #include <ntsmlib.h>
 
-#define SESSION_ROOT L"\\Sessions"
 #define GLOBAL_ROOT L"\\GLOBAL??"
 #define SYMLINK_NAME L"SymbolicLink"
 #define SB_PORT_NAME L"SbApiPort"

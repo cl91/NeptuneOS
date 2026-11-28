@@ -263,9 +263,7 @@ BroadcastDriveLetterChange(LONG DriveLetter, BOOLEAN RemoveDefinition,
     return Status;
 }
 
-ULONG
-NTAPI
-BaseSrvBSMThread(PVOID StartupContext)
+NTAPI ULONG BaseSrvBSMThread(PVOID StartupContext)
 {
     ULONG ExitStatus;
     NTSTATUS Status;

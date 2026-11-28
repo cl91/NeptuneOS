@@ -10,6 +10,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "srv.h"
+#include <ntsmns.h>
 #include <stdio.h>
 
 /* DATA ***********************************************************************/
@@ -375,10 +376,10 @@ static NTSTATUS CsrpSetDirectorySecurity(IN HANDLE ObjectDirectory)
 }
 
 /*++
- * @name CsrCreateSessionObjectDirectory
+ * @name CsrpCreateSessionObjectDirectory
  *
- * The CsrCreateSessionObjectDirectory routine creates the BaseNamedObjects,
- * Session and Dos Devices directories for the specified session.
+ * The CsrpCreateSessionObjectDirectory routine creates the subsystem object
+ * directory for the specified session.
  *
  * @param Session
  *        Session ID for which to create the directories.
@@ -386,25 +387,27 @@ static NTSTATUS CsrpSetDirectorySecurity(IN HANDLE ObjectDirectory)
  * @return STATUS_SUCCESS in case of success, error status otherwise.
  *
  * @remarks The \Sessions\<id> object directory is created by the SMSS before
- *          this routine is called.
+ *          this routine is called. Other per-session directories are created
+ *          by the corresponding CSR server DLLs.
  *
  *--*/
 static NTSTATUS CsrpCreateSessionObjectDirectory(VOID)
 {
     /* Construct the session object directory path */
     WCHAR SessionDirectory[MAX_PATH] = {};
-    PWSTR FormatString = CsrSrv->ObjectDirectoryName[0] == L'\\'
-	? L"\\Sessions\\%lu%ls" : L"\\Sessions\\%lu\\%ls";
-    _snwprintf(SessionDirectory, ARRAYSIZE(SessionDirectory),
-	       FormatString, CsrSrv->SessionId, CsrSrv->ObjectDirectoryName);
+    PWSTR FormatString = CsrSrv->ObjectDirectoryName[0] == L'\\' ?
+			     SM_SESSIONS_OBJDIR L"\\%lu%ls" :
+			     SM_SESSIONS_OBJDIR L"\\%lu\\%ls";
+    _snwprintf(SessionDirectory, ARRAYSIZE(SessionDirectory), FormatString,
+	       CsrSrv->SessionId, CsrSrv->ObjectDirectoryName);
     UNICODE_STRING SessionDirectoryString;
     RtlInitUnicodeString(&SessionDirectoryString, SessionDirectory);
 
     /* Create the session object directory */
     OBJECT_ATTRIBUTES ObjectAttributes;
     InitializeObjectAttributes(&ObjectAttributes, &SessionDirectoryString,
-			       OBJ_OPENIF | OBJ_CASE_INSENSITIVE | OBJ_PERMANENT, NULL,
-			       NULL);
+			       OBJ_OPENIF | OBJ_CASE_INSENSITIVE | OBJ_PERMANENT,
+			       NULL, NULL);
     NTSTATUS Status = NtCreateDirectoryObject(&CsrSrv->SessionObjectDirectory,
 					      DIRECTORY_ALL_ACCESS,
 					      &ObjectAttributes);
@@ -412,7 +415,37 @@ static NTSTATUS CsrpCreateSessionObjectDirectory(VOID)
 	return Status;
 
     /* Secure it */
-    return CsrpSetDirectorySecurity(CsrSrv->SessionObjectDirectory);
+    Status = CsrpSetDirectorySecurity(CsrSrv->SessionObjectDirectory);
+    if (!NT_SUCCESS(Status))
+	return Status;
+
+    /* If we are session 0, make the symlink for the subsystem object directory at the root. */
+    if (CsrSrv->SessionId == 0) {
+	HANDLE SymlinkHandle;
+	WCHAR SymlinkNameBuffer[MAX_PATH] = {};
+	UNICODE_STRING SymlinkName;
+
+	if (CsrSrv->ObjectDirectoryName[0] == L'\\') {
+	    RtlInitUnicodeString(&SymlinkName, CsrSrv->ObjectDirectoryName);
+	} else {
+	    _snwprintf(SymlinkNameBuffer, ARRAYSIZE(SymlinkNameBuffer), L"\\%ls",
+		       CsrSrv->ObjectDirectoryName);
+	    RtlInitUnicodeString(&SymlinkName, SymlinkNameBuffer);
+	}
+	InitializeObjectAttributes(&ObjectAttributes, &SymlinkName,
+				   OBJ_OPENIF | OBJ_CASE_INSENSITIVE | OBJ_PERMANENT,
+				   NULL, NULL);
+	Status = NtCreateSymbolicLinkObject(&SymlinkHandle, SYMBOLIC_LINK_ALL_ACCESS,
+					    &ObjectAttributes, &SessionDirectoryString);
+	if (!NT_SUCCESS(Status)) {
+	    DPRINT1("CSRSRV:%s: NtCreateSymbolicLinkObject failed (Status=0x%08x)\n",
+		    __FUNCTION__, Status);
+	    return Status;
+	}
+	NtClose(SymlinkHandle);
+    }
+
+    return STATUS_SUCCESS;
 }
 
 /* PUBLIC FUNCTIONS ***********************************************************/

@@ -11,9 +11,6 @@
 #include "basesrv.h"
 #include "api.h"
 
-#define NDEBUG
-#include <debug.h>
-
 /* GLOBALS ********************************************************************/
 
 typedef struct _BASE_APP_COMPAT_EXTRA1 {

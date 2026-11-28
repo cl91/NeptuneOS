@@ -8,6 +8,8 @@
 #define SM_DBGSS_PORT_NAME L"\\DbgSsApiPort"
 #define SM_DBGUI_PORT_NAME L"\\DbgUiApiPort"
 
+#define SM_SESSIONS_OBJDIR L"\\Sessions"
+
 #define SM_REG_KEY L"\\Registry\\Machine\\System\\CurrentControlSet\\Control\\Session Manager"
 
 #endif //_NTSMNS_H_

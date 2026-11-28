@@ -11,6 +11,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "basesrv.h"
+#include <ntsmns.h>
 #include <winreg.h>
 #include "api.h"
 
@@ -157,7 +158,7 @@ static VOID BaseSrvCreateAppContainerDirectory(IN ULONG SessionId,
     if (!NT_SUCCESS(Status))
 	goto Quit;
 
-    _swprintf(Buffer, L"\\Sessions\\%lu\\AppContainerNamedObjects", SessionId);
+    _swprintf(Buffer, SM_SESSIONS_OBJDIR L"\\%lu\\AppContainerNamedObjects", SessionId);
     RtlInitUnicodeString(&Name, Buffer);
     InitializeObjectAttributes(&ObjectAttributes, &Name,
 			       OBJ_OPENIF | OBJ_PERMANENT | OBJ_CASE_INSENSITIVE, NULL,
@@ -180,9 +181,7 @@ Quit:
 	RtlFreeSid(SystemSid);
 }
 
-NTSTATUS
-NTAPI
-CreateBaseAcls(OUT PACL *Dacl, OUT PACL *RestrictedDacl)
+NTAPI NTSTATUS CreateBaseAcls(OUT PACL *Dacl, OUT PACL *RestrictedDacl)
 {
     PSID SystemSid, WorldSid, RestrictedSid, AdminsSid, CreatorOwnerSid;
     SID_IDENTIFIER_AUTHORITY CreatorAuthority = { SECURITY_CREATOR_SID_AUTHORITY };
@@ -387,11 +386,210 @@ Return:
     return Status;
 }
 
-VOID NTAPI BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
+/*++
+ * @name GetDosDevicesProtection
+ *
+ * The GetDosDevicesProtection creates a security descriptor for the DOS Devices
+ * Object Directory.
+ *
+ * @param DosDevicesSd
+ *        Pointer to the Security Descriptor to return.
+ *
+ * @return STATUS_SUCCESS in case of success, STATUS_UNSUCCESSFUL otherwise.
+ *
+ * @remarks Depending on the DOS Devices Protection Mode (set in the registry),
+ *          regular users may or may not have full access to the directory.
+ *
+ *--*/
+static NTSTATUS GetpDosDevicesProtection(OUT PSECURITY_DESCRIPTOR DosDevicesSd)
+{
+    SID_IDENTIFIER_AUTHORITY WorldAuthority = { SECURITY_WORLD_SID_AUTHORITY };
+    SID_IDENTIFIER_AUTHORITY CreatorAuthority = { SECURITY_CREATOR_SID_AUTHORITY };
+    SID_IDENTIFIER_AUTHORITY NtSidAuthority = { SECURITY_NT_AUTHORITY };
+    PSID WorldSid, CreatorSid, AdminSid, SystemSid;
+    UCHAR KeyValueBuffer[0x40];
+    PKEY_VALUE_PARTIAL_INFORMATION KeyValuePartialInfo;
+    UNICODE_STRING KeyName;
+    ULONG ProtectionMode = 0;
+    OBJECT_ATTRIBUTES ObjectAttributes;
+    PACL Dacl;
+    PACCESS_ALLOWED_ACE Ace;
+    HANDLE hKey;
+    NTSTATUS Status;
+    ULONG ResultLength, SidLength, AclLength;
+
+    /* Create the SD */
+    Status = RtlCreateSecurityDescriptor(DosDevicesSd, SECURITY_DESCRIPTOR_REVISION);
+    ASSERT(NT_SUCCESS(Status));
+
+    /* Initialize the System SID */
+    Status = RtlAllocateAndInitializeSid(&NtSidAuthority, 1, SECURITY_LOCAL_SYSTEM_RID, 0,
+					 0, 0, 0, 0, 0, 0, &SystemSid);
+    ASSERT(NT_SUCCESS(Status));
+
+    /* Initialize the World SID */
+    Status = RtlAllocateAndInitializeSid(&WorldAuthority, 1, SECURITY_WORLD_RID, 0, 0, 0,
+					 0, 0, 0, 0, &WorldSid);
+    ASSERT(NT_SUCCESS(Status));
+
+    /* Initialize the Admin SID */
+    Status = RtlAllocateAndInitializeSid(&NtSidAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID,
+					 DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0,
+					 &AdminSid);
+    ASSERT(NT_SUCCESS(Status));
+
+    /* Initialize the Creator SID */
+    Status = RtlAllocateAndInitializeSid(&CreatorAuthority, 1, SECURITY_CREATOR_OWNER_RID,
+					 0, 0, 0, 0, 0, 0, 0, &CreatorSid);
+    ASSERT(NT_SUCCESS(Status));
+
+    /* Open the Session Manager Key */
+    RtlInitUnicodeString(&KeyName, SM_REG_KEY);
+    InitializeObjectAttributes(&ObjectAttributes, &KeyName, OBJ_CASE_INSENSITIVE, NULL,
+			       NULL);
+    Status = NtOpenKey(&hKey, KEY_READ, &ObjectAttributes);
+    if (NT_SUCCESS(Status)) {
+	/* Read the key value */
+	RtlInitUnicodeString(&KeyName, L"ProtectionMode");
+	Status = NtQueryValueKey(hKey, &KeyName, KeyValuePartialInformation,
+				 KeyValueBuffer, sizeof(KeyValueBuffer), &ResultLength);
+
+	/* Make sure it's what we expect it to be */
+	KeyValuePartialInfo = (PKEY_VALUE_PARTIAL_INFORMATION)KeyValueBuffer;
+	if ((NT_SUCCESS(Status)) && (KeyValuePartialInfo->Type == REG_DWORD) &&
+	    (*(PULONG)KeyValuePartialInfo->Data)) {
+	    /* Save the Protection Mode */
+	    ProtectionMode = *(PULONG)KeyValuePartialInfo->Data;
+	}
+
+	/* Close the handle */
+	NtClose(hKey);
+    }
+
+    /* Check the Protection Mode */
+    if (ProtectionMode & 3) {
+	/* Calculate SID Lengths */
+	SidLength = RtlLengthSid(CreatorSid) + RtlLengthSid(SystemSid) +
+		    RtlLengthSid(AdminSid);
+	AclLength = sizeof(ACL) + 3 * sizeof(ACCESS_ALLOWED_ACE) + SidLength;
+
+	/* Allocate memory for the DACL */
+	Dacl = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, AclLength);
+	ASSERT(Dacl != NULL);
+
+	/* Build the ACL and add 3 ACEs */
+	Status = RtlCreateAcl(Dacl, AclLength, ACL_REVISION2);
+	ASSERT(NT_SUCCESS(Status));
+	Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION, GENERIC_ALL, SystemSid);
+	ASSERT(NT_SUCCESS(Status));
+	Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION, GENERIC_ALL, AdminSid);
+	ASSERT(NT_SUCCESS(Status));
+	Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION, GENERIC_ALL, CreatorSid);
+	ASSERT(NT_SUCCESS(Status));
+
+	/* Edit the ACEs to make them inheritable */
+	Status = RtlGetAce(Dacl, 0, (PVOID *)&Ace);
+	ASSERT(NT_SUCCESS(Status));
+	Ace->Header.AceFlags |= OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
+	Status = RtlGetAce(Dacl, 1, (PVOID *)&Ace);
+	ASSERT(NT_SUCCESS(Status));
+	Ace->Header.AceFlags |= OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
+	Status = RtlGetAce(Dacl, 2, (PVOID *)&Ace);
+	ASSERT(NT_SUCCESS(Status));
+	Ace->Header.AceFlags |= OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE |
+				INHERIT_ONLY_ACE;
+
+	/* Set this DACL with the SD */
+	Status = RtlSetDaclSecurityDescriptor(DosDevicesSd, TRUE, Dacl, FALSE);
+	ASSERT(NT_SUCCESS(Status));
+	goto Quickie;
+    } else {
+	/* Calculate SID Lengths */
+	SidLength = RtlLengthSid(WorldSid) + RtlLengthSid(SystemSid);
+	AclLength = sizeof(ACL) + 3 * sizeof(ACCESS_ALLOWED_ACE) + SidLength;
+
+	/* Allocate memory for the DACL */
+	Dacl = RtlAllocateHeap(RtlGetProcessHeap(), HEAP_ZERO_MEMORY, AclLength);
+	ASSERT(Dacl != NULL);
+
+	/* Build the ACL and add 3 ACEs */
+	Status = RtlCreateAcl(Dacl, AclLength, ACL_REVISION2);
+	ASSERT(NT_SUCCESS(Status));
+	Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION,
+					GENERIC_READ | GENERIC_WRITE | GENERIC_EXECUTE,
+					WorldSid);
+	ASSERT(NT_SUCCESS(Status));
+	Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION, GENERIC_ALL, SystemSid);
+	ASSERT(NT_SUCCESS(Status));
+	Status = RtlAddAccessAllowedAce(Dacl, ACL_REVISION, GENERIC_ALL, WorldSid);
+	ASSERT(NT_SUCCESS(Status));
+
+	/* Edit the last ACE to make it inheritable */
+	Status = RtlGetAce(Dacl, 2, (PVOID *)&Ace);
+	ASSERT(NT_SUCCESS(Status));
+	Ace->Header.AceFlags |= OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE |
+				INHERIT_ONLY_ACE;
+
+	/* Set this DACL with the SD */
+	Status = RtlSetDaclSecurityDescriptor(DosDevicesSd, TRUE, Dacl, FALSE);
+	ASSERT(NT_SUCCESS(Status));
+	goto Quickie;
+    }
+
+    /* FIXME: failure cases! Fail: */
+    /* Free the memory */
+    RtlFreeHeap(RtlGetProcessHeap(), 0, Dacl);
+
+/* FIXME: semi-failure cases! Quickie: */
+Quickie:
+    /* Free the SIDs */
+    RtlFreeSid(CreatorSid);
+    RtlFreeSid(AdminSid);
+    RtlFreeSid(WorldSid);
+    RtlFreeSid(SystemSid);
+
+    /* Return */
+    return Status;
+}
+
+/*++
+ * @name FreeDosDevicesProtection
+ *
+ * The FreeDosDevicesProtection frees the security descriptor that was created
+ * by GetDosDevicesProtection
+ *
+ * @param DosDevicesSd
+ *        Pointer to the security descriptor to free.
+
+ * @return None.
+ *
+ * @remarks None.
+ *
+ *--*/
+static VOID CsrpFreeDosDevicesProtection(IN PSECURITY_DESCRIPTOR DosDevicesSd)
+{
+    PACL Dacl;
+    BOOLEAN Present, Default;
+    NTSTATUS Status;
+
+    /* Get the DACL corresponding to this SD */
+    Status = RtlGetDaclSecurityDescriptor(DosDevicesSd, &Present, &Dacl, &Default);
+    ASSERT(NT_SUCCESS(Status));
+    ASSERT(Present);
+    ASSERT(Dacl != NULL);
+
+    /* Free it */
+    if ((NT_SUCCESS(Status)) && (Dacl))
+	RtlFreeHeap(RtlGetProcessHeap(), 0, Dacl);
+}
+
+NTAPI VOID BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
 {
     NTSTATUS Status;
     BOOLEAN Success;
     WCHAR BnoBuffer[100];
+    WCHAR BnoLinksBuffer[100];
+    WCHAR DosDevicesBuffer[100];
     WCHAR Buffer[MAX_PATH];
     PWCHAR HeapBuffer;
     UNICODE_STRING SystemRootString;
@@ -400,18 +598,22 @@ VOID NTAPI BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
     UNICODE_STRING BaseSrvWindowsDirectory;
     UNICODE_STRING BaseSrvWindowsSystemDirectory;
     UNICODE_STRING BnoString;
+    UNICODE_STRING BnoLinksString;
+    UNICODE_STRING DosDevicesString;
     OBJECT_ATTRIBUTES ObjectAttributes;
     HANDLE BaseSrvNamedObjectDirectory;
     HANDLE BaseSrvRestrictedObjectDirectory;
+    HANDLE BaseSrvBnoLinksDirectory;
+    HANDLE BaseSrvDosDevicesDirectory;
     PACL BnoDacl, BnoRestrictedDacl;
     PSECURITY_DESCRIPTOR BnoSd;
+    SECURITY_DESCRIPTOR DosDevicesSd;
     HANDLE SymHandle;
     UNICODE_STRING DirectoryName, SymlinkName;
     ULONG LuidEnabled;
     RTL_QUERY_REGISTRY_TABLE BaseServerRegistryConfigurationTable[2] = {
 	{ NULL, RTL_QUERY_REGISTRY_DIRECT, L"CSDVersion", &BaseSrvCSDString, REG_NONE,
 	  NULL, 0 },
-
 	{ 0 }
     };
 
@@ -444,11 +646,7 @@ VOID NTAPI BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
     Success = RtlCreateUnicodeString(&BaseSrvKernel32DllPath, SystemRootString.Buffer);
     ASSERT(Success);
 
-    if (SessionId != 0) {
-	_swprintf(BnoBuffer, L"\\Sessions\\%ld\\BaseNamedObjects", SessionId);
-    } else {
-	wcscpy(BnoBuffer, L"\\BaseNamedObjects");
-    }
+    _swprintf(BnoBuffer, SM_SESSIONS_OBJDIR L"\\%lu\\BaseNamedObjects", SessionId);
     RtlInitUnicodeString(&BnoString, BnoBuffer);
 
     /* Allocate the server data */
@@ -582,6 +780,27 @@ VOID NTAPI BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
 	ASSERT(NT_SUCCESS(Status));
     }
 
+    /* Create the shared session object-link directory if necessary. */
+    RtlInitUnicodeString(&BnoLinksString, SM_SESSIONS_OBJDIR L"\\BNOLINKS");
+    InitializeObjectAttributes(&ObjectAttributes, &BnoLinksString,
+			       OBJ_OPENIF | OBJ_PERMANENT | OBJ_CASE_INSENSITIVE, NULL,
+			       NULL);
+    /* We ignore errors here as other sessions may have already created this directory. */
+    NtCreateDirectoryObject(&BaseSrvBnoLinksDirectory, DIRECTORY_ALL_ACCESS,
+			    &ObjectAttributes);
+
+    /* Symlink this session's BNO in the shared BNOLINKS directory. */
+    _swprintf(BnoLinksBuffer, SM_SESSIONS_OBJDIR L"\\BNOLINKS\\%lu", SessionId);
+    RtlInitUnicodeString(&BnoLinksString, BnoLinksBuffer);
+    InitializeObjectAttributes(&ObjectAttributes, &BnoLinksString,
+			       OBJ_OPENIF | OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
+			       NULL, NULL);
+    Status = NtCreateSymbolicLinkObject(&SymHandle, SYMBOLIC_LINK_ALL_ACCESS,
+					&ObjectAttributes, &BnoString);
+    ASSERT(NT_SUCCESS(Status));
+    if (NT_SUCCESS(Status))
+	NtClose(SymHandle);
+
     BaseSrvCreateAppContainerDirectory(SessionId, BnoSd);
 
     /* Check if we are session 0 */
@@ -590,7 +809,42 @@ VOID NTAPI BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
 	Status = NtSetInformationObject(BaseSrvNamedObjectDirectory,
 					ObjectSessionInformation, NULL, 0);
 	ASSERT(NT_SUCCESS(Status));
+
+	/* Symlink the session-local BaseNamedObjects directory at the root. */
+	RtlInitUnicodeString(&SymlinkName, L"\\BaseNamedObjects");
+	InitializeObjectAttributes(&ObjectAttributes, &SymlinkName,
+				   OBJ_OPENIF | OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
+				   NULL, BnoSd);
+	Status = NtCreateSymbolicLinkObject(&SymHandle, SYMBOLIC_LINK_ALL_ACCESS,
+					    &ObjectAttributes, &BnoString);
+	ASSERT(NT_SUCCESS(Status));
+	if (NT_SUCCESS(Status))
+	    NtClose(SymHandle);
     }
+
+    /* Create this session's DOS Devices directory. */
+    Status = GetpDosDevicesProtection(&DosDevicesSd);
+    ASSERT(NT_SUCCESS(Status));
+    _swprintf(DosDevicesBuffer, SM_SESSIONS_OBJDIR L"\\%lu\\DosDevices", SessionId);
+    RtlInitUnicodeString(&DosDevicesString, DosDevicesBuffer);
+    InitializeObjectAttributes(&ObjectAttributes, &DosDevicesString,
+			       OBJ_OPENIF | OBJ_CASE_INSENSITIVE, NULL, &DosDevicesSd);
+    Status = NtCreateDirectoryObject(&BaseSrvDosDevicesDirectory, DIRECTORY_ALL_ACCESS,
+				     &ObjectAttributes);
+    ASSERT(NT_SUCCESS(Status));
+
+    if (SessionId == 0) {
+	RtlInitUnicodeString(&SymlinkName, L"\\DosDevices");
+	InitializeObjectAttributes(&ObjectAttributes, &SymlinkName,
+				   OBJ_OPENIF | OBJ_CASE_INSENSITIVE, NULL,
+				   &DosDevicesSd);
+	Status = NtCreateSymbolicLinkObject(&SymHandle, SYMBOLIC_LINK_ALL_ACCESS,
+					    &ObjectAttributes, &DosDevicesString);
+	ASSERT(NT_SUCCESS(Status));
+	if (NT_SUCCESS(Status))
+	    NtClose(SymHandle);
+    }
+    CsrpFreeDosDevicesProtection(&DosDevicesSd);
 
     /* Check if LUID device maps are enabled */
     Status = NtQueryInformationProcess(NtCurrentProcess(), ProcessLUIDDeviceMapsEnabled,
@@ -625,7 +879,7 @@ VOID NTAPI BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
 
 	/* Make Session point back to BNOLINKS */
 	RtlInitUnicodeString(&DirectoryName, L"Session");
-	RtlInitUnicodeString(&SymlinkName, L"\\Sessions\\BNOLINKS");
+	RtlInitUnicodeString(&SymlinkName, SM_SESSIONS_OBJDIR L"\\BNOLINKS");
 	InitializeObjectAttributes(&ObjectAttributes, &DirectoryName,
 				   OBJ_OPENIF | OBJ_PERMANENT | OBJ_CASE_INSENSITIVE,
 				   BaseSrvNamedObjectDirectory, BnoSd);
@@ -656,10 +910,9 @@ VOID NTAPI BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
     LoadedServerDll->SharedSection = BaseStaticServerData;
 }
 
-NTSTATUS
-NTAPI
-BaseClientConnectRoutine(IN PCSR_PROCESS CsrProcess, IN OUT PVOID ConnectionInfo,
-			 IN OUT PULONG ConnectionInfoLength)
+NTAPI NTSTATUS BaseClientConnectRoutine(IN PCSR_PROCESS CsrProcess,
+					IN OUT PVOID ConnectionInfo,
+					IN OUT PULONG ConnectionInfoLength)
 {
     PBASESRV_API_CONNECTINFO ConnectInfo = (PBASESRV_API_CONNECTINFO)ConnectionInfo;
 
@@ -678,7 +931,7 @@ BaseClientConnectRoutine(IN PCSR_PROCESS CsrProcess, IN OUT PVOID ConnectionInfo
     return BaseSrvNlsConnect(CsrProcess, ConnectionInfo, ConnectionInfoLength);
 }
 
-VOID NTAPI BaseClientDisconnectRoutine(IN PCSR_PROCESS CsrProcess)
+NTAPI VOID BaseClientDisconnectRoutine(IN PCSR_PROCESS CsrProcess)
 {
     /* Do nothing */
 }
@@ -703,11 +956,10 @@ CSR_SERVER_DLL_INIT(ServerDllInitialization)
     /* Initialize DOS devices management */
     BaseInitDefineDosDevice();
 
-    /* All done */
     return STATUS_SUCCESS;
 }
 
-BOOL NTAPI DllMain(IN HINSTANCE hInstanceDll, IN DWORD dwReason, IN LPVOID lpReserved)
+NTAPI BOOL DllMain(IN HINSTANCE hInstanceDll, IN DWORD dwReason, IN LPVOID lpReserved)
 {
     UNREFERENCED_PARAMETER(hInstanceDll);
     UNREFERENCED_PARAMETER(dwReason);

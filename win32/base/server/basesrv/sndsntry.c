@@ -12,20 +12,20 @@
 
 /* GLOBALS ********************************************************************/
 
-typedef BOOL(NTAPI *PUSER_SOUND_SENTRY)(VOID);
-BOOL NTAPI FirstSoundSentry(VOID);
+typedef BOOL (NTAPI *PUSER_SOUND_SENTRY)(VOID);
+NTAPI BOOL FirstSoundSentry(VOID);
 
 static PUSER_SOUND_SENTRY _UserSoundSentry = FirstSoundSentry;
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
-BOOL NTAPI FailSoundSentry(VOID)
+NTAPI BOOL FailSoundSentry(VOID)
 {
     /* In case the function can't be found/is unimplemented */
     return FALSE;
 }
 
-BOOL NTAPI FirstSoundSentry(VOID)
+NTAPI BOOL FirstSoundSentry(VOID)
 {
     UNICODE_STRING DllString = RTL_CONSTANT_STRING(L"winsrv");
     STRING FuncString = RTL_CONSTANT_STRING("_UserSoundSentry");

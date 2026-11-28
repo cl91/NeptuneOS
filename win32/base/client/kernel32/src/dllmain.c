@@ -10,6 +10,7 @@
 /* INCLUDES ******************************************************************/
 
 #include <k32.h>
+#include <ntsmns.h>
 
 /* GLOBALS *******************************************************************/
 
@@ -31,7 +32,6 @@ extern BOOL FASTCALL NlsInit(VOID);
 extern VOID FASTCALL NlsUninit(VOID);
 
 #define WIN_OBJ_DIR L"\\Windows"
-#define SESSION_DIR L"\\Sessions"
 
 /* FUNCTIONS *****************************************************************/
 
@@ -105,7 +105,7 @@ WINAPI BOOL DllMain(HANDLE hDll, DWORD dwReason, LPVOID lpReserved)
 	    wcscpy_s(SessionDir, ARRAY_SIZE(SessionDir), WIN_OBJ_DIR);
 	} else {
 	    /* Use the session path */
-	    _swprintf(SessionDir, L"%ws\\%lu%ws", SESSION_DIR, SessionId, WIN_OBJ_DIR);
+	    _swprintf(SessionDir, L"%ws\\%lu%ws", SM_SESSIONS_OBJDIR, SessionId, WIN_OBJ_DIR);
 	}
 
 	/* Connect to the Base Server */

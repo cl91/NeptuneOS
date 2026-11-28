@@ -246,11 +246,10 @@ CSR_API(BaseSrvSetProcessShutdownParam)
 
 /* PUBLIC API *****************************************************************/
 
-VOID NTAPI
-BaseSetProcessCreateNotify(IN BASE_PROCESS_CREATE_NOTIFY_ROUTINE ProcessCreateNotifyProc)
+NTAPI VOID BaseSetProcessCreateNotify(IN BASE_PROCESS_CREATE_NOTIFY_ROUTINE Proc)
 {
     /* Set the user notification procedure to be called when a process is created */
-    UserNotifyProcessCreate = ProcessCreateNotifyProc;
+    UserNotifyProcessCreate = Proc;
 }
 
 /* EOF */
