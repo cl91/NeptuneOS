@@ -141,7 +141,7 @@ CheckForGlobalDriveLetter(SHORT DriveLetter)
     OBJECT_ATTRIBUTES ObjectAttributes;
 
     /* Setup our drive path */
-    wcsncpy(Path, L"\\??\\X:", (sizeof(L"\\??\\X:") / sizeof(WCHAR)));
+    wcsncpy_s(Path, ARRAYSIZE(Path), L"\\??\\X:", ARRAYSIZE(L"\\??\\X:") - 1);
     Path[4] = DriveLetter + L'A';
     Path[6] = UNICODE_NULL;
 

@@ -11,6 +11,7 @@
 /* INCLUDES *******************************************************************/
 
 #include "basesrv.h"
+#include <wchar.h>
 #include <ntsmns.h>
 #include <winreg.h>
 #include "api.h"
@@ -636,13 +637,13 @@ NTAPI VOID BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
     ASSERT(Success);
 
     /* Create the system directory */
-    wcscat(SystemRootString.Buffer, L"\\system32");
+    wcscat_s(SystemRootString.Buffer, ARRAYSIZE(Buffer), L"\\system32");
     Success = RtlCreateUnicodeString(&BaseSrvWindowsSystemDirectory,
 				     SystemRootString.Buffer);
     ASSERT(Success);
 
     /* Create the kernel32 path */
-    wcscat(SystemRootString.Buffer, L"\\kernel32.dll");
+    wcscat_s(SystemRootString.Buffer, ARRAYSIZE(Buffer), L"\\kernel32.dll");
     Success = RtlCreateUnicodeString(&BaseSrvKernel32DllPath, SystemRootString.Buffer);
     ASSERT(Success);
 
@@ -710,16 +711,18 @@ NTAPI VOID BaseInitializeStaticServerData(IN PCSR_SERVER_DLL LoadedServerDll)
     Status = RtlQueryRegistryValues(RTL_REGISTRY_WINDOWS_NT, L"",
 				    BaseServerRegistryConfigurationTable, NULL, NULL);
     if (NT_SUCCESS(Status)) {
+	ULONG Length = BaseSrvCSDString.Length / sizeof(WCHAR);
+	if (Length >= ARRAYSIZE(BaseStaticServerData->CSDVersion)) {
+	    Length = ARRAYSIZE(BaseStaticServerData->CSDVersion) - 1;
+	}
 	/* Copy into the shared buffer */
-	wcsncpy(BaseStaticServerData->CSDVersion, BaseSrvCSDString.Buffer,
-		BaseSrvCSDString.Length / sizeof(WCHAR));
+	wcsncpy_s(BaseStaticServerData->CSDVersion,
+		  ARRAYSIZE(BaseStaticServerData->CSDVersion), BaseSrvCSDString.Buffer,
+		  Length);
     } else {
 	/* Indicate nothing is there */
-	BaseSrvCSDString.Length = 0;
+	BaseStaticServerData->CSDVersion[0] = UNICODE_NULL;
     }
-    /* NULL-terminate */
-    BaseStaticServerData->CSDVersion[BaseSrvCSDString.Length / sizeof(WCHAR)] =
-	UNICODE_NULL;
 
     /* Cache the system information */
     Status = NtQuerySystemInformation(SystemBasicInformation,
